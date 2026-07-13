@@ -229,7 +229,7 @@ elif [[ "${{1:-}}" == "-" && -n "${{3:-}}" ]]; then
     link_path="$3"
     mkdir -p "${{link_path:h}}"
     rm -f "$link_path"
-    ln -s "$release_target" "$link_path"
+    ln -s "releases/${{release_target:t}}" "$link_path"
   else
     exec {sys.executable!r} "$@"
   fi
@@ -279,7 +279,7 @@ elif [[ "${{1:-}}" == "-" && -n "${{3:-}}" ]]; then
     link_path="$3"
     mkdir -p "${{link_path:h}}"
     rm -f "$link_path"
-    ln -s "$release_target" "$link_path"
+    ln -s "releases/${{release_target:t}}" "$link_path"
   else
     exec {sys.executable!r} "$@"
   fi
@@ -709,7 +709,9 @@ exit 1
                 + "\n",
                 encoding="utf-8",
             )
-            (runtime / ".venv" / "bin").mkdir(parents=True)
+            managed_venv = runtime / "app" / "venvs" / "old-venv"
+            (managed_venv / "bin").mkdir(parents=True)
+            (runtime / ".venv").symlink_to("app/venvs/old-venv")
             existing_python = runtime / ".venv" / "bin" / "python"
             existing_python.write_text("#!/bin/zsh\nexit 0\n", encoding="utf-8")
             existing_python.chmod(0o755)
@@ -780,11 +782,116 @@ exit 1
             self.assertNotIn(str(Path.home()), json.dumps(source_manifest))
             self.assertGreater(source_manifest["payload"]["fileCount"], 0)
             self.assertEqual(source_manifest["payload"]["fileCount"], len(source_manifest["payload"]["files"]))
+            self.assertTrue((runtime / "app" / "source").is_symlink())
+            self.assertFalse(Path(os.readlink(runtime / "app" / "source")).is_absolute())
+            self.assertEqual(os.readlink(runtime / ".venv"), "app/venvs/old-venv")
             operations = calls.read_text(encoding="utf-8").splitlines()
             self.assertTrue(any(line.startswith("bootout gui/") and line.endswith("dashboard.watchdog") for line in operations))
             self.assertTrue(any(line.startswith("bootstrap gui/") and line.endswith("open-nova.daily.pipeline.plist") for line in operations))
             self.assertFalse(any(line.startswith("bootstrap gui/") and line.endswith("rag-server.plist") for line in operations))
             self.assertFalse(any(line.startswith("bootstrap gui/") and line.endswith("dashboard-aggregation.plist") for line in operations))
+
+    def test_source_only_legacy_or_unsafe_venv_fails_before_service_stop(self):
+        for pointer_kind in ("directory", "absolute", "escaping-relative"):
+            with self.subTest(pointer_kind=pointer_kind), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                home = root / "Home"
+                runtime = home / ".open-nova"
+                old_source = self._write_prior_runtime_source(runtime)
+                venv_pointer = runtime / ".venv"
+                expected_venv_raw = None
+                if pointer_kind == "directory":
+                    legacy_root = venv_pointer
+                elif pointer_kind == "absolute":
+                    legacy_root = runtime / "app" / "venvs" / "legacy-absolute"
+                    legacy_root.mkdir(parents=True)
+                    expected_venv_raw = str(legacy_root)
+                    venv_pointer.symlink_to(expected_venv_raw)
+                else:
+                    legacy_root = root / "outside-venv"
+                    legacy_root.mkdir()
+                    expected_venv_raw = os.path.relpath(legacy_root, runtime)
+                    venv_pointer.symlink_to(expected_venv_raw)
+                legacy_python = legacy_root / "bin" / "python"
+                legacy_python.parent.mkdir(parents=True, exist_ok=True)
+                legacy_python.write_text("#!/bin/zsh\nexit 0\n", encoding="utf-8")
+                legacy_python.chmod(0o755)
+                protected = {
+                    path: hashlib.sha256(path.read_bytes()).hexdigest()
+                    for path in (
+                        old_source / "pyproject.toml",
+                        old_source / ".open-nova-runtime-source.json",
+                        legacy_python,
+                    )
+                }
+                source_raw_target = os.readlink(runtime / "app" / "source")
+                state_dir = root / "launchctl-state"
+                state_dir.mkdir()
+                calls = root / "launchctl-calls.log"
+                fake_launchctl = root / "launchctl"
+                self._write_stateful_fake_launchctl(fake_launchctl)
+
+                result = subprocess.run(
+                    [
+                        "zsh",
+                        str(INSTALLER),
+                        "--source-only",
+                        "--runtime",
+                        str(runtime),
+                        "--source-root",
+                        str(ROOT),
+                        "--yes",
+                        "--no-scheduler",
+                        "--no-dashboard-server",
+                    ],
+                    cwd=ROOT,
+                    env={
+                        **os.environ,
+                        "HOME": str(home),
+                        "NOVA_INSTALL_PLATFORM": "Darwin",
+                        "NOVA_INSTALL_TEST_MODE": "1",
+                        "NOVA_INSTALL_LAUNCHCTL": str(fake_launchctl),
+                        "NOVA_TEST_LAUNCHCTL_CALLS": str(calls),
+                        "NOVA_TEST_LAUNCHCTL_STATE": str(state_dir),
+                        "NOVA_LOCATION_FILE": str(root / "location.json"),
+                        "NOVA_INSTALL_PYTHON": sys.executable,
+                    },
+                    text=True,
+                    capture_output=True,
+                    timeout=60,
+                    check=False,
+                )
+
+                output = result.stdout + result.stderr
+                self.assertNotEqual(result.returncode, 0, output)
+                self.assertIn("relative managed Runtime venv pointer", output)
+                self.assertEqual((runtime / "app" / "source").resolve(), old_source.resolve())
+                self.assertEqual(os.readlink(runtime / "app" / "source"), source_raw_target)
+                if expected_venv_raw is None:
+                    self.assertTrue(venv_pointer.is_dir())
+                    self.assertFalse(venv_pointer.is_symlink())
+                else:
+                    self.assertTrue(venv_pointer.is_symlink())
+                    self.assertEqual(os.readlink(venv_pointer), expected_venv_raw)
+                    self.assertEqual(venv_pointer.resolve(), legacy_root.resolve())
+                self.assertEqual(
+                    {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in protected},
+                    protected,
+                )
+                journals = list((runtime / "app" / "update-transactions").glob("*/journal.json"))
+                self.assertEqual(len(journals), 1, journals)
+                state = json.loads(journals[0].read_text(encoding="utf-8"))
+                self.assertEqual(state["status"], "rolled-back")
+                self.assertFalse(state["serviceStopInitiated"])
+                self.assertFalse((runtime / "app" / ".update-transaction.lock").exists())
+                for artifact in state["candidateArtifacts"]:
+                    self.assertFalse(artifact["created"], artifact)
+                    self.assertFalse(Path(artifact["path"]).exists(), artifact)
+                launchctl_calls = calls.read_text(encoding="utf-8").splitlines() if calls.exists() else []
+                self.assertFalse(
+                    any(call.startswith(("bootout ", "bootstrap ", "kickstart ")) for call in launchctl_calls),
+                    launchctl_calls,
+                )
 
     def test_source_update_post_stop_failure_matrix_restores_prior_state(self):
         cases = (
@@ -813,13 +920,14 @@ exit 1
                 state_dir = root / "launchctl-state"
                 for path in (
                     old_release,
-                    runtime / ".venv" / "bin",
+                    runtime / "app" / "venvs" / "old-venv" / "bin",
                     runtime / "config",
                     runtime / "data",
                     launch_agents,
                     state_dir,
                 ):
                     path.mkdir(parents=True, exist_ok=True)
+                (runtime / ".venv").symlink_to("app/venvs/old-venv")
                 (old_release / "pyproject.toml").write_text('[project]\nname="old"\nversion="0"\n', encoding="utf-8")
                 (old_release / ".open-nova-runtime-source.json").write_text('{"old": true}\n', encoding="utf-8")
                 shutil.copytree(
@@ -1359,11 +1467,126 @@ exit 1
         self.assertIn('local releases_root="${app_root}/releases"', script)
         self.assertIn('"deploymentMode": "release-symlink"', script)
         self.assertIn('"releaseLocator": {"kind": "runtime-relative"', script)
-        self.assertIn("os.symlink(release, link)", script)
+        self.assertIn("os.symlink(raw_target, pointer)", script)
+        self.assertIn('"releases"', script)
+        self.assertIn('"app/venvs"', script)
         self.assertNotIn("os.replace(tmp, link)", script)
         self.assertNotIn("os.unlink(tmp)", script)
         self.assertIn("the no-clobber pointer was preserved", script)
         self.assertNotIn('rm -rf "${DEPLOY_SOURCE_ROOT}"', script)
+
+    def test_fresh_runtime_pointer_helper_is_relative_store_confined_and_no_clobber(self):
+        script = INSTALLER.read_text(encoding="utf-8")
+        function_header = "promote_fresh_runtime_pointer() {"
+        function_body = script.split(function_header, 1)[1].split(
+            "\npromote_staged_runtime_source() {",
+            1,
+        )[0]
+        harness = "\n".join(
+            (
+                "set -euo pipefail",
+                'PYTHON_BIN="$NOVA_TEST_PYTHON"',
+                function_header + function_body,
+                'promote_fresh_runtime_pointer "$1" "$2" "$3"',
+            )
+        )
+
+        def promote(candidate: Path, pointer: Path, store_relative: str) -> subprocess.CompletedProcess[str]:
+            return subprocess.run(
+                [
+                    "zsh",
+                    "-c",
+                    harness,
+                    "fresh-runtime-pointer-test",
+                    str(candidate),
+                    str(pointer),
+                    store_relative,
+                ],
+                cwd=ROOT,
+                env={**os.environ, "NOVA_TEST_PYTHON": sys.executable},
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime = Path(tmp) / "runtime"
+            source_candidate = runtime / "app" / "releases" / "generation"
+            venv_candidate = runtime / "app" / "venvs" / "generation"
+            source_candidate.mkdir(parents=True)
+            venv_candidate.mkdir(parents=True)
+            source_pointer = runtime / "app" / "source"
+            venv_pointer = runtime / ".venv"
+
+            source_result = promote(source_candidate, source_pointer, "releases")
+            venv_result = promote(venv_candidate, venv_pointer, "app/venvs")
+
+            self.assertEqual(source_result.returncode, 0, source_result.stdout + source_result.stderr)
+            self.assertEqual(venv_result.returncode, 0, venv_result.stdout + venv_result.stderr)
+            self.assertEqual(os.readlink(source_pointer), "releases/generation")
+            self.assertEqual(os.readlink(venv_pointer), "app/venvs/generation")
+            self.assertEqual(source_pointer.resolve(), source_candidate.resolve())
+            self.assertEqual(venv_pointer.resolve(), venv_candidate.resolve())
+
+        for case in (
+            "file",
+            "directory",
+            "dangling",
+            "symlinked-parent",
+            "symlinked-store",
+            "outside-store",
+        ):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                runtime = root / "runtime"
+                app = runtime / "app"
+                if case == "symlinked-parent":
+                    runtime.mkdir()
+                    outside_app = root / "outside-app"
+                    outside_app.mkdir()
+                    app.symlink_to(outside_app, target_is_directory=True)
+                else:
+                    app.mkdir(parents=True)
+                store = app / "releases"
+                if case == "symlinked-store":
+                    outside_store = root / "outside-releases"
+                    outside_store.mkdir()
+                    store.symlink_to(outside_store, target_is_directory=True)
+                    candidate = store / "generation"
+                    candidate.mkdir()
+                else:
+                    store.mkdir()
+                    candidate = (
+                        root / "outside" / "generation"
+                        if case == "outside-store"
+                        else store / "generation"
+                    )
+                    candidate.mkdir(parents=True)
+                pointer = app / "source"
+                if case == "file":
+                    pointer.write_text("operator-owned\n", encoding="utf-8")
+                elif case == "directory":
+                    pointer.mkdir()
+                    (pointer / "sentinel").write_text("operator-owned\n", encoding="utf-8")
+                elif case == "dangling":
+                    pointer.symlink_to("missing-generation")
+
+                result = promote(candidate, pointer, "releases")
+
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertTrue(candidate.is_dir())
+                if case == "file":
+                    self.assertEqual(pointer.read_text(encoding="utf-8"), "operator-owned\n")
+                elif case == "directory":
+                    self.assertEqual(
+                        (pointer / "sentinel").read_text(encoding="utf-8"),
+                        "operator-owned\n",
+                    )
+                elif case == "dangling":
+                    self.assertTrue(pointer.is_symlink())
+                    self.assertEqual(os.readlink(pointer), "missing-generation")
+                else:
+                    self.assertFalse(pointer.exists() or pointer.is_symlink())
 
     def test_runtime_source_deploy_uses_allowlist_not_full_repo_copy(self):
         script = INSTALLER.read_text(encoding="utf-8")
@@ -2699,9 +2922,12 @@ exit 1
 
                 self.assertEqual(promoted.returncode, 0, promoted.stdout + promoted.stderr)
                 self.assertTrue(source_pointer.is_symlink())
-                self.assertEqual(os.readlink(source_pointer), str(release_target))
+                self.assertEqual(os.readlink(source_pointer), str(Path("releases") / release_target.name))
 
     def test_fake_python_smoke_executes_real_installer_path_without_real_pip(self):
+        from advanced.dashboard import dashboard_launch_agent as dashboard_launcher
+        from advanced.dashboard import rag_server_launch_agent as rag_launcher
+
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             home = root / "Home"
@@ -2711,6 +2937,7 @@ exit 1
             fake_python = bin_dir / "python3"
             home.mkdir()
             bin_dir.mkdir()
+            (runtime / "app").mkdir(parents=True)
             self._write_fake_python(fake_python, log_path)
             env = {
                 **os.environ,
@@ -2739,12 +2966,27 @@ exit 1
             )
             log = log_path.read_text(encoding="utf-8")
             runtime_exists = runtime.resolve().exists()
+            source_pointer = runtime / "app" / "source"
+            venv_pointer = runtime / ".venv"
+            source_raw_target = os.readlink(source_pointer)
+            venv_raw_target = os.readlink(venv_pointer)
+            source_resolved = source_pointer.resolve()
+            venv_resolved = venv_pointer.resolve()
+            dashboard_launcher._require_runtime_pointers(runtime.resolve())
+            rag_launcher._require_runtime_pointers(runtime.resolve())
 
         output = result.stdout + result.stderr
         deployed = runtime.resolve() / "app" / "source"
 
         self.assertEqual(result.returncode, 0, output)
         self.assertTrue(runtime_exists)
+        self.assertEqual(Path(source_raw_target).parts[:1], ("releases",))
+        self.assertEqual(Path(venv_raw_target).parts[:2], ("app", "venvs"))
+        self.assertFalse(Path(source_raw_target).is_absolute())
+        self.assertFalse(Path(venv_raw_target).is_absolute())
+        self.assertEqual(source_resolved.parent.name, "releases")
+        self.assertEqual(venv_resolved.parent.name, "venvs")
+        self.assertEqual(source_resolved.name, venv_resolved.name)
         self.assertIn("-m venv", log)
         self.assertIn("-m pip install", log)
         self.assertIn(f"{deployed}[dashboard]", log)

@@ -2427,6 +2427,53 @@ def _prepare_transaction_symlink(path: Path, raw_target: str) -> None:
     _fsync_dir(path.parent)
 
 
+def _candidate_pointer_raw_target(
+    state: dict[str, Any],
+    *,
+    name: str,
+    path: Path,
+    candidate: Path,
+) -> str:
+    runtime = Path(state["runtime"])
+    if name == "source":
+        expected_pointer = runtime / "app" / "source"
+        expected_store = runtime / "app" / "releases"
+    elif name == "venv":
+        expected_pointer = runtime / ".venv"
+        expected_store = runtime / "app" / "venvs"
+    else:
+        raise TransactionError(f"unsupported managed Runtime pointer: {name}")
+    expected_candidate = expected_store / str(state["txId"])
+    if path != expected_pointer or candidate != expected_candidate:
+        raise TransactionError(f"{name} candidate is outside its managed Runtime store")
+    try:
+        relative = candidate.relative_to(path.parent)
+    except ValueError as exc:
+        raise TransactionError(f"{name} candidate cannot use a relative Runtime pointer") from exc
+    if relative.is_absolute() or not relative.parts or any(part in {"", ".", ".."} for part in relative.parts):
+        raise TransactionError(f"{name} candidate has an unsafe relative Runtime target")
+    raw_target = relative.as_posix()
+    try:
+        resolved_relative = (path.parent / relative).resolve(strict=True)
+        resolved_candidate = candidate.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise TransactionError(f"{name} candidate relative Runtime target is unreadable") from exc
+    if resolved_relative != resolved_candidate:
+        raise TransactionError(f"{name} candidate relative Runtime target changed")
+    return raw_target
+
+
+def _pointer_matches_candidate(path: Path, raw_target: str, candidate: Path) -> bool:
+    try:
+        return (
+            path.is_symlink()
+            and os.readlink(path) == raw_target
+            and path.resolve(strict=True) == candidate.resolve(strict=True)
+        )
+    except (OSError, RuntimeError):
+        return False
+
+
 def _file_matches_snapshot(item: dict[str, Any]) -> bool:
     path = Path(item["path"])
     kind = _path_kind(path)
@@ -2576,7 +2623,12 @@ def _promote_pointer(state_path: Path, state: dict[str, Any], name: str) -> None
         _fsync_dir(backup.parent)
         _maybe_test_fail(f"{name}-prior-moved-before-journal")
         _save_state(state_path, state, event=f"prior-{name}-moved")
-    candidate_raw_target = str(candidate.resolve())
+    candidate_raw_target = _candidate_pointer_raw_target(
+        state,
+        name=name,
+        path=path,
+        candidate=candidate,
+    )
     tmp = state_path.parent / f".next-{name}"
     _prepare_transaction_symlink(tmp, candidate_raw_target)
     if prior_kind == "symlink":
@@ -2584,8 +2636,7 @@ def _promote_pointer(state_path: Path, state: dict[str, Any], name: str) -> None
         if (
             not tmp.is_symlink()
             or os.readlink(tmp) != pointer.get("priorRawTarget")
-            or not path.is_symlink()
-            or os.readlink(path) != candidate_raw_target
+            or not _pointer_matches_candidate(path, candidate_raw_target, candidate)
         ):
             try:
                 _rename_swap(tmp, path)
@@ -2596,7 +2647,7 @@ def _promote_pointer(state_path: Path, state: dict[str, Any], name: str) -> None
             raise TransactionError(f"{name} pointer changed concurrently during promotion")
     else:
         _rename_exclusive(tmp, path)
-        if not path.is_symlink() or os.readlink(path) != candidate_raw_target:
+        if not _pointer_matches_candidate(path, candidate_raw_target, candidate):
             try:
                 _rename_exclusive(path, tmp)
             except TransactionError as exc:

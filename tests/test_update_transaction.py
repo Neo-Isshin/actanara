@@ -1441,7 +1441,9 @@ print -r -- "$reserved"
             source = fixture["runtime"] / "app" / "source"
             venv = fixture["runtime"] / ".venv"
             self.assertEqual(source.resolve(), fixture["candidate_source"].resolve())
+            self.assertEqual(os.readlink(source), "releases/fixture-tx")
             self.assertTrue(venv.is_symlink())
+            self.assertEqual(os.readlink(venv), "app/venvs/fixture-tx")
             writer = sqlite3.connect(fixture["database"])
             try:
                 writer.execute("PRAGMA journal_mode = WAL")
@@ -1476,6 +1478,42 @@ print -r -- "$reserved"
             self.assertEqual(os.readlink(source), "releases/old")
             self.assertTrue(venv.is_dir())
             self.assertFalse(venv.is_symlink())
+
+    def test_legacy_absolute_symlinks_promote_relative_and_rollback_exactly(self):
+        from advanced.dashboard import dashboard_launch_agent as dashboard_launcher
+        from advanced.dashboard import rag_server_launch_agent as rag_launcher
+
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            runtime = fixture["runtime"]
+            source = runtime / "app" / "source"
+            old_source = source.resolve()
+            legacy_venv = runtime / ".venv"
+            old_venv = runtime / "app" / "venvs" / "legacy-absolute"
+            old_venv.parent.mkdir(parents=True, exist_ok=True)
+            legacy_venv.rename(old_venv)
+            source.unlink()
+            source.symlink_to(str(old_source))
+            legacy_venv.symlink_to(str(old_venv))
+            prior_source_raw = os.readlink(source)
+            prior_venv_raw = os.readlink(legacy_venv)
+
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            self._prepare_and_promote(fixture, journal)
+
+            self.assertEqual(os.readlink(source), "releases/fixture-tx")
+            self.assertEqual(os.readlink(legacy_venv), "app/venvs/fixture-tx")
+            self.assertEqual(source.resolve(), fixture["candidate_source"].resolve())
+            self.assertEqual(legacy_venv.resolve(), fixture["candidate_venv"].resolve())
+            dashboard_launcher._require_runtime_pointers(runtime)
+            rag_launcher._require_runtime_pointers(runtime)
+
+            self._run("rollback", "--state", str(journal))
+
+            self.assertEqual(os.readlink(source), prior_source_raw)
+            self.assertEqual(os.readlink(legacy_venv), prior_venv_raw)
+            self.assertEqual(source.resolve(), old_source)
+            self.assertEqual(legacy_venv.resolve(), old_venv.resolve())
 
     def test_external_configured_database_is_bound_and_snapshotted(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -32,7 +32,7 @@ The frozen v1.0.1 public source was exercised in two independent full-suite
 runs, each with a fresh virtual environment and disposable Runtime. Each run
 completed:
 
-- **1,415 run**
+- **1,419 run**
 - **0 failures**
 - **0 errors**
 - **2 expected skips**
@@ -49,8 +49,9 @@ hash remained unchanged across both runs.
 The immutable v1.0.0 release is withdrawn and is not recommended for install or
 update. Its tag and artifacts remain unchanged for audit. v1.0.1 adds
 transactionally durable service-definition rebinding, stable paths for new
-managed definitions, and Dashboard/nova-RAG health provenance tied to the
-candidate's exact full source commit. All identified Critical and Blocker
+managed definitions, store-confined relative source and venv pointers for
+fresh installs and updates, and Dashboard/nova-RAG health provenance tied to
+the candidate's exact full source commit. All identified Critical and Blocker
 findings are closed; none remain open for this release.
 
 ## Known non-gate limitations

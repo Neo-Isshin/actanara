@@ -456,6 +456,11 @@ class OpenNovaCliTests(unittest.TestCase):
         self.assertNotIn("--ref", payload["command"])
         self.assertFalse(payload["mutationPolicy"]["managedServicesStoppedBeforePortSelection"])
         self.assertFalse(payload["mutationPolicy"]["managedServicesStoppedAfterPreflight"])
+        self.assertFalse(payload["mutationPolicy"]["settingsMutated"])
+        self.assertFalse(payload["mutationPolicy"]["schedulerChanged"])
+        self.assertFalse(payload["mutationPolicy"]["managedServiceDefinitionsMayNormalize"])
+        self.assertFalse(payload["mutationPolicy"]["reusesRuntimeVenv"])
+        self.assertTrue(payload["mutationPolicy"]["preservesSettingsAndUserData"])
         run.assert_not_called()
 
     def test_update_help_describes_latest_stable_release_commit_pinning(self):
@@ -491,6 +496,54 @@ class OpenNovaCliTests(unittest.TestCase):
         self.assertIn("--runtime", command)
         self.assertIn("/tmp/open-nova", command)
         self.assertFalse(payload["mutationPolicy"]["sourceUpdated"])
+        self.assertFalse(payload["mutationPolicy"]["settingsMutated"])
+        self.assertFalse(payload["mutationPolicy"]["schedulerChanged"])
+        self.assertFalse(payload["mutationPolicy"]["managedServiceDefinitionsMayNormalize"])
+        self.assertFalse(payload["mutationPolicy"]["reusesRuntimeVenv"])
+
+    def test_update_apply_json_reports_atomic_full_upgrade_mutation_policy(self):
+        cli = _load_cli_module()
+        candidate_paths = type("Paths", (), {"home": Path("/tmp/open-nova-candidate")})()
+        completed = type(
+            "Completed",
+            (),
+            {"returncode": 0, "stdout": "upgrade complete\n", "stderr": ""},
+        )()
+        with tempfile.TemporaryDirectory() as tmp:
+            source_root = Path(tmp) / "source"
+            bootstrap = source_root / "install" / "bootstrap.sh"
+            bootstrap.parent.mkdir(parents=True)
+            bootstrap.write_text("#!/bin/zsh\n", encoding="utf-8")
+            with (
+                patch.object(cli, "_paths_from_args", return_value=candidate_paths),
+                patch.object(cli, "read_settings", return_value={}),
+                patch.object(cli.shutil, "which", return_value="/bin/zsh"),
+                patch.object(cli.subprocess, "run", return_value=completed),
+                redirect_stdout(io.StringIO()) as output,
+            ):
+                code = cli.main(
+                    [
+                        "update",
+                        "--apply",
+                        "--json",
+                        "--runtime",
+                        str(candidate_paths.home),
+                        "--source-root",
+                        str(source_root),
+                    ]
+                )
+
+        payload = json.loads(output.getvalue())
+        policy = payload["mutationPolicy"]
+        self.assertEqual(code, 0)
+        self.assertTrue(policy["dependenciesInstalled"])
+        self.assertTrue(policy["sourceUpdated"])
+        self.assertTrue(policy["managedServicesStoppedAfterPreflight"])
+        self.assertTrue(policy["managedServiceDefinitionsMayNormalize"])
+        self.assertFalse(policy["settingsMutated"])
+        self.assertFalse(policy["schedulerChanged"])
+        self.assertFalse(policy["reusesRuntimeVenv"])
+        self.assertTrue(policy["preservesSettingsAndUserData"])
 
     def test_update_apply_invokes_source_root_bootstrap_with_preserved_rag_args(self):
         cli = _load_cli_module()

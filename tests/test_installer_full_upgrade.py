@@ -803,8 +803,11 @@ class InstallerFullUpgradeTests(unittest.TestCase):
         venv = runtime / ".venv"
         self.assertTrue(source.is_symlink())
         self.assertNotEqual(source.resolve(), Path(fixture["old_source"]).resolve())
+        self.assertEqual(os.readlink(source), f"releases/{source.resolve().name}")
         self.assertTrue((source / ".open-nova-runtime-source.json").is_file())
         self.assertTrue(venv.is_symlink())
+        self.assertEqual(os.readlink(venv), f"app/venvs/{venv.resolve().name}")
+        self.assertEqual(source.resolve().name, venv.resolve().name)
         self.assertTrue((venv / "bin" / "python").is_file())
         self.assertEqual(self._service_state(fixture), fixture["initial_state"])
         self._assert_protected_after_success(fixture)

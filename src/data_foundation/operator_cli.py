@@ -803,13 +803,14 @@ def _update_run(args: argparse.Namespace) -> int:
         "sourceSelection": source_selection,
         "command": command,
         "mutationPolicy": {
-            "settingsMutated": bool(args.apply),
+            "settingsMutated": False,
             "dependenciesInstalled": bool(args.apply),
             "sourceUpdated": bool(args.apply),
             "managedServicesStoppedBeforePortSelection": False,
             "managedServicesStoppedAfterPreflight": bool(args.apply),
-            "schedulerChanged": bool(args.apply),
-            "reusesRuntimeVenv": True,
+            "schedulerChanged": False,
+            "managedServiceDefinitionsMayNormalize": bool(args.apply),
+            "reusesRuntimeVenv": False,
             "preservesSettingsAndUserData": True,
         },
     }

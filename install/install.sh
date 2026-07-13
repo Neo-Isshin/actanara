@@ -2499,6 +2499,58 @@ PY
   STAGED_RELEASE_TARGET="${release_target}"
 }
 
+promote_fresh_runtime_pointer() {
+  local candidate="$1"
+  local pointer="$2"
+  local store_relative="$3"
+  "${PYTHON_BIN}" - "${candidate}" "${pointer}" "${store_relative}" <<'PY'
+import os
+import sys
+from pathlib import Path, PurePosixPath
+
+candidate = Path(os.path.abspath(sys.argv[1]))
+pointer = Path(os.path.abspath(sys.argv[2]))
+store_relative = PurePosixPath(sys.argv[3])
+store_parts = store_relative.parts
+if (
+    not store_parts
+    or store_relative.is_absolute()
+    or any(part in {"", ".", ".."} for part in store_parts)
+):
+    raise SystemExit("managed Runtime store path is unsafe")
+expected_store = pointer.parent
+for component in (None, *store_parts):
+    if component is not None:
+        expected_store = expected_store / component
+    if expected_store.is_symlink() or not expected_store.is_dir():
+        raise SystemExit("managed Runtime store is unavailable or unsafe")
+if candidate.is_symlink() or not candidate.is_dir() or candidate.parent != expected_store:
+    raise SystemExit("managed Runtime candidate is outside its store")
+if os.path.lexists(pointer):
+    raise SystemExit("managed Runtime pointer appeared concurrently; rerun with --upgrade")
+relative = candidate.relative_to(pointer.parent)
+if relative.parts != (*store_parts, candidate.name):
+    raise SystemExit("managed Runtime candidate has an unexpected relative target")
+raw_target = relative.as_posix()
+os.symlink(raw_target, pointer)
+descriptor = os.open(pointer.parent, os.O_RDONLY)
+try:
+    os.fsync(descriptor)
+finally:
+    os.close(descriptor)
+try:
+    valid = (
+        pointer.is_symlink()
+        and os.readlink(pointer) == raw_target
+        and pointer.resolve(strict=True) == candidate.resolve(strict=True)
+    )
+except (OSError, RuntimeError):
+    valid = False
+if not valid:
+    raise SystemExit("managed Runtime pointer changed during promotion")
+PY
+}
+
 promote_staged_runtime_source() {
   if [[ "$DRY_RUN" == "1" ]]; then
     progress_start "Promoting staged source snapshot"
@@ -2517,21 +2569,10 @@ promote_staged_runtime_source() {
     print -r -- "runtime source already exists; use --upgrade for an existing Open Nova Runtime" >&2
     return 1
   fi
-  if ! "${PYTHON_BIN}" - "${release_target}" "${DEPLOY_SOURCE_ROOT}" <<'PY'
-import os
-import sys
-
-release = os.path.abspath(sys.argv[1])
-link = sys.argv[2]
-if os.path.lexists(link):
-    raise SystemExit("runtime source appeared concurrently; rerun with --upgrade")
-os.symlink(release, link)
-descriptor = os.open(os.path.dirname(link), os.O_RDONLY)
-try:
-    os.fsync(descriptor)
-finally:
-    os.close(descriptor)
-PY
+  if ! promote_fresh_runtime_pointer \
+    "${release_target}" \
+    "${DEPLOY_SOURCE_ROOT}" \
+    "releases"
   then
     return 1
   fi
@@ -2544,6 +2585,41 @@ PY
 deploy_runtime_source() {
   stage_runtime_source
   promote_staged_runtime_source
+}
+
+create_fresh_runtime_venv() {
+  local generation="${STAGED_RELEASE_ID:-<release-id>}"
+  local venv_store="${RUNTIME_HOME}/app/venvs"
+  local venv_target="${venv_store}/${generation}"
+  if [[ "$DRY_RUN" != "1" && -z "$STAGED_RELEASE_ID" ]]; then
+    print -r -- "runtime venv creation requested without a staged source generation" >&2
+    return 1
+  fi
+  if [[ "$DRY_RUN" != "1" && ( -e "$VENV_DIR" || -L "$VENV_DIR" ) ]]; then
+    print -r -- "runtime venv pointer already exists; use --upgrade for an existing Open Nova Runtime" >&2
+    return 1
+  fi
+  if [[ "$DRY_RUN" != "1" && ( -e "$venv_target" || -L "$venv_target" ) ]]; then
+    print -r -- "runtime venv generation already exists; refusing to overwrite it" >&2
+    return 1
+  fi
+  run_cmd mkdir -p "${venv_store}"
+  run_cmd "${PYTHON_BIN}" -m venv "${venv_target}"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    return 0
+  fi
+  if [[ ! -f "${venv_target}/bin/python" ]]; then
+    print -r -- "runtime venv generation failed validation before pointer promotion" >&2
+    return 1
+  fi
+  if ! promote_fresh_runtime_pointer \
+    "${venv_target}" \
+    "${VENV_DIR}" \
+    "app/venvs"
+  then
+    print -r -- "runtime venv pointer promotion failed; the staged generation was preserved for operator inspection" >&2
+    return 1
+  fi
 }
 
 format_selected_external_tools() {
@@ -3049,9 +3125,17 @@ require_fresh_runtime_empty() {
   if [[ "$UPGRADE" == "1" || "$DRY_RUN" == "1" ]]; then
     return 0
   fi
+  if [[ -L "${RUNTIME_HOME}/app" || ( -e "${RUNTIME_HOME}/app" && ! -d "${RUNTIME_HOME}/app" ) ]]; then
+    print -r -- "existing Open Nova Runtime state requires --upgrade: ${RUNTIME_HOME}" >&2
+    return 2
+  fi
   local marker=""
   for marker in \
     "${RUNTIME_HOME}/app/source" \
+    "${RUNTIME_HOME}/app/releases" \
+    "${RUNTIME_HOME}/app/venvs" \
+    "${RUNTIME_HOME}/app/update-transactions" \
+    "${RUNTIME_HOME}/app/.update-transaction.lock" \
     "${RUNTIME_HOME}/.venv" \
     "${RUNTIME_HOME}/config/runtime.json" \
     "${RUNTIME_HOME}/config/settings.json" \
@@ -3695,6 +3779,35 @@ run_source_only_candidate_gate() {
   local active_source="${DEPLOY_SOURCE_ROOT}"
   local missing_file="${UPDATE_TRANSACTION_DIR}/source-only-dependency-gate-missing.txt"
   local log_file="$(installer_log_file)"
+  if ! PYTHONDONTWRITEBYTECODE=1 "${PYTHON_BIN}" - "${RUNTIME_HOME}" "${VENV_DIR}" <<'PY'
+import os
+import sys
+from pathlib import Path
+
+runtime = Path(os.path.abspath(sys.argv[1]))
+pointer = Path(os.path.abspath(sys.argv[2]))
+store = runtime / "app" / "venvs"
+try:
+    if pointer != runtime / ".venv" or not pointer.is_symlink():
+        raise ValueError
+    raw_target = Path(os.readlink(pointer))
+    if raw_target.is_absolute() or raw_target.parts[:2] != ("app", "venvs") or len(raw_target.parts) != 3:
+        raise ValueError
+    if any(part in {"", ".", ".."} for part in raw_target.parts):
+        raise ValueError
+    lexical_target = pointer.parent / raw_target
+    if lexical_target.is_symlink() or not lexical_target.is_dir() or lexical_target.parent != store:
+        raise ValueError
+    if store.is_symlink() or lexical_target.resolve(strict=True).parent != store.resolve(strict=True):
+        raise ValueError
+    if not (pointer / "bin" / "python").is_file():
+        raise ValueError
+except (OSError, RuntimeError, ValueError):
+    raise SystemExit("source-only update requires a relative managed Runtime venv pointer; run a full upgrade first")
+PY
+  then
+    return 1
+  fi
   if [[ ! -x "$VENV_PY" ]]; then
     print -r -- "source-only update requires the existing runtime venv: ${VENV_PY}" >&2
     return 1
@@ -4538,7 +4651,7 @@ run_cmd mkdir -p "${RUNTIME_HOME}"
 run_cmd mkdir -p "${DIARY_OUTPUT_DIR}" "${REPORTS_OUTPUT_DIR}" "${SNAPSHOTS_OUTPUT_DIR}" "${ARCHIVES_OUTPUT_DIR}"
 create_desktop_diary_link
 deploy_runtime_source
-run_cmd "${PYTHON_BIN}" -m venv "${VENV_DIR}"
+create_fresh_runtime_venv
 run_cmd "${VENV_PY}" -m pip install --upgrade pip
 run_cmd "${VENV_PY}" -m pip install "${INSTALL_SPEC}"
 run_runtime_dependency_gate
