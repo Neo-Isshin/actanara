@@ -1,0 +1,2 @@
+{"time":"2026-05-19T10:00:00+08:00","role":"assistant","content":"Implemented English narrative, technical, and learning pass wiring with profile-aware artifact filenames."}
+{"time":"2026-05-19T10:15:00+08:00","role":"user","content":"Please ensure the English pipeline does not read same-day Chinese diary artifacts."}

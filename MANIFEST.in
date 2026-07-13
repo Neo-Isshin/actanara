@@ -1,0 +1,30 @@
+include pyproject.toml
+include LICENSE
+include README.md
+include README.zh-CN.md
+graft install
+graft advanced
+recursive-include src/dashboard/app/static *
+recursive-include src/data_foundation/migrations *.sql
+include src/data_foundation/migration_compatibility.json
+include src/agentic_rag/rag_eval_queries.jsonl
+include src/agentic_rag/rag_eval_queries.en.jsonl
+include src/agentic_rag/rag_eval_queries.zh.jsonl
+
+prune tests
+prune __pycache__
+prune .pytest_cache
+prune .ruff_cache
+prune .mypy_cache
+prune .cache
+prune build
+prune dist
+prune wheelhouse
+global-exclude .DS_Store
+global-exclude *.py[cod]
+global-exclude *.db
+global-exclude *.sqlite
+global-exclude *.sqlite3
+global-exclude *.log
+global-exclude .env
+global-exclude .env.*

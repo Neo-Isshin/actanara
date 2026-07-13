@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "policy": "rollback-compatible-additive-only",
+  "preCommitWriterContract": "prior-reader-compatible-v1",
+  "minimumReadableSchema": "unversioned",
+  "maximumReadableSchema": "0018_pipeline_runs",
+  "migrations": [
+    {
+      "version": "0001_initial",
+      "sha256": "81889591a4c49f96c5c698dd9d4d2f453c0421dabe633869fdee2aad01a704a0",
+      "rollbackClass": "rollback-compatible-additive"
+    },
+    {
+      "version": "0002_shadow_usage",
+      "sha256": "b8f282f1b090b3d845daf6e4e58bc4d42ba189531701eaea4ebb7651a93d1623",
+      "rollbackClass": "rollback-compatible-additive"
+    },
+    {
+      "version": "0003_period_reports",
+      "sha256": "373cb4b6a39ad425bcfcf7473a884a2badb9d676fe308d046309f175096a9be2",
+      "rollbackClass": "rollback-compatible-additive"
+    },
+    {
+      "version": "0004_dashboard_snapshots",
+      "sha256": "3e8191607e7ef28a5966ecb599f479ba39e329f0146ea0d95bf3b9120490e252",
+      "rollbackClass": "rollback-compatible-additive"
+    },
+    {
+      "version": "0005_task_shadow",
+      "sha256": "b06dc5c904944a665d029c65cd8712ae4d1f7764ed018bf3d6d45596eb9caa92",
+      "rollbackClass": "rollback-compatible-additive"
+    },
+    {
+      "version": "0006_task_report_events",
+      "sha256": "45b345e57e5b424bab50815c9597ce02cc82ea5bc14ad1e1bb82aca4dc69a25a",
+      "rollbackClass": "rollback-compatible-additive"
+    },
+    {
+      "version": "0007_task_board_mutations",
+      "sha256": "52a9e09c9ba320a5323fbb9c756b85c25980fbf4055a5a7078a75a90da658a29",
+      "rollbackClass": "rollback-compatible-additive"
+    },
+    {
+      "version": "0008_diary_markdown_documents",
+      "sha256": "37bbe48dd90e84a8c1a96a63d09b1eaa306484b11a925fcb6e22fc459e049b2f",
+      "rollbackClass": "rollback-compatible-additive"
+    },
+    {
+      "version": "0009_task_board_projection",
+      "sha256": "09e9d5e091275101ce372aae7c4ebddee1603f48ad0adfba8a82f19a1234d53e",
+      "rollbackClass": "rollback-compatible-additive"
+    },
+    {
+      "version": "0010_system_component_registry",
+      "sha256": "9d3dcd08cc845149dbba16319ce02e9bd88f63762893e2d321346edced4ed6e5",
+      "rollbackClass": "rollback-compatible-additive"
+    },
+    {
+      "version": "0011_nova_task_authority",
+      "sha256": "fa389931a8058bd093596c3f977ec3a46a3ebac38d38aca4cb02c818dd447178",
+      "rollbackClass": "rollback-compatible-additive"
+    },
+    {
+      "version": "0012_foundation_repair_runs",
+      "sha256": "3449ab8333532616d2a284e4c726ac24505ef72aef330d621192bddcc0896e74",
+      "rollbackClass": "rollback-compatible-additive"
+    },
+    {
+      "version": "0013_ai_assets_usage_cache",
+      "sha256": "8d19617eedb2cb9759540bfdb1af40f34d59e2b9b429bc6c361b18dd8830200f",
+      "rollbackClass": "rollback-compatible-additive"
+    },
+    {
+      "version": "0014_nova_task_status_vocabulary",
+      "sha256": "3d3ab0316d124734799cbb01456dc9ee1d275cbbb76485ce4704f477b93a7035",
+      "rollbackClass": "breaking"
+    },
+    {
+      "version": "0015_nova_task_l1_review_view",
+      "sha256": "472470444189f9adf8ee1e801088a1d86d26ad5fbef4fadef957a6968c2d91a2",
+      "rollbackClass": "rollback-compatible-additive"
+    },
+    {
+      "version": "0016_nova_task_node_management",
+      "sha256": "492a5928375e1743f4c7f0c61a63ee699316380c29b039dab8a6b4c1e89c22ee",
+      "rollbackClass": "breaking"
+    },
+    {
+      "version": "0017_infrastructure_graph",
+      "sha256": "b793deb8b98a5231d5cce94f17b09d231f49df22c5d153615b892c2e93e7e5b8",
+      "rollbackClass": "rollback-compatible-additive"
+    },
+    {
+      "version": "0018_pipeline_runs",
+      "sha256": "b776ecc2d3e86d8109b1b1e85ccc39a67506cf08cbfbb42463e5ad3fd349089a",
+      "rollbackClass": "rollback-compatible-additive"
+    }
+  ]
+}

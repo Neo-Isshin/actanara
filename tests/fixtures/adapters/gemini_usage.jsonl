@@ -1,0 +1,2 @@
+not valid json
+{"id":"gemini-record","timestamp":"2026-05-19T02:00:00Z","type":"gemini","tokens":{"input":30,"output":5,"cached":7},"model":"gemini-model"}

@@ -1,0 +1,749 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Open Nova is a non-invasive local AI operations layer that connects your AI tools, automatically summarizes your work, and turns scattered memory into searchable, reusable AI assets.">
+  <title>Open Nova - Local AI Operations Runtime</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #0a1b2e;
+      --ink-soft: #38516b;
+      --muted: #6d8399;
+      --line: #dce8f1;
+      --paper: #fbfdff;
+      --white: #ffffff;
+      --mint: #37d6ad;
+      --blue: #2f7df6;
+      --coral: #ff7d5f;
+      --amber: #f9bd4b;
+      --navy: #071421;
+      --shadow: 0 24px 80px rgba(9, 30, 55, 0.12);
+      --radius: 8px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      line-height: 1.55;
+      letter-spacing: 0;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      border-bottom: 1px solid rgba(220, 232, 241, 0.78);
+      background: rgba(251, 253, 255, 0.88);
+      backdrop-filter: blur(16px);
+    }
+
+    .nav-inner,
+    .section,
+    .hero-inner {
+      width: min(1160px, calc(100% - 40px));
+      margin: 0 auto;
+    }
+
+    .nav-inner {
+      height: 68px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 800;
+      letter-spacing: 0;
+      color: var(--navy);
+    }
+
+    .mark {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      color: white;
+      background: linear-gradient(135deg, var(--mint), var(--blue));
+      font-weight: 900;
+      box-shadow: 0 10px 24px rgba(47, 125, 246, 0.22);
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 22px;
+      color: var(--ink-soft);
+      font-size: 14px;
+    }
+
+    .nav-links a:hover { color: var(--ink); }
+
+    .button {
+      min-height: 42px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border-radius: var(--radius);
+      padding: 0 16px;
+      font-weight: 750;
+      border: 1px solid transparent;
+      white-space: nowrap;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+      cursor: pointer;
+      font: inherit;
+    }
+
+    .button:hover { transform: translateY(-1px); }
+    .button.primary {
+      color: white;
+      background: var(--navy);
+      box-shadow: 0 14px 30px rgba(7, 20, 33, 0.22);
+    }
+    .button.secondary {
+      color: var(--ink);
+      background: white;
+      border-color: var(--line);
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 18% 18%, rgba(55, 214, 173, 0.18), transparent 28%),
+        radial-gradient(circle at 84% 28%, rgba(255, 125, 95, 0.16), transparent 30%),
+        linear-gradient(180deg, #f9fcff 0%, #eef8f6 100%);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .hero-inner {
+      min-height: calc(100vh - 68px);
+      padding: 78px 0 64px;
+      display: grid;
+      grid-template-columns: 0.9fr 1.1fr;
+      gap: 52px;
+      align-items: center;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: #0b6f57;
+      background: rgba(55, 214, 173, 0.12);
+      border: 1px solid rgba(55, 214, 173, 0.26);
+      border-radius: 999px;
+      padding: 7px 12px;
+      font-size: 13px;
+      font-weight: 800;
+      margin-bottom: 22px;
+    }
+
+    h1 {
+      margin: 0;
+      color: var(--navy);
+      font-size: clamp(46px, 7vw, 84px);
+      line-height: 0.94;
+      letter-spacing: 0;
+    }
+
+    .lead {
+      margin: 24px 0 0;
+      color: var(--ink-soft);
+      font-size: clamp(18px, 2vw, 22px);
+      max-width: 620px;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 32px;
+    }
+
+    .hero-meta {
+      margin-top: 30px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      max-width: 580px;
+    }
+
+    .metric {
+      border-left: 2px solid var(--line);
+      padding-left: 14px;
+    }
+
+    .metric strong {
+      display: block;
+      color: var(--ink);
+      font-size: 24px;
+      line-height: 1.1;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .hero-visual {
+      margin: 0;
+      filter: drop-shadow(0 34px 48px rgba(14, 38, 64, 0.2));
+    }
+
+    .hero-visual img {
+      width: 100%;
+      height: auto;
+      display: block;
+      border-radius: 18px;
+    }
+
+    .section {
+      padding: 88px 0;
+    }
+
+    .section.tight { padding-top: 68px; }
+
+    .section-kicker {
+      color: #0b6f57;
+      font-size: 13px;
+      font-weight: 850;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-bottom: 12px;
+    }
+
+    h2 {
+      margin: 0;
+      max-width: 840px;
+      color: var(--navy);
+      font-size: clamp(32px, 4vw, 52px);
+      line-height: 1.02;
+      letter-spacing: 0;
+    }
+
+    .section-copy {
+      margin: 18px 0 0;
+      max-width: 760px;
+      color: var(--ink-soft);
+      font-size: 18px;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+      margin-top: 38px;
+    }
+
+    .feature-card {
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: 0 16px 42px rgba(18, 52, 82, 0.06);
+    }
+
+    .feature-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: var(--radius);
+      display: grid;
+      place-items: center;
+      margin-bottom: 18px;
+      color: var(--navy);
+      background: #eef8f6;
+      border: 1px solid rgba(55, 214, 173, 0.24);
+      font-weight: 900;
+    }
+
+    .feature-card:nth-child(2n) .feature-icon {
+      background: #eef5ff;
+      border-color: rgba(47, 125, 246, 0.2);
+    }
+
+    .feature-card:nth-child(3n) .feature-icon {
+      background: #fff4eb;
+      border-color: rgba(255, 125, 95, 0.22);
+    }
+
+    .feature-card h3,
+    .profile h3,
+    .step h3 {
+      margin: 0 0 10px;
+      color: var(--navy);
+      font-size: 19px;
+      line-height: 1.2;
+    }
+
+    .feature-card p,
+    .profile p,
+    .step p {
+      margin: 0;
+      color: var(--ink-soft);
+    }
+
+    .band {
+      background: var(--navy);
+      color: white;
+      border-block: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .band h2,
+    .band .section-copy { color: white; }
+    .band .section-copy { opacity: 0.76; }
+    .band .section-kicker { color: var(--mint); }
+
+    .flow {
+      margin-top: 40px;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .step {
+      position: relative;
+      min-height: 172px;
+      border-radius: var(--radius);
+      padding: 20px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .step b {
+      display: inline-flex;
+      width: 30px;
+      height: 30px;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 22px;
+      border-radius: 8px;
+      background: rgba(55, 214, 173, 0.18);
+      color: var(--mint);
+    }
+
+    .step h3 { color: white; font-size: 17px; }
+    .step p { color: rgba(255, 255, 255, 0.7); font-size: 14px; }
+
+    .profiles {
+      display: grid;
+      grid-template-columns: 0.95fr 1.05fr;
+      gap: 42px;
+      align-items: start;
+    }
+
+    .profile-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .profile {
+      display: grid;
+      grid-template-columns: 44px 1fr;
+      gap: 16px;
+      align-items: start;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: white;
+    }
+
+    .profile b {
+      width: 44px;
+      height: 44px;
+      border-radius: var(--radius);
+      display: grid;
+      place-items: center;
+      background: var(--navy);
+      color: white;
+      font-size: 14px;
+    }
+
+    .terminal {
+      overflow: hidden;
+      border-radius: var(--radius);
+      background: #071421;
+      box-shadow: var(--shadow);
+      border: 1px solid #153454;
+    }
+
+    .terminal-head {
+      height: 44px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 16px;
+      background: #0d2138;
+      color: #9fb5c9;
+      font-size: 13px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--coral);
+    }
+    .dot:nth-child(2) { background: var(--amber); }
+    .dot:nth-child(3) { background: var(--mint); }
+
+    pre {
+      margin: 0;
+      padding: 24px;
+      overflow-x: auto;
+      color: #d9f7ef;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 28px;
+      margin-top: 40px;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: white;
+      padding: 28px;
+      box-shadow: 0 16px 42px rgba(18, 52, 82, 0.06);
+    }
+
+    .panel h3 {
+      margin: 0 0 16px;
+      color: var(--navy);
+      font-size: 22px;
+    }
+
+    .list {
+      display: grid;
+      gap: 12px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      color: var(--ink-soft);
+    }
+
+    .list li {
+      display: grid;
+      grid-template-columns: 16px 1fr;
+      gap: 10px;
+      align-items: start;
+    }
+
+    .list li::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-top: 8px;
+      background: var(--mint);
+    }
+
+    .cta {
+      padding: 74px 0 92px;
+      text-align: center;
+      background:
+        linear-gradient(90deg, rgba(55, 214, 173, 0.12), rgba(47, 125, 246, 0.1), rgba(255, 125, 95, 0.12)),
+        #ffffff;
+      border-top: 1px solid var(--line);
+    }
+
+    .cta h2 {
+      margin: 0 auto;
+      max-width: 760px;
+    }
+
+    .cta p {
+      margin: 18px auto 0;
+      max-width: 720px;
+      color: var(--ink-soft);
+      font-size: 18px;
+    }
+
+    .copy-status {
+      min-height: 1.5em;
+      margin-top: 14px;
+      color: var(--ink-soft);
+      font-size: 14px;
+    }
+
+    .footer {
+      padding: 28px 0;
+      color: var(--muted);
+      background: #071421;
+      font-size: 14px;
+    }
+
+    .footer a { color: inherit; }
+
+    .footer-inner {
+      width: min(1160px, calc(100% - 40px));
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      flex-wrap: wrap;
+    }
+
+    @media (max-width: 980px) {
+      .hero-inner,
+      .profiles,
+      .split {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-inner {
+        min-height: auto;
+        padding-top: 56px;
+      }
+
+      .feature-grid,
+      .flow {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 680px) {
+      .nav-inner,
+      .section,
+      .hero-inner,
+      .footer-inner {
+        width: min(100% - 28px, 1160px);
+      }
+
+      .nav-links a:not(.button) { display: none; }
+      .hero-meta,
+      .feature-grid,
+      .flow {
+        grid-template-columns: 1fr;
+      }
+
+      h1 { font-size: 48px; }
+      .section { padding: 64px 0; }
+      .profile { grid-template-columns: 1fr; }
+      pre { font-size: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="nav" aria-label="Primary navigation">
+    <div class="nav-inner">
+      <a class="brand" href="#top" aria-label="Open Nova home">
+        <span class="mark">N</span>
+        <span>Open Nova</span>
+      </a>
+      <div class="nav-links">
+        <a href="#features">功能</a>
+        <a href="#architecture">架构</a>
+        <a href="#install">安装</a>
+        <a class="button primary" href="https://github.com/Neo-Isshin/open-nova" rel="noreferrer">View Repository</a>
+      </div>
+    </div>
+  </nav>
+
+  <main id="top">
+    <header class="hero">
+      <div class="hero-inner">
+        <div>
+          <div class="eyebrow">Open Nova v1.0.0 · Non-invasive cross-tool AI asset layer</div>
+          <h1>Open Nova</h1>
+          <p class="lead">
+            打通你的所有 AI 工具，自动为你总结工作，并沉淀专属于你的可检索、可复用 AI 资产。Open Nova 作为外挂式本地运行层，把分散在工具、CLI 和 agent 中的记忆、任务、经验与总结收拢进用户自己的 Foundation、Dashboard 与 Nova-RAG。
+          </p>
+          <div class="hero-actions">
+            <a class="button primary" href="#install">开始安装</a>
+            <a class="button secondary" href="#features">查看系统功能</a>
+          </div>
+          <div class="hero-meta" aria-label="Project highlights">
+            <div class="metric"><strong>Cross-tool</strong><span>AI activity layer</span></div>
+            <div class="metric"><strong>Personal</strong><span>searchable memory</span></div>
+            <div class="metric"><strong>Read-only</strong><span>agent RAG facade</span></div>
+          </div>
+        </div>
+        <figure class="hero-visual">
+          <img src="assets/open-nova-product.svg" alt="Open Nova dashboard product mockup">
+        </figure>
+      </div>
+    </header>
+
+    <section class="section tight" id="features">
+      <div class="section-kicker">System Capabilities</div>
+      <h2>从分散的 AI 工具活动，到自动总结、可检索的个人资产层。</h2>
+      <p class="section-copy">
+        Open Nova 不替代现有工具，而是外挂在它们旁边：采集受支持工具的活动，规范化为用户本地 Foundation 状态，并通过 Dashboard、Diary pipeline 与 Nova-RAG 自动形成工作总结、周期报告、任务证据和可复用记忆。
+      </p>
+      <div class="feature-grid">
+        <article class="feature-card">
+          <div class="feature-icon">01</div>
+          <h3>外挂式非侵入架构</h3>
+          <p>读取配置好的工具位置，写入 Open Nova 自己的 runtime home，不接管用户的 agent、shell、编辑器或模型网关。</p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-icon">02</div>
+          <h3>统一 AI 资产层</h3>
+          <p>将工具、CLI、agents、sessions、usage events、tasks、reports 和生成日记规范化到用户本地 Foundation 边界中。</p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-icon">03</div>
+          <h3>自动工作总结</h3>
+          <p>Dashboard 与日记管线把分散 AI 活动自动整理为 daily summaries、period reports、technical progress、learning notes 和 task evidence。</p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-icon">04</div>
+          <h3>专属 Nova-RAG</h3>
+          <p>可选个人 RAG 子系统支持记忆检索、索引候选、评估、切换和回滚，并向外部 agent 提供只读检索合约。</p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-icon">05</div>
+          <h3>Nova-Task 任务证据</h3>
+          <p>任务 authority 与 review surface 将任务变更、证据和状态投影进本地看板，便于复盘跨工具 agent 活动。</p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-icon">06</div>
+          <h3>安装与运维边界</h3>
+          <p>bootstrap/install 流程支持 dry-run、运行时目录初始化、依赖分组、macOS 调度注册、doctor 检查和回滚视角。</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="band" id="architecture">
+      <div class="section">
+        <div class="section-kicker">Runtime Model</div>
+        <h2>外挂在工具之外，资产沉淀在用户本地。</h2>
+        <p class="section-copy">
+          Open Nova 将采集、生成、物化、检索和展示拆分为可组合模块。默认 runtime 写入 <code>~/.open-nova</code>，活动位置由 <code>~/.config/open-nova/location.json</code> 指向；外部工具路径由 operator 显式配置。
+        </p>
+        <div class="flow">
+          <article class="step"><b>1</b><h3>Ingest</h3><p>收集受支持 AI 工具、CLI、agent、workspace 与外部来源活动。</p></article>
+          <article class="step"><b>2</b><h3>Pipeline</h3><p>按业务日期自动生成日记、报告、学习与技术摘要。</p></article>
+          <article class="step"><b>3</b><h3>Foundation</h3><p>物化 SQLite 状态、快照、Markdown 和审计记录。</p></article>
+          <article class="step"><b>4</b><h3>RAG</h3><p>构建专属记忆索引，为 agent 和 operator 提供只读检索。</p></article>
+          <article class="step"><b>5</b><h3>Dashboard</h3><p>用本地 Web UI 汇总指标、任务、记忆、设置和运行状态。</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="install">
+      <div class="profiles">
+        <div>
+          <div class="section-kicker">Install Profiles</div>
+          <h2>按产品能力选择安装范围。</h2>
+          <p class="section-copy">
+            Base-Pipeline 必选；Dashboard 与 Nova-Task 默认启用；Nova-RAG 可选；开发测试依赖保持 opt-in。
+          </p>
+        </div>
+        <div class="profile-list">
+          <article class="profile"><b>ON</b><div><h3>open-nova</h3><p>核心日记管线、运行时设置、LLM provider 配置和 Foundation 数据存储。</p></div></article>
+          <article class="profile"><b>UI</b><div><h3>dashboard</h3><p>本地 FastAPI Dashboard、设置界面、运维视图和实时指标。</p></div></article>
+          <article class="profile"><b>RG</b><div><h3>nova-rag</h3><p>本地或云端 embedding 选择、搜索服务、索引治理和外部 agent 只读接口。</p></div></article>
+          <article class="profile"><b>TK</b><div><h3>nova-task</h3><p>任务 authority、review surface 和任务证据投影。</p></div></article>
+        </div>
+      </div>
+
+      <div class="split">
+        <div class="terminal" aria-label="Quick start terminal">
+          <div class="terminal-head"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span>quick-start</span></div>
+          <pre><code>zsh install/bootstrap.sh --dry-run
+
+zsh install/bootstrap.sh
+
+<span id="install-command">zsh -c "$(curl -fsSL 'https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.0/install/bootstrap.sh')"</span></code></pre>
+        </div>
+        <div class="panel">
+          <h3>发布与安全保证</h3>
+          <ul class="list">
+            <li>外挂式非侵入：不替代用户现有 AI 工具，只在旁侧收拢活动并沉淀资产。</li>
+            <li>用户专属资产：记忆、任务、经验、总结、报表和检索索引都落在用户控制的本地 runtime。</li>
+            <li>生产干净边界：不包含历史工作区日志、缓存、数据库、secret 或冻结脚本。</li>
+            <li>不可变更新入口：one-liner 只做全新安装；更新默认从最新正式 Release 固定到完整 commit，绝不追踪 main/HEAD。</li>
+            <li>可审计运维：Foundation repair、scheduler、settings 和 RAG skill registration 都有计划或记录边界。</li>
+            <li>外部 agent 安全接口：RAG external namespace 只读，拒绝写入、索引、服务生命周期等 mutation。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta">
+      <div class="section" style="padding:0">
+        <h2>自动总结你的 AI 工作，并沉淀为长期资产。</h2>
+        <p>Open Nova 面向需要跨工具复盘、检索、审计、任务跟踪和自动化日报/周报的个人或小团队 operator。</p>
+        <div class="hero-actions" style="justify-content:center">
+          <button class="button primary" type="button" id="copy-install-command">复制安装命令</button>
+          <a class="button secondary" href="https://github.com/Neo-Isshin/open-nova/blob/v1.0.0/README.md">阅读 README</a>
+        </div>
+        <div class="copy-status" id="copy-install-status" role="status" aria-live="polite"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <span>Open Nova - non-invasive cross-tool AI asset layer with Foundation, Dashboard, RAG, and task review.</span>
+      <span>© 2026 Neo-Isshin · <a href="https://github.com/Neo-Isshin/open-nova/blob/v1.0.0/LICENSE">GPL-3.0-or-later</a></span>
+    </div>
+  </footer>
+  <script>
+    function copyInstallCommandFallback(value) {
+      const fallback = document.createElement('textarea');
+      fallback.value = value;
+      fallback.setAttribute('readonly', '');
+      fallback.style.position = 'fixed';
+      fallback.style.opacity = '0';
+      document.body.appendChild(fallback);
+      try {
+        fallback.select();
+        return document.execCommand('copy') === true;
+      } finally {
+        fallback.remove();
+      }
+    }
+
+    async function writeInstallCommand(value) {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        try {
+          await navigator.clipboard.writeText(value);
+          return true;
+        } catch (error) {
+          // Permission and secure-context failures still get the local fallback.
+        }
+      }
+      return copyInstallCommandFallback(value);
+    }
+
+    async function copyInstallCommand() {
+      const command = document.getElementById('install-command');
+      const status = document.getElementById('copy-install-status');
+      const button = document.getElementById('copy-install-command');
+      const value = command ? command.textContent.trim() : '';
+      try {
+        if (!value) throw new Error('missing install command');
+        if (!(await writeInstallCommand(value))) throw new Error('clipboard fallback failed');
+        status.textContent = '安装命令已复制。';
+        button.dataset.copyState = 'copied';
+      } catch (error) {
+        status.textContent = '复制失败，请手动选择上方命令。';
+        button.dataset.copyState = 'failed';
+      }
+    }
+
+    document.getElementById('copy-install-command').addEventListener('click', copyInstallCommand);
+  </script>
+</body>
+</html>

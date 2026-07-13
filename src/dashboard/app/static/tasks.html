@@ -1,0 +1,2871 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>任务看板 — Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+    <script>
+    (function() {
+        const csrfCookie = 'open_nova_dashboard_csrf';
+        const csrfHeader = 'X-Open-Nova-CSRF';
+        const nativeFetch = window.fetch.bind(window);
+        function cookie(name) {
+            const prefix = encodeURIComponent(name) + '=';
+            const found = document.cookie.split(';').map(part => part.trim()).find(part => part.startsWith(prefix));
+            return found ? found.slice(prefix.length) : '';
+        }
+        function sameOrigin(input) {
+            try {
+                const url = typeof input === 'string' ? input : (input && input.url) || '';
+                return new URL(url, window.location.href).origin === window.location.origin;
+            } catch (e) {
+                return false;
+            }
+        }
+        window.fetch = function(input, init) {
+            const next = Object.assign({}, init || {});
+            if (sameOrigin(input)) {
+                next.credentials = next.credentials || 'same-origin';
+                const method = String(next.method || (input && input.method) || 'GET').toUpperCase();
+                if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+                    const headers = new Headers(next.headers || (input && input.headers) || {});
+                    const token = decodeURIComponent(cookie(csrfCookie));
+                    if (token && !headers.has(csrfHeader)) headers.set(csrfHeader, token);
+                    next.headers = headers;
+                }
+            }
+            return nativeFetch(input, next);
+        };
+    })();
+    </script>
+    <style>
+        :root {
+            --purple: #c300d7;
+            --purple-hover: #a000b8;
+            --purple-light: #f4d7fb;
+            --navy: #111827;
+            --dark-navy: #0f172a;
+            --brand-dark: #111827;
+            --white: #ffffff;
+            --ruby: #dc2626;
+            --success: #16a34a;
+            --success-text: #15803d;
+            --slate: #6b7280;
+            --dark-slate: #374151;
+            --border: #e5e7eb;
+            --border-soft: #f1f5f9;
+            --shadow-card: none;
+            --shadow-soft: none;
+            --amber: #f59e0b;
+            --amber-bg: #fffbeb;
+            --amber-text: #b45309;
+            --red: #ef4444;
+            --red-bg: #fef2f2;
+            --red-text: #991b1b;
+            --green-bg: #f0fdf4;
+            --font-primary: -apple-system, system-ui, 'SF Pro Display', sans-serif;
+            --text: #111827;
+            --text-muted: #6b7280;
+            --text-dim: #9ca3af;
+            --panel: #ffffff;
+            --panel-border: #e5e7eb;
+            --surface: #ffffff;
+            --surface-muted: #f8fafc;
+            --tree-line: #e5e7eb;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: var(--font-primary);
+            background: #ffffff;
+            min-height: 100vh;
+            color: var(--text);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ── Header ── */
+        header {
+            background: rgba(255,255,255,0.96);
+            backdrop-filter: blur(10px);
+            padding: 0.72rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .header-left { display: flex; align-items: center; gap: 0.75rem; }
+        .header-left h1 { color: var(--text); font-size: 1.05rem; font-weight: 650; }
+        .last-updated { font-size: 0.72rem; color: var(--text-dim); }
+        .header-right { display: flex; align-items: center; gap: 0.55rem; }
+        .nav-links { display: flex; gap: 0.3rem; }
+        .nav-links a {
+            display: inline-flex;
+            align-items: center;
+            min-height: 30px;
+            border: 1px solid var(--border);
+            background: #ffffff;
+            color: var(--text);
+            text-decoration: none;
+            padding: 0.34rem 0.68rem;
+            border-radius: 6px;
+            font-size: 0.74rem;
+            line-height: 1.2;
+            transition: all 0.2s;
+        }
+        .nav-links a:hover { background: var(--surface-muted); border-color: #d1d5db; color: var(--text); }
+        .status-badge {
+            display: flex; align-items: center; gap: 0.4rem;
+            color: var(--text-muted); font-size: 0.68rem;
+        }
+        .status-dot {
+            width: 7px; height: 7px; border-radius: 50%; background: #888;
+            transition: all 0.3s;
+        }
+        .status-dot.connected { background: var(--success); box-shadow: 0 0 0 2px rgba(22,163,74,0.12); }
+        .status-dot.disconnected { background: var(--red); }
+        .toolbar-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 30px;
+            border: 1px solid var(--border);
+            background: #ffffff;
+            color: var(--text);
+            border-radius: 6px;
+            padding: 0.34rem 0.68rem;
+            cursor: pointer;
+            font-size: 0.74rem;
+            line-height: 1.2;
+        }
+        .toolbar-btn:hover { background: var(--surface-muted); border-color: #d1d5db; }
+        .toolbar-btn.import-btn {
+            background: #f6f1ff;
+            border-color: #ddd6fe;
+            color: #5b21b6;
+            font-weight: 620;
+            box-shadow: 0 1px 0 rgba(91,33,182,0.04);
+        }
+        .toolbar-btn.import-btn:hover {
+            background: #ede9fe;
+            border-color: #c4b5fd;
+        }
+
+        /* ── Stats Cards ── */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0;
+            padding: 1rem 2rem 0.7rem;
+            border-bottom: 1px solid var(--border-soft);
+        }
+        .stat-card {
+            background: transparent;
+            border: 0;
+            border-right: 1px solid var(--border-soft);
+            border-radius: 0;
+            padding: 0.35rem 1rem 0.45rem 0;
+            color: var(--text);
+            position: relative;
+            overflow: hidden;
+        }
+        .stat-card:last-child { border-right: 0; }
+        .stat-card::before {
+            display: none;
+        }
+        .stat-label {
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-dim);
+            margin-bottom: 0.28rem;
+        }
+        .stat-value {
+            font-size: 1.35rem;
+            font-weight: 680;
+            line-height: 1;
+        }
+        .stat-value.green { color: var(--success); }
+        .stat-value.amber { color: var(--amber); }
+        .stat-card.accent-green,
+        .stat-card.accent-amber,
+        .stat-card.accent-purple { border-color: var(--border-soft); }
+
+        /* Ring progress */
+        .ring-wrap {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .ring {
+            width: 40px; height: 40px;
+            position: relative;
+            flex-shrink: 0;
+        }
+        .ring svg { transform: rotate(-90deg); }
+        .ring svg { width: 40px; height: 40px; }
+        .ring-bg { fill: none; stroke: #e5e7eb; stroke-width: 5; }
+        .ring-fg {
+            fill: none; stroke: var(--success); stroke-width: 5;
+            stroke-linecap: round;
+            transition: stroke-dashoffset 0.6s ease;
+        }
+        .ring-text {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        /* ── Search ── */
+        .search-bar {
+            padding: 0.75rem 2rem 0.55rem;
+        }
+        .search-input {
+            width: 100%;
+            max-width: 400px;
+            padding: 0.55rem 1rem 0.55rem 2.2rem;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: #fff;
+            color: var(--text);
+            font-size: 0.82rem;
+            outline: none;
+            transition: all 0.2s;
+        }
+        .search-input::placeholder { color: var(--text-dim); }
+        .search-input:focus {
+            border-color: #d946ef;
+            box-shadow: 0 0 0 3px rgba(217,70,239,0.10);
+        }
+        .search-wrap {
+            position: relative;
+            display: inline-block;
+        }
+        .search-icon {
+            position: absolute;
+            left: 0.7rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-dim);
+            font-size: 0.85rem;
+        }
+
+        /* ── Main Content ── */
+        .main { padding: 0 2rem 2rem; }
+
+        /* ── Section ── */
+        .section { margin-bottom: 1rem; }
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            cursor: pointer;
+            padding: 0.45rem 0;
+            user-select: none;
+            border-bottom: 1px solid var(--border);
+            transition: border-color 0.2s;
+        }
+        .section-header:hover { opacity: 0.85; }
+        .section-header .chevron {
+            font-size: 0.7rem;
+            transition: transform 0.3s;
+            color: var(--text-muted);
+        }
+        .section-header.collapsed .chevron { transform: rotate(-90deg); }
+        .section-title {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            font-size: 0.84rem;
+            font-weight: 680;
+            color: var(--text);
+        }
+        .section-count {
+            font-size: 0.68rem;
+            padding: 0.1rem 0.5rem;
+            border-radius: 10px;
+            font-weight: 500;
+        }
+
+        /* Section colors */
+        .section--active .section-title { color: var(--text); }
+        .section--active .section-header { border-bottom-color: var(--border); }
+        .section--active .section-count { background: #f3e8ff; color: #86198f; }
+
+        .section--planned .section-title { color: var(--text); }
+        .section--planned .section-header { border-bottom-color: var(--border); }
+        .section--planned .section-count { background: #f8fafc; color: var(--text-muted); }
+
+        .section--done .section-title { color: var(--slate); }
+        .section--done .section-header { border-bottom-color: var(--border); }
+        .section--done .section-count { background: #f8fafc; color: var(--slate); }
+
+        .section-body {
+            overflow: hidden;
+            transition: max-height 0.4s ease, opacity 0.3s ease;
+        }
+        .section-body.collapsed {
+            max-height: 0 !important;
+            opacity: 0;
+        }
+
+        /* ── Task Cards (full width) ── */
+        .cards-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            margin-top: 0.68rem;
+        }
+        .task-card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0;
+            box-shadow: var(--shadow-card);
+            transition: border-color 0.15s, background 0.15s;
+            overflow: hidden;
+            position: relative;
+        }
+        .task-card:hover { border-color: #d1d5db; }
+
+        .task-card.dimmed {
+            opacity: 0.7;
+        }
+        .task-card.root-card {
+            background: linear-gradient(180deg, #ffffff 0%, #ffffff 72%, #fbfdff 100%);
+            border-color: #dbe3ee;
+            box-shadow:
+                inset 0 1px 0 rgba(255,255,255,0.95),
+                inset 0 -1px 0 rgba(248,250,252,0.9),
+                0 1px 2px rgba(15,23,42,0.045),
+                0 10px 28px rgba(15,23,42,0.035);
+        }
+        .task-card.root-card::before {
+            content: '';
+            position: absolute;
+            inset: 0 0 auto 0;
+            height: 2px;
+            background: linear-gradient(90deg, #fb7185 0%, #d946ef 48%, #8b5cf6 100%);
+            opacity: 0.54;
+        }
+        .task-card.root-card:hover {
+            border-color: #cbd5e1;
+            box-shadow:
+                inset 0 1px 0 rgba(255,255,255,1),
+                0 2px 5px rgba(15,23,42,0.08),
+                0 12px 30px rgba(15,23,42,0.05);
+        }
+
+        .card-top {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-items: center;
+            gap: 0.9rem;
+            padding: 0.88rem 1.05rem 0.8rem;
+            border-bottom: 1px solid var(--border-soft);
+            margin-bottom: 0;
+            background: linear-gradient(180deg, #ffffff 0%, #fcfdff 100%);
+        }
+        .card-project {
+            font-weight: 600;
+            font-size: 0.88rem;
+            color: var(--text);
+            min-width: 0;
+            line-height: 1.55;
+            overflow-wrap: anywhere;
+        }
+        .card-progress-text {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 0.55rem;
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        .root-heading {
+            display: flex;
+            align-items: center;
+            gap: 0.42rem;
+            min-width: 0;
+        }
+        .level-badge,
+        .status-badge-inline,
+        .meta-pill {
+            display: inline-flex;
+            align-items: center;
+            min-width: 0;
+            border-radius: 5px;
+            font-size: 0.64rem;
+            font-weight: 620;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+        .level-badge {
+            flex-shrink: 0;
+            padding: 0.08rem 0.3rem;
+            color: #a21caf;
+            background: #fdf4ff;
+            border: 1px solid #f5d0fe;
+        }
+        .level-badge.level-1, .meta-pill.level-1 { color: #9f1239; background: #fff7f8; border-color: #fecdd3; }
+        .level-badge.level-2, .meta-pill.level-2 { color: #a21caf; background: #fdf4ff; border-color: #f5d0fe; }
+        .level-badge.level-3, .meta-pill.level-3 { color: #6d28d9; background: #f7f5ff; border-color: #ddd6fe; }
+        .level-badge.level-4, .meta-pill.level-4 { color: #0369a1; background: #f5fbff; border-color: #bae6fd; }
+        .level-badge.level-5, .meta-pill.level-5 { color: #047857; background: #f3fcf8; border-color: #a7f3d0; }
+        .status-badge-inline {
+            padding: 0.12rem 0.36rem;
+            border: 1px solid var(--border);
+            gap: 0.24rem;
+            justify-content: center;
+        }
+        .status-select-inline {
+            appearance: none;
+            border-radius: 5px;
+            border: 1px solid var(--border);
+            padding: 0.13rem 1.25rem 0.13rem 0.46rem;
+            width: 82px;
+            min-width: 82px;
+            font-size: 0.64rem;
+            font-weight: 620;
+            line-height: 1.2;
+            cursor: pointer;
+            color: var(--text-muted);
+            background:
+                linear-gradient(45deg, transparent 50%, currentColor 50%) calc(100% - 0.55rem) 50% / 0.32rem 0.32rem no-repeat,
+                linear-gradient(135deg, currentColor 50%, transparent 50%) calc(100% - 0.36rem) 50% / 0.32rem 0.32rem no-repeat,
+                #fff;
+        }
+        .status-select-inline:focus {
+            outline: none;
+            border-color: #d946ef;
+            box-shadow: 0 0 0 3px rgba(217,70,239,0.10);
+        }
+        .status-select-inline.status-active { color: #92400e; background-color: #fffbeb; border-color: #fde68a; }
+        .status-select-inline.status-planned { color: #6b21a8; background-color: #faf5ff; border-color: #e9d5ff; }
+        .status-select-inline.status-blocked { color: #991b1b; background-color: #fef2f2; border-color: #fecaca; }
+        .status-select-inline.status-paused { color: #1d4ed8; background-color: #eff6ff; border-color: #bfdbfe; }
+        .status-select-inline.status-completed { color: #166534; background-color: #f0fdf4; border-color: #bbf7d0; }
+        .status-select-inline.status-done { color: #166534; background-color: #f0fdf4; border-color: #bbf7d0; }
+        .status-select-inline.status-automatic { color: #c2410c; background-color: #fff7ed; border-color: #fed7aa; }
+        .status-select-inline.status-settled { color: #9a3412; background-color: #fffbeb; border-color: #fde68a; }
+        .status-select-inline.status-stale { color: #475569; background-color: #f8fafc; border-color: #e2e8f0; }
+        .status-select-inline.status-archived { color: #64748b; background-color: #f8fafc; border-color: #e2e8f0; }
+        .node-status-cell .status-badge-inline {
+            min-width: 82px;
+            opacity: 0.7;
+        }
+        .node-status-cell .status-select-inline {
+            opacity: 0.74;
+        }
+        .tree-node-row:hover .node-status-cell .status-select-inline,
+        .node-status-cell .status-select-inline:focus,
+        .node-status-cell .status-select-inline.status-planned,
+        .node-status-cell .status-select-inline.status-blocked,
+        .node-status-cell .status-select-inline.status-paused { opacity: 1; }
+        .node-status-cell .status-badge-inline.status-active {
+            background: transparent;
+            border-color: transparent;
+            color: #b45309;
+            opacity: 0.46;
+        }
+        .tree-node-row:hover .node-status-cell .status-badge-inline.status-active {
+            background: #fffbeb;
+            border-color: #fde68a;
+            opacity: 1;
+        }
+        .tree-node-row:hover .node-status-cell .status-badge-inline,
+        .status-badge-inline.status-planned,
+        .status-badge-inline.status-blocked,
+        .status-badge-inline.status-paused { opacity: 1; }
+        .status-badge-inline.status-active { color: #92400e; background: #fffbeb; border-color: #fde68a; }
+        .status-badge-inline.status-planned { color: #6b21a8; background: #faf5ff; border-color: #e9d5ff; }
+        .status-badge-inline.status-blocked { color: #991b1b; background: #fef2f2; border-color: #fecaca; }
+        .status-badge-inline.status-paused { color: #1d4ed8; background: #eff6ff; border-color: #bfdbfe; }
+        .status-badge-inline.status-completed { color: #166534; background: #f0fdf4; border-color: #bbf7d0; }
+        .status-badge-inline.status-done { color: #166534; background: #f0fdf4; border-color: #bbf7d0; }
+        .status-badge-inline.status-automatic { color: #c2410c; background: #fff7ed; border-color: #fed7aa; }
+        .status-badge-inline.status-settled { color: #9a3412; background: #fffbeb; border-color: #fde68a; }
+        .status-badge-inline.status-stale { color: #475569; background: #f8fafc; border-color: #e2e8f0; }
+        .status-badge-inline.status-archived { color: #64748b; background: #f8fafc; border-color: #e2e8f0; }
+        .root-title-stack {
+            display: grid;
+            gap: 0.18rem;
+            min-width: 0;
+        }
+        .root-title-line {
+            min-width: 0;
+            line-height: 1.55;
+            overflow-wrap: anywhere;
+        }
+        .root-meta-line,
+        .node-meta-line {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.24rem;
+            min-width: 0;
+        }
+        .root-meta-line {
+            opacity: 0.72;
+        }
+        .node-meta-line {
+            opacity: 0.56;
+            transition: opacity 0.15s ease;
+        }
+        .tree-node-row:hover .node-meta-line {
+            opacity: 0.82;
+        }
+        .meta-pill {
+            max-width: 100%;
+            padding: 0.08rem 0.32rem;
+            color: var(--text-muted);
+            background: #f8fafc;
+            border: 1px solid #eef2f7;
+            font-weight: 520;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .meta-pill.level-pill {
+            color: #a21caf;
+            background: #fae8ff;
+            border-color: #f0abfc;
+            font-weight: 650;
+        }
+
+        /* Progress bar */
+        .progress-bar {
+            height: 3px;
+            background: #f1f5f9;
+            border-radius: 2px;
+            overflow: hidden;
+            margin: 0 1.05rem 0.75rem;
+        }
+        .progress-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.4s ease;
+        }
+        .progress-fill.red { background: var(--red); }
+        .progress-fill.amber { background: var(--amber); }
+        .progress-fill.green { background: var(--success); }
+
+        /* Subtask list */
+        .subtasks { list-style: none; }
+        .subtask {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.35rem 0;
+            font-size: 0.8rem;
+            border-bottom: 1px solid var(--border-soft);
+            transition: background 0.15s;
+        }
+        .subtask:last-child { border-bottom: none; }
+        .subtask:hover { background: var(--surface-muted); }
+        .subtask-check {
+            width: 18px; height: 18px;
+            border-radius: 4px;
+            border: 1px solid #d1d5db;
+            flex-shrink: 0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        .subtask-check:hover { border-color: var(--purple); }
+        .subtask-check.done {
+            background: var(--purple);
+            border-color: var(--purple);
+        }
+        .subtask-check.done::after {
+            content: '✓';
+            color: #fff;
+            font-size: 0.7rem;
+            font-weight: 700;
+        }
+        .subtask.done .subtask-text {
+            text-decoration: line-through;
+            color: var(--text-dim);
+        }
+        .subtask-text { flex: 1; line-height: 1.4; color: var(--text); }
+        .subtask-text mark {
+            background: rgba(245,158,11,0.3);
+            color: inherit;
+            border-radius: 2px;
+            padding: 0 1px;
+        }
+        .subtask-agent {
+            font-size: 0.7rem;
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            background: #ede9fe;
+            color: var(--purple);
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        /* Collapsed subtasks toggle */
+        .done-toggle {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 0.3rem 0;
+            user-select: none;
+        }
+        .done-toggle:hover { color: var(--text); }
+        .done-toggle .toggle-icon { font-size: 0.65rem; transition: transform 0.2s; }
+        .done-toggle.expanded .toggle-icon { transform: rotate(90deg); }
+
+        .subtask.hidden-done { display: none; }
+        .subtask.hidden-done.show { display: flex; }
+        .node-tree { list-style: none; display: grid; gap: 0.3rem; }
+        .root-card > .node-tree {
+            padding: 0.12rem 1.05rem 0.95rem;
+        }
+        .root-card > .candidate-actions {
+            margin: 0;
+            padding: 0 0.92rem 0.8rem 1.05rem;
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+        .node-tree .node-tree {
+            position: relative;
+            margin-top: 0.28rem;
+            margin-left: 0.68rem;
+            padding-left: 1.35rem;
+            border-left: 1px solid var(--tree-line);
+        }
+        .node-tree .node-tree > li {
+            position: relative;
+        }
+        .node-tree .node-tree > li::before {
+            content: '';
+            position: absolute;
+            top: 1.08rem;
+            left: -1.35rem;
+            width: 0.86rem;
+            border-top: 1px solid var(--tree-line);
+        }
+        .tree-node-row {
+            display: grid;
+            grid-template-columns: 18px minmax(0, 1fr) 88px auto;
+            align-items: start;
+            gap: 0.34rem 0.62rem;
+            min-height: 42px;
+            border-radius: 6px;
+            padding: 0.58rem 0.42rem;
+            width: 100%;
+            min-width: 0;
+        }
+        .tree-node-row:hover { background: #fafafa; }
+        .tree-node-row.depth-2 {
+            background: transparent;
+            border: 0;
+        }
+        .node-expander {
+            width: 18px;
+            height: 18px;
+            border: 0;
+            border-radius: 4px;
+            background: transparent;
+            color: #4b5563;
+            cursor: pointer;
+            font-size: 0.74rem;
+            line-height: 18px;
+        }
+        .node-expander:hover { background: #f3f4f6; color: var(--text); }
+        .node-expander.placeholder { opacity: 0; pointer-events: none; }
+        .node-main {
+            display: grid;
+            gap: 0.2rem;
+            min-width: 0;
+        }
+        .node-title-line {
+            display: flex;
+            align-items: baseline;
+            gap: 0.38rem;
+            min-width: 0;
+        }
+        .node-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.25rem;
+            min-width: max-content;
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+        .tree-node-row:hover .node-actions,
+        .tree-node-row:focus-within .node-actions,
+        .task-card:hover > .candidate-actions,
+        .task-card:focus-within > .candidate-actions { opacity: 1; }
+        button:focus-visible,
+        input:focus-visible,
+        select:focus-visible,
+        textarea:focus-visible,
+        [role="button"]:focus-visible,
+        [role="checkbox"]:focus-visible {
+            outline: 3px solid rgba(83, 58, 253, 0.45);
+            outline-offset: 2px;
+        }
+        .node-status { display: none; }
+        .node-state-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 999px;
+            flex: 0 0 auto;
+            margin-top: 0.36rem;
+            background: #cbd5e1;
+            box-shadow: 0 0 0 2px #fff;
+        }
+        .node-state-dot.status-active { background: #f59e0b; }
+        .node-state-dot.status-planned { background: #c300d7; }
+        .node-state-dot.status-blocked { background: #ef4444; }
+        .node-state-dot.status-paused { background: #3b82f6; }
+        .node-state-dot.status-completed { background: #16a34a; }
+        .node-state-dot.status-done { background: #16a34a; }
+        .node-state-dot.status-automatic { background: #f97316; }
+        .node-state-dot.status-settled { background: #d97706; }
+        .node-state-dot.status-stale { background: #94a3b8; }
+        .node-state-dot.status-archived { background: #94a3b8; }
+        .status-badge-inline .node-state-dot {
+            width: 6px;
+            height: 6px;
+            margin-top: 0;
+            box-shadow: none;
+        }
+        .node-title {
+            min-width: 0;
+            line-height: 1.58;
+            font-size: 0.81rem;
+            color: #374151;
+            font-weight: 450;
+            overflow-wrap: anywhere;
+            word-break: normal;
+        }
+        .manager-pill.manager-agent {
+            color: #c2410c;
+            background: #fff7ed;
+            border-color: #fed7aa;
+        }
+        .manager-pill.manager-human {
+            color: #111827;
+            background: #f8fafc;
+            border-color: #e5e7eb;
+        }
+        .tree-node-row.depth-2 .node-title {
+            font-size: 0.84rem;
+            font-weight: 600;
+            color: #1f2937;
+        }
+        .tree-node-row.depth-3 .node-title,
+        .tree-node-row.depth-4 .node-title,
+        .tree-node-row.depth-5 .node-title {
+            font-weight: 420;
+            color: #374151;
+        }
+        .tree-node-row .node-title.manager-agent,
+        .root-title-line.manager-agent {
+            color: #c2410c;
+        }
+        .tree-node-row .node-title.manager-human,
+        .root-title-line.manager-human {
+            color: #111827;
+        }
+        .node-status-cell {
+            display: flex;
+            justify-content: flex-end;
+            align-items: flex-start;
+            min-width: 88px;
+            padding-top: 0.05rem;
+        }
+        .node-meta { color: var(--text-muted); font-size: 0.76rem; white-space: nowrap; flex-shrink: 0; }
+        .status-tags {
+            display: flex;
+            gap: 0.25rem;
+            flex-wrap: wrap;
+            min-width: 0;
+            overflow: visible;
+        }
+        .status-tag {
+            color: var(--text-muted);
+            border: 1px solid #eef2f7;
+            border-radius: 999px;
+            padding: 0.08rem 0.38rem;
+            font-size: 0.72rem;
+            min-width: 0;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .icon-btn {
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--text-muted);
+            border-radius: 5px;
+            padding: 0.2rem 0.38rem;
+            cursor: pointer;
+            white-space: nowrap;
+            font-size: 0.7rem;
+        }
+        .icon-btn:hover { background: #f3f4f6; color: var(--text); border-color: #e5e7eb; }
+
+        /* Empty state */
+        .no-tasks {
+            text-align: center;
+            color: var(--text-dim);
+            padding: 3rem;
+            font-size: 0.86rem;
+        }
+        .candidate-panel {
+            margin: 0 2rem 1rem;
+            padding: 0.85rem;
+            border: 1px solid #fde68a;
+            background: #fffbeb;
+            border-radius: 8px;
+            display: none;
+        }
+        .candidate-panel.active { display: block; }
+        .candidate-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 0.75rem;
+        }
+        .candidate-title {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 700;
+            color: #92400e;
+            font-size: 0.84rem;
+        }
+        .candidate-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 999px;
+            background: var(--red);
+            box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.16);
+        }
+        .candidate-list {
+            display: grid;
+            gap: 0.5rem;
+        }
+        .candidate-item {
+            border: 1px solid #fde68a;
+            border-radius: 6px;
+            padding: 0.68rem;
+            background: #fff;
+        }
+        .candidate-meta {
+            color: var(--text-muted);
+            font-size: 0.73rem;
+            margin-top: 0.25rem;
+        }
+        .candidate-evidence {
+            margin: 0.55rem 0 0;
+            padding-left: 1rem;
+            color: var(--text-muted);
+            font-size: 0.76rem;
+        }
+        .candidate-actions {
+            display: flex;
+            gap: 0.45rem;
+            margin-top: 0.7rem;
+            flex-wrap: wrap;
+        }
+        .candidate-actions button {
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            padding: 0.28rem 0.46rem;
+            background: #fff;
+            color: var(--text);
+            cursor: pointer;
+            font-size: 0.72rem;
+        }
+        .candidate-actions button:hover { border-color: #d1d5db; background: #f9fafb; }
+        .candidate-actions button.primary {
+            background: #fae8ff;
+            border-color: #f0abfc;
+            color: #86198f;
+        }
+        .candidate-actions button.danger {
+            background: #fef2f2;
+            border-color: #fecaca;
+            color: #991b1b;
+        }
+        .candidate-parent-select {
+            margin-top: 0.65rem;
+            display: grid;
+            gap: 0.45rem;
+            grid-template-columns: minmax(220px, 1fr) auto;
+            align-items: center;
+        }
+        .candidate-parent-select select {
+            min-width: 0;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: #fff;
+            color: var(--text);
+            padding: 0.4rem 0.55rem;
+        }
+        .candidate-parent-select option {
+            background: #fff;
+            color: var(--text);
+        }
+        .candidate-parent-select button {
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.4rem 0.65rem;
+            background: #fff;
+            color: var(--text);
+            cursor: pointer;
+        }
+        .candidate-summary {
+            margin-top: 0.45rem;
+            color: var(--text);
+            font-size: 0.78rem;
+            line-height: 1.45;
+        }
+        .diagnostic-band {
+            margin: 0 2rem 1.1rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #fff;
+            overflow: hidden;
+        }
+        .diagnostic-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            padding: 0.72rem 0.9rem;
+            cursor: pointer;
+            user-select: none;
+        }
+        .diagnostic-title {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            min-width: 0;
+            color: var(--text);
+            font-weight: 680;
+            font-size: 0.8rem;
+        }
+        .diagnostic-counts {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            gap: 0.35rem;
+            min-width: 0;
+        }
+        .diagnostic-body {
+            display: none;
+            border-top: 1px solid var(--border-soft);
+            padding: 0.75rem 0.9rem 0.9rem;
+        }
+        .diagnostic-band.open .diagnostic-body { display: block; }
+        .diagnostic-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0.75rem;
+        }
+        .diagnostic-column {
+            min-width: 0;
+            display: grid;
+            gap: 0.45rem;
+        }
+        .diagnostic-column-title {
+            color: var(--text-muted);
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .diagnostic-row {
+            display: grid;
+            gap: 0.22rem;
+            min-width: 0;
+            border-radius: 6px;
+            padding: 0.45rem 0.5rem;
+            background: #f8fafc;
+            border: 1px solid #eef2f7;
+        }
+        .diagnostic-row-title {
+            min-width: 0;
+            color: var(--text);
+            font-size: 0.76rem;
+            line-height: 1.35;
+            overflow-wrap: anywhere;
+        }
+        .diagnostic-row-meta {
+            color: var(--text-dim);
+            font-size: 0.68rem;
+            overflow-wrap: anywhere;
+        }
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.24);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            padding: 1rem;
+        }
+        .modal-backdrop.active { display: flex; }
+        .task-modal {
+            width: min(860px, 96vw);
+            max-height: 88vh;
+            overflow: auto;
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            box-shadow: 0 24px 70px rgba(15,23,42,0.16);
+        }
+        .modal-head, .modal-foot {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.9rem 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .modal-foot { border-top: 1px solid var(--border); border-bottom: 0; justify-content: flex-end; gap: 0.5rem; }
+        .modal-body { padding: 1rem; }
+        .form-grid { display: grid; gap: 0.75rem; }
+        .form-grid label { display: grid; gap: 0.32rem; color: var(--text-muted); font-size: 0.82rem; }
+        .form-grid input, .form-grid select, .form-grid textarea {
+            border: 1px solid var(--border);
+            background: #fff;
+            color: var(--text);
+            border-radius: 6px;
+            padding: 0.55rem 0.65rem;
+            font: inherit;
+        }
+        .overview-drop-root {
+            border: 1px dashed #cbd5e1;
+            border-radius: 6px;
+            padding: 0.55rem;
+            margin-bottom: 0.75rem;
+            color: var(--text-muted);
+        }
+        .overview-node {
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.45rem;
+            margin-bottom: 0.35rem;
+            background: #fff;
+        }
+        .overview-node.drag-over { border-color: var(--purple-light); }
+        .overview-row { display: flex; gap: 0.45rem; align-items: center; }
+        .overview-row .node-title { cursor: grab; }
+        .overview-children { margin-top: 0.45rem; margin-left: 1.2rem; }
+        .status-select {
+            border: 1px solid var(--border);
+            background: #fff;
+            color: var(--text);
+            border-radius: 6px;
+            padding: 0.34rem 0.5rem;
+            min-width: 128px;
+        }
+        .status-select option {
+            background: #fff;
+            color: var(--text);
+        }
+        .overview-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+        .overview-toolbar .hint {
+            color: var(--text-muted);
+            font-size: 0.82rem;
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 768px) {
+            header { padding: 0.7rem 1rem; }
+            header, .header-left, .header-right { flex-wrap: wrap; }
+            .stats-row { grid-template-columns: repeat(2, 1fr); padding: 1rem; gap: 0.7rem; }
+            .search-bar, .main { padding: 0 1rem 1rem; }
+            .candidate-panel, .diagnostic-band { margin: 0 1rem 1rem; }
+            .stat-value { font-size: 1.5rem; }
+            .task-card { padding: 0; }
+            .card-top { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
+            .root-heading { gap: 0.45rem; }
+            .tree-node-row { grid-template-columns: 22px minmax(0, 1fr); }
+            .node-status-cell {
+                grid-column: 2;
+                justify-content: flex-start;
+                min-width: 0;
+            }
+            .node-actions {
+                grid-column: 2;
+                justify-content: flex-start;
+                flex-wrap: wrap;
+                display: none;
+            }
+            .tree-node-row:hover .node-actions,
+            .tree-node-row:focus-within .node-actions { display: flex; }
+            .node-meta-line { display: none; }
+            .root-card > .candidate-actions {
+                display: flex;
+                flex-wrap: wrap;
+                opacity: 1;
+            }
+            .node-title-line { align-items: flex-start; flex-wrap: wrap; }
+            .node-tree .node-tree { padding-left: 0.72rem; }
+            .diagnostic-grid { grid-template-columns: 1fr; }
+            .nav-links { gap: 0.2rem; }
+            .nav-links a { padding: 0.3rem 0.5rem; font-size: 0.8rem; }
+            .header-right { gap: 0.4rem; }
+        }
+        @media (max-width: 480px) {
+            .stats-row { grid-template-columns: 1fr 1fr; }
+            .header-left h1 { font-size: 1rem; }
+            .last-updated { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="header-left">
+        <h1><span data-i18n="pageTitle">任务看板</span></h1>
+        <span class="last-updated" id="lastUpdated"></span>
+        <div class="status-badge">
+            <div class="status-dot disconnected" id="statusDot"></div>
+            <span id="statusText" data-i18n="connecting">连接中...</span>
+        </div>
+    </div>
+    <div class="header-right">
+        <nav class="nav-links">
+            <a href="/static/index.html">Dashboard</a>
+        </nav>
+        <button type="button" class="toolbar-btn" onclick="openOverviewEditor()" data-i18n="overviewEdit">总览编辑</button>
+        <button type="button" class="toolbar-btn" onclick="openUsageGuide()" data-i18n="usageGuide">使用说明</button>
+        <button type="button" class="toolbar-btn import-btn" onclick="triggerPlanningImportFile()" data-i18n="importPlanningFile">导入工程文件</button>
+        <input type="file" id="planningImportFile" accept=".md,.txt,.markdown" style="display:none" onchange="importPlanningFile(this.files && this.files[0])">
+        <button type="button" class="toolbar-btn" onclick="loadTaskData()" data-i18n="refresh">刷新</button>
+    </div>
+</header>
+
+<!-- Stats -->
+<div class="stats-row" id="statsRow">
+    <div class="stat-card">
+        <div class="stat-label" data-i18n="totalTasks">总任务</div>
+        <div class="stat-value" id="statTotal">-</div>
+    </div>
+    <div class="stat-card accent-green">
+        <div class="stat-label" data-i18n="completed">已完成</div>
+        <div class="stat-value green" id="statDone">-</div>
+    </div>
+    <div class="stat-card accent-amber">
+        <div class="stat-label" data-i18n="activeWork">活跃工作</div>
+        <div class="stat-value amber" id="statActive">-</div>
+    </div>
+    <div class="stat-card accent-purple">
+        <div class="stat-label" data-i18n="completionRate">完成率</div>
+        <div class="ring-wrap">
+            <div class="ring" id="ringWrap">
+                <svg viewBox="0 0 36 36" width="52" height="52">
+                    <circle class="ring-bg" cx="18" cy="18" r="15.5"></circle>
+                    <circle class="ring-fg" id="ringFg" cx="18" cy="18" r="15.5"
+                        stroke-dasharray="97.4" stroke-dashoffset="97.4"></circle>
+                </svg>
+                <div class="ring-text" id="ringText">0%</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Nova-Task v2 Candidates -->
+<div class="candidate-panel" id="novaTaskCandidatePanel">
+    <div class="candidate-head">
+        <div class="candidate-title"><span class="candidate-dot"></span><span id="novaTaskCandidateTitle" data-i18n="pendingReview">待审核提案</span></div>
+        <button type="button" class="toolbar-btn" onclick="loadNovaTaskCandidates()" data-i18n="refresh">刷新</button>
+    </div>
+    <div class="candidate-list" id="novaTaskCandidateList"></div>
+</div>
+
+<!-- Direct write diagnostics -->
+<div class="diagnostic-band" id="directWritesBand">
+    <div class="diagnostic-head" role="button" tabindex="0" aria-expanded="false" onclick="toggleDirectWritesBand()">
+        <div class="diagnostic-title"><span>↳</span><span data-i18n="directWrites">Direct Writes</span></div>
+        <div class="diagnostic-counts" id="directWritesCounts"></div>
+    </div>
+    <div class="diagnostic-body" id="directWritesBody"></div>
+</div>
+
+<!-- Search -->
+<div class="search-bar">
+    <div class="search-wrap">
+        <span class="search-icon">🔍</span>
+        <input type="text" class="search-input" id="searchBox" placeholder="搜索任务内容..." data-i18n-placeholder="searchPlaceholder">
+    </div>
+</div>
+
+<!-- Content -->
+<div class="main" id="taskContainer">
+    <div class="no-tasks" data-i18n="loading">加载中...</div>
+</div>
+
+<div class="modal-backdrop" id="taskModal" aria-hidden="true">
+    <div class="task-modal" role="dialog" aria-modal="true" aria-labelledby="taskModalTitle" tabindex="-1">
+        <div class="modal-head">
+            <strong id="taskModalTitle" data-i18n="editTask">编辑任务</strong>
+            <button type="button" class="icon-btn" onclick="closeTaskModal()" data-i18n="close">关闭</button>
+        </div>
+        <div class="modal-body" id="taskModalBody"></div>
+        <div class="modal-foot" id="taskModalFoot"></div>
+    </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────
+let tasks = [];
+let authorityRoots = [];
+let authorityNodes = [];
+let searchQuery = '';
+let novaTaskPendingReviewCount = 0;
+let novaTaskL1ReviewItems = [];
+let novaTaskNodes = [];
+let recentDirectWrites = { audits: [], events: [], deferredByGuard: [], auditCount: 0, eventCount: 0, deferredByGuardCount: 0 };
+let directWritesOpen = false;
+let taskModalReturnFocus = null;
+let taskModalReturnFocusKey = null;
+let taskDataReady = false;
+let taskSseConnected = false;
+const sectionCollapseState = { 'Active': false, 'Planned': true, 'Completed': true, '进行中': false, '已计划（待启动）': true, '已完成里程碑': true };
+const cardDoneExpandState = {};
+const nodeCollapseState = {};
+let draggedNodeId = null;
+let taskLanguageProfile = 'zh';
+
+const TASK_TEXT = {
+    zh: {
+        documentTitle: '任务看板 — Dashboard',
+        pageTitle: '任务看板',
+        connecting: '连接中...',
+        realtimeSync: '实时同步',
+        snapshotLoaded: '任务快照已加载',
+        reconnect: (seconds) => `重连 ${seconds}s`,
+        lastUpdated: (value) => '最后更新: ' + (value || ''),
+        overviewEdit: '总览编辑',
+        usageGuide: '使用说明',
+        refresh: '刷新',
+        totalTasks: '总任务',
+        completed: '已完成',
+        activeWork: '活跃工作',
+        completionRate: '完成率',
+        pendingReview: 'L1 待确认',
+        pendingReviewCount: (count) => `L1 待确认 (${count})`,
+        searchPlaceholder: '搜索任务内容...',
+        loading: '加载中...',
+        editTask: '编辑任务',
+        close: '关闭',
+        noPendingCandidates: '暂无 L1 待确认项',
+        candidateLoadFailed: 'L1 审核项读取失败',
+        suggestStatusUpdate: (status) => `建议将现有任务状态更新为 ${status || '新状态'}`,
+        suggestParentTask: '建议新增一级节点',
+        suggestSubtask: '建议新增子任务',
+        suggestHierarchyAdjustment: '建议调整任务层级',
+        linkedTask: '关联任务',
+        reviewStatus: '审核状态',
+        source: '来源',
+        origin: '意图来源',
+        workspace: '工作区',
+        candidateKind: '审核类型',
+        directWrites: 'Direct Writes 诊断',
+        directWritesSummary: (audits, events, deferred) => `写入 ${audits} · 事件 ${events} · Guard 延迟 ${deferred}`,
+        recentWrites: '最近写入',
+        guardDeferred: 'Guard 延迟',
+        noDirectWrites: '暂无直接写入诊断',
+        noGuardDeferred: '暂无 Guard 延迟',
+        matchedNode: '匹配节点',
+        anchorProfile: '锚点',
+        plannedPathlessL1: 'planned pathless L1',
+        plannedPathBackedL1: 'planned path-backed L1',
+        observedPathBackedL1: 'observed path-backed L1',
+        tags: '标签',
+        reason: '理由',
+        evidence: '依据',
+        confirmComplete: '确认完成',
+        later: '稍后',
+        deleteCandidate: '删除候选',
+        setRootTask: '设为1级任务',
+        assignParent: '确认到已有父级',
+        noParentOptions: '暂无可选 1 级任务，请先设为 1 级任务。',
+        confirmParent: '确认隶属',
+        noMatchingTasks: '没有匹配的任务',
+        taskDataUnavailable: '任务数据不可用',
+        unknown: '未知',
+        collapseCompleted: '收起已完成',
+        expandCompleted: (count) => `展开已完成 (${count})`,
+        expandTask: '展开任务',
+        collapseTask: '收起任务',
+        edit: '编辑',
+        restore: '恢复',
+        complete: '完成',
+        topLevelTask: '顶层任务',
+        title: '标题',
+        status: '状态',
+        parent: '隶属',
+        completionMethod: '完成方法',
+        completionMethodPlaceholder: '仅在标注完成时填写',
+        cancel: '取消',
+        save: '保存',
+        overviewEditor: '总览编辑',
+        overviewHint: '拖动任务到另一项任务上可调整隶属；拖到顶层区域可设为 1 级任务。',
+        newTask: '新建任务',
+        importPlanningFile: '导入工程文件',
+        planningImportPreview: '计划文件预览',
+        applyPlanningImport: '确认导入',
+        planningImportFailed: '计划文件导入失败',
+        planningCreate: '将创建',
+        planningReuse: '将复用',
+        planningSkip: '跳过',
+        dropRoot: '拖到这里设为顶层任务',
+        createTask: '新建任务',
+        createTitlePlaceholder: '输入任务标题',
+        backToOverview: '返回总览',
+        create: '创建',
+        usageGuideTitle: '使用说明',
+        usageGuideHtml: `
+            <div class="form-grid">
+                <p>1. 建议任务开始前，先导入工程文件（RFC / roadmap / PRD），解析初始任务树。</p>
+                <p>2. 任务右侧选项可切换人工维护或 Agent 维护。</p>
+                <p>橙色任务代表 Agent 自动维护；Agent 可识别、编辑并更新任务状态。</p>
+                <p>黑色任务代表人工维护；Agent 仅可更新状态、挂载子任务，不可编辑改动该任务。</p>
+                <p>3. “总览编辑”提供统一任务管理界面，可集中调整 5 级任务树。</p>
+            </div>
+        `,
+    },
+    en: {
+        documentTitle: 'Task Board — Dashboard',
+        pageTitle: 'Task Board',
+        connecting: 'Connecting...',
+        realtimeSync: 'Live sync',
+        snapshotLoaded: 'Task snapshot loaded',
+        reconnect: (seconds) => `Reconnect in ${seconds}s`,
+        lastUpdated: (value) => 'Last updated: ' + (value || ''),
+        overviewEdit: 'Edit Overview',
+        usageGuide: 'Guide',
+        refresh: 'Refresh',
+        totalTasks: 'Total Tasks',
+        completed: 'Completed',
+        activeWork: 'Active Work',
+        completionRate: 'Completion Rate',
+        pendingReview: 'L1 Review',
+        pendingReviewCount: (count) => `L1 Review (${count})`,
+        searchPlaceholder: 'Search tasks...',
+        loading: 'Loading...',
+        editTask: 'Edit Task',
+        close: 'Close',
+        noPendingCandidates: 'No L1 review items',
+        candidateLoadFailed: 'Failed to load L1 review items',
+        suggestStatusUpdate: (status) => `Suggest updating the existing task status to ${status || 'new status'}`,
+        suggestParentTask: 'Suggest adding a top-level node',
+        suggestSubtask: 'Suggest adding a subtask',
+        suggestHierarchyAdjustment: 'Suggest hierarchy adjustment',
+        linkedTask: 'Linked task',
+        reviewStatus: 'Review status',
+        source: 'Source',
+        origin: 'Origin',
+        workspace: 'Workspace',
+        candidateKind: 'Review kind',
+        directWrites: 'Direct Writes Diagnostics',
+        directWritesSummary: (audits, events, deferred) => `Writes ${audits} · Events ${events} · Guard deferred ${deferred}`,
+        recentWrites: 'Recent Writes',
+        guardDeferred: 'Guard Deferred',
+        noDirectWrites: 'No direct write diagnostics',
+        noGuardDeferred: 'No guard deferrals',
+        matchedNode: 'Matched node',
+        anchorProfile: 'Anchor',
+        plannedPathlessL1: 'planned pathless L1',
+        plannedPathBackedL1: 'planned path-backed L1',
+        observedPathBackedL1: 'observed path-backed L1',
+        tags: 'Tags',
+        reason: 'Reason',
+        evidence: 'Evidence',
+        confirmComplete: 'Confirm Complete',
+        later: 'Later',
+        deleteCandidate: 'Delete Candidate',
+        setRootTask: 'Set as Level 1 Task',
+        assignParent: 'Confirm Under Parent',
+        noParentOptions: 'No eligible level 1 task. Set it as a level 1 task first.',
+        confirmParent: 'Confirm Parent',
+        noMatchingTasks: 'No matching tasks',
+        taskDataUnavailable: 'Task data unavailable',
+        unknown: 'Unknown',
+        collapseCompleted: 'Collapse completed',
+        expandCompleted: (count) => `Expand completed (${count})`,
+        expandTask: 'Expand task',
+        collapseTask: 'Collapse task',
+        edit: 'Edit',
+        restore: 'Restore',
+        complete: 'Complete',
+        topLevelTask: 'Top-level task',
+        title: 'Title',
+        status: 'Status',
+        parent: 'Parent',
+        completionMethod: 'Completion Method',
+        completionMethodPlaceholder: 'Fill only when marking the task complete',
+        cancel: 'Cancel',
+        save: 'Save',
+        overviewEditor: 'Edit Overview',
+        overviewHint: 'Drag a task onto another task to change its parent; drop it on the top-level area to make it a level 1 task.',
+        newTask: 'New Task',
+        importPlanningFile: 'Import Project File',
+        planningImportPreview: 'Plan Preview',
+        applyPlanningImport: 'Import',
+        planningImportFailed: 'Planning import failed',
+        planningCreate: 'Create',
+        planningReuse: 'Reuse',
+        planningSkip: 'Skip',
+        dropRoot: 'Drop here to make it a top-level task',
+        createTask: 'New Task',
+        createTitlePlaceholder: 'Enter task title',
+        backToOverview: 'Back to Overview',
+        create: 'Create',
+        usageGuideTitle: 'Guide',
+        usageGuideHtml: `
+            <div class="form-grid">
+                <p>1. Before work starts, import an engineering file (RFC / roadmap / PRD) to build the initial task tree.</p>
+                <p>2. Use the right-side control to switch a task between human-managed and agent-managed.</p>
+                <p>Orange tasks are agent-managed; the Agent may identify, edit, and update task status.</p>
+                <p>Black tasks are human-managed; the Agent may update status and attach subtasks, but may not edit the task itself.</p>
+                <p>3. “Edit Overview” opens the unified management view for adjusting the 5-level task tree.</p>
+            </div>
+        `,
+    },
+};
+
+function taskText(profile) {
+    return TASK_TEXT[String(profile || taskLanguageProfile).toLowerCase().startsWith('en') ? 'en' : 'zh'];
+}
+
+function t(key, ...args) {
+    const value = taskText()[key];
+    return typeof value === 'function' ? value(...args) : value;
+}
+
+function applyTaskText() {
+    const labels = taskText();
+    document.documentElement.lang = taskLanguageProfile === 'en' ? 'en-US' : 'zh-CN';
+    document.title = labels.documentTitle;
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.dataset.i18n;
+        if (key && Object.prototype.hasOwnProperty.call(labels, key)) el.textContent = labels[key];
+    });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        const key = el.dataset.i18nPlaceholder;
+        if (key && Object.prototype.hasOwnProperty.call(labels, key)) el.placeholder = labels[key];
+    });
+}
+
+async function ensureTaskLanguageProfile() {
+    try {
+        const res = await fetch('/api/settings');
+        if (res.ok) {
+            const settings = await res.json();
+            const raw = String((((settings || {}).pipeline || {}).languageProfile) || 'zh').toLowerCase();
+            taskLanguageProfile = raw.startsWith('en') ? 'en' : 'zh';
+        }
+    } catch (e) {}
+    applyTaskText();
+}
+
+// ─────────────────────────────────────────────
+// SSE
+// ─────────────────────────────────────────────
+let es = null;
+let retryDelay = 1000;
+const maxDelay = 30000;
+
+function taskPayloadState(data) {
+    return data && typeof data.dashboardState === 'object'
+        ? data.dashboardState
+        : {status: 'ready', sourceErrors: []};
+}
+
+function taskPayloadFailed(data) {
+    return ['error', 'unavailable'].includes(taskPayloadState(data).status);
+}
+
+function taskPayloadReason(data) {
+    const state = taskPayloadState(data);
+    const errors = Array.isArray(state.sourceErrors) ? state.sourceErrors : [];
+    return (data && (data.reason || data.error))
+        || errors.map(item => item && (item.code || item.source)).filter(Boolean).join(', ')
+        || state.status;
+}
+
+function renderTaskSourceFailure(data) {
+    const message = t('taskDataUnavailable') + ': ' + taskPayloadReason(data);
+    document.getElementById('statusDot').className = 'status-dot disconnected';
+    document.getElementById('statusText').textContent = message;
+    document.getElementById('lastUpdated').textContent = message;
+    if (!taskDataReady) {
+        document.getElementById('taskContainer').innerHTML = '<div class="no-tasks" role="alert">' + esc(message) + '</div>';
+    }
+}
+
+function renderTaskSourceSuccess(lastModified, liveUpdate = false) {
+    const live = liveUpdate || taskSseConnected;
+    document.getElementById('statusDot').className = live ? 'status-dot connected' : 'status-dot';
+    document.getElementById('statusText').textContent = live ? t('realtimeSync') : t('snapshotLoaded');
+    document.getElementById('lastUpdated').textContent = t('lastUpdated', lastModified || '');
+}
+
+function connectSSE() {
+    es = new EventSource('/events/tasks');
+    es.onopen = () => {
+        taskSseConnected = true;
+        document.getElementById('statusDot').className = 'status-dot connected';
+        document.getElementById('statusText').textContent = t('realtimeSync');
+        retryDelay = 1000;
+    };
+    es.onmessage = (e) => {
+        retryDelay = 1000;
+        try {
+            const data = JSON.parse(e.data);
+            if (taskPayloadFailed(data)) {
+                renderTaskSourceFailure(data);
+                return;
+            }
+            tasks = data.tasks || [];
+            if (Array.isArray(data.tree)) authorityRoots = data.tree;
+            if (Array.isArray(data.nodes)) authorityNodes = data.nodes;
+            renderTaskSourceSuccess(data.lastModified, true);
+            render();
+            taskDataReady = true;
+        } catch (err) { console.error('JSON parse error:', err); }
+    };
+    es.onerror = () => {
+        taskSseConnected = false;
+        es.close();
+        document.getElementById('statusDot').className = 'status-dot disconnected';
+        document.getElementById('statusText').textContent = t('reconnect', retryDelay/1000);
+        setTimeout(connectSSE, retryDelay);
+        retryDelay = Math.min(retryDelay * 2, maxDelay);
+    };
+}
+
+// ─────────────────────────────────────────────
+// Search
+// ─────────────────────────────────────────────
+document.getElementById('searchBox').addEventListener('input', (e) => {
+    searchQuery = e.target.value.toLowerCase();
+    render();
+});
+
+// ─────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────
+function esc(t) {
+    const d = document.createElement('div');
+    d.textContent = t;
+    return d.innerHTML;
+}
+
+function escJs(t) {
+    return t.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"');
+}
+
+function highlight(text, query) {
+    if (!query) return esc(text);
+    const safe = esc(text);
+    const q = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return safe.replace(new RegExp(`(${q})`, 'gi'), '<mark>$1</mark>');
+}
+
+function progressColor(ratio) {
+    if (ratio < 0.3) return 'red';
+    if (ratio < 0.7) return 'amber';
+    return 'green';
+}
+
+function sectionClass(section) {
+    if (section === '进行中') return 'section--active';
+    if (section.includes('已计划') || section.includes('待启动') || section === '待办') return 'section--planned';
+    return 'section--done';
+}
+
+function sectionEmoji(section) {
+    return '';
+}
+
+function statusEmoji(status) {
+    return {
+        active: '🟢',
+        planned: '🟡',
+        blocked: '⛔',
+        paused: '⏸',
+        completed: '✅',
+        done: '✅',
+        automatic: '🟠',
+        settled: '🟤',
+        stale: '◌',
+        archived: '⚫'
+    }[status] || '⚪';
+}
+
+function statusLabel(status) {
+    return {
+        active: 'Active',
+        planned: 'Planned',
+        blocked: 'Blocked',
+        paused: 'Paused',
+        completed: 'Completed',
+        done: 'Done',
+        automatic: 'Automatic',
+        settled: 'Settled',
+        stale: 'Stale',
+        archived: 'Archived'
+    }[status] || status || 'Unknown';
+}
+
+function statusClass(status) {
+    return `status-${String(status || 'unknown').replace(/[^a-z0-9_-]/gi, '-').toLowerCase()}`;
+}
+
+function statusDot(status) {
+    return `<span class="node-state-dot ${statusClass(status)}" aria-hidden="true"></span>`;
+}
+
+function isDoneStatus(status) {
+    return ['done', 'completed', 'settled'].includes(String(status || '').toLowerCase());
+}
+
+function isArchivedStatus(status) {
+    return String(status || '').toLowerCase() === 'archived';
+}
+
+function nodeManager(node) {
+    return node && node.managedBy === 'agent' ? 'agent' : 'human';
+}
+
+function managerLabel(manager) {
+    return manager === 'agent' ? 'Agent managed' : 'Human managed';
+}
+
+function managerClass(node) {
+    return `manager-${nodeManager(node)}`;
+}
+
+function statusOptionsForNode(node) {
+    return nodeManager(node) === 'agent'
+        ? ['automatic', 'settled', 'stale', 'archived']
+        : ['planned', 'active', 'blocked', 'paused', 'done', 'archived'];
+}
+
+function statusOptionsForManager(manager) {
+    return manager === 'agent'
+        ? ['automatic', 'settled', 'stale', 'archived']
+        : ['planned', 'active', 'blocked', 'paused', 'done', 'archived'];
+}
+
+function normalizedStatusForNode(node) {
+    const options = statusOptionsForNode(node);
+    const current = node.status || options[0];
+    return options.includes(current) ? current : options[0];
+}
+
+function levelBadge(level) {
+    const bounded = Math.max(1, Math.min(5, Number(level) || 1));
+    return `<span class="level-badge level-${bounded}">L${bounded}</span>`;
+}
+
+function renderStatusSelect(node) {
+    const nodeId = escJs(node.nodeId || '');
+    const focusKey = esc(`status:${node.nodeId || ''}`);
+    const current = normalizedStatusForNode(node);
+    const options = statusOptionsForNode(node)
+        .map(status => `<option value="${status}" ${current === status ? 'selected' : ''}>${statusLabel(status)}</option>`)
+        .join('');
+    return `<select class="status-select-inline ${statusClass(current)}" data-task-focus-key="${focusKey}" onchange="updateAuthorityNode('${nodeId}', {status: this.value})" onclick="event.stopPropagation()" aria-label="${esc(t('status'))}">${options}</select>`;
+}
+
+function renderManagerPill(node) {
+    const manager = nodeManager(node);
+    return `<span class="meta-pill manager-pill manager-${manager}">${esc(managerLabel(manager))}</span>`;
+}
+
+async function setNodeManager(nodeId, managedBy) {
+    await updateAuthorityNode(nodeId, {managedBy});
+}
+
+function refreshEditStatusOptions() {
+    const managerEl = document.getElementById('editNodeManagedBy');
+    const statusEl = document.getElementById('editNodeStatus');
+    if (!managerEl || !statusEl) return;
+    const current = statusEl.value;
+    const options = statusOptionsForManager(managerEl.value);
+    const selected = options.includes(current) ? current : options[0];
+    statusEl.innerHTML = options
+        .map(s => `<option value="${s}" ${selected === s ? 'selected' : ''}>${statusEmoji(s)} ${statusLabel(s)}</option>`)
+        .join('');
+}
+
+function statusTagLabel(tag) {
+    return {
+        delayed: 'Delayed',
+        paused: 'Paused',
+        waiting_external: 'Waiting',
+        needs_review: 'Needs review',
+        stale: 'Stale',
+        low_confidence: 'Low confidence'
+    }[tag] || tag;
+}
+
+function renderStatusTags(node) {
+    const tags = Array.isArray(node.statusTags) ? node.statusTags : [];
+    const labels = tags.map(statusTagLabel).filter(Boolean).slice(0, 3);
+    if (node.anchorProfile) labels.push(anchorProfileLabel(node.anchorProfile));
+    if (node.origin) labels.push(`${t('origin')}: ${node.origin}`);
+    if (node.workspaceRootPath) labels.push(`${t('workspace')}: ${node.workspaceRootPath}`);
+    if (!labels.length) return '';
+    return `<span class="status-tags">${labels.map(label => `<span class="status-tag">${esc(label)}</span>`).join('')}</span>`;
+}
+
+function compactPath(path) {
+    const raw = String(path || '');
+    if (!raw) return '';
+    const parts = raw.split('/').filter(Boolean);
+    if (parts.length <= 3) return raw;
+    return `.../${parts.slice(-3).join('/')}`;
+}
+
+function renderNodeMetaPillItems(node, depth) {
+    const labels = [];
+    if (node.anchorProfile) labels.push(anchorProfileLabel(node.anchorProfile));
+    if (node.workspaceRootPath) labels.push(`${t('workspace')}: ${compactPath(node.workspaceRootPath)}`);
+    const tags = Array.isArray(node.statusTags) ? node.statusTags.map(statusTagLabel).filter(Boolean).slice(0, 3) : [];
+    labels.push(...tags);
+    if (!labels.length) return '';
+    return labels.map(label => String(label || '').startsWith('<span') ? label : `<span class="meta-pill" title="${esc(label)}">${esc(label)}</span>`).join('');
+}
+
+function renderNodeMetaPills(node, depth) {
+    const items = renderNodeMetaPillItems(node, depth);
+    return items ? `<div class="node-meta-line">${items}</div>` : '';
+}
+
+function anchorProfileLabel(profile) {
+    if (profile === 'planned_pathless_l1') return t('plannedPathlessL1');
+    if (profile === 'planned_path_backed_l1') return t('plannedPathBackedL1');
+    if (profile === 'observed_path_backed_l1') return t('observedPathBackedL1');
+    return profile || '';
+}
+
+function statusSection(status) {
+    return {
+        active: 'Active',
+        planned: 'Planned',
+        blocked: 'Blocked',
+        paused: 'Paused',
+        completed: 'Completed',
+        done: 'Done',
+        automatic: 'Automatic',
+        settled: 'Settled',
+        stale: 'Stale',
+        archived: 'Archived'
+    }[status] || 'Unknown';
+}
+
+function flattenAuthority(nodes, depth = 1, rows = []) {
+    (nodes || []).forEach(node => {
+        rows.push({...node, depth});
+        flattenAuthority(node.children || [], depth + 1, rows);
+    });
+    return rows;
+}
+
+function nodeDepth(nodeId) {
+    const byId = new Map(authorityNodes.map(n => [n.nodeId, n]));
+    let depth = 0;
+    let cursor = byId.get(nodeId);
+    const seen = new Set();
+    while (cursor && !seen.has(cursor.nodeId)) {
+        seen.add(cursor.nodeId);
+        depth++;
+        cursor = cursor.parentNodeId ? byId.get(cursor.parentNodeId) : null;
+    }
+    return depth || 1;
+}
+
+async function loadNovaTaskCandidateStatus() {
+    try {
+        const res = await fetch('/api/tasks/l1-review/status');
+        const data = await res.json();
+        if (!res.ok || taskPayloadFailed(data) || data.error) {
+            renderNovaTaskCandidateFailure(data);
+            return;
+        }
+        novaTaskPendingReviewCount = data.l1ReviewCount ?? data.pendingReviewCount ?? data.pendingCount ?? 0;
+        document.getElementById('novaTaskCandidateTitle').textContent =
+            t('pendingReviewCount', novaTaskPendingReviewCount);
+        document.getElementById('novaTaskCandidatePanel').classList.toggle('active', novaTaskPendingReviewCount > 0);
+        if (novaTaskPendingReviewCount > 0) await loadNovaTaskCandidates();
+    } catch (e) {
+        renderNovaTaskCandidateFailure({
+            dashboardState: {status: 'error', sourceErrors: [{source: 'nova-task-candidates', code: 'transport-failed'}]},
+        });
+        console.error('candidate status failed:', e);
+    }
+}
+
+function renderNovaTaskCandidateFailure(data) {
+    const panel = document.getElementById('novaTaskCandidatePanel');
+    const title = document.getElementById('novaTaskCandidateTitle');
+    const list = document.getElementById('novaTaskCandidateList');
+    if (panel) panel.classList.add('active');
+    if (title) title.textContent = t('taskDataUnavailable');
+    if (list) list.innerHTML = '<div class="candidate-meta" role="alert">' + esc(t('taskDataUnavailable') + ': ' + taskPayloadReason(data)) + '</div>';
+}
+
+async function loadNovaTaskCandidates() {
+    const panel = document.getElementById('novaTaskCandidatePanel');
+    const list = document.getElementById('novaTaskCandidateList');
+    try {
+        await loadNovaTaskNodes();
+        const res = await fetch('/api/tasks/l1-review?status=pending_review&limit=20');
+        const data = await res.json();
+        if (!res.ok || taskPayloadFailed(data) || data.error) throw new Error(taskPayloadReason(data));
+        const items = data.items || data.candidates || [];
+        novaTaskL1ReviewItems = items;
+        novaTaskPendingReviewCount = data.l1ReviewCount ?? data.pendingReviewCount ?? data.pendingCount ?? items.length;
+        document.getElementById('novaTaskCandidateTitle').textContent =
+            t('pendingReviewCount', novaTaskPendingReviewCount);
+        panel.classList.toggle('active', novaTaskPendingReviewCount > 0);
+        if (items.length === 0) {
+            list.innerHTML = '<div class="candidate-meta">' + esc(t('noPendingCandidates')) + '</div>';
+            return;
+        }
+        list.innerHTML = items.map(item => `
+            <div class="candidate-item">
+                <div><strong>${esc(item.proposedTitle || '')}</strong></div>
+                <div class="candidate-meta">${esc(item.candidateType || '')} · ${esc(item.confidence || 'unknown')} · ${esc(item.reason || '')}</div>
+                ${renderCandidateMetadata(item)}
+                <div class="candidate-summary">${renderCandidateSummary(item)}</div>
+                <ul class="candidate-evidence">
+                    ${(item.evidence || []).slice(0, 3).map(line => `<li>${esc(line)}</li>`).join('')}
+                </ul>
+                ${renderCandidateActions(item)}
+                <div id="candidate-parent-${esc(item.candidateId)}" class="candidate-parent-slot"></div>
+            </div>
+        `).join('');
+    } catch (e) {
+        renderNovaTaskCandidateFailure({
+            dashboardState: {status: 'error', sourceErrors: [{source: 'nova-task-candidates', code: 'load-failed'}]},
+        });
+        console.error('candidate list failed:', e);
+    }
+}
+
+function renderCandidateMetadata(item) {
+    const chips = [];
+    const metadata = item.metadata || {};
+    const workspace = item.workspace || metadata.workspace || {};
+    const reviewStatus = item.reviewStatus || (item.status === 'pending' ? 'pending_review' : item.status);
+    if (reviewStatus) chips.push(`${t('reviewStatus')}: ${reviewStatus}`);
+    if (item.candidateKind || metadata.candidateKind) chips.push(`${t('candidateKind')}: ${item.candidateKind || metadata.candidateKind}`);
+    if (item.source || metadata.source) chips.push(`${t('source')}: ${item.source || metadata.source}`);
+    if (item.origin || metadata.origin) chips.push(`${t('origin')}: ${item.origin || metadata.origin}`);
+    if (item.matchedNodeId) chips.push(`${t('matchedNode')}: ${item.matchedNodeId}`);
+    const rootPath = item.workspaceRootPath || workspace.rootPath || '';
+    if (rootPath) chips.push(`${t('workspace')}: ${rootPath}`);
+    if (!chips.length) return '';
+    return `<div class="status-tags">${chips.slice(0, 8).map(chip => `<span class="status-tag">${esc(chip)}</span>`).join('')}</div>`;
+}
+
+function renderCandidateSummary(item) {
+    const targetStatus = item.metadata && item.metadata.target_status ? statusLabel(item.metadata.target_status) : '';
+    const statusTags = item.metadata && Array.isArray(item.metadata.status_tags)
+        ? item.metadata.status_tags.map(statusTagLabel).join(', ')
+        : '';
+    const typeLabel = item.candidateType === 'status_update'
+        ? t('suggestStatusUpdate', targetStatus)
+        : (item.candidateType === 'parent_task'
+            ? t('suggestParentTask')
+            : (item.candidateType === 'scope_alias' ? t('suggestHierarchyAdjustment') : t('suggestSubtask')));
+    const parent = item.proposedParentNodeId || item.matchedNodeId || '';
+    const evidence = (item.evidence || []).slice(0, 2).join('；');
+    const parts = [typeLabel];
+    if (parent) parts.push(`${t('linkedTask')}: ${parent}`);
+    if (statusTags) parts.push(`${t('tags')}: ${statusTags}`);
+    if (item.reason) parts.push(`${t('reason')}: ${item.reason}`);
+    if (evidence) parts.push(`${t('evidence')}: ${evidence}`);
+    return esc(parts.join('。'));
+}
+
+function renderCandidateActions(item) {
+    const candidateId = escJs(item.candidateId);
+    return `<div class="candidate-actions">
+        <button type="button" class="primary" onclick="confirmNovaTaskAsRoot('${candidateId}')">${esc(t('setRootTask'))}</button>
+        <button type="button" onclick="showCandidateParentSelector('${candidateId}')">${esc(t('assignParent'))}</button>
+        <button type="button" onclick="reviewNovaTaskCandidate('${candidateId}','defer')">${esc(t('later'))}</button>
+        <button type="button" class="danger" onclick="reviewNovaTaskCandidate('${candidateId}','delete')">${esc(t('deleteCandidate'))}</button>
+    </div>`;
+}
+
+async function loadNovaTaskNodes() {
+    const res = await fetch('/api/tasks/nodes');
+    const data = await res.json();
+    if (!res.ok || taskPayloadFailed(data) || data.error) throw new Error(taskPayloadReason(data));
+    novaTaskNodes = data.nodes || [];
+}
+
+function rootTaskOptions() {
+    return parentTaskOptions(3);
+}
+
+function parentTaskOptions(maxDepth = 3) {
+    const rows = flattenAuthority(authorityRoots.length ? authorityRoots : buildTreeFromNodes(novaTaskNodes));
+    return rows
+        .filter(n => n.depth <= maxDepth && !isDoneStatus(n.status) && !isArchivedStatus(n.status))
+        .map(n => `<option value="${esc(n.nodeId)}">${'　'.repeat(Math.max(0, n.depth - 1))}${statusEmoji(n.status)} ${esc(n.title)}</option>`)
+        .join('');
+}
+
+function childNodeTypeForParent(parentNodeId) {
+    const depth = nodeDepth(parentNodeId);
+    if (depth <= 1) return 'workstream';
+    if (depth === 2) return 'task';
+    if (depth === 3) return 'subtask';
+    return 'step';
+}
+
+function showCandidateParentSelector(candidateId) {
+    const slot = document.getElementById(`candidate-parent-${candidateId}`);
+    if (!slot) return;
+    const options = parentTaskOptions(3);
+    if (!options) {
+        slot.innerHTML = '<div class="candidate-meta">' + esc(t('noParentOptions')) + '</div>';
+        return;
+    }
+    slot.innerHTML = `
+        <div class="candidate-parent-select">
+            <select id="candidate-parent-select-${esc(candidateId)}">${options}</select>
+            <button type="button" onclick="confirmNovaTaskWithParent('${escJs(candidateId)}')">${esc(t('confirmParent'))}</button>
+        </div>
+    `;
+}
+
+function buildTreeFromNodes(nodes) {
+    const items = (nodes || []).map(n => ({...n, children: []}));
+    const byId = new Map(items.map(n => [n.nodeId, n]));
+    const roots = [];
+    items.forEach(item => {
+        if (item.parentNodeId && byId.has(item.parentNodeId)) byId.get(item.parentNodeId).children.push(item);
+        else roots.push(item);
+    });
+    return roots;
+}
+
+async function confirmNovaTaskAsRoot(candidateId) {
+    await confirmNovaTaskCandidate(candidateId, {nodeType: 'track', parentNodeId: null, reason: 'Dashboard approved Level-1 project anchor'});
+}
+
+async function confirmNovaTaskCompletion(candidateId) {
+    await confirmNovaTaskCandidate(candidateId, {reason: 'Dashboard confirmed completion signal'});
+}
+
+async function confirmNovaTaskWithParent(candidateId) {
+    const parent = document.getElementById(`candidate-parent-select-${candidateId}`);
+    const parentNodeId = parent ? parent.value : null;
+    if (!parentNodeId) return;
+    await confirmNovaTaskCandidate(candidateId, {
+        nodeType: childNodeTypeForParent(parentNodeId),
+        parentNodeId,
+        reason: 'Dashboard assigned parent task'
+    });
+}
+
+async function confirmNovaTaskCandidate(candidateId, payload) {
+    const res = await fetch(`/api/tasks/l1-review/${candidateId}/confirm`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload || {})
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    await loadNovaTaskCandidates();
+    await reloadTaskBoard();
+}
+
+async function reviewNovaTaskCandidate(candidateId, action, payload) {
+    try {
+        const res = await fetch(`/api/tasks/l1-review/${candidateId}/${action}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload || {reason: 'Dashboard review'})
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        await loadNovaTaskCandidates();
+        await reloadTaskBoard();
+    } catch (e) {
+        console.error('candidate review failed:', e);
+    }
+}
+
+function triggerPlanningImportFile() {
+    const input = document.getElementById('planningImportFile');
+    if (!input) return;
+    input.value = '';
+    input.click();
+}
+
+async function importPlanningFile(file) {
+    if (!file) return;
+    try {
+        const content = await file.text();
+        const res = await fetch('/api/tasks/planning-import', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({title: file.name, content, apply: false})
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        openPlanningImportPreview(data);
+    } catch (e) {
+        console.error('planning import failed:', e);
+        alert(t('planningImportFailed') + ': ' + e.message);
+    }
+}
+
+function openPlanningImportPreview(data) {
+    document.getElementById('taskModalTitle').textContent = t('planningImportPreview');
+    const tree = data && data.previewTree ? data.previewTree : {};
+    const summary = data && data.validationReport && data.validationReport.summary ? data.validationReport.summary : {};
+    const canApply = !!(data && data.artifactPath && tree && tree.action !== 'skip');
+    document.getElementById('taskModalBody').innerHTML = `
+        <div class="overview-toolbar">
+            <span class="hint">${esc(data.documentTitle || '')}</span>
+        </div>
+        <div class="candidate-meta">${esc(t('planningCreate'))}: ${esc(summary.create || 0)} · ${esc(t('planningReuse'))}: ${esc(summary.reuse || 0)} · ${esc(t('planningSkip'))}: ${esc(summary.skip || 0)}</div>
+        <div>${renderPlanningPreviewTree(tree)}</div>
+    `;
+    document.getElementById('taskModalFoot').innerHTML = `
+        <button type="button" class="toolbar-btn" onclick="closeTaskModal()">${esc(t('cancel'))}</button>
+        <button type="button" class="toolbar-btn" ${canApply ? '' : 'disabled'} onclick="applyPlanningImportArtifact('${escJs(data.artifactPath || '')}')">${esc(t('applyPlanningImport'))}</button>
+    `;
+    showTaskModal();
+}
+
+function planningActionLabel(action) {
+    if (action === 'reuse') return t('planningReuse');
+    if (action === 'skip') return t('planningSkip');
+    return t('planningCreate');
+}
+
+function planningActionTags(node) {
+    const tags = [`<span class="status-tag">${esc(planningActionLabel(node.action))}</span>`];
+    if (node.matchedExistingNodeId) tags.push(`<span class="status-tag">${esc(node.matchedExistingNodeId)}</span>`);
+    if (node.validationReason) tags.push(`<span class="status-tag">${esc(node.validationReason)}</span>`);
+    return tags.join('');
+}
+
+function renderPlanningPreviewTree(node) {
+    if (!node || !node.title) return `<div class="no-tasks">${esc(t('noMatchingTasks'))}</div>`;
+    const children = Array.isArray(node.children) ? node.children : [];
+    const status = node.action === 'skip' ? 'blocked' : 'planned';
+    return `<ul class="node-tree">
+        <li>
+            <div class="tree-node-row depth-1">
+                <span class="node-expander placeholder"></span>
+                <div class="node-main">
+                    <span class="node-title-line">
+                        ${levelBadge(node.level || 1)}
+                        ${statusDot(status)}
+                        <span class="node-title">${esc(node.title)}</span>
+                        <span class="status-badge-inline ${statusClass(status)}">${statusDot(status)}${esc(statusLabel(status))}</span>
+                    </span>
+                    <span class="node-meta-line">
+                        ${planningActionTags(node)}
+                    </span>
+                </div>
+            </div>
+            ${children.length ? `<ul class="node-tree">${children.map(renderPlanningPreviewChild).join('')}</ul>` : ''}
+        </li>
+    </ul>`;
+}
+
+function renderPlanningPreviewChild(node) {
+    const children = Array.isArray(node.children) ? node.children : [];
+    const status = node.action === 'skip' ? 'blocked' : 'planned';
+    return `<li>
+        <div class="tree-node-row depth-${esc(node.level || '')}">
+            <span class="node-expander placeholder"></span>
+            <div class="node-main">
+                <span class="node-title-line">
+                    ${levelBadge(node.level || 1)}
+                    ${statusDot(status)}
+                    <span class="node-title">${esc(node.title || '')}</span>
+                    <span class="status-badge-inline ${statusClass(status)}">${statusDot(status)}${esc(statusLabel(status))}</span>
+                </span>
+                <span class="node-meta-line">
+                    ${planningActionTags(node)}
+                </span>
+            </div>
+        </div>
+        ${children.length ? `<ul class="node-tree">${children.map(renderPlanningPreviewChild).join('')}</ul>` : ''}
+    </li>`;
+}
+
+async function applyPlanningImportArtifact(artifactPath) {
+    try {
+        const res = await fetch('/api/tasks/planning-import/apply', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({artifactPath})
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        closeTaskModal();
+        await loadNovaTaskCandidateStatus();
+        await reloadTaskBoard();
+    } catch (e) {
+        console.error('planning import apply failed:', e);
+        alert(t('planningImportFailed') + ': ' + e.message);
+    }
+}
+
+async function reloadTaskBoard() {
+    await loadTaskData();
+}
+
+// ─────────────────────────────────────────────
+// Render
+// ─────────────────────────────────────────────
+function render() {
+    renderStats();
+    renderSections();
+    renderDirectWritesDiagnostics();
+}
+
+function renderStats() {
+    if (authorityNodes.length > 0) {
+        const total = authorityNodes.length;
+        const done = authorityNodes.filter(n => isDoneStatus(n.status)).length;
+        const active = authorityNodes.filter(n => !isDoneStatus(n.status) && !isArchivedStatus(n.status)).length;
+        const pct = total ? Math.round(done / total * 100) : 0;
+        document.getElementById('statTotal').textContent = total;
+        document.getElementById('statDone').textContent = done;
+        document.getElementById('statActive').textContent = active;
+        document.getElementById('ringText').textContent = pct + '%';
+        const circ = 97.4;
+        document.getElementById('ringFg').style.strokeDashoffset = circ - (circ * pct / 100);
+        return;
+    }
+    let total = 0, done = 0;
+    tasks.forEach(t => {
+        t.subtasks.forEach(s => {
+            total++;
+            if (s.done) done++;
+        });
+    });
+    const active = total - done;
+    const pct = total ? Math.round(done / total * 100) : 0;
+
+    document.getElementById('statTotal').textContent = total;
+    document.getElementById('statDone').textContent = done;
+    document.getElementById('statActive').textContent = active;
+    document.getElementById('ringText').textContent = pct + '%';
+
+    const circ = 97.4;
+    document.getElementById('ringFg').style.strokeDashoffset = circ - (circ * pct / 100);
+}
+
+function renderSections() {
+    if (authorityRoots.length > 0) {
+        renderAuthoritySections();
+        return;
+    }
+    const container = document.getElementById('taskContainer');
+
+    // Filter by search
+    const filtered = tasks.map(t => {
+        if (!searchQuery) return t;
+        const matchSubs = t.subtasks.filter(s => s.content.toLowerCase().includes(searchQuery));
+        if (t.project.toLowerCase().includes(searchQuery) || matchSubs.length > 0) {
+            return { ...t, subtasks: matchSubs.length > 0 ? matchSubs : t.subtasks };
+        }
+        return null;
+    }).filter(Boolean);
+
+    if (filtered.length === 0) {
+        container.innerHTML = '<div class="no-tasks">' + esc(t('noMatchingTasks')) + '</div>';
+        return;
+    }
+
+    // Group
+    const grouped = {};
+    filtered.forEach(t => {
+        const s = t.section || t('unknown');
+        if (!grouped[s]) grouped[s] = [];
+        grouped[s].push(t);
+    });
+
+    const order = ['进行中', '已计划（待启动）', '待办', '已完成里程碑', '初步完成', '暂时放弃', '已关闭', '未知'];
+    const sections = [...new Set([...order, ...Object.keys(grouped)])];
+
+    let html = '';
+    for (const sec of sections) {
+        if (!grouped[sec]) continue;
+        const cls = sectionClass(sec);
+        const emoji = sectionEmoji(sec);
+        const collapsed = sectionCollapseState[sec] !== undefined ? sectionCollapseState[sec] : false;
+
+        html += `<div class="section ${cls}">
+            <div class="section-header ${collapsed ? 'collapsed' : ''}" data-section-key="${esc(sec)}" role="button" tabindex="0" aria-expanded="${collapsed ? 'false' : 'true'}" onclick="toggleSection('${escJs(sec)}')">
+                <span class="chevron">▼</span>
+                <span class="section-title">${esc(sec)}</span>
+                <span class="section-count">${grouped[sec].reduce((a,t) => a + t.subtasks.length, 0)}</span>
+            </div>
+            <div class="section-body ${collapsed ? 'collapsed' : ''}" style="max-height: 99999px;">
+                <div class="cards-list">`;
+
+        for (const t of grouped[sec]) {
+            const doneCount = t.subtasks.filter(s => s.done).length;
+            const total = t.subtasks.length;
+            const ratio = total ? doneCount / total : 0;
+            const pColor = progressColor(ratio);
+            const dimmed = cls === 'section--done' ? ' dimmed' : '';
+            const cardKey = t.project + '|' + sec;
+            const doneExpanded = cardDoneExpandState[cardKey] || false;
+            const hasDone = doneCount > 0 && doneCount < total;
+            const allDone = doneCount === total && total > 0;
+
+            html += `<div class="task-card${dimmed}">
+                <div class="card-top">
+                    <div class="card-project">${esc(t.project)}</div>
+                    <div class="card-progress-text">${doneCount} / ${total}</div>
+                </div>
+                <div class="progress-bar"><div class="progress-fill ${pColor}" style="width:${ratio*100}%"></div></div>
+                <ul class="subtasks">`;
+
+            for (const s of t.subtasks) {
+                const isDone = s.done;
+                const hideClass = isDone && hasDone && !doneExpanded ? ' hidden-done' : '';
+                html += `<li class="subtask${isDone ? ' done' : ''}${hideClass}" data-content="${escJs(s.content)}" data-project="${escJs(t.project)}">
+                    <div class="subtask-check${isDone ? ' done' : ''}" data-task-focus-key="subtask:${esc(s.content)}|${esc(t.project)}" role="checkbox" tabindex="0" aria-checked="${isDone ? 'true' : 'false'}" aria-label="${esc(s.content)}" onclick="toggleSubtask(this,'${escJs(s.content)}','${escJs(t.project)}')"></div>
+                    <span class="subtask-text">${highlight(s.content, searchQuery)}</span>
+                    ${s.agent ? `<span class="subtask-agent">@${esc(s.agent)}</span>` : ''}
+                </li>`;
+            }
+
+            html += `</ul>`;
+
+            if (hasDone) {
+                html += `<div class="done-toggle${doneExpanded ? ' expanded' : ''}" data-card-key="${esc(cardKey)}" role="button" tabindex="0" aria-expanded="${doneExpanded ? 'true' : 'false'}" onclick="toggleCardDone('${escJs(cardKey)}', this)">
+                    <span class="toggle-icon">▶</span> ${doneExpanded ? esc(t('collapseCompleted')) : esc(t('expandCompleted', doneCount))}
+                </div>`;
+            }
+
+            html += `</div>`;
+        }
+
+        html += `</div></div></div>`;
+    }
+
+    container.innerHTML = html;
+}
+
+function renderAuthoritySections() {
+    const container = document.getElementById('taskContainer');
+    const roots = filterAuthorityTree(authorityRoots, searchQuery);
+    if (roots.length === 0) {
+        container.innerHTML = '<div class="no-tasks">' + esc(t('noMatchingTasks')) + '</div>';
+        return;
+    }
+    const grouped = {};
+    roots.forEach(root => {
+        const section = statusSection(root.status);
+        if (!grouped[section]) grouped[section] = [];
+        grouped[section].push(root);
+    });
+    const order = ['Active', 'Planned', 'Blocked', 'Paused', 'Done', 'Automatic', 'Settled', 'Stale', 'Completed', 'Archived', 'Unknown'];
+    let html = '';
+    for (const sec of order) {
+        if (!grouped[sec]) continue;
+        const collapsed = sectionCollapseState[sec] !== undefined ? sectionCollapseState[sec] : false;
+        html += `<div class="section ${authoritySectionClass(sec)}">
+            <div class="section-header ${collapsed ? 'collapsed' : ''}" data-section-key="${esc(sec)}" role="button" tabindex="0" aria-expanded="${collapsed ? 'false' : 'true'}" onclick="toggleSection('${escJs(sec)}')">
+                <span class="chevron">▼</span>
+                <span class="section-title">${statusDot(sec.toLowerCase())}${esc(sec)}</span>
+                <span class="section-count">${countTreeNodes(grouped[sec])}</span>
+            </div>
+            <div class="section-body ${collapsed ? 'collapsed' : ''}" style="max-height: 99999px;">
+                <div class="cards-list">`;
+        grouped[sec].forEach(root => {
+            const rootCollapsed = nodeCollapseState[root.nodeId] || false;
+            const hasRootChildren = (root.children || []).length > 0;
+            const childCount = countTreeNodes(root.children || []);
+            html += `<div class="task-card root-card">
+                <div class="card-top">
+                    <div class="card-project root-heading">
+                        <button type="button" class="node-expander${hasRootChildren ? '' : ' placeholder'}" data-node-key="${esc(root.nodeId)}" ${hasRootChildren ? `aria-expanded="${rootCollapsed ? 'false' : 'true'}" aria-label="${esc((rootCollapsed ? t('expandTask') : t('collapseTask')) + ': ' + root.title)}"` : 'disabled aria-hidden="true" tabindex="-1"'} onclick="toggleNode('${escJs(root.nodeId)}')">${rootCollapsed ? '▶' : '▼'}</button>
+                        ${levelBadge(1)}
+                        <span class="root-title-stack">
+                            <span class="root-title-line ${managerClass(root)}">${highlight(root.title, searchQuery)}</span>
+                            <span class="root-meta-line">
+                                <span class="meta-pill">${esc(childCount)} children</span>
+                                ${renderNodeMetaPillItems(root, null)}
+                            </span>
+                        </span>
+                    </div>
+                    <div class="card-progress-text">${renderStatusSelect(root)}<span>${esc(root.progress || 0)}%</span></div>
+                </div>
+                <div class="progress-bar"><div class="progress-fill ${progressColor((root.progress || 0) / 100)}" style="width:${root.progress || 0}%"></div></div>
+                ${hasRootChildren && !rootCollapsed ? renderAuthorityNodeList(root.children || [], 2) : ''}
+                <div class="candidate-actions">
+                    <button type="button" class="icon-btn" data-task-focus-key="edit:${esc(root.nodeId)}" onclick="openTaskEditor('${escJs(root.nodeId)}')">${esc(t('edit'))}</button>
+                    <button type="button" class="icon-btn" data-task-focus-key="manager:${esc(root.nodeId)}" onclick="setNodeManager('${escJs(root.nodeId)}','${nodeManager(root) === 'agent' ? 'human' : 'agent'}')">${esc(managerLabel(nodeManager(root)))}</button>
+                </div>
+            </div>`;
+        });
+        html += `</div></div></div>`;
+    }
+    container.innerHTML = html;
+}
+
+function renderAuthorityNodeList(nodes, depth) {
+    if (!nodes || nodes.length === 0) return '';
+    return `<ul class="node-tree">${nodes.map(node => renderAuthorityNode(node, depth)).join('')}</ul>`;
+}
+
+function renderAuthorityNode(node, depth) {
+    const collapsed = nodeCollapseState[node.nodeId] || false;
+    const hasChildren = (node.children || []).length > 0;
+    return `<li>
+        <div class="tree-node-row depth-${depth}">
+            <button type="button" class="node-expander${hasChildren ? '' : ' placeholder'}" data-node-key="${esc(node.nodeId)}" ${hasChildren ? `aria-expanded="${collapsed ? 'false' : 'true'}" aria-label="${esc((collapsed ? t('expandTask') : t('collapseTask')) + ': ' + node.title)}"` : 'disabled aria-hidden="true" tabindex="-1"'} onclick="toggleNode('${escJs(node.nodeId)}')">${collapsed ? '▶' : '▼'}</button>
+            <div class="node-main">
+                <span class="node-title-line">
+                    ${levelBadge(depth)}
+                    <span class="node-title ${managerClass(node)}">${highlight(node.title, searchQuery)}</span>
+                </span>
+                ${renderNodeMetaPills(node, depth)}
+            </div>
+            <span class="node-status-cell">
+                ${renderStatusSelect(node)}
+            </span>
+            <span class="node-actions">
+                <button type="button" class="icon-btn" data-task-focus-key="edit:${esc(node.nodeId)}" onclick="openTaskEditor('${escJs(node.nodeId)}')">${esc(t('edit'))}</button>
+                <button type="button" class="icon-btn" data-task-focus-key="manager:${esc(node.nodeId)}" onclick="setNodeManager('${escJs(node.nodeId)}','${nodeManager(node) === 'agent' ? 'human' : 'agent'}')">${esc(managerLabel(nodeManager(node)))}</button>
+                <button type="button" class="icon-btn" data-task-focus-key="complete:${esc(node.nodeId)}" onclick="toggleAuthorityNode('${escJs(node.nodeId)}','${escJs(node.status)}','${nodeManager(node)}')">${esc(isDoneStatus(node.status) ? t('restore') : t('complete'))}</button>
+            </span>
+        </div>
+        ${hasChildren && !collapsed ? renderAuthorityNodeList(node.children, depth + 1) : ''}
+    </li>`;
+}
+
+async function loadDirectWritesDiagnostics() {
+    try {
+        const res = await fetch('/api/tasks/direct-writes/recent?limit=12');
+        const data = await res.json();
+        if (!res.ok || taskPayloadFailed(data) || data.error) throw new Error(taskPayloadReason(data));
+        recentDirectWrites = {
+            audits: data.audits || [],
+            events: data.events || [],
+            deferredByGuard: data.deferredByGuard || [],
+            auditCount: data.auditCount || 0,
+            eventCount: data.eventCount || 0,
+            deferredByGuardCount: data.deferredByGuardCount || 0,
+        };
+        renderDirectWritesDiagnostics();
+    } catch (e) {
+        const band = document.getElementById('directWritesBand');
+        const head = band ? band.querySelector('.diagnostic-head') : null;
+        const body = document.getElementById('directWritesBody');
+        directWritesOpen = true;
+        if (band) band.classList.add('open');
+        if (head) head.setAttribute('aria-expanded', 'true');
+        if (body) body.innerHTML = '<div class="candidate-meta" role="alert">' + esc(t('taskDataUnavailable')) + '</div>';
+        console.error('direct writes diagnostics failed:', e);
+    }
+}
+
+function toggleDirectWritesBand() {
+    directWritesOpen = !directWritesOpen;
+    renderDirectWritesDiagnostics();
+}
+
+function diagnosticRowTitle(item) {
+    const after = item && item.after && typeof item.after === 'object' ? item.after : {};
+    return after.title || item.title || item.nodeId || item.eventId || item.auditId || item.reason || t('unknown');
+}
+
+function renderDiagnosticRows(items, emptyText) {
+    if (!items || !items.length) return `<div class="candidate-meta">${esc(emptyText)}</div>`;
+    return items.slice(0, 6).map(item => {
+        const title = diagnosticRowTitle(item);
+        const meta = [
+            item.occurredAt || item.businessDate || '',
+            item.action || item.eventType || '',
+            item.reason || item.actor || '',
+            item.nodeId || item.parentNodeId || '',
+        ].filter(Boolean).join(' · ');
+        return `<div class="diagnostic-row">
+            <div class="diagnostic-row-title">${esc(title)}</div>
+            <div class="diagnostic-row-meta">${esc(meta)}</div>
+        </div>`;
+    }).join('');
+}
+
+function renderDirectWritesDiagnostics() {
+    const band = document.getElementById('directWritesBand');
+    const counts = document.getElementById('directWritesCounts');
+    const body = document.getElementById('directWritesBody');
+    if (!band || !counts || !body) return;
+    const auditCount = recentDirectWrites.auditCount || 0;
+    const eventCount = recentDirectWrites.eventCount || 0;
+    const deferredCount = recentDirectWrites.deferredByGuardCount || 0;
+    counts.innerHTML = [
+        `<span class="meta-pill">${esc(t('directWritesSummary', auditCount, eventCount, deferredCount))}</span>`,
+    ].join('');
+    band.classList.toggle('open', directWritesOpen);
+    const head = band.querySelector('.diagnostic-head');
+    if (head) head.setAttribute('aria-expanded', directWritesOpen ? 'true' : 'false');
+    body.innerHTML = `<div class="diagnostic-grid">
+        <div class="diagnostic-column">
+            <div class="diagnostic-column-title">${esc(t('recentWrites'))}</div>
+            ${renderDiagnosticRows(recentDirectWrites.audits || [], t('noDirectWrites'))}
+        </div>
+        <div class="diagnostic-column">
+            <div class="diagnostic-column-title">${esc(t('guardDeferred'))}</div>
+            ${renderDiagnosticRows(recentDirectWrites.deferredByGuard || [], t('noGuardDeferred'))}
+        </div>
+    </div>`;
+}
+
+function filterAuthorityTree(nodes, query) {
+    if (!query) return nodes;
+    return (nodes || []).map(node => {
+        const children = filterAuthorityTree(node.children || [], query);
+        if (node.title.toLowerCase().includes(query) || children.length > 0) return {...node, children};
+        return null;
+    }).filter(Boolean);
+}
+
+function countTreeNodes(nodes) {
+    return flattenAuthority(nodes).length;
+}
+
+function authoritySectionClass(sec) {
+    if (sec === 'Active') return 'section--active';
+    if (sec === 'Planned' || sec === 'Paused') return 'section--planned';
+    if (sec === 'Blocked') return 'section--active';
+    return 'section--done';
+}
+
+function authoritySectionEmoji(sec) {
+    return {Active: '🟢', Planned: '🟡', Blocked: '⛔', Paused: '⏸', Completed: '✅', Archived: '⚫'}[sec] || '⚪';
+}
+
+// ─────────────────────────────────────────────
+// Interactions
+// ─────────────────────────────────────────────
+function restoreTaskFocus(attribute, value) {
+    if (!value) return;
+    queueMicrotask(() => {
+        const modal = document.getElementById('taskModal');
+        const scope = modal && modal.classList.contains('active') ? modal : document;
+        const target = Array.from(scope.querySelectorAll(`[${attribute}]`))
+            .find(element => element.getAttribute(attribute) === String(value));
+        if (target && !target.disabled && typeof target.focus === 'function') target.focus();
+    });
+}
+
+function toggleSection(sec) {
+    sectionCollapseState[sec] = !sectionCollapseState[sec];
+    renderSections();
+    restoreTaskFocus('data-section-key', sec);
+}
+
+function toggleCardDone(cardKey, el) {
+    cardDoneExpandState[cardKey] = !cardDoneExpandState[cardKey];
+    renderSections();
+    restoreTaskFocus('data-card-key', cardKey);
+}
+
+function toggleNode(nodeId) {
+    nodeCollapseState[nodeId] = !nodeCollapseState[nodeId];
+    renderSections();
+    restoreTaskFocus('data-node-key', nodeId);
+}
+
+async function loadTaskData() {
+    try {
+        const res = await fetch('/api/tasks', { keepalive: true });
+        const data = await res.json();
+        if (!res.ok || taskPayloadFailed(data)) {
+            renderTaskSourceFailure(data);
+            return false;
+        }
+        tasks = data.tasks || [];
+        authorityRoots = data.tree || [];
+        authorityNodes = data.nodes || [];
+        novaTaskNodes = authorityNodes.length ? authorityNodes : novaTaskNodes;
+        renderTaskSourceSuccess(data.lastModified, false);
+        render();
+        taskDataReady = true;
+        loadDirectWritesDiagnostics();
+        return true;
+    } catch (error) {
+        renderTaskSourceFailure({
+            error: error.message,
+            dashboardState: {status: 'error', sourceErrors: [{source: 'nova-task-board', code: 'transport-failed'}]},
+        });
+        return false;
+    }
+}
+
+function findAuthorityNode(nodeId) {
+    return authorityNodes.find(n => n.nodeId === nodeId);
+}
+
+function parentOptions(selectedParentId, excludeNodeId) {
+    const rows = flattenAuthority(authorityRoots);
+    return `<option value="">${esc(t('topLevelTask'))}</option>` + rows
+        .filter(n => n.nodeId !== excludeNodeId && n.depth <= 3 && !isDoneStatus(n.status) && !isArchivedStatus(n.status))
+        .map(n => `<option value="${esc(n.nodeId)}" ${n.nodeId === selectedParentId ? 'selected' : ''}>${'　'.repeat(Math.max(0, n.depth - 1))}${statusEmoji(n.status)} ${esc(n.title)}</option>`)
+        .join('');
+}
+
+const TASK_MODAL_FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function taskModalFocusables() {
+    const panel = document.querySelector('#taskModal .task-modal');
+    if (!panel) return [];
+    return Array.from(panel.querySelectorAll(TASK_MODAL_FOCUSABLE))
+        .filter(element => {
+            const style = window.getComputedStyle(element);
+            return element.getAttribute('aria-hidden') !== 'true'
+                && !element.hidden
+                && !element.closest('[inert]')
+                && style.display !== 'none'
+                && style.visibility !== 'hidden'
+                && element.getClientRects().length > 0;
+        });
+}
+
+function showTaskModal() {
+    const modal = document.getElementById('taskModal');
+    if (!modal.classList.contains('active')) {
+        taskModalReturnFocus = document.activeElement;
+        taskModalReturnFocusKey = taskModalReturnFocus && taskModalReturnFocus.getAttribute
+            ? taskModalReturnFocus.getAttribute('data-task-focus-key')
+            : null;
+    }
+    modal.classList.add('active');
+    modal.setAttribute('aria-hidden', 'false');
+    queueMicrotask(() => {
+        const focusables = taskModalFocusables();
+        (focusables[0] || modal.querySelector('.task-modal')).focus();
+    });
+}
+
+function closeTaskModal() {
+    const modal = document.getElementById('taskModal');
+    modal.classList.remove('active');
+    modal.setAttribute('aria-hidden', 'true');
+    document.getElementById('taskModalBody').innerHTML = '';
+    document.getElementById('taskModalFoot').innerHTML = '';
+    const returnFocus = taskModalReturnFocus;
+    const returnFocusKey = taskModalReturnFocusKey;
+    taskModalReturnFocus = null;
+    taskModalReturnFocusKey = null;
+    queueMicrotask(() => {
+        if (returnFocus && document.contains(returnFocus) && typeof returnFocus.focus === 'function') {
+            returnFocus.focus();
+            return;
+        }
+        if (returnFocusKey) restoreTaskFocus('data-task-focus-key', returnFocusKey);
+    });
+}
+
+function openUsageGuide() {
+    document.getElementById('taskModalTitle').textContent = t('usageGuideTitle');
+    document.getElementById('taskModalBody').innerHTML = t('usageGuideHtml');
+    document.getElementById('taskModalFoot').innerHTML = `
+        <button type="button" class="toolbar-btn" onclick="closeTaskModal()">${esc(t('close'))}</button>
+    `;
+    showTaskModal();
+}
+
+function openTaskEditor(nodeId) {
+    const node = findAuthorityNode(nodeId);
+    if (!node) return;
+    document.getElementById('taskModalTitle').textContent = t('editTask');
+    const editStatusOptions = statusOptionsForNode(node)
+        .map(s => `<option value="${s}" ${normalizedStatusForNode(node) === s ? 'selected' : ''}>${statusEmoji(s)} ${statusLabel(s)}</option>`)
+        .join('');
+    document.getElementById('taskModalBody').innerHTML = `
+        <div class="form-grid">
+            <label>${esc(t('title'))}<input id="editNodeTitle" value="${esc(node.title)}"></label>
+            <label>Manage
+                <select id="editNodeManagedBy" class="status-select" onchange="refreshEditStatusOptions()">
+                    <option value="human" ${nodeManager(node) === 'human' ? 'selected' : ''}>Human managed</option>
+                    <option value="agent" ${nodeManager(node) === 'agent' ? 'selected' : ''}>Agent managed</option>
+                </select>
+            </label>
+            <label>${esc(t('status'))}
+                <select id="editNodeStatus" class="status-select">
+                    ${editStatusOptions}
+                </select>
+            </label>
+            <label>${esc(t('parent'))}
+                <select id="editNodeParent">${parentOptions(node.parentNodeId, node.nodeId)}</select>
+            </label>
+            <label>${esc(t('completionMethod'))}<textarea id="editCompletionMethod" rows="3" placeholder="${esc(t('completionMethodPlaceholder'))}"></textarea></label>
+        </div>
+    `;
+    document.getElementById('taskModalFoot').innerHTML = `
+        <button type="button" class="toolbar-btn" onclick="closeTaskModal()">${esc(t('cancel'))}</button>
+        <button type="button" class="toolbar-btn" onclick="saveTaskEditor('${escJs(node.nodeId)}')">${esc(t('save'))}</button>
+    `;
+    showTaskModal();
+}
+
+async function saveTaskEditor(nodeId) {
+    const managedBy = document.getElementById('editNodeManagedBy').value;
+    const payload = managedBy === 'agent'
+        ? {
+            managedBy,
+            status: document.getElementById('editNodeStatus').value
+        }
+        : {
+            title: document.getElementById('editNodeTitle').value,
+            status: document.getElementById('editNodeStatus').value,
+            managedBy,
+            parentNodeId: document.getElementById('editNodeParent').value || null,
+            completionMethod: document.getElementById('editCompletionMethod').value || undefined
+        };
+    await updateAuthorityNode(nodeId, payload);
+    closeTaskModal();
+}
+
+function openOverviewEditor() {
+    document.getElementById('taskModalTitle').textContent = t('overviewEditor');
+    document.getElementById('taskModalBody').innerHTML = `
+        <div class="overview-toolbar">
+            <span class="hint">${esc(t('overviewHint'))}</span>
+            <button type="button" class="toolbar-btn" onclick="openCreateTaskForm()">${esc(t('newTask'))}</button>
+        </div>
+        <div class="overview-drop-root" ondragover="allowOverviewDrop(event)" ondrop="dropOverviewNode(event, null)">${esc(t('dropRoot'))}</div>
+        <div>${renderOverviewNodes(authorityRoots)}</div>
+    `;
+    document.getElementById('taskModalFoot').innerHTML = `<button type="button" class="toolbar-btn" onclick="closeTaskModal()">${esc(t('complete'))}</button>`;
+    showTaskModal();
+}
+
+function renderOverviewNodes(nodes) {
+    return (nodes || []).map(node => `
+        <div class="overview-node" draggable="true" data-node-id="${esc(node.nodeId)}"
+             ondragstart="dragOverviewNode(event,'${escJs(node.nodeId)}')"
+             ondragover="allowOverviewDrop(event)"
+             ondrop="dropOverviewNode(event,'${escJs(node.nodeId)}')">
+            <div class="overview-row">
+                <button type="button" class="node-expander${(node.children || []).length ? '' : ' placeholder'}" data-node-key="${esc(node.nodeId)}" ${(node.children || []).length ? `aria-expanded="${nodeCollapseState[node.nodeId] ? 'false' : 'true'}" aria-label="${esc((nodeCollapseState[node.nodeId] ? t('expandTask') : t('collapseTask')) + ': ' + node.title)}"` : 'disabled aria-hidden="true" tabindex="-1"'} onclick="toggleNode('${escJs(node.nodeId)}'); openOverviewEditor();">${nodeCollapseState[node.nodeId] ? '▶' : '▼'}</button>
+                <span class="node-title ${managerClass(node)}">${esc(node.title)}</span>
+                <select class="status-select" onchange="updateAuthorityNode('${escJs(node.nodeId)}', {status: this.value})">
+                    ${statusOptionsForNode(node).map(s => `<option value="${s}" ${normalizedStatusForNode(node) === s ? 'selected' : ''}>${statusEmoji(s)} ${statusLabel(s)}</option>`).join('')}
+                </select>
+                <button type="button" class="icon-btn" data-task-focus-key="edit:${esc(node.nodeId)}" onclick="openTaskEditor('${escJs(node.nodeId)}')">${esc(t('edit'))}</button>
+            </div>
+            ${(node.children || []).length && !nodeCollapseState[node.nodeId] ? `<div class="overview-children">${renderOverviewNodes(node.children)}</div>` : ''}
+        </div>
+    `).join('');
+}
+
+function openCreateTaskForm() {
+    document.getElementById('taskModalTitle').textContent = t('createTask');
+    document.getElementById('taskModalBody').innerHTML = `
+        <div class="form-grid">
+            <label>${esc(t('title'))}<input id="createNodeTitle" placeholder="${esc(t('createTitlePlaceholder'))}"></label>
+            <label>${esc(t('status'))}
+                <select id="createNodeStatus" class="status-select">
+                    ${['planned','active','blocked','paused','done','archived'].map(s => `<option value="${s}">${statusEmoji(s)} ${statusLabel(s)}</option>`).join('')}
+                </select>
+            </label>
+            <label>${esc(t('parent'))}
+                <select id="createNodeParent" class="status-select">${parentOptions('', '')}</select>
+            </label>
+        </div>
+    `;
+    document.getElementById('taskModalFoot').innerHTML = `
+        <button type="button" class="toolbar-btn" onclick="openOverviewEditor()">${esc(t('backToOverview'))}</button>
+        <button type="button" class="toolbar-btn" onclick="saveNewTask()">${esc(t('create'))}</button>
+    `;
+    queueMicrotask(() => document.getElementById('createNodeTitle')?.focus());
+}
+
+async function saveNewTask() {
+    const title = document.getElementById('createNodeTitle').value.trim();
+    if (!title) return;
+    const parentNodeId = document.getElementById('createNodeParent').value || null;
+    await createAuthorityNode({
+        title,
+        status: document.getElementById('createNodeStatus').value,
+        parentNodeId,
+        nodeType: parentNodeId ? 'subtask' : 'task'
+    });
+    openOverviewEditor();
+}
+
+async function createAuthorityNode(payload) {
+    const res = await fetch('/api/tasks/nodes', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload || {})
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    await loadTaskData();
+}
+
+function dragOverviewNode(event, nodeId) {
+    draggedNodeId = nodeId;
+    event.dataTransfer.effectAllowed = 'move';
+}
+
+function allowOverviewDrop(event) {
+    event.preventDefault();
+}
+
+async function dropOverviewNode(event, parentNodeId) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!draggedNodeId || draggedNodeId === parentNodeId) return;
+    await updateAuthorityNode(draggedNodeId, {parentNodeId});
+    draggedNodeId = null;
+    openOverviewEditor();
+}
+
+async function toggleAuthorityNode(nodeId, currentStatus, manager) {
+    const done = isDoneStatus(currentStatus);
+    const target = manager === 'agent'
+        ? (done ? 'automatic' : 'settled')
+        : (done ? 'active' : 'done');
+    await updateAuthorityNode(nodeId, {status: target});
+}
+
+async function updateAuthorityNode(nodeId, payload) {
+    const activeFocusKey = document.activeElement && document.activeElement.getAttribute
+        ? document.activeElement.getAttribute('data-task-focus-key')
+        : null;
+    const res = await fetch(`/api/tasks/nodes/${encodeURIComponent(nodeId)}`, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload || {})
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    await loadTaskData();
+    restoreTaskFocus('data-task-focus-key', activeFocusKey);
+}
+
+function findUniqueAuthorityNodeByTitle(title) {
+    const normalized = String(title || '').trim();
+    if (!normalized) return null;
+    const matches = authorityNodes.filter(n => String(n.title || '').trim() === normalized && !isArchivedStatus(n.status));
+    return matches.length === 1 ? matches[0] : null;
+}
+
+async function toggleSubtask(el, content, project) {
+    const node = findUniqueAuthorityNodeByTitle(content);
+    if (!node) {
+        await loadTaskData();
+        return;
+    }
+    const li = el.closest('.subtask');
+    const isDone = li.classList.contains('done');
+    const newDone = !isDone;
+    // Optimistic update
+    el.classList.toggle('done');
+    li.classList.toggle('done');
+    el.setAttribute('aria-checked', newDone ? 'true' : 'false');
+    try {
+        await updateAuthorityNode(node.nodeId, {
+            status: newDone ? (nodeManager(node) === 'agent' ? 'settled' : 'done') : (nodeManager(node) === 'agent' ? 'automatic' : 'active'),
+            progress: newDone ? 100 : null,
+            completionMethod: 'task-board-checkbox-ui'
+        });
+    } catch (e) {
+        el.classList.toggle('done');
+        li.classList.toggle('done');
+        el.setAttribute('aria-checked', isDone ? 'true' : 'false');
+    }
+}
+
+document.addEventListener('keydown', event => {
+    const semanticControl = event.target.closest && event.target.closest('[role="button"]:not(button):not(a), [role="checkbox"]');
+    if (semanticControl && (event.key === 'Enter' || event.key === ' ')) {
+        event.preventDefault();
+        semanticControl.click();
+        return;
+    }
+    const modal = document.getElementById('taskModal');
+    if (!modal.classList.contains('active')) return;
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        closeTaskModal();
+        return;
+    }
+    if (event.key !== 'Tab') return;
+    const panel = modal.querySelector('.task-modal');
+    const focusables = taskModalFocusables();
+    if (!focusables.length) {
+        event.preventDefault();
+        panel.focus();
+        return;
+    }
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (!panel.contains(document.activeElement)) {
+        event.preventDefault();
+        first.focus();
+    } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+    }
+});
+
+// ─────────────────────────────────────────────
+// Boot
+// ─────────────────────────────────────────────
+(async function bootTaskBoard() {
+    await ensureTaskLanguageProfile();
+    connectSSE();
+    loadNovaTaskCandidateStatus();
+    loadDirectWritesDiagnostics();
+    loadTaskData().catch(() => {});
+})();
+</script>
+
+</body>
+</html>

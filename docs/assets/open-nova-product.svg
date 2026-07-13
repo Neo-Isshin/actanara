@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc">
+  <title id="title">Open Nova product interface mockup</title>
+  <desc id="desc">A modern Open Nova dashboard mockup with pipeline status, RAG search, task review, and diary timeline panels.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#f7fbff"/>
+      <stop offset="0.48" stop-color="#eef8f6"/>
+      <stop offset="1" stop-color="#fff6f1"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#10243f"/>
+      <stop offset="1" stop-color="#071421"/>
+    </linearGradient>
+    <linearGradient id="cardA" x1="0" x2="1">
+      <stop offset="0" stop-color="#40d6b1"/>
+      <stop offset="1" stop-color="#5aa7ff"/>
+    </linearGradient>
+    <linearGradient id="cardB" x1="0" x2="1">
+      <stop offset="0" stop-color="#ff8f70"/>
+      <stop offset="1" stop-color="#ffd166"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="34" stdDeviation="38" flood-color="#0b1d33" flood-opacity="0.22"/>
+    </filter>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#0f253d" flood-opacity="0.16"/>
+    </filter>
+  </defs>
+  <rect width="1600" height="1000" fill="url(#bg)"/>
+  <circle cx="1330" cy="170" r="170" fill="#d9f7ef" opacity="0.7"/>
+  <circle cx="260" cy="850" r="210" fill="#ffe3d7" opacity="0.8"/>
+  <path d="M130 750 C390 520 495 910 760 690 C930 550 1030 555 1198 700 C1342 824 1442 650 1510 555" fill="none" stroke="#d7e7f3" stroke-width="2"/>
+  <g filter="url(#shadow)">
+    <rect x="185" y="125" width="1230" height="750" rx="34" fill="#f9fbfd"/>
+    <rect x="205" y="145" width="1190" height="710" rx="24" fill="url(#screen)"/>
+  </g>
+  <g transform="translate(205 145)">
+    <rect width="1190" height="64" rx="24" fill="#0c1d31"/>
+    <circle cx="34" cy="32" r="7" fill="#ff7b72"/>
+    <circle cx="58" cy="32" r="7" fill="#ffd166"/>
+    <circle cx="82" cy="32" r="7" fill="#40d6b1"/>
+    <text x="126" y="39" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#ffffff">Open Nova</text>
+    <rect x="980" y="20" width="86" height="24" rx="12" fill="#133556"/>
+    <rect x="1082" y="20" width="78" height="24" rx="12" fill="#40d6b1"/>
+  </g>
+  <g transform="translate(245 245)">
+    <rect width="232" height="560" rx="22" fill="#0d2138" stroke="#1f3d5d"/>
+    <text x="28" y="48" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="700" fill="#e9f6ff">Runtime</text>
+    <g font-family="Inter, Arial, sans-serif" font-size="15" fill="#9fb5c9">
+      <rect x="22" y="78" width="188" height="44" rx="12" fill="#123354"/>
+      <circle cx="44" cy="100" r="6" fill="#40d6b1"/>
+      <text x="62" y="106">Daily Pipeline</text>
+      <circle cx="44" cy="162" r="6" fill="#5aa7ff"/>
+      <text x="62" y="168">Foundation</text>
+      <circle cx="44" cy="222" r="6" fill="#ffd166"/>
+      <text x="62" y="228">Dashboard</text>
+      <circle cx="44" cy="282" r="6" fill="#ff8f70"/>
+      <text x="62" y="288">Nova-RAG</text>
+      <circle cx="44" cy="342" r="6" fill="#b8f7e8"/>
+      <text x="62" y="348">Nova-Task</text>
+    </g>
+    <rect x="22" y="424" width="188" height="100" rx="16" fill="#08182a" stroke="#214360"/>
+    <text x="42" y="460" font-family="Inter, Arial, sans-serif" font-size="13" fill="#7f9ab4">local runtime</text>
+    <text x="42" y="490" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="800" fill="#ffffff">~/.open-nova</text>
+  </g>
+  <g transform="translate(520 245)" filter="url(#soft)">
+    <rect width="780" height="164" rx="24" fill="#f8fbff"/>
+    <text x="30" y="44" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="800" fill="#0d2238">Today foundation health</text>
+    <text x="30" y="76" font-family="Inter, Arial, sans-serif" font-size="13" fill="#688198">Diary, metrics, memory and task evidence are materialized into a local source of truth.</text>
+    <g transform="translate(30 102)">
+      <rect width="150" height="36" rx="18" fill="#e7faf4"/>
+      <circle cx="24" cy="18" r="6" fill="#26c99a"/>
+      <text x="40" y="23" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="700" fill="#0e7d62">pipeline ready</text>
+      <rect x="168" width="126" height="36" rx="18" fill="#eef5ff"/>
+      <text x="192" y="23" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="700" fill="#2465a8">SSE live</text>
+      <rect x="312" width="148" height="36" rx="18" fill="#fff4eb"/>
+      <text x="336" y="23" font-family="Inter, Arial, sans-serif" font-size="13" font-weight="700" fill="#b85f34">doctor clean</text>
+    </g>
+    <path d="M548 112 C590 76 625 130 665 94 C700 64 732 84 756 54" fill="none" stroke="#40d6b1" stroke-width="8" stroke-linecap="round"/>
+  </g>
+  <g transform="translate(520 445)">
+    <rect width="365" height="360" rx="24" fill="#f8fbff" filter="url(#soft)"/>
+    <text x="28" y="44" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="800" fill="#0d2238">RAG memory search</text>
+    <rect x="28" y="72" width="310" height="42" rx="14" fill="#eef5ff"/>
+    <text x="48" y="99" font-family="Inter, Arial, sans-serif" font-size="14" fill="#59748c">deployment issue topK 5</text>
+    <g transform="translate(28 140)">
+      <rect width="310" height="70" rx="16" fill="#ffffff" stroke="#e1edf7"/>
+      <rect x="18" y="18" width="74" height="10" rx="5" fill="#40d6b1"/>
+      <rect x="18" y="40" width="220" height="8" rx="4" fill="#dce9f4"/>
+      <rect x="250" y="24" width="38" height="22" rx="11" fill="#e7faf4"/>
+      <rect y="88" width="310" height="70" rx="16" fill="#ffffff" stroke="#e1edf7"/>
+      <rect x="18" y="106" width="98" height="10" rx="5" fill="#5aa7ff"/>
+      <rect x="18" y="128" width="194" height="8" rx="4" fill="#dce9f4"/>
+      <rect x="250" y="112" width="38" height="22" rx="11" fill="#eef5ff"/>
+      <rect y="176" width="310" height="70" rx="16" fill="#ffffff" stroke="#e1edf7"/>
+      <rect x="18" y="194" width="88" height="10" rx="5" fill="#ff8f70"/>
+      <rect x="18" y="216" width="238" height="8" rx="4" fill="#dce9f4"/>
+      <rect x="250" y="200" width="38" height="22" rx="11" fill="#fff4eb"/>
+    </g>
+  </g>
+  <g transform="translate(930 445)">
+    <rect width="370" height="360" rx="24" fill="#f8fbff" filter="url(#soft)"/>
+    <text x="28" y="44" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="800" fill="#0d2238">Task review board</text>
+    <g transform="translate(28 74)">
+      <rect width="96" height="230" rx="18" fill="#eef5ff"/>
+      <rect x="18" y="22" width="60" height="12" rx="6" fill="#5aa7ff"/>
+      <rect x="18" y="56" width="60" height="56" rx="12" fill="#ffffff"/>
+      <rect x="18" y="128" width="60" height="72" rx="12" fill="#ffffff"/>
+      <rect x="132" width="96" height="230" rx="18" fill="#e7faf4"/>
+      <rect x="150" y="22" width="60" height="12" rx="6" fill="#40d6b1"/>
+      <rect x="150" y="56" width="60" height="86" rx="12" fill="#ffffff"/>
+      <rect x="150" y="158" width="60" height="42" rx="12" fill="#ffffff"/>
+      <rect x="264" width="78" height="230" rx="18" fill="#fff4eb"/>
+      <rect x="282" y="22" width="42" height="12" rx="6" fill="#ff8f70"/>
+      <rect x="282" y="56" width="42" height="126" rx="12" fill="#ffffff"/>
+    </g>
+    <rect x="28" y="318" width="146" height="20" rx="10" fill="url(#cardA)"/>
+    <rect x="190" y="318" width="92" height="20" rx="10" fill="url(#cardB)"/>
+  </g>
+  <g transform="translate(618 836)">
+    <rect width="364" height="14" rx="7" fill="#d8e4ee"/>
+    <rect x="72" y="38" width="220" height="18" rx="9" fill="#c3d4e1"/>
+  </g>
+</svg>

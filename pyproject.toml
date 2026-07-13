@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools>=77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "open-nova"
+version = "1.0.0"
+description = "Open Nova local diary runtime, pipeline, dashboard, nova-RAG, and task system."
+readme = "README.md"
+authors = [
+  { name = "Neo-Isshin", email = "nxc8335@gmail.com" },
+]
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/Neo-Isshin/open-nova"
+Repository = "https://github.com/Neo-Isshin/open-nova"
+Issues = "https://github.com/Neo-Isshin/open-nova/issues"
+
+[project.optional-dependencies]
+dashboard = [
+  "fastapi>=0.110,<1",
+  "uvicorn>=0.29,<1",
+  "PyYAML>=6,<7",
+  "croniter>=2,<7",
+]
+rag-server = [
+  "numpy>=1.26,<3",
+  "fastapi>=0.110,<1",
+  "uvicorn>=0.29,<1",
+  "pydantic>=2,<3",
+]
+rag-local = [
+  "sentence-transformers>=3,<6",
+  "torch>=2,<3",
+  "numpy>=1.26,<3",
+  "fastapi>=0.110,<1",
+  "uvicorn>=0.29,<1",
+  "pydantic>=2,<3",
+]
+dev-test = [
+  "fastapi>=0.110,<1",
+  "uvicorn>=0.29,<1",
+  "PyYAML>=6,<7",
+  "croniter>=2,<7",
+  "numpy>=1.26,<3",
+]
+
+[project.scripts]
+open-nova = "data_foundation.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src", "app" = "src/dashboard/app", "advanced" = "advanced"}
+py-modules = ["config"]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src", "src/dashboard", "."]
+include = ["agentic_rag*", "app*", "data_foundation*", "diary_generator*", "ai_assets_center*", "advanced*"]
+
+[tool.setuptools.package-data]
+"data_foundation" = ["migrations/*.sql", "migration_compatibility.json"]
+"app" = ["static/*.html", "static/css/*.css", "static/js/*.js", "static/img/*.png"]
+"agentic_rag" = ["rag_eval_queries.jsonl", "rag_eval_queries.en.jsonl", "rag_eval_queries.zh.jsonl"]

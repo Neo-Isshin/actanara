@@ -1,0 +1,6 @@
+{"id":"rag-current-task","query":"RAG current task coverage governance","topK":8,"expect":{"sourceSets":["task-board-snapshot"],"lifecycles":["current-state"],"workTypes":["task"],"minResults":1}}
+{"id":"rag-diary-summary","query":"RAG sourceSets coverage diary markdown","topK":8,"expect":{"sourceSets":["diary-markdown-sections"],"lifecycles":["narrative"],"minResults":1}}
+{"id":"rag-lessons-decisions","query":"RAG lessons decisions promote candidate","topK":8,"expect":{"sourceSets":["lessons"],"lifecycles":["canonical"],"minResults":1}}
+{"id":"rag-technical-history","query":"RAG technical report task events sourceSets","topK":8,"expect":{"sourceSets":["technical-report-task-events"],"lifecycles":["task-history"],"workTypes":["task"],"minResults":1}}
+{"id":"rag-filtered-dialogue","query":"RAG governance coverage filtered dialogue","topK":8,"expect":{"sourceSets":["filtered-dialogue-daily"],"lifecycles":["episodic"],"minResults":1}}
+{"id":"rag-period-summary","query":"RAG weekly period projection summary","topK":8,"expect":{"sourceSets":["foundation-period-projections"],"lifecycles":["period-summary"],"minResults":1}}

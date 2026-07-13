@@ -1,0 +1,2 @@
+{"ts":1779159600000,"jobId":"cron-session","sessionId":"cron-session","action":"finished","model":"cron-model","usage":{"input_tokens":4,"output_tokens":1,"cacheRead":2}}
+{"ts":1779163200000,"jobId":"cron-session","sessionId":"cron-second-run","action":"finished","model":"cron-model","usage":{"input_tokens":4,"output_tokens":1,"cacheRead":2}}

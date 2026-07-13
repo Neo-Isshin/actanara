@@ -1,0 +1,43 @@
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+wheelhouse/
+
+# Node / Playwright
+node_modules/
+playwright-report/
+test-results/
+
+# Local config and secrets
+.env
+.env.*
+!.env.example
+
+# Runtime state
+*.db
+*.sqlite
+*.sqlite3
+*.log
+tmp/
+.playwright-cli/
+
+# Generated Nova/Open Nova artifacts
+artifacts/
+snapshots/
+state/
+reserved/
+nova_tasks.db
+src/dashboard/uvicorn.log

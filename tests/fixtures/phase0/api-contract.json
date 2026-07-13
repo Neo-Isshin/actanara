@@ -1,0 +1,30 @@
+{
+  "aiAssetsTopLevelFields": [
+    "timestamp",
+    "tools",
+    "totalTokens",
+    "totalMessages",
+    "totalSessions",
+    "agents",
+    "agentCount",
+    "diary",
+    "memory",
+    "skills",
+    "git",
+    "mattermost",
+    "rag",
+    "cronJobs",
+    "storage",
+    "infrastructure",
+    "toolConfigs",
+    "trend30d",
+    "models",
+    "workspaceUsage",
+    "agentTree",
+    "updatedAt"
+  ],
+  "weeklyEndpoint": "/api/weekly-report",
+  "weeklyCompatibilityQuery": "include_assets=true",
+  "readSourceDuringPhase01": "legacy",
+  "ragReadSourceDuringPhase01": "legacy"
+}

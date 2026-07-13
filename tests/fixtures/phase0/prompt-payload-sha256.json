@@ -1,0 +1,12 @@
+{
+  "narrative.PROMPT_PARTIAL": "0117fadd3356c4de9004173397aa54e5c6ea0d4ba0594ebd670746abe60572fe",
+  "narrative.PROMPT_INTEGRATION": "b78dc99c175be1977e43d62c0b915158ae182a323cc6691279e0fa991bff99f0",
+  "narrative.system.partial": "e5bb7c2c045c11f788e9b77d2d25c5c58b97b3b970b404ae1c52f3fe24c52755",
+  "narrative.system.integration": "3840f0b73cd23076d853aa3681441809caa027e2a15e83be5a086288fd0fcd3e",
+  "technical.TASK_RULES": "4b5075e86916c0d56da285e1d8e290297bf4d075f2dfe6109cc30b2da1f8c97c",
+  "technical.SYSTEM_PROMPT": "782b24a9ac48b8f5c56fee9451d169d69e5417afff6375fe0f5d228c48f11bbb",
+  "technical.PROMPT_TECHNICAL_PARTIAL": "4296249128503572022c38c8ec2c0c95b226bba586ed6f7acf5520c0bcb2b229",
+  "technical.PROMPT_TECHNICAL_INTEGRATION": "a31b3ccc01df0274a5458de8972df629d0300a38c0e9182edbc5ea0d5f7b954a",
+  "learning.PROMPT_LEARNING": "18352c7383bac8fd0b1a3f3d60d3faa6bb2bb76f7ad3d4edae804c90a3be6826",
+  "learning.system": "ea029039e5e4204f28b32ece17d7000bf36d8dd441a5c325a36f4a83fff4808e"
+}

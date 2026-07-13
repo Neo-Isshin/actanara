@@ -1,0 +1,244 @@
+{
+  "schemaVersion": 1,
+  "readOnly": true,
+  "dryRunOnly": true,
+  "oneLinerState": "v1-apply-ready",
+  "applyState": "runtime-bootstrap-apply-implemented",
+  "applyImplemented": true,
+  "installerImplemented": false,
+  "profileModel": "product-v2",
+  "selectedProfiles": [
+    "open-nova",
+    "dashboard",
+    "nova-task"
+  ],
+  "requiredInputs": [
+    "output-path",
+    "llm-provider",
+    "llm-api-key"
+  ],
+  "dependencyGroups": [
+    "open-nova",
+    "dashboard",
+    "nova-task"
+  ],
+  "requirementSets": [
+    "open-nova-core",
+    "dashboard",
+    "nova-task"
+  ],
+  "packagingPlan": {
+    "selectedGroups": [
+      "base",
+      "dashboard",
+      "nova-task"
+    ],
+    "pendingProviderDerivedGroups": 0,
+    "installsDependencies": false,
+    "schedulerIncluded": false
+  },
+  "installerV2Plan": {
+    "contractOnly": true,
+    "installerImplemented": true,
+    "manifestAuthority": {
+      "path": "pyproject.toml",
+      "dependencyAuthority": "project.dependencies-and-project.optional-dependencies",
+      "defaultInstallSpec": ".[dashboard]",
+      "installIntentVocabulary": "packagingPlan.groups[].id",
+      "pyprojectExtraByInstallIntent": {
+        "dashboard": "dashboard",
+        "nova-rag-local": "rag-local",
+        "nova-rag-cloud": "rag-server",
+        "dev-test": "dev-test"
+      }
+    },
+    "defaultInstallGroups": [
+      "base",
+      "dashboard",
+      "nova-task"
+    ],
+    "defaultSelectedProfiles": [
+      "open-nova",
+      "dashboard",
+      "nova-task"
+    ],
+    "ordinaryWizardChoiceGroups": [
+      "nova-rag"
+    ],
+    "fixedWizardGroups": [
+      "base",
+      "dashboard",
+      "nova-task"
+    ],
+    "advancedCliOnlyGroups": [
+      "dev-test"
+    ],
+    "optInGroups": [
+      "nova-rag-local",
+      "dev-test"
+    ],
+    "legacyPyprojectOptInExtras": [
+      "rag-local",
+      "dev-test"
+    ],
+    "heavyLocalRagOptIn": true,
+    "dependencyInstallation": {
+      "allowedByDecision": true,
+      "implementedInCurrentPhase": true,
+      "installsDependenciesInCurrentPhase": true,
+      "createsVirtualenvByDecision": true,
+      "createsVirtualenvInCurrentPhase": true,
+      "invokesPipInCurrentPhase": true,
+      "invokesGitInCurrentPhase": false,
+      "defaultInstallSpec": ".[dashboard]",
+      "ragLocalInstallSpec": ".[rag-local]",
+      "ragLocalInstallIntent": "nova-rag-local",
+      "pyprojectExtraByInstallIntent": {
+        "dashboard": "dashboard",
+        "nova-rag-local": "rag-local",
+        "nova-rag-cloud": "rag-server",
+        "dev-test": "dev-test"
+      }
+    },
+    "dashboardServer": {
+      "installOption": "start-dashboard-server-service",
+      "defaultEnabled": true,
+      "enabled": true,
+      "optOutFlag": "--no-dashboard-server",
+      "serviceStartImplementedInCurrentPhase": true,
+      "requiredForFeatures": [
+        "realtime-overview",
+        "task-board-ui"
+      ],
+      "disabledImpact": "realtime overview and task board UI are unavailable when the Dashboard server is disabled; static snapshot pages such as AI Assets remain available",
+      "novaTaskUnaffected": true,
+      "novaTaskAuthority": "data_foundation.nova_task"
+    },
+    "rag": {
+      "enabled": false,
+      "embeddingServerDeploymentOption": "deploy-embedding-server",
+      "deployEmbeddingServerSelected": false,
+      "deploymentMode": "background-after-installer",
+      "blocksInstaller": false,
+      "expectedDuration": "long-running",
+      "implementedInCurrentPhase": true,
+      "requiresRagLocalExtra": true,
+      "installIntent": "nova-rag-local",
+      "pyprojectExtra": "rag-local",
+      "installSpec": ".[rag-local]"
+    },
+    "runtime": {
+      "installTarget": "~/.open-nova",
+      "activeRuntimePointer": "~/.config/open-nova/location.json"
+    }
+  },
+  "commandDraft": {
+    "id": "open-nova-onboarding-one-liner",
+    "copyPasteReady": true,
+    "executesShell": false
+  },
+  "blockedApplyCommand": {
+    "implemented": true,
+    "blocked": true,
+    "exitCode": 1,
+    "display": "open-nova onboarding apply",
+    "writeContractIncluded": true
+  },
+  "applyWriteContract": {
+    "schemaVersion": 1,
+    "readOnly": true,
+    "applyImplemented": false,
+    "writesAllowed": false,
+    "selectedProfiles": [
+      "open-nova",
+      "dashboard",
+      "nova-task"
+    ]
+  },
+  "executionPolicy": {
+    "allowed": false,
+    "writesSettings": false,
+    "installsDependencies": false,
+    "createsVirtualenv": false,
+    "registersScheduler": false,
+    "writesExternalAgentSkills": false,
+    "mutatesPromptPayloads": false,
+    "changesRagAuthority": false,
+    "changesNovaTaskAuthority": false,
+    "oneLinerApplyImplemented": true
+  },
+  "safetyPolicy": {
+    "dryRunFirst": true,
+    "exactConfirmationRequired": true,
+    "nonInteractiveYesAllowed": false,
+    "writesSettings": false,
+    "registersScheduler": false,
+    "installsDependencies": false,
+    "createsPackageMetadata": false,
+    "productionCleanExtraction": false,
+    "mutatesPromptPayloads": false,
+    "changesRagRetrievalOrIndexAuthority": false,
+    "changesNovaTaskAuthority": false
+  },
+  "schedulerPlan": {
+    "platformTarget": "macos-first",
+    "provider": "launchd-user",
+    "applyImplemented": false,
+    "registrationPlanned": true,
+    "dryRunOnly": true,
+    "confirmationPhrase": "REGISTER OPEN NOVA SCHEDULER",
+    "auditRequired": true,
+    "auditPath": "$NOVA_HOME/state/onboarding/onboarding-audit.jsonl",
+    "rollbackRequired": true,
+    "rollbackConfirmationPhrase": "UNREGISTER OPEN NOVA SCHEDULER",
+    "stdoutStderrPolicy": "under-runtime-log-dir"
+  },
+  "ragReadiness": {
+    "selected": false,
+    "providerMode": "disabled",
+    "readinessState": "rag-disabled",
+    "allowedReadinessStates": [
+      "rag-disabled",
+      "rag-provider-pending",
+      "rag-local-dependencies-missing",
+      "rag-local-ready",
+      "rag-cloud-config-missing",
+      "rag-cloud-ready",
+      "rag-sync-skipped",
+      "rag-sync-complete"
+    ],
+    "finalSyncPolicy": "skip-disabled",
+    "finalSyncRequiresReadyProvider": true,
+    "skipReason": "nova-RAG profile is not selected.",
+    "cloudConfigFields": [
+      "provider",
+      "endpoint",
+      "model",
+      "dimension",
+      "apiKeyEnv",
+      "batchSize",
+      "timeoutSeconds",
+      "indexingSourceSets",
+      "syncPolicy"
+    ],
+    "cloudApiCalls": false,
+    "installsLocalDependencies": false,
+    "changesRagRetrievalOrIndexAuthority": false
+  },
+  "sourceBoundaryApprovals": {
+    "phase": 35,
+    "document": "docs/phase35-operator-boundary-approval-matrix.md",
+    "status": "approved-direction-for-design",
+    "dashboard": "required-product-profile-service-can-opt-out",
+    "ragFinalSync": "profile-gated-post-pipeline-index-sync",
+    "ragProviderRequired": true,
+    "novaTaskAuthority": "data_foundation.nova_task",
+    "platformTarget": "macos-first",
+    "schedulerApply": "approved-for-design-blocked-for-implementation",
+    "ragCloudConfig": "standard-config-surface-required"
+  },
+  "dryRunStepContract": {
+    "executesShell": false,
+    "allowsWouldWritePreview": true
+  }
+}

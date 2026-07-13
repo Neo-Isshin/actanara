@@ -1,0 +1,2 @@
+{"type":"message","sessionId":"openclaw-session","timestamp":"2026-05-18T19:59:59Z","message":{"role":"assistant","model":"m-before","usage":{"input":99,"output":99,"cacheRead":99}}}
+{"type":"message","sessionId":"openclaw-session","timestamp":"2026-05-18T20:00:00Z","message":{"role":"assistant","model":"m-open","usage":{"input":10,"output":2,"cacheRead":3,"cacheWrite":500}}}

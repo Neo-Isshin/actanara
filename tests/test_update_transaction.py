@@ -1,0 +1,2991 @@
+import hashlib
+import http.server
+import json
+import os
+import plistlib
+import shutil
+import signal
+import socket
+import sqlite3
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import unittest
+from contextlib import closing
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+HELPER = ROOT / "install" / "update_transaction.py"
+
+
+class UpdateTransactionTests(unittest.TestCase):
+    BASE_MIGRATION_VERSION = "0001_initial"
+    BASE_MIGRATION_BODY = "CREATE TABLE fixture_migration (id INTEGER PRIMARY KEY);\n"
+    MIGRATION_POLICY = "rollback-compatible-additive-only"
+    PRE_COMMIT_WRITER_CONTRACT = "prior-reader-compatible-v1"
+
+    def _run(
+        self,
+        *args: str,
+        check: bool = True,
+        env: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        result = subprocess.run(
+            [sys.executable, str(HELPER), *args],
+            env={**os.environ, **(env or {})},
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+        if check and result.returncode != 0:
+            self.fail(result.stdout + result.stderr)
+        return result
+
+    def _migration_set_sha256(self, records: list[dict[str, str]]) -> str:
+        digest = hashlib.sha256()
+        for record in records:
+            digest.update(record["version"].encode("ascii"))
+            digest.update(b"\0")
+            digest.update(record["sha256"].encode("ascii"))
+            digest.update(b"\0")
+            digest.update(record["rollbackClass"].encode("ascii"))
+            digest.update(b"\n")
+        return digest.hexdigest()
+
+    def _write_prior_migrations(
+        self,
+        source: Path,
+        migrations: list[tuple[str, str]],
+    ) -> None:
+        migrations_root = source / "src" / "data_foundation" / "migrations"
+        migrations_root.mkdir(parents=True, exist_ok=True)
+        for existing in migrations_root.glob("*.sql"):
+            existing.unlink()
+        for version, body in migrations:
+            (migrations_root / f"{version}.sql").write_text(body, encoding="utf-8")
+
+    def _write_candidate_source(
+        self,
+        source: Path,
+        migrations: list[tuple[str, str, str]],
+        *,
+        include_contract: bool = True,
+    ) -> None:
+        migrations_root = source / "src" / "data_foundation" / "migrations"
+        migrations_root.mkdir(parents=True, exist_ok=True)
+        for existing in migrations_root.glob("*.sql"):
+            existing.unlink()
+        records: list[dict[str, str]] = []
+        for version, body, rollback_class in sorted(migrations):
+            migration_path = migrations_root / f"{version}.sql"
+            migration_path.write_text(body, encoding="utf-8")
+            records.append(
+                {
+                    "version": version,
+                    "sha256": hashlib.sha256(migration_path.read_bytes()).hexdigest(),
+                    "rollbackClass": rollback_class,
+                }
+            )
+
+        contract_path = source / "src" / "data_foundation" / "migration_compatibility.json"
+        contract_path.unlink(missing_ok=True)
+        compatibility = {
+            "schemaVersion": 1,
+            "policy": self.MIGRATION_POLICY,
+            "preCommitWriterContract": self.PRE_COMMIT_WRITER_CONTRACT,
+            "minimumReadableSchema": "unversioned",
+            "maximumReadableSchema": records[-1]["version"],
+            "migrationSetSha256": self._migration_set_sha256(records),
+            "migrations": records,
+        }
+        if include_contract:
+            contract_path.write_text(
+                json.dumps(
+                    {
+                        key: compatibility[key]
+                        for key in (
+                            "schemaVersion",
+                            "policy",
+                            "preCommitWriterContract",
+                            "minimumReadableSchema",
+                            "maximumReadableSchema",
+                            "migrations",
+                        )
+                    },
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+        payload_paths = [source / "pyproject.toml", *sorted(migrations_root.glob("*.sql"))]
+        if include_contract:
+            payload_paths.append(contract_path)
+        payload_records: list[dict[str, object]] = []
+        aggregate = hashlib.sha256()
+        for path in sorted(payload_paths, key=lambda item: item.relative_to(source).as_posix()):
+            content = path.read_bytes()
+            relative = path.relative_to(source).as_posix()
+            file_hash = hashlib.sha256(content).hexdigest()
+            payload_records.append(
+                {"path": relative, "sha256": file_hash, "size": len(content)}
+            )
+            aggregate.update(relative.encode("utf-8"))
+            aggregate.update(b"\0")
+            aggregate.update(file_hash.encode("ascii"))
+            aggregate.update(b"\n")
+        manifest = {
+            "schemaVersion": 2,
+            "product": "open-nova",
+            "sourceLocator": {
+                "kind": "login-home-relative",
+                "pathComponents": ["fixture", "candidate-source"],
+            },
+            "deployedSourceLocator": {
+                "kind": "runtime-relative",
+                "pathComponents": ["app", "source"],
+            },
+            "releaseLocator": {
+                "kind": "runtime-relative",
+                "pathComponents": ["app", "releases", "fixture-tx"],
+            },
+            "deploymentMode": "release-symlink",
+            "copiedAt": "2026-07-11T00:00:00+00:00",
+            "pyprojectVersion": "1",
+            "git": {
+                "available": False,
+                "commit": None,
+                "branch": None,
+                "remote": None,
+                "dirty": None,
+            },
+            "cleanScan": {
+                "status": "passed",
+                "scanner": "data_foundation.release_clean.repository_clean_deployment_check",
+                "scannedFiles": len(payload_records),
+                "findingCount": 0,
+            },
+            "payload": {
+                "fileCount": len(payload_records),
+                "files": payload_records,
+                "sha256": aggregate.hexdigest(),
+            },
+        }
+        manifest["databaseCompatibility"] = compatibility
+        (source / ".open-nova-runtime-source.json").write_text(
+            json.dumps(manifest, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+    def _fixture(self, root: Path) -> dict[str, Path]:
+        home = root / "Home"
+        runtime = home / ".open-nova"
+        old_source = runtime / "app" / "releases" / "old"
+        candidate_source = root / "candidate-source-template"
+        candidate_venv = root / "candidate-venv-template"
+        old_venv = runtime / ".venv"
+        for path in (
+            old_source,
+            candidate_source,
+            candidate_venv / "bin",
+            old_venv / "bin",
+            runtime / "config",
+            runtime / "data",
+            runtime / "bin",
+            home / ".local" / "bin",
+        ):
+            path.mkdir(parents=True, exist_ok=True)
+        (runtime / "app" / "source").symlink_to("releases/old")
+        (old_source / "pyproject.toml").write_text('[project]\nname="old"\nversion="0"\n', encoding="utf-8")
+        (old_source / ".open-nova-runtime-source.json").write_text('{"release":"old"}\n', encoding="utf-8")
+        self._write_prior_migrations(
+            old_source,
+            [(self.BASE_MIGRATION_VERSION, self.BASE_MIGRATION_BODY)],
+        )
+        candidate_pyproject = candidate_source / "pyproject.toml"
+        candidate_pyproject.write_text('[project]\nname="candidate"\nversion="1"\n', encoding="utf-8")
+        self._write_candidate_source(
+            candidate_source,
+            [
+                (
+                    self.BASE_MIGRATION_VERSION,
+                    self.BASE_MIGRATION_BODY,
+                    "rollback-compatible-additive",
+                )
+            ],
+        )
+        (old_venv / "bin" / "python").write_text("old-venv\n", encoding="utf-8")
+        (candidate_venv / "bin" / "python").write_text("candidate-venv\n", encoding="utf-8")
+        (runtime / "config" / "settings.json").write_text('{"dashboard":{"port":42173}}\n', encoding="utf-8")
+        (runtime / "config" / "runtime.json").write_text('{"runtime":"old"}\n', encoding="utf-8")
+        database = runtime / "data" / "nova_data.sqlite3"
+        with closing(sqlite3.connect(database)) as connection:
+            self.assertEqual(connection.execute("PRAGMA journal_mode = WAL").fetchone(), ("wal",))
+            connection.execute("PRAGMA wal_autocheckpoint = 0")
+            connection.execute(
+                "CREATE TABLE update_evidence (id INTEGER PRIMARY KEY, value TEXT NOT NULL UNIQUE)"
+            )
+            connection.execute("INSERT INTO update_evidence(value) VALUES ('before-update')")
+            connection.execute(
+                "CREATE TABLE schema_migrations (version TEXT PRIMARY KEY, applied_at TEXT NOT NULL)"
+            )
+            connection.execute(
+                "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                (self.BASE_MIGRATION_VERSION, "2026-07-11T00:00:00+00:00"),
+            )
+            connection.commit()
+            connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        (runtime / "bin" / "open-nova").write_text("old-cli\n", encoding="utf-8")
+        return {
+            "home": home,
+            "runtime": runtime,
+            "candidate_source": candidate_source,
+            "candidate_venv": candidate_venv,
+            "settings": runtime / "config" / "settings.json",
+            "database": database,
+            "location": root / "location.json",
+            "user_cli": home / ".local" / "bin" / "open-nova",
+            "desktop": home / "Desktop" / "Open Nova",
+            "profile": home / ".zprofile",
+        }
+
+    def _database_values(self, path: Path) -> list[str]:
+        connection = sqlite3.connect(path)
+        try:
+            return [
+                str(row[0])
+                for row in connection.execute("SELECT value FROM update_evidence ORDER BY id")
+            ]
+        finally:
+            connection.close()
+
+    def _database_integrity(self, path: Path) -> str:
+        connection = sqlite3.connect(path)
+        try:
+            return str(connection.execute("PRAGMA integrity_check").fetchone()[0])
+        finally:
+            connection.close()
+
+    def _pid_alive(self, pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+
+    def _start_health_server(self) -> tuple[http.server.ThreadingHTTPServer, threading.Thread, int]:
+        class HealthHandler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                body = b'{"status":"ok"}\n'
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, _format: str, *_args: object) -> None:
+                return
+
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), HealthHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        return server, thread, int(server.server_address[1])
+
+    def _write_stateful_fake_launchctl(
+        self,
+        path: Path,
+        *,
+        state_dir: Path,
+        calls_path: Path,
+    ) -> None:
+        path.write_text(
+            f"#!{sys.executable}\n"
+            "import sys\n"
+            "from pathlib import Path\n"
+            f"state = Path({str(state_dir)!r})\n"
+            f"calls = Path({str(calls_path)!r})\n"
+            "with calls.open('a', encoding='utf-8') as handle:\n"
+            "    handle.write(' '.join(sys.argv[1:]) + '\\n')\n"
+            "command = sys.argv[1]\n"
+            "if command == 'print':\n"
+            "    label = sys.argv[2].rsplit('/', 1)[-1]\n"
+            "    value = state / label\n"
+            "    if not value.is_file():\n"
+            "        raise SystemExit(113)\n"
+            "    print('state = ' + value.read_text(encoding='utf-8').strip())\n"
+            "elif command == 'bootout':\n"
+            "    label = sys.argv[2].rsplit('/', 1)[-1]\n"
+            "    (state / label).unlink(missing_ok=True)\n"
+            "elif command == 'bootstrap':\n"
+            "    label = Path(sys.argv[-1]).stem\n"
+            "    (state / label).write_text('waiting\\n', encoding='utf-8')\n"
+            "elif command == 'kickstart':\n"
+            "    label = sys.argv[-1].rsplit('/', 1)[-1]\n"
+            "    (state / label).write_text('running\\n', encoding='utf-8')\n",
+            encoding="utf-8",
+        )
+        path.chmod(0o755)
+
+    def _write_runtime_plist(self, path: Path, *, label: str, runtime: Path) -> None:
+        with path.open("wb") as handle:
+            plistlib.dump(
+                {
+                    "Label": label,
+                    "ProgramArguments": [str(runtime / ".venv" / "bin" / "python")],
+                    "EnvironmentVariables": {"NOVA_HOME": str(runtime)},
+                },
+                handle,
+            )
+
+    def _begin(
+        self,
+        fixture: dict[str, Path],
+        *,
+        owner_pid: int,
+        platform: str = "Linux",
+        launchctl: str = "/usr/bin/true",
+        uid: int = 0,
+        materialize_candidates: bool = True,
+    ) -> Path:
+        result = self._run(
+            "begin",
+            "--runtime",
+            str(fixture["runtime"]),
+            "--home",
+            str(fixture["home"]),
+            "--source-pointer",
+            str(fixture["runtime"] / "app" / "source"),
+            "--venv-pointer",
+            str(fixture["runtime"] / ".venv"),
+            "--mode",
+            "upgrade",
+            "--tx-id",
+            "fixture-tx",
+            "--owner-pid",
+            str(owner_pid),
+            "--platform",
+            platform,
+            "--launchctl",
+            launchctl,
+            "--uid",
+            str(uid),
+        )
+        journal = Path(result.stdout.strip())
+        if not materialize_candidates:
+            return journal
+        source_template = fixture["candidate_source"]
+        source_temporary = Path(
+            self._run(
+                "reserve-artifact",
+                "--state",
+                str(journal),
+                "--kind",
+                "source-temp",
+            ).stdout.strip()
+        )
+        shutil.copytree(source_template, source_temporary, dirs_exist_ok=True, symlinks=True)
+        source_candidate = Path(
+            self._run(
+                "promote-source-artifact",
+                "--state",
+                str(journal),
+            ).stdout.strip()
+        )
+        venv_template = fixture["candidate_venv"]
+        venv_candidate = Path(
+            self._run(
+                "reserve-artifact",
+                "--state",
+                str(journal),
+                "--kind",
+                "venv",
+            ).stdout.strip()
+        )
+        shutil.copytree(venv_template, venv_candidate, dirs_exist_ok=True, symlinks=True)
+        fixture["candidate_source"] = source_candidate
+        fixture["candidate_venv"] = venv_candidate
+        return journal
+
+    def _mark_transaction_owner_dead(self, journal: Path) -> None:
+        state = json.loads(journal.read_text(encoding="utf-8"))
+        state["ownerPid"] = 999_999_999
+        state["ownerProcessIdentity"] = "test-dead-owner"
+        journal.write_text(json.dumps(state, sort_keys=True) + "\n", encoding="utf-8")
+
+        owner_path = journal.parent / "owner.json"
+        owner = json.loads(owner_path.read_text(encoding="utf-8"))
+        owner["ownerPid"] = state["ownerPid"]
+        owner["ownerProcessIdentity"] = state["ownerProcessIdentity"]
+        # owner.json and the Runtime lock are paired hard links.  Rewrite the
+        # shared inode in place so recovery still validates their provenance.
+        with owner_path.open("r+", encoding="utf-8") as handle:
+            handle.seek(0)
+            handle.write(json.dumps(owner, sort_keys=True) + "\n")
+            handle.truncate()
+            handle.flush()
+            os.fsync(handle.fileno())
+
+    def _record_and_verify_source_candidate(
+        self,
+        fixture: dict[str, Path],
+        journal: Path,
+    ) -> None:
+        self._run(
+            "record-candidate",
+            "--state",
+            str(journal),
+            "--kind",
+            "source",
+            "--candidate",
+            str(fixture["candidate_source"]),
+        )
+        self._run("verify-migration-compatibility", "--state", str(journal))
+        self._run(
+            "record-candidate",
+            "--state",
+            str(journal),
+            "--kind",
+            "venv",
+            "--candidate",
+            str(fixture["candidate_venv"]),
+        )
+
+    def _prepare_and_promote(self, fixture: dict[str, Path], journal: Path) -> None:
+        self._record_and_verify_source_candidate(fixture, journal)
+        self._run("stop", "--state", str(journal))
+        self._run(
+            "capture-mutable",
+            "--state",
+            str(journal),
+            "--location",
+            str(fixture["location"]),
+            "--cli-shim",
+            str(fixture["runtime"] / "bin" / "open-nova"),
+            "--user-cli-shim",
+            str(fixture["user_cli"]),
+            "--desktop-link",
+            str(fixture["desktop"]),
+            "--shell-profile",
+            str(fixture["profile"]),
+        )
+        self._run("promote", "--state", str(journal))
+
+    def test_begin_preserves_preexisting_reserved_artifact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            occupied = fixture["runtime"] / "app" / "venvs" / "fixture-tx"
+            occupied.mkdir(parents=True)
+            sentinel = occupied / "operator-owned.txt"
+            sentinel.write_text("preserve\n", encoding="utf-8")
+
+            result = self._run(
+                "begin",
+                "--runtime",
+                str(fixture["runtime"]),
+                "--home",
+                str(fixture["home"]),
+                "--source-pointer",
+                str(fixture["runtime"] / "app" / "source"),
+                "--venv-pointer",
+                str(fixture["runtime"] / ".venv"),
+                "--mode",
+                "upgrade",
+                "--tx-id",
+                "fixture-tx",
+                "--owner-pid",
+                str(os.getpid()),
+                "--platform",
+                "Linux",
+                "--launchctl",
+                "/usr/bin/true",
+                "--uid",
+                "0",
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertEqual(sentinel.read_text(encoding="utf-8"), "preserve\n")
+            self.assertFalse(
+                (fixture["runtime"] / "app" / ".update-transaction.lock").exists()
+            )
+
+    def test_begin_rejects_owner_pid_that_is_not_its_ancestor(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            unrelated = subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(60)"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            try:
+                result = self._run(
+                    "begin",
+                    "--runtime",
+                    str(fixture["runtime"]),
+                    "--home",
+                    str(fixture["home"]),
+                    "--source-pointer",
+                    str(fixture["runtime"] / "app" / "source"),
+                    "--venv-pointer",
+                    str(fixture["runtime"] / ".venv"),
+                    "--mode",
+                    "upgrade",
+                    "--tx-id",
+                    "fixture-tx",
+                    "--owner-pid",
+                    str(unrelated.pid),
+                    "--platform",
+                    "Linux",
+                    "--launchctl",
+                    "/usr/bin/true",
+                    "--uid",
+                    "0",
+                    check=False,
+                )
+            finally:
+                unrelated.terminate()
+                unrelated.wait(timeout=5)
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("ancestor installer process", result.stderr)
+            self.assertFalse(
+                (fixture["runtime"] / "app" / ".update-transaction.lock").exists()
+            )
+
+    def test_zsh_command_substitution_helpers_accept_installer_ancestor(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            script = r'''
+set -e
+journal="$("$PYTHON" "$HELPER" begin \
+  --runtime "$RUNTIME" --home "$TEST_HOME" \
+  --source-pointer "$RUNTIME/app/source" --venv-pointer "$RUNTIME/.venv" \
+  --mode upgrade --tx-id fixture-tx --owner-pid "$$" \
+  --platform Linux --launchctl /usr/bin/true --uid 0)"
+reserved="$("$PYTHON" "$HELPER" reserve-artifact \
+  --state "$journal" --kind source-temp)"
+print -r -- "$journal"
+print -r -- "$reserved"
+"$PYTHON" "$HELPER" rollback --state "$journal"
+'''
+            result = subprocess.run(
+                ["/bin/zsh", "-c", script],
+                env={
+                    **os.environ,
+                    "PYTHON": sys.executable,
+                    "HELPER": str(HELPER),
+                    "RUNTIME": str(fixture["runtime"]),
+                    "TEST_HOME": str(fixture["home"]),
+                },
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            journal_text, reserved_text = result.stdout.splitlines()
+            self.assertEqual(
+                Path(journal_text).resolve(),
+                (
+                    fixture["runtime"]
+                    / "app"
+                    / "update-transactions"
+                    / "fixture-tx"
+                    / "journal.json"
+                ).resolve(),
+            )
+            self.assertFalse(Path(reserved_text).exists())
+            self.assertFalse(
+                (fixture["runtime"] / "app" / ".update-transaction.lock").exists()
+            )
+
+    def test_rollback_refuses_replaced_candidate_artifact_without_deleting_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            candidate = fixture["candidate_source"]
+            shutil.rmtree(candidate)
+            candidate.mkdir()
+            sentinel = candidate / "foreign.txt"
+            sentinel.write_text("foreign\n", encoding="utf-8")
+
+            result = self._run("rollback", "--state", str(journal), check=False)
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertEqual(sentinel.read_text(encoding="utf-8"), "foreign\n")
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertEqual(state["status"], "rollback-failed")
+            self.assertTrue(
+                any(error.startswith("candidate-artifacts:") for error in state["rollbackErrors"])
+            )
+
+    def test_transaction_directory_symlink_swap_is_rejected_without_external_delete(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._fixture(root)
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            original = journal.parent
+            moved = root / "moved-transaction"
+            original.rename(moved)
+            original.symlink_to(moved, target_is_directory=True)
+            sentinel = moved / "external-evidence.txt"
+            sentinel.write_text("preserve\n", encoding="utf-8")
+
+            result = self._run("rollback", "--state", str(journal), check=False)
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("managed directory", result.stderr)
+            self.assertEqual(sentinel.read_text(encoding="utf-8"), "preserve\n")
+
+    def test_command_lock_symlink_hardlink_and_inode_replacement_are_rejected(self):
+        for replacement in ("symlink", "hardlink", "regular"):
+            with self.subTest(replacement=replacement), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                fixture = self._fixture(root)
+                journal = self._begin(fixture, owner_pid=os.getpid())
+                command_lock = journal.parent / "command.lock"
+                external = root / "operator-owned-lock-evidence"
+                external.write_text("preserve\n", encoding="utf-8")
+                command_lock.unlink()
+                if replacement == "symlink":
+                    command_lock.symlink_to(external)
+                elif replacement == "hardlink":
+                    os.link(external, command_lock)
+                else:
+                    command_lock.write_text("replacement\n", encoding="utf-8")
+
+                result = self._run("rollback", "--state", str(journal), check=False)
+
+                self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+                self.assertIn("command lock", result.stderr)
+                self.assertEqual(external.read_text(encoding="utf-8"), "preserve\n")
+
+    def test_atomic_no_clobber_rename_preserves_an_existing_empty_directory(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("update_transaction_tested", HELPER)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "owned-staging"
+            target = root / "operator-created-target"
+            source.mkdir()
+            target.mkdir()
+
+            with self.assertRaisesRegex(
+                module.TransactionError,
+                "occupied target",
+            ):
+                module._rename_exclusive(source, target)
+
+            self.assertTrue(source.is_dir())
+            self.assertTrue(target.is_dir())
+
+    def test_source_artifact_transfer_sigkill_windows_roll_back_owned_paths(self):
+        for phase in (
+            "source-artifact-transfer-authorized",
+            "source-artifact-renamed-before-journal",
+        ):
+            with self.subTest(phase=phase), tempfile.TemporaryDirectory() as tmp:
+                fixture = self._fixture(Path(tmp))
+                source_template = fixture["candidate_source"]
+                journal = self._begin(
+                    fixture,
+                    owner_pid=os.getpid(),
+                    materialize_candidates=False,
+                )
+                temporary = Path(
+                    self._run(
+                        "reserve-artifact",
+                        "--state",
+                        str(journal),
+                        "--kind",
+                        "source-temp",
+                    ).stdout.strip()
+                )
+                shutil.copytree(source_template, temporary, dirs_exist_ok=True)
+
+                result = self._run(
+                    "promote-source-artifact",
+                    "--state",
+                    str(journal),
+                    check=False,
+                    env={
+                        "NOVA_INSTALL_TEST_MODE": "1",
+                        "NOVA_INSTALL_TEST_KILL_PHASE": phase,
+                    },
+                )
+
+                self.assertEqual(result.returncode, -signal.SIGKILL, result.stdout + result.stderr)
+                self._run("rollback", "--state", str(journal))
+                state = json.loads(journal.read_text(encoding="utf-8"))
+                self.assertEqual(state["status"], "rolled-back")
+                self.assertFalse(temporary.exists())
+                self.assertFalse(
+                    (fixture["runtime"] / "app" / "releases" / "fixture-tx").exists()
+                )
+
+    def test_candidate_artifact_reservation_sigkill_windows_recover_owned_path(self):
+        for phase in (
+            "candidate-artifact-reservation-authorized-source-temp",
+            "candidate-artifact-staging-created-source-temp",
+            "candidate-artifact-marker-created-source-temp",
+            "candidate-artifact-renamed-before-journal-source-temp",
+        ):
+            with self.subTest(phase=phase), tempfile.TemporaryDirectory() as tmp:
+                fixture = self._fixture(Path(tmp))
+                journal = self._begin(
+                    fixture,
+                    owner_pid=os.getpid(),
+                    materialize_candidates=False,
+                )
+                result = self._run(
+                    "reserve-artifact",
+                    "--state",
+                    str(journal),
+                    "--kind",
+                    "source-temp",
+                    check=False,
+                    env={
+                        "NOVA_INSTALL_TEST_MODE": "1",
+                        "NOVA_INSTALL_TEST_KILL_PHASE": phase,
+                    },
+                )
+
+                self.assertEqual(result.returncode, -signal.SIGKILL, result.stdout + result.stderr)
+                reserved = Path(
+                    self._run(
+                        "reserve-artifact",
+                        "--state",
+                        str(journal),
+                        "--kind",
+                        "source-temp",
+                    ).stdout.strip()
+                )
+                self.assertTrue(reserved.is_dir())
+                state = json.loads(journal.read_text(encoding="utf-8"))
+                artifact = next(
+                    item
+                    for item in state["candidateArtifacts"]
+                    if item["kind"] == "source-temp"
+                )
+                abandoned = artifact["abandonedReservationAttemptNonces"]
+                self.assertEqual(
+                    len(abandoned),
+                    1 if phase == "candidate-artifact-staging-created-source-temp" else 0,
+                )
+                self._run("rollback", "--state", str(journal))
+                self.assertFalse(reserved.exists())
+                self.assertEqual(
+                    json.loads(journal.read_text(encoding="utf-8"))["status"],
+                    "rolled-back",
+                )
+
+    def test_rollback_preserves_unmarked_transaction_staging_without_blocking(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            journal = self._begin(
+                fixture,
+                owner_pid=os.getpid(),
+                materialize_candidates=False,
+            )
+            result = self._run(
+                "reserve-artifact",
+                "--state",
+                str(journal),
+                "--kind",
+                "source-temp",
+                check=False,
+                env={
+                    "NOVA_INSTALL_TEST_MODE": "1",
+                    "NOVA_INSTALL_TEST_KILL_PHASE": (
+                        "candidate-artifact-staging-created-source-temp"
+                    ),
+                },
+            )
+
+            self.assertEqual(result.returncode, -signal.SIGKILL, result.stdout + result.stderr)
+            unmarked = list(journal.parent.glob(".reserve-source-temp-*"))
+            self.assertEqual(len(unmarked), 1)
+            self.assertFalse((unmarked[0] / ".open-nova-update-owner").exists())
+
+            self._run("rollback", "--state", str(journal))
+
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            artifact = next(
+                item
+                for item in state["candidateArtifacts"]
+                if item["kind"] == "source-temp"
+            )
+            self.assertEqual(state["status"], "rolled-back")
+            self.assertEqual(len(artifact["abandonedReservationAttemptNonces"]), 1)
+            self.assertTrue(unmarked[0].is_dir())
+            self.assertFalse(
+                (fixture["runtime"] / "app" / "releases" / "fixture-tx").exists()
+            )
+            self.assertFalse(
+                (fixture["runtime"] / "app" / ".update-transaction.lock").exists()
+            )
+
+    def test_candidate_artifact_cleanup_sigkill_windows_are_idempotent(self):
+        for phase in (
+            "candidate-artifact-cleanup-authorized-source",
+            "candidate-artifact-cleanup-moved-source",
+        ):
+            with self.subTest(phase=phase), tempfile.TemporaryDirectory() as tmp:
+                fixture = self._fixture(Path(tmp))
+                journal = self._begin(fixture, owner_pid=os.getpid())
+
+                result = self._run(
+                    "rollback",
+                    "--state",
+                    str(journal),
+                    check=False,
+                    env={
+                        "NOVA_INSTALL_TEST_MODE": "1",
+                        "NOVA_INSTALL_TEST_KILL_PHASE": phase,
+                    },
+                )
+
+                self.assertEqual(result.returncode, -signal.SIGKILL, result.stdout + result.stderr)
+                self._run("rollback", "--state", str(journal))
+                state = json.loads(journal.read_text(encoding="utf-8"))
+                self.assertEqual(state["status"], "rolled-back")
+                self.assertFalse(fixture["candidate_source"].exists())
+                self.assertFalse(fixture["candidate_venv"].exists())
+
+    def test_migration_gate_rejects_candidate_without_contract(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            self._write_candidate_source(
+                fixture["candidate_source"],
+                [
+                    (
+                        self.BASE_MIGRATION_VERSION,
+                        self.BASE_MIGRATION_BODY,
+                        "rollback-compatible-additive",
+                    )
+                ],
+                include_contract=False,
+            )
+            journal = self._begin(fixture, owner_pid=os.getpid())
+
+            result = self._run(
+                "record-candidate",
+                "--state",
+                str(journal),
+                "--kind",
+                "source",
+                "--candidate",
+                str(fixture["candidate_source"]),
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("migration compatibility contract is missing or invalid", result.stderr)
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertIsNone(state["databaseCompatibility"])
+            self.assertEqual(state["status"], "prepared")
+            self.assertEqual(os.readlink(fixture["runtime"] / "app" / "source"), "releases/old")
+            self._run("rollback", "--state", str(journal))
+
+    def test_migration_gate_rejects_rewritten_prior_migration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            self._write_candidate_source(
+                fixture["candidate_source"],
+                [
+                    (
+                        self.BASE_MIGRATION_VERSION,
+                        self.BASE_MIGRATION_BODY + "-- rewritten\n",
+                        "rollback-compatible-additive",
+                    )
+                ],
+            )
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            self._run(
+                "record-candidate",
+                "--state",
+                str(journal),
+                "--kind",
+                "source",
+                "--candidate",
+                str(fixture["candidate_source"]),
+            )
+
+            result = self._run(
+                "verify-migration-compatibility",
+                "--state",
+                str(journal),
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("candidate rewrote a prior migration body", result.stderr)
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertIsNone(state["databaseCompatibility"])
+            self.assertFalse(state["serviceStopInitiated"])
+            self._run("rollback", "--state", str(journal))
+
+    def test_migration_gate_rejects_new_breaking_migration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            self._write_candidate_source(
+                fixture["candidate_source"],
+                [
+                    (
+                        self.BASE_MIGRATION_VERSION,
+                        self.BASE_MIGRATION_BODY,
+                        "rollback-compatible-additive",
+                    ),
+                    (
+                        "0002_breaking",
+                        "DROP TABLE fixture_migration;\n",
+                        "breaking",
+                    ),
+                ],
+            )
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            self._run(
+                "record-candidate",
+                "--state",
+                str(journal),
+                "--kind",
+                "source",
+                "--candidate",
+                str(fixture["candidate_source"]),
+            )
+
+            result = self._run(
+                "verify-migration-compatibility",
+                "--state",
+                str(journal),
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("candidate migration is not rollback-compatible additive", result.stderr)
+            self.assertFalse(
+                json.loads(journal.read_text(encoding="utf-8"))["serviceStopInitiated"]
+            )
+            self._run("rollback", "--state", str(journal))
+
+    def test_migration_gate_accepts_new_additive_migration_before_stop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            self._write_candidate_source(
+                fixture["candidate_source"],
+                [
+                    (
+                        self.BASE_MIGRATION_VERSION,
+                        self.BASE_MIGRATION_BODY,
+                        "rollback-compatible-additive",
+                    ),
+                    (
+                        "0002_additive",
+                        "CREATE TABLE fixture_additive (id INTEGER PRIMARY KEY);\n",
+                        "rollback-compatible-additive",
+                    ),
+                ],
+            )
+            journal = self._begin(fixture, owner_pid=os.getpid())
+
+            self._record_and_verify_source_candidate(fixture, journal)
+
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            evidence = state["databaseCompatibility"]
+            self.assertEqual(evidence["status"], "verified")
+            self.assertEqual(evidence["policy"], self.MIGRATION_POLICY)
+            self.assertEqual(
+                evidence["preCommitWriterContract"],
+                self.PRE_COMMIT_WRITER_CONTRACT,
+            )
+            self.assertEqual(evidence["appliedMigrations"], [self.BASE_MIGRATION_VERSION])
+            self.assertEqual(
+                evidence["candidateMigrations"],
+                [self.BASE_MIGRATION_VERSION, "0002_additive"],
+            )
+            self.assertEqual(evidence["newMigrations"], ["0002_additive"])
+            self._run("stop", "--state", str(journal))
+            self.assertEqual(
+                json.loads(journal.read_text(encoding="utf-8"))["status"],
+                "stopped",
+            )
+            self._run("rollback", "--state", str(journal))
+
+    def test_migration_gate_rejects_destructive_sql_mislabeled_additive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            self._write_candidate_source(
+                fixture["candidate_source"],
+                [
+                    (
+                        self.BASE_MIGRATION_VERSION,
+                        self.BASE_MIGRATION_BODY,
+                        "rollback-compatible-additive",
+                    ),
+                    (
+                        "0002_false_additive",
+                        "CREATE TABLE fixture_added (id INTEGER); DROP TABLE fixture_migration;\n",
+                        "rollback-compatible-additive",
+                    ),
+                ],
+            )
+            journal = self._begin(fixture, owner_pid=os.getpid())
+
+            result = self._run(
+                "record-candidate",
+                "--state",
+                str(journal),
+                "--kind",
+                "source",
+                "--candidate",
+                str(fixture["candidate_source"]),
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("prior-reader-unsafe statement", result.stderr)
+            self._run("rollback", "--state", str(journal))
+
+    def test_migration_gate_does_not_treat_comment_marker_in_string_as_comment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            self._write_candidate_source(
+                fixture["candidate_source"],
+                [
+                    (
+                        self.BASE_MIGRATION_VERSION,
+                        self.BASE_MIGRATION_BODY,
+                        "rollback-compatible-additive",
+                    ),
+                    (
+                        "0002_false_additive",
+                        "CREATE TABLE fixture_added (value TEXT DEFAULT '--;'); "
+                        "DROP TABLE fixture_migration;\n",
+                        "rollback-compatible-additive",
+                    ),
+                ],
+            )
+            journal = self._begin(fixture, owner_pid=os.getpid())
+
+            result = self._run(
+                "record-candidate",
+                "--state",
+                str(journal),
+                "--kind",
+                "source",
+                "--candidate",
+                str(fixture["candidate_source"]),
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("prior-reader-unsafe statement", result.stderr)
+            self._run("rollback", "--state", str(journal))
+
+    def test_migration_gate_rejects_unknown_live_ledger_version(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            with closing(sqlite3.connect(fixture["database"])) as connection:
+                connection.execute(
+                    "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                    ("9999_unknown", "2026-07-11T00:00:01+00:00"),
+                )
+                connection.commit()
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            self._run(
+                "record-candidate",
+                "--state",
+                str(journal),
+                "--kind",
+                "source",
+                "--candidate",
+                str(fixture["candidate_source"]),
+            )
+
+            result = self._run(
+                "verify-migration-compatibility",
+                "--state",
+                str(journal),
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("live database has a migration unknown to the prior source", result.stderr)
+            self.assertFalse(
+                json.loads(journal.read_text(encoding="utf-8"))["serviceStopInitiated"]
+            )
+            self._run("rollback", "--state", str(journal))
+
+    def test_migration_gate_rejects_nonempty_database_without_ledger(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            with closing(sqlite3.connect(fixture["database"])) as connection:
+                connection.execute("DROP TABLE schema_migrations")
+                connection.commit()
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            self._run(
+                "record-candidate",
+                "--state",
+                str(journal),
+                "--kind",
+                "source",
+                "--candidate",
+                str(fixture["candidate_source"]),
+            )
+
+            result = self._run(
+                "verify-migration-compatibility",
+                "--state",
+                str(journal),
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("nonempty Runtime database has no migration ledger", result.stderr)
+            self.assertFalse(
+                json.loads(journal.read_text(encoding="utf-8"))["serviceStopInitiated"]
+            )
+            self._run("rollback", "--state", str(journal))
+
+    def test_migration_gate_rejects_empty_ledger_with_unknown_user_table(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            with closing(sqlite3.connect(fixture["database"])) as connection:
+                connection.execute("DELETE FROM schema_migrations")
+                connection.commit()
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            self._run(
+                "record-candidate",
+                "--state",
+                str(journal),
+                "--kind",
+                "source",
+                "--candidate",
+                str(fixture["candidate_source"]),
+            )
+
+            result = self._run(
+                "verify-migration-compatibility",
+                "--state",
+                str(journal),
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("nonempty Runtime database has an empty migration ledger", result.stderr)
+            self.assertFalse(
+                json.loads(journal.read_text(encoding="utf-8"))["serviceStopInitiated"]
+            )
+            self._run("rollback", "--state", str(journal))
+
+    def test_migration_gate_accepts_database_with_only_empty_ledger_shell(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            database = fixture["database"]
+            database.unlink()
+            for suffix in ("-shm", "-wal"):
+                Path(str(database) + suffix).unlink(missing_ok=True)
+            with closing(sqlite3.connect(database)) as connection:
+                connection.execute(
+                    "CREATE TABLE schema_migrations (version TEXT PRIMARY KEY, applied_at TEXT NOT NULL)"
+                )
+                connection.commit()
+            journal = self._begin(fixture, owner_pid=os.getpid())
+
+            self._record_and_verify_source_candidate(fixture, journal)
+
+            evidence = json.loads(journal.read_text(encoding="utf-8"))["databaseCompatibility"]
+            self.assertEqual(evidence["appliedMigrations"], [])
+            self._run("rollback", "--state", str(journal))
+
+    def test_stop_rejects_candidate_without_verified_migration_gate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            self._run(
+                "record-candidate",
+                "--state",
+                str(journal),
+                "--kind",
+                "source",
+                "--candidate",
+                str(fixture["candidate_source"]),
+            )
+            self._run(
+                "record-candidate",
+                "--state",
+                str(journal),
+                "--kind",
+                "venv",
+                "--candidate",
+                str(fixture["candidate_venv"]),
+            )
+
+            result = self._run("stop", "--state", str(journal), check=False)
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn(
+                "services cannot stop before migration compatibility is verified",
+                result.stderr,
+            )
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertEqual(state["status"], "candidate-staged")
+            self.assertFalse(state["serviceStopInitiated"])
+            self.assertIsNone(state["databaseCompatibility"])
+            self._run("rollback", "--state", str(journal))
+
+    def test_undeclared_candidate_migration_fails_verify_and_rollback_keeps_service_stopped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._fixture(root)
+            server, server_thread, port = self._start_health_server()
+            label = "com.open-nova.dashboard"
+            fixture["settings"].write_text(
+                json.dumps(
+                    {
+                        "dashboard": {
+                            "host": "127.0.0.1",
+                            "port": port,
+                            "healthPath": "/health",
+                            "serviceLabel": label,
+                        }
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            launch_agents = fixture["home"] / "Library" / "LaunchAgents"
+            launch_agents.mkdir(parents=True)
+            self._write_runtime_plist(
+                launch_agents / f"{label}.plist",
+                label=label,
+                runtime=fixture["runtime"],
+            )
+            state_dir = root / "launchctl-state"
+            state_dir.mkdir()
+            (state_dir / label).write_text("running\n", encoding="utf-8")
+            calls_path = root / "launchctl-calls.log"
+            fake_launchctl = root / "launchctl"
+            self._write_stateful_fake_launchctl(
+                fake_launchctl,
+                state_dir=state_dir,
+                calls_path=calls_path,
+            )
+            try:
+                journal = self._begin(
+                    fixture,
+                    owner_pid=os.getpid(),
+                    platform="Darwin",
+                    launchctl=str(fake_launchctl),
+                    uid=0,
+                )
+                self._prepare_and_promote(fixture, journal)
+                self._run("restore-services", "--state", str(journal))
+                self.assertTrue((state_dir / label).is_file())
+                with closing(sqlite3.connect(fixture["database"])) as connection:
+                    connection.execute(
+                        "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                        ("0002_undeclared", "2026-07-11T00:00:02+00:00"),
+                    )
+                    connection.commit()
+
+                verify = self._run("verify", "--state", str(journal), check=False)
+                self.assertEqual(verify.returncode, 70, verify.stdout + verify.stderr)
+                self.assertIn("candidate wrote an undeclared live migration", verify.stderr)
+                calls_before = calls_path.read_text(encoding="utf-8").splitlines()
+
+                rollback = self._run("rollback", "--state", str(journal), check=False)
+
+                self.assertEqual(rollback.returncode, 70, rollback.stdout + rollback.stderr)
+                state = json.loads(journal.read_text(encoding="utf-8"))
+                self.assertEqual(state["status"], "rollback-failed")
+                self.assertTrue(
+                    any(
+                        error.startswith(
+                            "database-compatibility:candidate wrote an undeclared live migration"
+                        )
+                        for error in state["rollbackErrors"]
+                    )
+                )
+                self.assertIn(
+                    "services:not-restored-after-pointer-or-control-state-conflict",
+                    state["rollbackErrors"],
+                )
+                calls_after = calls_path.read_text(encoding="utf-8").splitlines()[
+                    len(calls_before) :
+                ]
+                self.assertFalse(
+                    any(call.startswith(("bootstrap ", "kickstart ")) for call in calls_after)
+                )
+                self.assertFalse((state_dir / label).exists())
+                self.assertEqual(
+                    (fixture["runtime"] / "app" / "source").resolve(),
+                    fixture["candidate_source"].resolve(),
+                )
+                self.assertIn(
+                    "pointers:preserved-because-database-compatibility-is-unproven",
+                    state["rollbackErrors"],
+                )
+                self.assertTrue(
+                    (fixture["runtime"] / "app" / ".update-transaction.lock").is_file()
+                )
+            finally:
+                server.shutdown()
+                server.server_close()
+                server_thread.join(timeout=5)
+
+    def test_rollback_restores_pointers_and_preserves_live_sqlite_commits(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            self._prepare_and_promote(fixture, journal)
+
+            source = fixture["runtime"] / "app" / "source"
+            venv = fixture["runtime"] / ".venv"
+            self.assertEqual(source.resolve(), fixture["candidate_source"].resolve())
+            self.assertTrue(venv.is_symlink())
+            writer = sqlite3.connect(fixture["database"])
+            try:
+                writer.execute("PRAGMA journal_mode = WAL")
+                writer.execute(
+                    "INSERT INTO update_evidence(value) VALUES ('acknowledged-external-write-during-update')"
+                )
+                writer.commit()
+                self.assertEqual(
+                    writer.execute("SELECT COUNT(*) FROM update_evidence").fetchone(),
+                    (2,),
+                )
+            finally:
+                writer.close()
+
+            self._run("rollback", "--state", str(journal))
+
+            self.assertEqual(os.readlink(source), "releases/old")
+            self.assertTrue(venv.is_dir())
+            self.assertFalse(venv.is_symlink())
+            self.assertEqual((venv / "bin" / "python").read_text(encoding="utf-8"), "old-venv\n")
+            self.assertEqual(fixture["settings"].read_text(encoding="utf-8"), '{"dashboard":{"port":42173}}\n')
+            self.assertEqual(
+                self._database_values(fixture["database"]),
+                ["before-update", "acknowledged-external-write-during-update"],
+            )
+            self.assertEqual(self._database_integrity(fixture["database"]), "ok")
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertEqual(state["status"], "rolled-back")
+            self.assertEqual(state["rollbackErrors"], [])
+            self.assertFalse((fixture["runtime"] / "app" / ".update-transaction.lock").exists())
+            self._run("rollback", "--state", str(journal))
+            self.assertEqual(os.readlink(source), "releases/old")
+            self.assertTrue(venv.is_dir())
+            self.assertFalse(venv.is_symlink())
+
+    def test_external_configured_database_is_bound_and_snapshotted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._fixture(root)
+            external_root = root / "external-database"
+            external_root.mkdir()
+            external_database = external_root / "nova.custom"
+            fixture["database"].replace(external_database)
+            fixture["database"] = external_database
+            (fixture["runtime"] / "config" / "runtime.json").write_text(
+                json.dumps({"databasePath": str(external_database)}) + "\n",
+                encoding="utf-8",
+            )
+            journal = self._begin(fixture, owner_pid=os.getpid())
+
+            self._prepare_and_promote(fixture, journal)
+
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            evidence = state["databaseCompatibility"]["databaseIdentity"]
+            self.assertEqual(evidence["locator"]["kind"], "external-absolute-sha256")
+            records = [item for item in state["files"] if item["key"] == "database"]
+            self.assertEqual(len(records), 1)
+            self.assertEqual(Path(records[0]["path"]), external_database.resolve())
+            self.assertTrue(Path(records[0]["backupPath"]).is_file())
+            self.assertEqual(self._database_integrity(external_database), "ok")
+            self._run("rollback", "--state", str(journal))
+            self.assertEqual(self._database_values(external_database), ["before-update"])
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertEqual(state["status"], "rolled-back")
+            self.assertEqual(state["rollbackErrors"], [])
+            self.assertFalse((fixture["runtime"] / "app" / ".update-transaction.lock").exists())
+            self._run("rollback", "--state", str(journal))
+
+    def test_online_backup_captures_uncheckpointed_wal_and_hashes_backup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            writer = sqlite3.connect(fixture["database"])
+            try:
+                writer.execute("PRAGMA journal_mode = WAL")
+                writer.execute("PRAGMA wal_autocheckpoint = 0")
+                writer.execute(
+                    "INSERT INTO update_evidence(value) VALUES ('committed-only-in-live-wal')"
+                )
+                writer.commit()
+                wal = Path(str(fixture["database"]) + "-wal")
+                self.assertTrue(wal.is_file())
+                self.assertGreater(wal.stat().st_size, 0)
+
+                journal = self._begin(fixture, owner_pid=os.getpid())
+                self._record_and_verify_source_candidate(fixture, journal)
+                self._run("stop", "--state", str(journal))
+                self._run(
+                    "capture-mutable",
+                    "--state",
+                    str(journal),
+                    "--location",
+                    str(fixture["location"]),
+                    "--cli-shim",
+                    str(fixture["runtime"] / "bin" / "open-nova"),
+                    "--user-cli-shim",
+                    str(fixture["user_cli"]),
+                    "--desktop-link",
+                    str(fixture["desktop"]),
+                    "--shell-profile",
+                    str(fixture["profile"]),
+                )
+
+                state = json.loads(journal.read_text(encoding="utf-8"))
+                database_records = [item for item in state["files"] if item["key"] == "database"]
+                self.assertEqual(len(database_records), 1)
+                record = database_records[0]
+                self.assertEqual(record["kind"], "sqlite-database")
+                self.assertEqual(
+                    record["snapshotPolicy"],
+                    "online-backup-evidence-only-preserve-live",
+                )
+                self.assertFalse(record["path"].endswith(("-wal", "-shm")))
+                backup = Path(record["backupPath"])
+                self.assertTrue(backup.is_file())
+                self.assertEqual(
+                    hashlib.sha256(backup.read_bytes()).hexdigest(),
+                    record["sha256"],
+                )
+                self.assertEqual(
+                    self._database_values(backup),
+                    ["before-update", "committed-only-in-live-wal"],
+                )
+                self.assertEqual(self._database_integrity(backup), "ok")
+                backup_connection = sqlite3.connect(backup)
+                try:
+                    self.assertEqual(
+                        backup_connection.execute("PRAGMA journal_mode").fetchone(),
+                        ("delete",),
+                    )
+                finally:
+                    backup_connection.close()
+                self.assertEqual(list(backup.parent.glob(backup.name + "-*")), [])
+                self._run("rollback", "--state", str(journal))
+                self.assertEqual(list(backup.parent.glob(backup.name + "-*")), [])
+            finally:
+                writer.close()
+
+    def test_online_backup_remains_consistent_with_concurrent_writer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            padding = sqlite3.connect(fixture["database"])
+            try:
+                padding.execute("CREATE TABLE backup_padding (id INTEGER PRIMARY KEY, payload BLOB)")
+                padding.executemany(
+                    "INSERT INTO backup_padding(payload) VALUES (zeroblob(?))",
+                    ((4096,) for _ in range(8192)),
+                )
+                padding.commit()
+                padding.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            finally:
+                padding.close()
+
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            self._record_and_verify_source_candidate(fixture, journal)
+            self._run("stop", "--state", str(journal))
+            writer_committed = threading.Event()
+            writer_errors: list[str] = []
+
+            def write_after_backup_starts() -> None:
+                deadline = time.monotonic() + 10.0
+                backups = journal.parent / "backups"
+                while time.monotonic() < deadline:
+                    if list(backups.glob(".*.partial-*")):
+                        try:
+                            connection = sqlite3.connect(fixture["database"], timeout=5.0)
+                            try:
+                                connection.execute("PRAGMA wal_autocheckpoint = 0")
+                                connection.execute(
+                                    "INSERT INTO update_evidence(value) VALUES ('committed-during-online-backup')"
+                                )
+                                connection.commit()
+                            finally:
+                                connection.close()
+                            writer_committed.set()
+                        except Exception as exc:  # pragma: no cover - reported in the parent thread
+                            writer_errors.append(f"{type(exc).__name__}: {exc}")
+                        return
+                    time.sleep(0.001)
+                writer_errors.append("online backup temporary file was not observed")
+
+            writer_thread = threading.Thread(target=write_after_backup_starts, daemon=True)
+            writer_thread.start()
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(HELPER),
+                    "capture-mutable",
+                    "--state",
+                    str(journal),
+                    "--location",
+                    str(fixture["location"]),
+                    "--cli-shim",
+                    str(fixture["runtime"] / "bin" / "open-nova"),
+                    "--user-cli-shim",
+                    str(fixture["user_cli"]),
+                    "--desktop-link",
+                    str(fixture["desktop"]),
+                    "--shell-profile",
+                    str(fixture["profile"]),
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=45,
+            )
+            writer_thread.join(timeout=10)
+
+            self.assertEqual(writer_errors, [])
+            self.assertTrue(writer_committed.is_set())
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            record = next(item for item in state["files"] if item["key"] == "database")
+            backup = Path(record["backupPath"])
+            self.assertIn("committed-during-online-backup", self._database_values(backup))
+            self.assertEqual(self._database_integrity(backup), "ok")
+            self.assertEqual(self._database_integrity(fixture["database"]), "ok")
+            self._run("rollback", "--state", str(journal))
+            self.assertIn(
+                "committed-during-online-backup",
+                self._database_values(fixture["database"]),
+            )
+
+    def test_rollback_before_service_stop_does_not_restart_loaded_services(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._fixture(root)
+            launch_agents = fixture["home"] / "Library" / "LaunchAgents"
+            launch_agents.mkdir(parents=True)
+            label = "com.open-nova.session-d-prestop"
+            self._write_runtime_plist(
+                launch_agents / f"{label}.plist",
+                label=label,
+                runtime=fixture["runtime"],
+            )
+            state_dir = root / "launchctl-state"
+            state_dir.mkdir()
+            (state_dir / label).write_text("running\n", encoding="utf-8")
+            calls_path = root / "launchctl-calls.log"
+            fake_launchctl = root / "launchctl"
+            self._write_stateful_fake_launchctl(
+                fake_launchctl,
+                state_dir=state_dir,
+                calls_path=calls_path,
+            )
+            journal = self._begin(
+                fixture,
+                owner_pid=os.getpid(),
+                platform="Darwin",
+                launchctl=str(fake_launchctl),
+                uid=0,
+            )
+
+            self._run("rollback", "--state", str(journal))
+
+            mutations = [
+                line
+                for line in calls_path.read_text(encoding="utf-8").splitlines()
+                if line.startswith(("bootout ", "bootstrap ", "kickstart "))
+            ]
+            self.assertEqual(mutations, [])
+            self.assertEqual(
+                (state_dir / label).read_text(encoding="utf-8").strip(),
+                "running",
+            )
+
+    def test_stop_waits_for_asynchronous_launchd_unload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._fixture(root)
+            server, server_thread, port = self._start_health_server()
+            fixture["settings"].write_text(
+                json.dumps(
+                    {
+                        "dashboard": {
+                            "host": "127.0.0.1",
+                            "port": port,
+                            "healthPath": "/health",
+                        }
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            launch_agents = fixture["home"] / "Library" / "LaunchAgents"
+            launch_agents.mkdir(parents=True)
+            label = "com.open-nova.dashboard"
+            self._write_runtime_plist(
+                launch_agents / f"{label}.plist",
+                label=label,
+                runtime=fixture["runtime"],
+            )
+            state_dir = root / "launchctl-state"
+            state_dir.mkdir()
+            (state_dir / label).write_text("running\n", encoding="utf-8")
+            calls_path = root / "launchctl-calls.log"
+            fake_launchctl = root / "launchctl"
+            fake_launchctl.write_text(
+                f"#!{sys.executable}\n"
+                "import sys\n"
+                "from pathlib import Path\n"
+                f"state = Path({str(state_dir)!r})\n"
+                f"calls = Path({str(calls_path)!r})\n"
+                "with calls.open('a', encoding='utf-8') as handle:\n"
+                "    handle.write(' '.join(sys.argv[1:]) + '\\n')\n"
+                "command = sys.argv[1]\n"
+                "label = sys.argv[2].rsplit('/', 1)[-1]\n"
+                "value = state / label\n"
+                "counter = state / (label + '.unload-count')\n"
+                "if command == 'bootout':\n"
+                "    counter.write_text('2\\n', encoding='utf-8')\n"
+                "elif command == 'print':\n"
+                "    if counter.is_file():\n"
+                "        remaining = int(counter.read_text(encoding='utf-8'))\n"
+                "        if remaining <= 0:\n"
+                "            counter.unlink()\n"
+                "            value.unlink(missing_ok=True)\n"
+                "            raise SystemExit(113)\n"
+                "        counter.write_text(str(remaining - 1) + '\\n', encoding='utf-8')\n"
+                "    if not value.is_file():\n"
+                "        raise SystemExit(113)\n"
+                "    print('state = ' + value.read_text(encoding='utf-8').strip())\n",
+                encoding="utf-8",
+            )
+            fake_launchctl.chmod(0o755)
+            try:
+                journal = self._begin(
+                    fixture,
+                    owner_pid=os.getpid(),
+                    platform="Darwin",
+                    launchctl=str(fake_launchctl),
+                    uid=0,
+                )
+                self._record_and_verify_source_candidate(fixture, journal)
+
+                self._run(
+                    "stop",
+                    "--state",
+                    str(journal),
+                    env={
+                        "NOVA_INSTALL_TEST_MODE": "1",
+                        "NOVA_INSTALL_TEST_SERVICE_STATE_TIMEOUT_SECONDS": "0.8",
+                    },
+                )
+            finally:
+                server.shutdown()
+                server.server_close()
+                server_thread.join(timeout=5)
+
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertEqual(state["status"], "stopped")
+            self.assertFalse((state_dir / label).exists())
+            prints = [
+                line
+                for line in calls_path.read_text(encoding="utf-8").splitlines()
+                if line.startswith("print ") and line.endswith("/" + label)
+            ]
+            self.assertGreaterEqual(len(prints), 4)
+
+    def test_candidate_helper_sigkill_cannot_leave_unjournaled_or_recorded_child_writes(self):
+        for kill_phase in (
+            "candidate-command-started-before-journal",
+            "candidate-command-released",
+        ):
+            with self.subTest(kill_phase=kill_phase), tempfile.TemporaryDirectory() as tmp:
+                fixture = self._fixture(Path(tmp))
+                journal = self._begin(fixture, owner_pid=os.getpid())
+                child_pid_path = fixture["runtime"] / "app" / "venvs" / "candidate-child.pid"
+                late_path = fixture["runtime"] / "app" / "venvs" / "candidate-late-write"
+                program = (
+                    "import os,time; from pathlib import Path; "
+                    f"Path({str(child_pid_path)!r}).write_text(str(os.getpid())); "
+                    "time.sleep(1.0); "
+                    f"Path({str(late_path)!r}).write_text('late')"
+                )
+                env = {
+                    **os.environ,
+                    "NOVA_INSTALL_TEST_MODE": "1",
+                    "NOVA_INSTALL_TEST_KILL_PHASE": kill_phase,
+                    "NOVA_INSTALL_TEST_CHILD_TERM_TIMEOUT_SECONDS": "0.2",
+                    "PYTHONDONTWRITEBYTECODE": "1",
+                }
+                helper = subprocess.Popen(
+                    [
+                        sys.executable,
+                        str(HELPER),
+                        "run-candidate-command",
+                        "--state",
+                        str(journal),
+                        "--phase",
+                        "fixture-child",
+                        "--",
+                        sys.executable,
+                        "-c",
+                        program,
+                    ],
+                    env=env,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                helper.wait(timeout=10)
+                self.assertEqual(helper.returncode, -signal.SIGKILL)
+
+                state = json.loads(journal.read_text(encoding="utf-8"))
+                self.assertEqual(state.get("activeCommand"), "run-candidate-command:fixture-child")
+                self.assertNotIn(str(late_path), journal.read_text(encoding="utf-8"))
+                if kill_phase == "candidate-command-started-before-journal":
+                    self.assertIsNone(state.get("candidateCommand"))
+                    time.sleep(1.2)
+                    self.assertFalse(child_pid_path.exists())
+                else:
+                    self.assertIsInstance(state.get("candidateCommand"), dict)
+                    self._run(
+                        "rollback",
+                        "--state",
+                        str(journal),
+                        env={
+                            "NOVA_INSTALL_TEST_MODE": "1",
+                            "NOVA_INSTALL_TEST_CHILD_TERM_TIMEOUT_SECONDS": "0.2",
+                        },
+                    )
+                    if child_pid_path.is_file():
+                        child_pid = int(child_pid_path.read_text(encoding="utf-8"))
+                        deadline = time.monotonic() + 1.0
+                        while self._pid_alive(child_pid) and time.monotonic() < deadline:
+                            time.sleep(0.05)
+                        self.assertFalse(self._pid_alive(child_pid))
+                    time.sleep(1.2)
+                self.assertFalse(late_path.exists())
+
+    def test_transaction_helper_commands_are_serialized_without_state_mutation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            helper = subprocess.Popen(
+                [
+                    sys.executable,
+                    str(HELPER),
+                    "run-candidate-command",
+                    "--state",
+                    str(journal),
+                    "--phase",
+                    "serialized-fixture",
+                    "--",
+                    sys.executable,
+                    "-c",
+                    "import time; time.sleep(2.0)",
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            try:
+                deadline = time.monotonic() + 5.0
+                while time.monotonic() < deadline:
+                    state = json.loads(journal.read_text(encoding="utf-8"))
+                    if (
+                        state.get("activeCommand")
+                        == "run-candidate-command:serialized-fixture"
+                        and isinstance(state.get("candidateCommand"), dict)
+                    ):
+                        break
+                    time.sleep(0.02)
+                else:
+                    self.fail("first helper did not acquire the transaction command lock")
+
+                before = journal.read_bytes()
+                result = self._run("rollback", "--state", str(journal), check=False)
+                recovery = self._run(
+                    "recover",
+                    "--runtime",
+                    str(fixture["runtime"]),
+                    check=False,
+                )
+
+                self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+                self.assertIn("another update transaction helper command", result.stderr)
+                self.assertEqual(
+                    recovery.returncode,
+                    70,
+                    recovery.stdout + recovery.stderr,
+                )
+                self.assertIn(
+                    "another update transaction helper command",
+                    recovery.stderr,
+                )
+                self.assertEqual(journal.read_bytes(), before)
+                self.assertEqual(helper.wait(timeout=10), 0)
+            finally:
+                if helper.poll() is None:
+                    helper.terminate()
+                    helper.wait(timeout=5)
+            self._run("rollback", "--state", str(journal))
+
+    def test_candidate_command_success_reaps_background_process_group_before_clearing_journal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            child_pid_path = fixture["runtime"] / "app" / "venvs" / "background-child.pid"
+            late_path = fixture["runtime"] / "app" / "venvs" / "background-late-write"
+            child_program = (
+                "import os,time; from pathlib import Path; "
+                f"Path({str(child_pid_path)!r}).write_text(str(os.getpid())); "
+                "time.sleep(1.0); "
+                f"Path({str(late_path)!r}).write_text('late')"
+            )
+            parent_program = (
+                "import subprocess,sys,time; "
+                f"subprocess.Popen([sys.executable, '-c', {child_program!r}], "
+                "stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); "
+                "time.sleep(0.1)"
+            )
+
+            result = self._run(
+                "run-candidate-command",
+                "--state",
+                str(journal),
+                "--phase",
+                "background-fixture",
+                "--",
+                sys.executable,
+                "-c",
+                parent_program,
+                env={
+                    "NOVA_INSTALL_TEST_MODE": "1",
+                    "NOVA_INSTALL_TEST_CHILD_TERM_TIMEOUT_SECONDS": "0.2",
+                },
+            )
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertIsNone(state.get("candidateCommand"))
+            if child_pid_path.is_file():
+                self.assertFalse(self._pid_alive(int(child_pid_path.read_text(encoding="utf-8"))))
+            time.sleep(1.2)
+            self.assertFalse(late_path.exists())
+
+    def test_begin_rejects_loaded_default_label_without_runtime_plist(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._fixture(root)
+            state_dir = root / "launchctl-state"
+            state_dir.mkdir()
+            production_label = "com.open-nova.dashboard"
+            (state_dir / production_label).write_text("running\n", encoding="utf-8")
+            calls_path = root / "launchctl-calls.log"
+            fake_launchctl = root / "launchctl"
+            self._write_stateful_fake_launchctl(
+                fake_launchctl,
+                state_dir=state_dir,
+                calls_path=calls_path,
+            )
+
+            result = self._run(
+                "begin",
+                "--runtime",
+                str(fixture["runtime"]),
+                "--home",
+                str(fixture["home"]),
+                "--source-pointer",
+                str(fixture["runtime"] / "app" / "source"),
+                "--venv-pointer",
+                str(fixture["runtime"] / ".venv"),
+                "--mode",
+                "upgrade",
+                "--tx-id",
+                "fixture-tx",
+                "--owner-pid",
+                str(os.getpid()),
+                "--platform",
+                "Darwin",
+                "--launchctl",
+                str(fake_launchctl),
+                "--uid",
+                "0",
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("plist", result.stderr.lower())
+            mutations = [
+                line
+                for line in calls_path.read_text(encoding="utf-8").splitlines()
+                if line.startswith(("bootout ", "bootstrap ", "kickstart "))
+            ]
+            self.assertEqual(mutations, [])
+            self.assertEqual(
+                (state_dir / production_label).read_text(encoding="utf-8").strip(),
+                "running",
+            )
+            self.assertFalse(
+                (fixture["runtime"] / "app" / ".update-transaction.lock").exists()
+            )
+
+    def test_begin_accepts_exact_legacy_watchdog_without_nova_home(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._fixture(root)
+            launch_agents = fixture["home"] / "Library" / "LaunchAgents"
+            launch_agents.mkdir(parents=True)
+            label = "com.open-nova.dashboard.watchdog"
+            with (launch_agents / f"{label}.plist").open("wb") as handle:
+                plistlib.dump(
+                    {
+                        "Label": label,
+                        "ProgramArguments": [
+                            str(fixture["runtime"] / ".venv" / "bin" / "python"),
+                            str(
+                                fixture["runtime"]
+                                / "app"
+                                / "source"
+                                / "advanced"
+                                / "dashboard"
+                                / "dashboard_launch_agent.py"
+                            ),
+                            "check",
+                            "--url",
+                            "http://127.0.0.1:3036/health",
+                            "--label",
+                            "com.open-nova.dashboard",
+                            "--restart",
+                        ],
+                        "RunAtLoad": True,
+                    },
+                    handle,
+                )
+            state_dir = root / "launchctl-state"
+            state_dir.mkdir()
+            calls_path = root / "launchctl-calls.log"
+            fake_launchctl = root / "launchctl"
+            self._write_stateful_fake_launchctl(
+                fake_launchctl,
+                state_dir=state_dir,
+                calls_path=calls_path,
+            )
+
+            original = (launch_agents / f"{label}.plist").read_bytes()
+            journal = self._begin(
+                fixture,
+                owner_pid=os.getpid(),
+                platform="Darwin",
+                launchctl=str(fake_launchctl),
+            )
+
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            watchdog = next(item for item in state["services"] if item["label"] == label)
+            self.assertTrue(watchdog["plistExisted"])
+            self.assertFalse(watchdog["loaded"])
+            self._record_and_verify_source_candidate(fixture, journal)
+            self._run("stop", "--state", str(journal))
+            self._run(
+                "capture-mutable",
+                "--state",
+                str(journal),
+                "--location",
+                str(fixture["location"]),
+                "--cli-shim",
+                str(fixture["runtime"] / "bin" / "open-nova"),
+                "--user-cli-shim",
+                str(fixture["user_cli"]),
+                "--desktop-link",
+                str(fixture["desktop"]),
+                "--shell-profile",
+                str(fixture["profile"]),
+            )
+            self._run("normalize-service-plists", "--state", str(journal))
+            normalized = plistlib.loads((launch_agents / f"{label}.plist").read_bytes())
+            self.assertEqual(normalized["EnvironmentVariables"]["NOVA_HOME"], str(fixture["runtime"].resolve()))
+            self.assertEqual(normalized["EnvironmentVariables"]["PYTHONDONTWRITEBYTECODE"], "1")
+            self._run("rollback", "--state", str(journal))
+            self.assertEqual((launch_agents / f"{label}.plist").read_bytes(), original)
+
+    def test_begin_rejects_plist_owned_by_a_different_runtime(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._fixture(root)
+            launch_agents = fixture["home"] / "Library" / "LaunchAgents"
+            launch_agents.mkdir(parents=True)
+            label = "com.open-nova.dashboard"
+            self._write_runtime_plist(
+                launch_agents / f"{label}.plist",
+                label=label,
+                runtime=root / "other-runtime",
+            )
+            state_dir = root / "launchctl-state"
+            state_dir.mkdir()
+            (state_dir / label).write_text("running\n", encoding="utf-8")
+            calls_path = root / "launchctl-calls.log"
+            fake_launchctl = root / "launchctl"
+            self._write_stateful_fake_launchctl(
+                fake_launchctl,
+                state_dir=state_dir,
+                calls_path=calls_path,
+            )
+
+            result = self._run(
+                "begin",
+                "--runtime",
+                str(fixture["runtime"]),
+                "--home",
+                str(fixture["home"]),
+                "--source-pointer",
+                str(fixture["runtime"] / "app" / "source"),
+                "--venv-pointer",
+                str(fixture["runtime"] / ".venv"),
+                "--mode",
+                "upgrade",
+                "--tx-id",
+                "fixture-tx",
+                "--owner-pid",
+                str(os.getpid()),
+                "--platform",
+                "Darwin",
+                "--launchctl",
+                str(fake_launchctl),
+                "--uid",
+                "0",
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("provenance", result.stderr.lower())
+            self.assertFalse(
+                any(
+                    line.startswith(("bootout ", "bootstrap ", "kickstart "))
+                    for line in (
+                        calls_path.read_text(encoding="utf-8") if calls_path.exists() else ""
+                    ).splitlines()
+                )
+            )
+
+    def test_begin_rejects_plist_whose_embedded_label_does_not_match_inventory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._fixture(root)
+            launch_agents = fixture["home"] / "Library" / "LaunchAgents"
+            launch_agents.mkdir(parents=True)
+            expected_label = "com.open-nova.dashboard"
+            self._write_runtime_plist(
+                launch_agents / f"{expected_label}.plist",
+                label="com.open-nova.unrelated",
+                runtime=fixture["runtime"],
+            )
+            state_dir = root / "launchctl-state"
+            state_dir.mkdir()
+            (state_dir / expected_label).write_text("running\n", encoding="utf-8")
+            calls_path = root / "launchctl-calls.log"
+            fake_launchctl = root / "launchctl"
+            self._write_stateful_fake_launchctl(fake_launchctl, state_dir=state_dir, calls_path=calls_path)
+
+            result = self._run(
+                "begin",
+                "--runtime",
+                str(fixture["runtime"]),
+                "--home",
+                str(fixture["home"]),
+                "--source-pointer",
+                str(fixture["runtime"] / "app" / "source"),
+                "--venv-pointer",
+                str(fixture["runtime"] / ".venv"),
+                "--mode",
+                "upgrade",
+                "--tx-id",
+                "fixture-tx",
+                "--owner-pid",
+                str(os.getpid()),
+                "--platform",
+                "Darwin",
+                "--launchctl",
+                str(fake_launchctl),
+                "--uid",
+                "0",
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("provenance", result.stderr.lower())
+            self.assertFalse(
+                any(
+                    line.startswith(("bootout ", "bootstrap ", "kickstart "))
+                    for line in (
+                        calls_path.read_text(encoding="utf-8") if calls_path.exists() else ""
+                    ).splitlines()
+                )
+            )
+
+    def test_begin_rejects_running_scanned_service_without_recoverable_health_endpoint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._fixture(root)
+            fixture["settings"].write_text("{not-json\n", encoding="utf-8")
+            launch_agents = fixture["home"] / "Library" / "LaunchAgents"
+            launch_agents.mkdir(parents=True)
+            label = "com.example.session-d-custom-service"
+            with (launch_agents / f"{label}.plist").open("wb") as handle:
+                plistlib.dump(
+                    {
+                        "Label": label,
+                        "ProgramArguments": [
+                            str(fixture["runtime"] / ".venv" / "bin" / "python"),
+                            str(
+                                fixture["runtime"]
+                                / "app"
+                                / "source"
+                                / "advanced"
+                                / "dashboard"
+                                / "dashboard_launch_agent.py"
+                            ),
+                        ],
+                        "EnvironmentVariables": {"NOVA_HOME": str(fixture["runtime"])},
+                    },
+                    handle,
+                )
+            state_dir = root / "launchctl-state"
+            state_dir.mkdir()
+            (state_dir / label).write_text("running\n", encoding="utf-8")
+            calls_path = root / "launchctl-calls.log"
+            fake_launchctl = root / "launchctl"
+            self._write_stateful_fake_launchctl(fake_launchctl, state_dir=state_dir, calls_path=calls_path)
+
+            result = self._run(
+                "begin",
+                "--runtime",
+                str(fixture["runtime"]),
+                "--home",
+                str(fixture["home"]),
+                "--source-pointer",
+                str(fixture["runtime"] / "app" / "source"),
+                "--venv-pointer",
+                str(fixture["runtime"] / ".venv"),
+                "--mode",
+                "upgrade",
+                "--tx-id",
+                "fixture-tx",
+                "--owner-pid",
+                str(os.getpid()),
+                "--platform",
+                "Darwin",
+                "--launchctl",
+                str(fake_launchctl),
+                "--uid",
+                "0",
+                check=False,
+                env={
+                    "NOVA_INSTALL_TEST_MODE": "1",
+                    "NOVA_INSTALL_TEST_HEALTH_TIMEOUT_SECONDS": "0.2",
+                },
+            )
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("no valid health endpoint", result.stderr)
+            self.assertFalse(
+                any(
+                    line.startswith(("bootout ", "bootstrap ", "kickstart "))
+                    for line in calls_path.read_text(encoding="utf-8").splitlines()
+                )
+            )
+            self.assertFalse((fixture["runtime"] / "app" / ".update-transaction.lock").exists())
+
+    def test_verify_allows_legitimate_sqlite_writer_after_capture(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            self._prepare_and_promote(fixture, journal)
+            writer = sqlite3.connect(fixture["database"])
+            try:
+                writer.execute(
+                    "INSERT INTO update_evidence(value) VALUES ('writer-before-candidate-verify')"
+                )
+                writer.commit()
+            finally:
+                writer.close()
+
+            self._run("restore-services", "--state", str(journal))
+            self._run("verify", "--state", str(journal))
+
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertEqual(state["status"], "verified")
+            self.assertEqual(
+                self._database_values(fixture["database"]),
+                ["before-update", "writer-before-candidate-verify"],
+            )
+            self.assertEqual(self._database_integrity(fixture["database"]), "ok")
+            self._run("rollback", "--state", str(journal))
+
+    def test_unchanged_existing_desktop_directory_is_shallowly_snapshotted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            fixture["desktop"].mkdir(parents=True)
+            (fixture["desktop"] / "private-user-file.txt").write_text("do-not-copy\n", encoding="utf-8")
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            self._prepare_and_promote(fixture, journal)
+
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            record = next(item for item in state["files"] if item["key"] == "desktop-link")
+            self.assertEqual(record["kind"], "directory")
+            self.assertIsNone(record["backupPath"])
+            self.assertIsNotNone(record["directoryIdentity"])
+            self.assertNotIn(
+                "do-not-copy",
+                "\n".join(
+                    path.read_text(encoding="utf-8", errors="ignore")
+                    for path in journal.parent.rglob("*")
+                    if path.is_file()
+                ),
+            )
+
+            self._run("restore-services", "--state", str(journal))
+            self._run("verify", "--state", str(journal))
+            self._run("rollback", "--state", str(journal))
+
+    def test_verify_rejects_prior_missing_control_path_created_after_capture(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            self._prepare_and_promote(fixture, journal)
+            fixture["location"].write_text('{"concurrent":"created"}\n', encoding="utf-8")
+            self._run("restore-services", "--state", str(journal))
+
+            result = self._run("verify", "--state", str(journal), check=False)
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("protected update state changed unexpectedly: location", result.stderr)
+            fixture["location"].unlink()
+            self._run("rollback", "--state", str(journal))
+
+    def test_verify_rejects_cli_mode_and_symlink_target_changes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            target_a = Path(tmp) / "target-a"
+            target_b = Path(tmp) / "target-b"
+            target_a.mkdir()
+            target_b.mkdir()
+            fixture["desktop"].parent.mkdir(parents=True)
+            fixture["desktop"].symlink_to(target_a)
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            self._prepare_and_promote(fixture, journal)
+            original_mode = fixture["runtime"].joinpath("bin", "open-nova").stat().st_mode & 0o777
+            fixture["runtime"].joinpath("bin", "open-nova").chmod(0o700)
+            fixture["desktop"].unlink()
+            fixture["desktop"].symlink_to(target_b)
+            self._run("restore-services", "--state", str(journal))
+
+            result = self._run("verify", "--state", str(journal), check=False)
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("protected update state changed unexpectedly", result.stderr)
+            fixture["runtime"].joinpath("bin", "open-nova").chmod(original_mode)
+            fixture["desktop"].unlink()
+            fixture["desktop"].symlink_to(target_a)
+            self._run("rollback", "--state", str(journal))
+
+    def test_rollback_keeps_services_stopped_after_protected_state_conflict(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._fixture(root)
+            server, server_thread, port = self._start_health_server()
+            label = "com.open-nova.dashboard"
+            fixture["settings"].write_text(
+                json.dumps(
+                    {
+                        "dashboard": {
+                            "host": "127.0.0.1",
+                            "port": port,
+                            "healthPath": "/health",
+                            "serviceLabel": label,
+                        }
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            launch_agents = fixture["home"] / "Library" / "LaunchAgents"
+            launch_agents.mkdir(parents=True)
+            self._write_runtime_plist(
+                launch_agents / f"{label}.plist",
+                label=label,
+                runtime=fixture["runtime"],
+            )
+            state_dir = root / "launchctl-state"
+            state_dir.mkdir()
+            (state_dir / label).write_text("running\n", encoding="utf-8")
+            calls_path = root / "launchctl-calls.log"
+            fake_launchctl = root / "launchctl"
+            self._write_stateful_fake_launchctl(fake_launchctl, state_dir=state_dir, calls_path=calls_path)
+            try:
+                journal = self._begin(
+                    fixture,
+                    owner_pid=os.getpid(),
+                    platform="Darwin",
+                    launchctl=str(fake_launchctl),
+                    uid=0,
+                )
+            finally:
+                server.shutdown()
+                server.server_close()
+                server_thread.join(timeout=5)
+            self._prepare_and_promote(fixture, journal)
+            fixture["settings"].write_text('{"concurrent":"operator-change"}\n', encoding="utf-8")
+            calls_before = calls_path.read_text(encoding="utf-8").splitlines()
+
+            result = self._run("rollback", "--state", str(journal), check=False)
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertEqual(state["status"], "rollback-failed")
+            self.assertIn(
+                "services:not-restored-after-pointer-or-control-state-conflict",
+                state["rollbackErrors"],
+            )
+            calls_after = calls_path.read_text(encoding="utf-8").splitlines()[len(calls_before) :]
+            self.assertFalse(any(call.startswith(("bootstrap ", "kickstart ")) for call in calls_after))
+            self.assertFalse((state_dir / label).exists())
+
+    def test_restore_services_requires_health_on_the_preserved_dashboard_port(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._fixture(root)
+
+            class HealthHandler(http.server.BaseHTTPRequestHandler):
+                def do_GET(self) -> None:
+                    body = b'{"status":"ok"}\n'
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+
+                def log_message(self, _format: str, *_args: object) -> None:
+                    return
+
+            server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), HealthHandler)
+            server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+            server_thread.start()
+            closed_port = int(server.server_address[1])
+            fixture["settings"].write_text(
+                json.dumps(
+                    {
+                        "dashboard": {
+                            "host": "127.0.0.1",
+                            "port": closed_port,
+                            "healthPath": "/health",
+                        }
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            launch_agents = fixture["home"] / "Library" / "LaunchAgents"
+            launch_agents.mkdir(parents=True)
+            dashboard_plist = launch_agents / "com.open-nova.dashboard.plist"
+            self._write_runtime_plist(
+                dashboard_plist,
+                label="com.open-nova.dashboard",
+                runtime=fixture["runtime"],
+            )
+            service_state = root / "launchctl-state"
+            service_state.mkdir()
+            (service_state / "com.open-nova.dashboard").write_text("running\n", encoding="utf-8")
+            fake_launchctl = root / "launchctl"
+            fake_launchctl.write_text(
+                f"#!{sys.executable}\n"
+                "import sys\n"
+                "from pathlib import Path\n"
+                f"state = Path({str(service_state)!r})\n"
+                "command = sys.argv[1]\n"
+                "if command == 'print':\n"
+                "    label = sys.argv[2].rsplit('/', 1)[-1]\n"
+                "    value = state / label\n"
+                "    if not value.is_file():\n"
+                "        raise SystemExit(113)\n"
+                "    print('state = ' + value.read_text().strip())\n"
+                "elif command == 'bootout':\n"
+                "    label = sys.argv[2].rsplit('/', 1)[-1]\n"
+                "    (state / label).unlink(missing_ok=True)\n"
+                "elif command == 'bootstrap':\n"
+                "    label = Path(sys.argv[-1]).stem\n"
+                "    (state / label).write_text('running\\n')\n"
+                "elif command == 'kickstart':\n"
+                "    label = sys.argv[-1].rsplit('/', 1)[-1]\n"
+                "    (state / label).write_text('running\\n')\n",
+                encoding="utf-8",
+            )
+            fake_launchctl.chmod(0o755)
+            try:
+                journal = self._begin(
+                    fixture,
+                    owner_pid=os.getpid(),
+                    platform="Darwin",
+                    launchctl=str(fake_launchctl),
+                    uid=0,
+                )
+            finally:
+                server.shutdown()
+                server.server_close()
+                server_thread.join(timeout=5)
+            self._prepare_and_promote(fixture, journal)
+
+            result = self._run(
+                "restore-services",
+                "--state",
+                str(journal),
+                check=False,
+                env={
+                    "NOVA_INSTALL_TEST_MODE": "1",
+                    "NOVA_INSTALL_TEST_HEALTH_TIMEOUT_SECONDS": "0.2",
+                },
+            )
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("managed dashboard health check failed", result.stderr)
+            self.assertIn(f"preserved port {closed_port}", result.stderr)
+
+    def test_invalid_sqlite_fails_closed_without_durable_snapshot_record(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            fixture["database"].write_bytes(b"not-a-sqlite-database")
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            result = self._run(
+                "record-candidate",
+                "--state",
+                str(journal),
+                "--kind",
+                "source",
+                "--candidate",
+                str(fixture["candidate_source"]),
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+            result = self._run(
+                "verify-migration-compatibility",
+                "--state",
+                str(journal),
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("Runtime migration ledger is unreadable", result.stderr)
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertFalse(state.get("mutableStateCaptured", False))
+            self.assertFalse(state["serviceStopInitiated"])
+            self.assertEqual(
+                [item for item in state["files"] if item["key"] == "database"],
+                [],
+            )
+            backups = journal.parent / "backups"
+            self.assertEqual(list(backups.glob("*.sqlite3")), [])
+            self._run("rollback", "--state", str(journal))
+
+    def test_recover_rolls_back_nonterminal_journal_owned_by_dead_process(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._fixture(root)
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            self._prepare_and_promote(fixture, journal)
+            self._mark_transaction_owner_dead(journal)
+            runtime_alias = root / "runtime-alias"
+            runtime_alias.symlink_to(fixture["runtime"], target_is_directory=True)
+
+            self._run("recover", "--runtime", str(runtime_alias))
+
+            source = fixture["runtime"] / "app" / "source"
+            venv = fixture["runtime"] / ".venv"
+            self.assertEqual(os.readlink(source), "releases/old")
+            self.assertTrue(venv.is_dir())
+            self.assertFalse(venv.is_symlink())
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertEqual(state["status"], "rolled-back")
+            self.assertFalse((fixture["runtime"] / "app" / ".update-transaction.lock").exists())
+
+    def test_failure_between_source_and_venv_promotion_is_recoverable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            self._run(
+                "record-candidate",
+                "--state",
+                str(journal),
+                "--kind",
+                "source",
+                "--candidate",
+                str(fixture["candidate_source"]),
+            )
+            self._run(
+                "record-candidate",
+                "--state",
+                str(journal),
+                "--kind",
+                "venv",
+                "--candidate",
+                str(fixture["candidate_venv"]),
+            )
+            self._run("verify-migration-compatibility", "--state", str(journal))
+            self._run("stop", "--state", str(journal))
+            self._run(
+                "capture-mutable",
+                "--state",
+                str(journal),
+                "--location",
+                str(fixture["location"]),
+                "--cli-shim",
+                str(fixture["runtime"] / "bin" / "open-nova"),
+                "--user-cli-shim",
+                str(fixture["user_cli"]),
+                "--desktop-link",
+                str(fixture["desktop"]),
+            )
+            legacy_source_temp = fixture["runtime"] / "app" / ".source.next-fixture-tx"
+            legacy_venv_temp = fixture["runtime"] / ".venv.next-fixture-tx"
+            legacy_source_temp.write_text("operator-source\n", encoding="utf-8")
+            legacy_venv_temp.write_text("operator-venv\n", encoding="utf-8")
+            result = self._run(
+                "promote",
+                "--state",
+                str(journal),
+                check=False,
+                env={
+                    "NOVA_INSTALL_TEST_MODE": "1",
+                    "NOVA_INSTALL_TEST_FAIL_PHASE": "source-pointer-promoted",
+                },
+            )
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            source = fixture["runtime"] / "app" / "source"
+            venv = fixture["runtime"] / ".venv"
+            self.assertEqual(source.resolve(), fixture["candidate_source"].resolve())
+            self.assertTrue(venv.is_dir())
+            self.assertFalse(venv.is_symlink())
+            self.assertEqual(
+                legacy_source_temp.read_text(encoding="utf-8"),
+                "operator-source\n",
+            )
+            self.assertEqual(
+                legacy_venv_temp.read_text(encoding="utf-8"),
+                "operator-venv\n",
+            )
+
+            self._run("rollback", "--state", str(journal))
+
+            self.assertEqual(os.readlink(source), "releases/old")
+            self.assertTrue(venv.is_dir())
+            self.assertEqual((venv / "bin" / "python").read_text(encoding="utf-8"), "old-venv\n")
+
+    def test_sigkill_pointer_promotion_windows_recover_idempotently(self):
+        cases = (
+            ("source-promotion-armed", "source-promotion-armed"),
+            ("source-pointer-replaced-before-journal", "source-promotion-armed"),
+            ("source-pointer-promoted", "source-promoted"),
+            ("venv-promotion-armed", "venv-promotion-armed"),
+            ("venv-prior-moved-before-journal", "venv-promotion-armed"),
+            ("venv-pointer-replaced-before-journal", "prior-venv-moved"),
+            ("venv-pointer-promoted", "venv-promoted"),
+        )
+        for kill_phase, durable_phase in cases:
+            with self.subTest(kill_phase=kill_phase), tempfile.TemporaryDirectory() as tmp:
+                fixture = self._fixture(Path(tmp))
+                journal = self._begin(fixture, owner_pid=os.getpid())
+                self._run(
+                    "record-candidate",
+                    "--state",
+                    str(journal),
+                    "--kind",
+                    "source",
+                    "--candidate",
+                    str(fixture["candidate_source"]),
+                )
+                self._run(
+                    "record-candidate",
+                    "--state",
+                    str(journal),
+                    "--kind",
+                    "venv",
+                    "--candidate",
+                    str(fixture["candidate_venv"]),
+                )
+                self._run("verify-migration-compatibility", "--state", str(journal))
+                self._run("stop", "--state", str(journal))
+                self._run(
+                    "capture-mutable",
+                    "--state",
+                    str(journal),
+                    "--location",
+                    str(fixture["location"]),
+                    "--cli-shim",
+                    str(fixture["runtime"] / "bin" / "open-nova"),
+                    "--user-cli-shim",
+                    str(fixture["user_cli"]),
+                    "--desktop-link",
+                    str(fixture["desktop"]),
+                    "--shell-profile",
+                    str(fixture["profile"]),
+                )
+
+                result = self._run(
+                    "promote",
+                    "--state",
+                    str(journal),
+                    check=False,
+                    env={
+                        "NOVA_INSTALL_TEST_MODE": "1",
+                        "NOVA_INSTALL_TEST_KILL_PHASE": kill_phase,
+                    },
+                )
+
+                self.assertEqual(result.returncode, -signal.SIGKILL, result.stdout + result.stderr)
+                killed_state = json.loads(journal.read_text(encoding="utf-8"))
+                self.assertEqual(killed_state["phase"], durable_phase)
+                self.assertTrue((fixture["runtime"] / "app" / ".update-transaction.lock").exists())
+                self._mark_transaction_owner_dead(journal)
+
+                self._run("recover", "--runtime", str(fixture["runtime"]))
+
+                source = fixture["runtime"] / "app" / "source"
+                venv = fixture["runtime"] / ".venv"
+                self.assertEqual(os.readlink(source), "releases/old")
+                self.assertTrue(venv.is_dir())
+                self.assertFalse(venv.is_symlink())
+                self.assertEqual((venv / "bin" / "python").read_text(encoding="utf-8"), "old-venv\n")
+                self.assertEqual(self._database_values(fixture["database"]), ["before-update"])
+                self.assertEqual(self._database_integrity(fixture["database"]), "ok")
+                recovered = json.loads(journal.read_text(encoding="utf-8"))
+                self.assertEqual(recovered["status"], "rolled-back")
+                self.assertEqual(recovered["rollbackErrors"], [])
+                self.assertFalse((fixture["runtime"] / "app" / ".update-transaction.lock").exists())
+                self._run("recover", "--runtime", str(fixture["runtime"]))
+                self.assertEqual(os.readlink(source), "releases/old")
+                self.assertTrue(venv.is_dir())
+                self.assertFalse(venv.is_symlink())
+
+    def test_sigkill_after_committed_journal_keeps_candidate_and_releases_stale_lock(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            self._prepare_and_promote(fixture, journal)
+            self._run("restore-services", "--state", str(journal))
+            self._run("verify", "--state", str(journal))
+
+            result = self._run(
+                "commit",
+                "--state",
+                str(journal),
+                check=False,
+                env={
+                    "NOVA_INSTALL_TEST_MODE": "1",
+                    "NOVA_INSTALL_TEST_KILL_PHASE": "commit-journaled-before-lock-release",
+                },
+            )
+
+            self.assertEqual(result.returncode, -signal.SIGKILL, result.stdout + result.stderr)
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertEqual(state["status"], "committed")
+            lock = fixture["runtime"] / "app" / ".update-transaction.lock"
+            self.assertTrue(lock.exists())
+            self._mark_transaction_owner_dead(journal)
+
+            self._run("recover", "--runtime", str(fixture["runtime"]))
+            self._run("recover", "--runtime", str(fixture["runtime"]))
+
+            self.assertFalse(lock.exists())
+            self.assertEqual(
+                (fixture["runtime"] / "app" / "source").resolve(),
+                fixture["candidate_source"].resolve(),
+            )
+            self.assertEqual(
+                (fixture["runtime"] / ".venv").resolve(),
+                fixture["candidate_venv"].resolve(),
+            )
+            self.assertEqual(
+                json.loads(journal.read_text(encoding="utf-8"))["status"],
+                "committed",
+            )
+
+    def test_sigkill_after_rolled_back_journal_recovery_only_releases_stale_lock(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            journal = self._begin(fixture, owner_pid=os.getpid())
+
+            result = self._run(
+                "rollback",
+                "--state",
+                str(journal),
+                check=False,
+                env={
+                    "NOVA_INSTALL_TEST_MODE": "1",
+                    "NOVA_INSTALL_TEST_KILL_PHASE": (
+                        "rollback-journaled-before-lock-release"
+                    ),
+                },
+            )
+
+            self.assertEqual(result.returncode, -signal.SIGKILL, result.stdout + result.stderr)
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertEqual(state["status"], "rolled-back")
+            lock = fixture["runtime"] / "app" / ".update-transaction.lock"
+            self.assertTrue(lock.exists())
+
+            self._run("recover", "--runtime", str(fixture["runtime"]))
+            self._run("recover", "--runtime", str(fixture["runtime"]))
+
+            self.assertFalse(lock.exists())
+            self.assertEqual(
+                json.loads(journal.read_text(encoding="utf-8"))["status"],
+                "rolled-back",
+            )
+
+    def test_payload_tamper_is_rejected_before_promotion(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            self._run(
+                "record-candidate",
+                "--state",
+                str(journal),
+                "--kind",
+                "source",
+                "--candidate",
+                str(fixture["candidate_source"]),
+            )
+            self._run(
+                "record-candidate",
+                "--state",
+                str(journal),
+                "--kind",
+                "venv",
+                "--candidate",
+                str(fixture["candidate_venv"]),
+            )
+            self._run("verify-migration-compatibility", "--state", str(journal))
+            self._run("stop", "--state", str(journal))
+            self._run(
+                "capture-mutable",
+                "--state",
+                str(journal),
+                "--location",
+                str(fixture["location"]),
+                "--cli-shim",
+                str(fixture["runtime"] / "bin" / "open-nova"),
+                "--user-cli-shim",
+                str(fixture["user_cli"]),
+                "--desktop-link",
+                str(fixture["desktop"]),
+            )
+            (fixture["candidate_source"] / "pyproject.toml").write_text("tampered\n", encoding="utf-8")
+
+            result = self._run("promote", "--state", str(journal), check=False)
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("changed after scan", result.stderr)
+            self.assertEqual(os.readlink(fixture["runtime"] / "app" / "source"), "releases/old")
+            self._run("rollback", "--state", str(journal))
+
+    def test_private_v1_candidate_manifest_is_rejected_before_service_stop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            manifest_path = fixture["candidate_source"] / ".open-nova-runtime-source.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["schemaVersion"] = 1
+            manifest["sourceRoot"] = "/Users/private-operator/Desktop/open-nova"
+            manifest.pop("sourceLocator", None)
+            manifest_path.write_text(json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8")
+
+            journal = self._begin(fixture, owner_pid=os.getpid(), materialize_candidates=False)
+            temporary = Path(
+                self._run(
+                    "reserve-artifact",
+                    "--state",
+                    str(journal),
+                    "--kind",
+                    "source-temp",
+                ).stdout.strip()
+            )
+            shutil.copytree(fixture["candidate_source"], temporary, dirs_exist_ok=True)
+            candidate = Path(
+                self._run("promote-source-artifact", "--state", str(journal)).stdout.strip()
+            )
+
+            result = self._run(
+                "record-candidate",
+                "--state",
+                str(journal),
+                "--kind",
+                "source",
+                "--candidate",
+                str(candidate),
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("privacy schema", result.stderr)
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertFalse(state.get("serviceStopInitiated"))
+            self.assertNotIn("/Users/private-operator", result.stderr)
+            self._run("rollback", "--state", str(journal))
+
+    def test_v2_candidate_manifest_rejects_unknown_private_field_and_release_mismatch(self):
+        private_marker = "/Users/private-operator/Desktop/open-nova"
+        for mutation, expected in (
+            ({"debugPath": private_marker}, "exact schema"),
+            (
+                {
+                    "releaseLocator": {
+                        "kind": "runtime-relative",
+                        "pathComponents": ["app", "releases", "another-tx"],
+                    }
+                },
+                "does not match its candidate",
+            ),
+            ({"pyprojectVersion": private_marker}, "invalid project version"),
+            (
+                {
+                    "git": {
+                        "available": True,
+                        "commit": "0" * 40,
+                        "branch": "main",
+                        "remote": 123,
+                        "dirty": False,
+                    }
+                },
+                "unsafe git remote",
+            ),
+        ):
+            with self.subTest(expected=expected), tempfile.TemporaryDirectory() as tmp:
+                fixture = self._fixture(Path(tmp))
+                manifest_path = fixture["candidate_source"] / ".open-nova-runtime-source.json"
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                manifest.update(mutation)
+                manifest_path.write_text(json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8")
+                journal = self._begin(fixture, owner_pid=os.getpid())
+
+                result = self._run(
+                    "record-candidate",
+                    "--state",
+                    str(journal),
+                    "--kind",
+                    "source",
+                    "--candidate",
+                    str(fixture["candidate_source"]),
+                    check=False,
+                )
+
+                self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+                self.assertIn(expected, result.stderr)
+                self.assertNotIn(private_marker, result.stderr)
+                self._run("rollback", "--state", str(journal))
+
+    def test_missing_candidate_manifest_hash_binding_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            self._run(
+                "record-candidate",
+                "--state",
+                str(journal),
+                "--kind",
+                "source",
+                "--candidate",
+                str(fixture["candidate_source"]),
+            )
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            state["source"]["candidateSha256"] = None
+            journal.write_text(json.dumps(state, sort_keys=True) + "\n", encoding="utf-8")
+
+            result = self._run(
+                "verify-migration-compatibility",
+                "--state",
+                str(journal),
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("no bound release-clean hash", result.stderr)
+            self._run("rollback", "--state", str(journal))
+
+    def test_duplicate_payload_inventory_path_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            manifest_path = fixture["candidate_source"] / ".open-nova-runtime-source.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["payload"]["files"].append(dict(manifest["payload"]["files"][0]))
+            manifest["payload"]["fileCount"] += 1
+            manifest_path.write_text(json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8")
+            journal = self._begin(fixture, owner_pid=os.getpid())
+
+            result = self._run(
+                "record-candidate",
+                "--state",
+                str(journal),
+                "--kind",
+                "source",
+                "--candidate",
+                str(fixture["candidate_source"]),
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("duplicate path", result.stderr)
+            self._run("rollback", "--state", str(journal))
+
+    def test_unexpected_launchctl_probe_error_aborts_before_lock_is_left_active(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            fake = Path(tmp) / "launchctl"
+            fake.write_text("#!/bin/sh\nexit 70\n", encoding="utf-8")
+            fake.chmod(0o755)
+            result = self._run(
+                "begin",
+                "--runtime",
+                str(fixture["runtime"]),
+                "--home",
+                str(fixture["home"]),
+                "--source-pointer",
+                str(fixture["runtime"] / "app" / "source"),
+                "--venv-pointer",
+                str(fixture["runtime"] / ".venv"),
+                "--mode",
+                "upgrade",
+                "--tx-id",
+                "probe-error",
+                "--owner-pid",
+                str(os.getpid()),
+                "--platform",
+                "Darwin",
+                "--launchctl",
+                str(fake),
+                "--uid",
+                "501",
+                check=False,
+            )
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("unexpected error", result.stderr)
+            self.assertFalse((fixture["runtime"] / "app" / ".update-transaction.lock").exists())
+
+
+if __name__ == "__main__":
+    unittest.main()

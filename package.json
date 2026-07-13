@@ -1,0 +1,13 @@
+{
+  "name": "open-nova-release-page",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:release-page": "playwright test tests/release-page.spec.js",
+    "test:dashboard-live-context": "node --test tests/dashboard-live-context.node.js",
+    "test:dashboard-live": "npm run test:dashboard-live-context && playwright test tests/dashboard-live.spec.js --project=chromium-desktop --workers=1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0"
+  }
+}
