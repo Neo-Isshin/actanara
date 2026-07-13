@@ -1,3 +1,4 @@
+import copy
 import hashlib
 import http.server
 import json
@@ -2417,6 +2418,131 @@ print -r -- "$reserved"
             self._run("rollback", "--state", str(journal))
             for label, original in originals.items():
                 self.assertEqual((launch_agents / f"{label}.plist").read_bytes(), original)
+
+    def test_real_v100_source_concrete_venv_stable_plists_normalize_to_current_builders(self):
+        from advanced.dashboard import dashboard_launch_agent as dashboard_launcher
+        from advanced.dashboard import rag_server_launch_agent as rag_launcher
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            fixture = self._fixture(root)
+            runtime = fixture["runtime"]
+            stable_source = runtime / "app" / "source"
+            stable_python = runtime / ".venv" / "bin" / "python"
+            concrete_source = runtime / "app" / "releases" / "old"
+            concrete_venv = runtime / "app" / "venvs" / "old"
+            logs = runtime / "state" / "logs"
+            labels = {
+                "dashboard": "com.open-nova.dashboard",
+                "watchdog": "com.open-nova.dashboard.watchdog",
+                "rag": "com.open-nova.rag-server",
+            }
+            canonical = {
+                "dashboard": dashboard_launcher.build_service_plist(
+                    label=labels["dashboard"],
+                    python=stable_python,
+                    project_root=stable_source,
+                    nova_home=runtime,
+                    host="127.0.0.1",
+                    port=42173,
+                    foundation=True,
+                    logs_dir=logs,
+                ),
+                "watchdog": dashboard_launcher.build_watchdog_plist(
+                    label=labels["watchdog"],
+                    service_label=labels["dashboard"],
+                    python=stable_python,
+                    script=stable_source
+                    / "advanced"
+                    / "dashboard"
+                    / "dashboard_launch_agent.py",
+                    url="http://127.0.0.1:42173/health",
+                    interval=60,
+                    nova_home=runtime,
+                    logs_dir=logs,
+                ),
+                "rag": rag_launcher.build_service_plist(
+                    label=labels["rag"],
+                    python=stable_python,
+                    project_root=stable_source,
+                    nova_home=runtime,
+                    script=stable_source
+                    / "advanced"
+                    / "dashboard"
+                    / "rag_server_launch_agent.py",
+                    logs_dir=logs,
+                ),
+            }
+            legacy = copy.deepcopy(canonical)
+            stable_source_text = str(stable_source)
+            concrete_source_text = str(concrete_source)
+            dashboard_command = legacy["dashboard"]["ProgramArguments"][2]
+            self.assertEqual(dashboard_command.count(stable_source_text), 2)
+            legacy["dashboard"]["ProgramArguments"][2] = dashboard_command.replace(
+                stable_source_text,
+                concrete_source_text,
+            )
+            dashboard_environment = legacy["dashboard"]["EnvironmentVariables"]
+            dashboard_environment["NOVA_DASHBOARD_PROJECT_ROOT"] = concrete_source_text
+            dashboard_environment["PYTHONPATH"] = (
+                f"{concrete_source}:{concrete_source / 'src'}:"
+                f"{concrete_source / 'src' / 'dashboard'}"
+            )
+            legacy["watchdog"]["ProgramArguments"][1] = str(
+                concrete_source
+                / "advanced"
+                / "dashboard"
+                / "dashboard_launch_agent.py"
+            )
+            rag_arguments = legacy["rag"]["ProgramArguments"]
+            rag_arguments[1] = str(
+                concrete_source / "advanced" / "dashboard" / "rag_server_launch_agent.py"
+            )
+            project_root_index = rag_arguments.index("--project-root") + 1
+            rag_arguments[project_root_index] = concrete_source_text
+            legacy["rag"]["EnvironmentVariables"]["PYTHONPATH"] = (
+                f"{concrete_source}:{concrete_source / 'src'}"
+            )
+
+            launch_agents = fixture["home"] / "Library" / "LaunchAgents"
+            launch_agents.mkdir(parents=True)
+            originals: dict[str, bytes] = {}
+            for key, payload in legacy.items():
+                serialized = json.dumps(payload, sort_keys=True)
+                self.assertIn(concrete_source_text, serialized)
+                self.assertIn(str(stable_python), serialized)
+                self.assertNotIn(str(concrete_venv), serialized)
+                path = launch_agents / f"{labels[key]}.plist"
+                with path.open("wb") as handle:
+                    plistlib.dump(payload, handle, sort_keys=False)
+                originals[key] = path.read_bytes()
+
+            journal, _calls = self._begin_unloaded_darwin(fixture, root)
+            self._prepare_stopped_candidate(fixture, journal)
+            self._run("normalize-service-plists", "--state", str(journal))
+
+            for key, expected in canonical.items():
+                path = launch_agents / f"{labels[key]}.plist"
+                self.assertEqual(plistlib.loads(path.read_bytes()), expected)
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            services = {item["label"]: item for item in state["services"]}
+            expected_counts = {
+                labels["dashboard"]: (6, 2),
+                labels["watchdog"]: (1, 1),
+                labels["rag"]: (4, 1),
+            }
+            for label, (source_count, venv_count) in expected_counts.items():
+                self.assertTrue(services[label]["plistNormalizationRequired"])
+                self.assertTrue(services[label]["plistBindingComplete"])
+                self.assertEqual(services[label]["plistSourceBindingCount"], source_count)
+                self.assertEqual(services[label]["plistVenvBindingCount"], venv_count)
+
+            self._run("rollback", "--state", str(journal))
+            for key, original in originals.items():
+                self.assertEqual(
+                    (launch_agents / f"{labels[key]}.plist").read_bytes(),
+                    original,
+                )
 
     def test_forward_restore_rejects_available_git_provenance_with_short_commit(self):
         with tempfile.TemporaryDirectory() as tmp:

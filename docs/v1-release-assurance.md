@@ -16,8 +16,9 @@ directory after an otherwise successful update.
 - package version, license, metadata, source manifests, and distribution files;
 - bootstrap and update source-selection failure matrices, including an explicit
   `WITHDRAWN` Release title;
-- stale multi-generation LaunchAgent normalization, stable source/venv binding,
-  exact plist rollback, and loaded-source commit provenance;
+- stale multi-generation and real v1.0.0 source-concrete/venv-stable
+  LaunchAgent normalization, stable source/venv binding, exact plist rollback,
+  and loaded-source commit provenance;
 - fresh install, full upgrade, rollback, service handoff, and data retention;
 - Foundation, Pipeline, Settings, Scheduler, Dashboard, Nova-Task, and nova-RAG;
 - release-clean true-positive and false-positive fixtures;
@@ -31,7 +32,7 @@ The frozen v1.0.1 public source was exercised in two independent full-suite
 runs, each with a fresh virtual environment and disposable Runtime. Each run
 completed:
 
-- **1,414 run**
+- **1,415 run**
 - **0 failures**
 - **0 errors**
 - **2 expected skips**
