@@ -7,7 +7,7 @@
 **Fully Automated AI Asset Operations · Memory Sharing Across Agent Runtimes · LLM-Engaged Workflows**
 
 [![Website](https://img.shields.io/badge/Website-release%20page-2563EB)](https://neo-isshin.github.io/open-nova/)
-[![One-liner](https://img.shields.io/badge/One--liner-GitHub-0EA5E9)](https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.0/install/bootstrap.sh)
+[![One-liner](https://img.shields.io/badge/One--liner-GitHub-0EA5E9)](https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.1/install/bootstrap.sh)
 [![Docs](https://img.shields.io/badge/Docs-release%20page-1D4ED8)](https://neo-isshin.github.io/open-nova/)
 [![中文](https://img.shields.io/badge/Lang-中文-2563EB)](README.zh-CN.md)
 [![English](https://img.shields.io/badge/Lang-English-64748B)](README.md)
@@ -76,7 +76,7 @@ Open Nova is currently optimized for local macOS environments:
 - 🍎 **Native macOS support:** The guided installer and managed scheduler use macOS `LaunchAgent` services by default.
 - 🐍 **Python environment:** Python `>= 3.11` is required; Python `3.12` is recommended.
 - 📦 **Automatic dependency installation:** The installer detects and installs missing requirements. Dashboard and local `nova-RAG` embeddings require additional Python packages; the first setup may download larger libraries such as `torch` and `sentence-transformers`.
-- 🐧 **Linux and Windows compatibility:** These platforms are not first-class one-liner targets in v1.0.0. Advanced users can check out the source and run individual components manually; the supported managed Runtime and service workflow targets macOS.
+- 🐧 **Linux and Windows compatibility:** These platforms are not first-class one-liner targets in v1.0.x. Advanced users can check out the source and run individual components manually; the supported managed Runtime and service workflow targets macOS.
 - ⚙️ **System utilities:** Make sure `git`, `curl`, and a compatible `python3` are available on `PATH` before running the installer.
 
 **Open Nova currently supports five agent runtimes:**<br>
@@ -94,15 +94,20 @@ More runtimes are planned for the next major version, including `Cursor`, `Antig
 Run the hosted bootstrap script in your terminal:
 
 ```bash
-zsh -c "$(curl -fsSL 'https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.0/install/bootstrap.sh')"
+zsh -c "$(curl -fsSL 'https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.1/install/bootstrap.sh')"
 ```
 
 The hosted bootstrap is fresh-install-only. It resolves the latest stable
 GitHub Release to its full commit before acquiring source, and fails closed
 when no stable Release exists. If any Open Nova Runtime or managed LaunchAgent
 already exists, use `open-nova update --dry-run` followed by
-`open-nova update --apply` instead. The versioned `v1.0.0` URL above is the
+`open-nova update --apply` instead. The versioned `v1.0.1` URL above is the
 immutable installation entry for this release and never tracks `main`.
+
+> [!WARNING]
+> v1.0.0 is withdrawn because its update transaction could leave managed
+> services bound to an older concrete source directory. Its immutable tag and
+> artifacts remain available for audit only; do not install or recommend it.
 
 > [!NOTE]
 > The installer guides you through LLM provider setup and stores provider keys in the runtime-local secret store at `$NOVA_HOME/state/secrets` (directory mode `0700`, secret-file mode `0600`). It works unattended and requires no Keychain setup or recurring authorization. `nova-RAG` is optional; a cloud embedding key, when configured, uses the same secret store.
@@ -312,6 +317,32 @@ npm run test:release-page
 > databases, Runtime logs, temporary files, evidence, and local secret-store
 > data must remain untracked and must not be committed.
 
+### 4. Reproduce Release Artifacts
+
+The release builder accepts only a clean, committed Git tree and writes outside
+the repository. Install the exact release toolchain, then use the commit time as
+the deterministic archive timestamp. `-B` also prevents the invocation itself
+from writing bytecode into the source tree:
+
+```bash
+python -B -m pip install -r requirements-release.txt
+SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)" \
+python -B -m tools.release.build_release \
+  --source-root . \
+  --output-dir ../open-nova-release-artifacts \
+  --expected-commit "$(git rev-parse HEAD)" \
+  --expected-version 1.0.1
+```
+
+The builder verifies `build==1.5.1`, `packaging==26.2`,
+`pyproject-hooks==1.2.0`, `setuptools==83.0.0`, and `wheel==0.47.0` before
+creating output, runs the package build without dependency isolation in a
+minimal environment, and proves that the complete source file set—including
+ignored files—did not change. The output includes public-source and
+Runtime-payload manifests, a normalized Runtime archive, wheel, sdist,
+provenance, and `SHA256SUMS`. Tests, release requirements, and release tooling
+remain public source assets but are excluded from every Runtime/package payload.
+
 ## 📄 Related Documentation
 
 - 📖 [New User Onboarding Guide](docs/new-user-onboarding-runbook.md)
@@ -320,7 +351,7 @@ npm run test:release-page
 - 🤖 [External Agent Runtime Contract](docs/rag-external-agent-contract.md)
 - 🧩 [Nova-Task Work Graph Reconciliation](docs/nova-task-work-graph-reconciliation.md)
 - 🧹 [Production-clean Inventory](docs/production-clean-inventory.md)
-- ✅ [v1.0.0 Release Assurance](docs/v1-release-assurance.md)
+- ✅ [v1.0.1 Release Assurance](docs/v1-release-assurance.md)
 - 🌐 [Modern Release Page](https://neo-isshin.github.io/open-nova/)
 - 🧾 [Changelog](CHANGELOG.md)
 - 🔐 [Security Policy](SECURITY.md)

@@ -502,7 +502,7 @@ class LLMTransportTests(unittest.TestCase):
                     f"certificate verify failed api_key={synthetic_secret}"
                 )
             ),
-            TimeoutError(f"request timeout Authorization: Bearer {synthetic_secret}"),
+            TimeoutError("request timeout Authorization: " + f"Bearer {synthetic_secret}"),
         )
 
         for failure in failures:
@@ -824,7 +824,7 @@ class LLMTransportTLSIntegrationTests(unittest.TestCase):
     def test_tls_transport_error_redacts_synthetic_authorization_value(self):
         synthetic_secret = "synthetic-" + "tls-error-redaction-header"
         invalid_status_line = (
-            "Authorization: Bearer " + synthetic_secret + "\r\n\r\n"
+            "Authorization: " + "Bearer " + synthetic_secret + "\r\n\r\n"
         ).encode("utf-8")
         with _local_tls_server(
             self.valid_key,

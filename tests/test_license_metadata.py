@@ -17,7 +17,7 @@ class LicenseMetadataTests(unittest.TestCase):
     def test_pep639_metadata_declares_gpl_v3_or_later(self):
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
-        self.assertEqual(metadata["project"]["version"], "1.0.0")
+        self.assertEqual(metadata["project"]["version"], "1.0.1")
         self.assertEqual(metadata["project"]["readme"], "README.md")
         self.assertEqual(
             metadata["project"]["authors"],
@@ -33,7 +33,10 @@ class LicenseMetadataTests(unittest.TestCase):
                 "Issues": "https://github.com/Neo-Isshin/open-nova/issues",
             },
         )
-        self.assertIn("setuptools>=77.0.3", metadata["build-system"]["requires"])
+        self.assertEqual(
+            metadata["build-system"]["requires"],
+            ["setuptools==83.0.0", "wheel==0.47.0"],
+        )
 
     def test_source_manifest_and_readmes_publish_consistent_notice(self):
         self.assertIn(
@@ -50,7 +53,7 @@ class LicenseMetadataTests(unittest.TestCase):
     def test_public_entrypoints_are_versioned_and_github_canonical(self):
         immutable_bootstrap = (
             "https://raw.githubusercontent.com/Neo-Isshin/open-nova/"
-            "v1.0.0/install/bootstrap.sh"
+            "v1.0.1/install/bootstrap.sh"
         )
         for name in (
             "README.md",

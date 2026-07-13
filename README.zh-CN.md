@@ -7,7 +7,7 @@
 **全自动 AI 资产运维 · 跨 Agent runtime 共享记忆 · LLM深度参与**
 
 [![官网](https://img.shields.io/badge/Website-release%20page-2563EB)](https://neo-isshin.github.io/open-nova/)
-[![一行安装](https://img.shields.io/badge/One--liner-GitHub-0EA5E9)](https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.0/install/bootstrap.sh)
+[![一行安装](https://img.shields.io/badge/One--liner-GitHub-0EA5E9)](https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.1/install/bootstrap.sh)
 [![文档](https://img.shields.io/badge/Docs-release%20page-1D4ED8)](https://neo-isshin.github.io/open-nova/)
 [![中文](https://img.shields.io/badge/Lang-中文-2563EB)](README.zh-CN.md)
 [![English](https://img.shields.io/badge/Lang-English-64748B)](README.md)
@@ -94,14 +94,18 @@ Open Nova 当前优先面向本地 macOS 运行环境：
 通过托管 bootstrap 脚本安装：
 
 ```bash
-zsh -c "$(curl -fsSL 'https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.0/install/bootstrap.sh')"
+zsh -c "$(curl -fsSL 'https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.1/install/bootstrap.sh')"
 ```
 
 托管 bootstrap 只用于全新安装。它会先把最新正式 GitHub Release
 解析为完整 commit，再获取源码；没有正式 Release 时将安全阻断。若已存在任何
 Open Nova Runtime 或托管 LaunchAgent，请改用
 `open-nova update --dry-run`，确认后执行 `open-nova update --apply`。
-上面的版本化 `v1.0.0` URL 是本版本的不可变安装入口，不会追踪 `main`。
+上面的版本化 `v1.0.1` URL 是本版本的不可变安装入口，不会追踪 `main`。
+
+> [!WARNING]
+> v1.0.0 已撤回：其更新事务可能使托管服务仍绑定到旧的具体源码目录。
+> 该版本的不可变 tag 和制品仅保留供审计，请勿安装或推荐。
 
 > [!NOTE]
 > 安装器会引导您配置 LLM Provider，并将 Provider Key 写入 Runtime 本地密钥目录 `$NOVA_HOME/state/secrets`（目录权限 `0700`、密钥文件权限 `0600`）。该机制支持无人值守运行，用户无需配置 Keychain，也不会遇到周期性重新授权。`nova-RAG` 为可选子系统；如配置云端 Embedding Key，也使用同一密钥目录。
@@ -293,6 +297,29 @@ npm run test:release-page
 > `OPEN_NOVA_DASHBOARD_LIVE_BASE_URL` 指向它的 loopback URL。生成的数据库、
 > Runtime 日志、临时文件、证据和本地 secret-store 数据必须保持 untracked，禁止提交。
 
+### 4. 复现发布构件
+
+发布构建器只接受干净且已提交的 Git 工作树，并把输出写到仓库外。先安装精确锁定的
+发布工具链，再使用提交时间作为确定性的归档时间戳。`-B` 还会阻止当前调用向源码树
+写入 Python bytecode：
+
+```bash
+python -B -m pip install -r requirements-release.txt
+SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)" \
+python -B -m tools.release.build_release \
+  --source-root . \
+  --output-dir ../open-nova-release-artifacts \
+  --expected-commit "$(git rev-parse HEAD)" \
+  --expected-version 1.0.1
+```
+
+构建器会在创建输出前验证 `build==1.5.1`、`packaging==26.2`、
+`pyproject-hooks==1.2.0`、`setuptools==83.0.0` 和 `wheel==0.47.0`，在最小环境中
+以 no-isolation 方式构建 package，并证明包含 ignored 文件在内的完整源码文件集合没有
+变化。输出包含公开源码与 Runtime payload manifest、
+归一化 Runtime 归档、wheel、sdist、provenance 和 `SHA256SUMS`。测试、发布依赖清单与
+发布工具属于公开源码资产，但不会进入任何 Runtime 或 Python package payload。
+
 ## 📄 关联文档
 
 - 📖 [新用户安装手册](docs/new-user-onboarding-runbook.md)
@@ -301,7 +328,7 @@ npm run test:release-page
 - 🤖 [RAG 外部 Agent runtime 合约](docs/rag-external-agent-contract.md)
 - 🧩 [Nova-Task 工作图谱对账](docs/nova-task-work-graph-reconciliation.md)
 - 🧹 [发布清理清单](docs/production-clean-inventory.md)
-- ✅ [v1.0.0 发布保证摘要](docs/v1-release-assurance.md)
+- ✅ [v1.0.1 发布保证摘要](docs/v1-release-assurance.md)
 - 🌐 [现代发布页](https://neo-isshin.github.io/open-nova/)
 - 🧾 [更新日志](CHANGELOG.md)
 - 🔐 [安全策略](SECURITY.md)

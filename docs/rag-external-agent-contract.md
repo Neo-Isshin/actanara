@@ -1,6 +1,6 @@
 # nova-RAG External Agent Read-Only Contract
 
-Status: Open Nova v1.0.0 public interface contract
+Status: Open Nova v1.0.x public interface contract
 
 ## Scope
 

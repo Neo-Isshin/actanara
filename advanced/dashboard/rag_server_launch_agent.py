@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import plistlib
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -17,13 +19,89 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 
 
-DEFAULT_PROJECT_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(DEFAULT_PROJECT_ROOT))
-sys.path.insert(0, str(DEFAULT_PROJECT_ROOT / "src"))
+MODULE_PROJECT_ROOT = Path(__file__).absolute().parents[2]
+sys.path.insert(0, str(MODULE_PROJECT_ROOT))
+sys.path.insert(0, str(MODULE_PROJECT_ROOT / "src"))
 
-DEFAULT_PYTHON = Path(sys.executable)
 DEFAULT_NOVA_HOME = Path.home() / ".open-nova"
+DEFAULT_PROJECT_ROOT = DEFAULT_NOVA_HOME / "app" / "source"
+DEFAULT_PYTHON = DEFAULT_NOVA_HOME / ".venv" / "bin" / "python"
 DEFAULT_SERVICE_LABEL = "com.open-nova.rag-server"
+_MAX_SETTINGS_BYTES = 2 * 1024 * 1024
+
+
+class ManagedRuntimeConfigurationError(RuntimeError):
+    """Raised when managed service defaults cannot be tied to one Runtime."""
+
+
+def _require_selected_runtime(selected) -> None:
+    explicit_home = os.environ.get("NOVA_HOME")
+    if explicit_home:
+        expected = Path(explicit_home).expanduser().absolute()
+        if selected.home != expected:
+            raise ManagedRuntimeConfigurationError(
+                "selected Runtime does not match the explicit NOVA_HOME"
+            )
+
+    settings_path = selected.config_dir / "settings.json"
+    try:
+        details = settings_path.lstat()
+    except FileNotFoundError:
+        details = None
+    except OSError as exc:
+        raise ManagedRuntimeConfigurationError("Runtime settings are unreadable") from exc
+    if details is not None:
+        try:
+            if stat.S_ISLNK(details.st_mode) or not stat.S_ISREG(details.st_mode):
+                raise ManagedRuntimeConfigurationError("Runtime settings must be a regular file")
+            if details.st_size > _MAX_SETTINGS_BYTES:
+                raise ManagedRuntimeConfigurationError("Runtime settings exceed the safe read limit")
+            payload = json.loads(settings_path.read_text(encoding="utf-8"))
+        except ManagedRuntimeConfigurationError:
+            raise
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ManagedRuntimeConfigurationError("Runtime settings are unreadable") from exc
+        if (
+            not isinstance(payload, dict)
+            or type(payload.get("schemaVersion")) is not int
+            or payload.get("schemaVersion") != 1
+        ):
+            raise ManagedRuntimeConfigurationError("Runtime settings have an unsupported schema")
+    _require_runtime_pointers(selected.home)
+
+
+def _require_runtime_pointers(nova_home: Path) -> None:
+    pointers = (
+        (nova_home / "app" / "source", nova_home / "app" / "releases"),
+        (nova_home / ".venv", nova_home / "app" / "venvs"),
+    )
+    for pointer, container in pointers:
+        try:
+            if not pointer.is_symlink():
+                raise ManagedRuntimeConfigurationError("managed Runtime pointer is unavailable")
+            target = Path(os.readlink(pointer))
+            if target.is_absolute():
+                raise ManagedRuntimeConfigurationError("managed Runtime pointer must be relative")
+            resolved = pointer.resolve(strict=True)
+            expected_container = container.resolve(strict=True)
+        except ManagedRuntimeConfigurationError:
+            raise
+        except (OSError, RuntimeError) as exc:
+            raise ManagedRuntimeConfigurationError("managed Runtime pointer is unreadable") from exc
+        if resolved.parent != expected_container or not resolved.is_dir():
+            raise ManagedRuntimeConfigurationError("managed Runtime pointer target is outside its store")
+    if not (nova_home / ".venv" / "bin" / "python").is_file():
+        raise ManagedRuntimeConfigurationError("managed Runtime Python is unavailable")
+
+
+def _require_stable_runtime_binding(*, project_root: Path, python: Path, nova_home: Path) -> None:
+    expected_source = nova_home / "app" / "source"
+    expected_python = nova_home / ".venv" / "bin" / "python"
+    if project_root != expected_source or python != expected_python:
+        raise ManagedRuntimeConfigurationError(
+            "managed service writes require stable Runtime source and venv paths"
+        )
+    _require_runtime_pointers(nova_home)
 
 
 def rag_launch_defaults() -> dict:
@@ -32,23 +110,22 @@ def rag_launch_defaults() -> dict:
         from data_foundation.settings import read_settings
 
         selected = load_paths()
-        settings = read_settings(selected)
+        _require_selected_runtime(selected)
+        settings = read_settings(selected, persist_defaults=False)
         dashboard = settings.get("dashboard") if isinstance(settings.get("dashboard"), dict) else {}
         return {
-            "project_root": Path(str(dashboard.get("projectRoot") or DEFAULT_PROJECT_ROOT)),
-            "python": Path(str(dashboard.get("pythonExecutable") or DEFAULT_PYTHON)),
+            "project_root": selected.home / "app" / "source",
+            "python": selected.home / ".venv" / "bin" / "python",
             "nova_home": selected.home,
             "logs_dir": Path(str(dashboard.get("logsDir") or (Path.home() / "Library" / "Logs" / "OpenNova"))),
             "label": DEFAULT_SERVICE_LABEL,
         }
-    except Exception:
-        return {
-            "project_root": DEFAULT_PROJECT_ROOT,
-            "python": DEFAULT_PYTHON,
-            "nova_home": DEFAULT_NOVA_HOME,
-            "logs_dir": Path.home() / "Library" / "Logs" / "OpenNova",
-            "label": DEFAULT_SERVICE_LABEL,
-        }
+    except ManagedRuntimeConfigurationError:
+        raise
+    except Exception as exc:
+        raise ManagedRuntimeConfigurationError(
+            "managed nova-RAG defaults could not be read from the selected Runtime"
+        ) from exc
 
 
 def launch_agents_dir(home: Path | None = None) -> Path:
@@ -106,19 +183,25 @@ def launchctl(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def write_agent(args: argparse.Namespace) -> Path:
-    project_root = args.project_root.resolve()
-    nova_home = args.nova_home.resolve()
-    logs_dir = args.logs_dir.expanduser().resolve()
+    project_root = args.project_root.expanduser().absolute()
+    python = args.python.expanduser().absolute()
+    nova_home = args.nova_home.expanduser().absolute()
+    logs_dir = args.logs_dir.expanduser().absolute()
+    _require_stable_runtime_binding(
+        project_root=project_root,
+        python=python,
+        nova_home=nova_home,
+    )
     logs_dir.mkdir(parents=True, exist_ok=True)
     path = service_plist_path(args.label)
     write_plist(
         path,
         build_service_plist(
             label=args.label,
-            python=args.python,
+            python=python,
             project_root=project_root,
             nova_home=nova_home,
-            script=Path(__file__).resolve(),
+            script=project_root / "advanced" / "dashboard" / "rag_server_launch_agent.py",
             logs_dir=logs_dir,
         ),
     )

@@ -40,12 +40,21 @@ class InstallerV2Tests(unittest.TestCase):
         return env
 
     def _start_health_server(self) -> int:
+        source_commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=ROOT,
+            text=True,
+        ).strip()
+
         class HealthHandler(http.server.BaseHTTPRequestHandler):
             def do_GET(self) -> None:
                 if self.path != "/health":
                     self.send_error(404)
                     return
-                body = b'{"status":"ok"}\n'
+                body = json.dumps(
+                    {"sourceCommit": source_commit, "status": "ok"},
+                    sort_keys=True,
+                ).encode("utf-8") + b"\n"
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
@@ -109,15 +118,79 @@ esac
         path.chmod(0o755)
 
     def _write_runtime_plist(self, path: Path, *, runtime: Path) -> None:
-        with path.open("wb") as handle:
-            plistlib.dump(
-                {
-                    "Label": path.stem,
-                    "ProgramArguments": [str(runtime / ".venv" / "bin" / "python")],
-                    "EnvironmentVariables": {"NOVA_HOME": str(runtime)},
-                },
-                handle,
+        label = path.stem
+        source = runtime / "app" / "releases" / "old-release"
+        python = runtime / ".venv" / "bin" / "python"
+        environment = {
+            "NOVA_HOME": str(runtime),
+            "PYTHONDONTWRITEBYTECODE": "1",
+        }
+        if label.endswith("dashboard.watchdog"):
+            payload = {
+                "Label": label,
+                "ProgramArguments": [
+                    str(python),
+                    str(source / "advanced" / "dashboard" / "dashboard_launch_agent.py"),
+                    "check",
+                    "--url",
+                    "http://127.0.0.1:3036/health",
+                    "--label",
+                    label.removesuffix(".watchdog"),
+                    "--restart",
+                ],
+                "EnvironmentVariables": environment,
+            }
+        elif label.endswith("rag-server"):
+            environment["PYTHONPATH"] = f"{source}:{source / 'src'}"
+            payload = {
+                "Label": label,
+                "ProgramArguments": [
+                    str(python),
+                    str(source / "advanced" / "dashboard" / "rag_server_launch_agent.py"),
+                    "run",
+                    "--project-root",
+                    str(source),
+                    "--nova-home",
+                    str(runtime),
+                ],
+                "EnvironmentVariables": environment,
+            }
+        elif label.endswith((".pipeline", ".dashboard-aggregation")):
+            script = (
+                "run_daily_pipeline.py"
+                if label.endswith(".pipeline")
+                else "run_dashboard_foundation_refresh.py"
             )
+            environment["PYTHONPATH"] = f"{source}:{source / 'src'}:{source / 'src' / 'dashboard'}"
+            payload = {
+                "Label": label,
+                "ProgramArguments": [
+                    str(python),
+                    str(source / "advanced" / "pipeline" / script),
+                ],
+                "WorkingDirectory": str(source),
+                "EnvironmentVariables": environment,
+            }
+        else:
+            environment.update(
+                {
+                    "NOVA_DASHBOARD_PROJECT_ROOT": str(source),
+                    "NOVA_DASHBOARD_PYTHON": str(python),
+                    "PYTHONPATH": f"{source}:{source / 'src'}:{source / 'src' / 'dashboard'}",
+                }
+            )
+            payload = {
+                "Label": label,
+                "ProgramArguments": [
+                    "/bin/zsh",
+                    "-lc",
+                    f"cd {source} && exec {python} -m uvicorn app.main:app "
+                    f"--app-dir {source / 'src' / 'dashboard'} --host 127.0.0.1 --port 3036",
+                ],
+                "EnvironmentVariables": environment,
+            }
+        with path.open("wb") as handle:
+            plistlib.dump(payload, handle, sort_keys=False)
 
     def _write_prior_runtime_source(self, runtime: Path) -> Path:
         release = runtime / "app" / "releases" / "old-release"
@@ -454,7 +527,7 @@ exit 1
             "~/.open-nova/bin/open-nova",
             "--upgrade",
             "https://github.com/Neo-Isshin/open-nova",
-            "https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.0/install/bootstrap.sh",
+            "https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.1/install/bootstrap.sh",
         ):
             with self.subTest(token=token):
                 self.assertIn(token, runbook)

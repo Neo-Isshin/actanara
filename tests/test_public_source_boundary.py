@@ -64,8 +64,11 @@ class PublicSourceBoundaryTests(unittest.TestCase):
         installer = (ROOT / "install" / "install.sh").read_text(encoding="utf-8")
 
         self.assertTrue((ROOT / "tests" / "run_isolated_release_suite.py").is_file())
+        self.assertTrue((ROOT / "tools" / "release" / "build_release.py").is_file())
         self.assertIn("prune tests", manifest.splitlines())
+        self.assertIn("prune tools", manifest.splitlines())
         self.assertNotIn("graft tests", manifest.splitlines())
+        self.assertNotIn("graft tools", manifest.splitlines())
         self.assertNotIn('"tests",', installer[installer.index("allowed_top_level"):])
 
 

@@ -128,6 +128,176 @@ extract_json_boolean() {
   print -rn -- "$value"
 }
 
+parse_latest_release_json() {
+  local payload="$1"
+  print -rn -- "$payload" | /usr/bin/awk '
+function fail() { failed = 1; return 0 }
+function skip_ws(    c) {
+  while (cursor <= length(input)) {
+    c = substr(input, cursor, 1)
+    if (c != " " && c != "\t" && c != "\r" && c != "\n") break
+    cursor++
+  }
+}
+function hex_digit(c,    position) {
+  position = index("0123456789abcdef", tolower(c))
+  return position == 0 ? -1 : position - 1
+}
+function parse_string(    c, escape, code, digit, index_value, decoded) {
+  if (substr(input, cursor, 1) != "\"") return fail()
+  cursor++
+  decoded = ""
+  while (cursor <= length(input)) {
+    c = substr(input, cursor, 1)
+    cursor++
+    if (c == "\"") {
+      parsed_string = decoded
+      return 1
+    }
+    if (c == "\\") {
+      if (cursor > length(input)) return fail()
+      escape = substr(input, cursor, 1)
+      cursor++
+      if (escape == "u") {
+        if (cursor + 3 > length(input)) return fail()
+        code = 0
+        for (index_value = 0; index_value < 4; index_value++) {
+          digit = hex_digit(substr(input, cursor + index_value, 1))
+          if (digit < 0) return fail()
+          code = code * 16 + digit
+        }
+        cursor += 4
+        decoded = decoded (code <= 127 ? sprintf("%c", code) : "?")
+      } else if (index("\"\\/bfnrt", escape) > 0) {
+        if (escape == "\"" || escape == "\\" || escape == "/") {
+          decoded = decoded escape
+        } else {
+          decoded = decoded " "
+        }
+      } else {
+        return fail()
+      }
+    } else {
+      if (c ~ /[[:cntrl:]]/) return fail()
+      decoded = decoded c
+    }
+  }
+  return fail()
+}
+function consume_literal(word) {
+  if (substr(input, cursor, length(word)) != word) return fail()
+  cursor += length(word)
+  return 1
+}
+function parse_number(    remainder) {
+  remainder = substr(input, cursor)
+  if (match(remainder, /^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?/) != 1) return fail()
+  cursor += RLENGTH
+  return 1
+}
+function parse_array(depth,    c) {
+  cursor++
+  skip_ws()
+  if (substr(input, cursor, 1) == "]") { cursor++; return 1 }
+  while (!failed) {
+    if (!parse_value(depth + 1)) return 0
+    skip_ws()
+    c = substr(input, cursor, 1)
+    if (c == "]") { cursor++; return 1 }
+    if (c != ",") return fail()
+    cursor++
+    skip_ws()
+  }
+  return 0
+}
+function parse_object(depth,    c, key) {
+  cursor++
+  skip_ws()
+  if (substr(input, cursor, 1) == "}") { cursor++; return 1 }
+  while (!failed) {
+    if (!parse_string()) return 0
+    key = parsed_string
+    skip_ws()
+    if (substr(input, cursor, 1) != ":") return fail()
+    cursor++
+    skip_ws()
+    if (depth == 1 && key == "name") {
+      name_count++
+      if (name_count != 1) return fail()
+      c = substr(input, cursor, 1)
+      if (c == "\"") {
+        if (!parse_string()) return 0
+        name_kind = "string"
+        name_value = parsed_string
+      } else if (substr(input, cursor, 4) == "null") {
+        if (!consume_literal("null")) return 0
+        name_kind = "null"
+      } else {
+        return fail()
+      }
+    } else if (depth == 1 && key == "tag_name") {
+      tag_count++
+      if (tag_count != 1 || substr(input, cursor, 1) != "\"") return fail()
+      if (!parse_string() || parsed_string == "") return fail()
+      tag_value = parsed_string
+    } else if (depth == 1 && (key == "draft" || key == "prerelease")) {
+      if (key == "draft") {
+        draft_count++
+        if (draft_count != 1) return fail()
+      } else {
+        prerelease_count++
+        if (prerelease_count != 1) return fail()
+      }
+      if (substr(input, cursor, 4) == "true") {
+        if (!consume_literal("true")) return 0
+        boolean_value = "true"
+      } else if (substr(input, cursor, 5) == "false") {
+        if (!consume_literal("false")) return 0
+        boolean_value = "false"
+      } else {
+        return fail()
+      }
+      if (key == "draft") draft_value = boolean_value
+      else prerelease_value = boolean_value
+    } else if (!parse_value(depth + 1)) {
+      return 0
+    }
+    skip_ws()
+    c = substr(input, cursor, 1)
+    if (c == "}") { cursor++; return 1 }
+    if (c != ",") return fail()
+    cursor++
+    skip_ws()
+  }
+  return 0
+}
+function parse_value(depth,    c) {
+  skip_ws()
+  c = substr(input, cursor, 1)
+  if (c == "{") return parse_object(depth)
+  if (c == "[") return parse_array(depth)
+  if (c == "\"") return parse_string()
+  if (c == "t") return consume_literal("true")
+  if (c == "f") return consume_literal("false")
+  if (c == "n") return consume_literal("null")
+  return parse_number()
+}
+{ input = input (NR == 1 ? "" : "\n") $0 }
+END {
+  cursor = 1
+  skip_ws()
+  if (substr(input, cursor, 1) != "{" || !parse_object(1)) failed = 1
+  skip_ws()
+  if (cursor <= length(input)) failed = 1
+  if (tag_count != 1 || draft_count != 1 || prerelease_count != 1) failed = 1
+  if (failed) exit 2
+  if (name_count == 0 || name_kind == "null") name_status = "absent"
+  else if (tolower(name_value) ~ /withdrawn/) name_status = "withdrawn"
+  else name_status = "ok"
+  printf "%s\t%s\t%s\t%s\n", tag_value, draft_value, prerelease_value, name_status
+}'
+}
+
 parse_installer_safety_args() {
   INSTALLER_UPGRADE=0
   INSTALLER_RUNTIME="${NOVA_INSTALL_RUNTIME:-$HOME/.open-nova}"
@@ -274,16 +444,25 @@ resolve_latest_stable_commit() {
     return 2
   fi
   local release_tag=""
+  local release_metadata=""
+  local release_name_status=""
   local release_draft=""
   local release_prerelease=""
-  if ! release_tag="$(extract_json_string "$payload" "tag_name")" \
-    || ! release_draft="$(extract_json_boolean "$payload" "draft")" \
-    || ! release_prerelease="$(extract_json_boolean "$payload" "prerelease")"; then
+  if ! release_metadata="$(parse_latest_release_json "$payload")"; then
     print -r -- "The default GitHub latest-release response is invalid; refusing mutable HEAD." >&2
     return 2
   fi
+  IFS=$'\t' read -r release_tag release_draft release_prerelease release_name_status <<< "$release_metadata"
   if [[ "$release_draft" != "false" || "$release_prerelease" != "false" ]]; then
     print -r -- "The default GitHub Release is draft or prerelease; a stable release is required." >&2
+    return 2
+  fi
+  # GitHub immutable Releases may still have their human-facing title and
+  # notes edited after publication.  Treat an explicit WITHDRAWN title as a
+  # distribution stop even though GitHub's /releases/latest endpoint continues
+  # to classify the object as published, non-draft, and non-prerelease.
+  if [[ "$release_name_status" == "withdrawn" ]]; then
+    print -r -- "The default GitHub Release is explicitly withdrawn; refusing source acquisition." >&2
     return 2
   fi
   if [[ ! "$release_tag" =~ "^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$" ]] \

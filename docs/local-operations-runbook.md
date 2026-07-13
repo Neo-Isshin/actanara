@@ -22,7 +22,7 @@ The installer detects supported agent-runtime paths and lets you choose which to
 ## 3. One-command Installation
 
 ```bash
-zsh -c "$(curl -fsSL 'https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.0/install/bootstrap.sh')"
+zsh -c "$(curl -fsSL 'https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.1/install/bootstrap.sh')"
 ```
 
 This versioned entry is fresh-install-only. Before writing cache or Runtime

@@ -117,6 +117,7 @@ exit 0
                 "NOVA_TEST_SOURCE_URL": DEFAULT_SOURCE_URL,
                 "NOVA_TEST_RELEASE_JSON": json.dumps(
                     {
+                        "name": "Open Nova v1.2.3",
                         "tag_name": "v1.2.3",
                         "draft": False,
                         "prerelease": False,
@@ -262,6 +263,19 @@ exit 0
             (
                 {
                     "NOVA_TEST_RELEASE_JSON": json.dumps(
+                        {
+                            "name": "Open Nova v1.2.3 — WITHDRAWN",
+                            "tag_name": "v1.2.3",
+                            "draft": False,
+                            "prerelease": False,
+                        }
+                    )
+                },
+                "explicitly withdrawn",
+            ),
+            (
+                {
+                    "NOVA_TEST_RELEASE_JSON": json.dumps(
                         {"tag_name": "../main", "draft": False, "prerelease": False}
                     )
                 },
@@ -280,6 +294,86 @@ exit 0
                 result = self._run(*arguments, env=self._environment(**overrides))
                 self.assertEqual(result.returncode, 2, self._output(result))
                 self.assertIn(expected, self._output(result))
+                self.assertFalse(cache.exists())
+
+    def test_withdrawn_release_name_fails_without_plutil_for_escaped_and_lowercase_titles(self) -> None:
+        payloads = (
+            (
+                '{"name":"Open Nova v1.2.3 \\u2014 '
+                '\\u0057\\u0049\\u0054\\u0048\\u0044\\u0052\\u0041\\u0057\\u004e",'
+                '"tag_name":"v1.2.3","draft":false,"prerelease":false}'
+            ),
+            json.dumps(
+                {
+                    "name": "open nova v1.2.3 — withdrawn",
+                    "tag_name": "v1.2.3",
+                    "draft": False,
+                    "prerelease": False,
+                }
+            ),
+        )
+        for index, payload in enumerate(payloads):
+            with self.subTest(index=index):
+                cache = self.root / f"Withdrawn-Cache-{index}"
+                arguments = self._remote_arguments()
+                arguments[arguments.index(str(self.cache))] = str(cache)
+                result = self._run(
+                    *arguments,
+                    env=self._environment(
+                        NOVA_INSTALL_PLUTIL="/no/such/plutil",
+                        NOVA_TEST_RELEASE_JSON=payload,
+                    ),
+                )
+                self.assertEqual(result.returncode, 2, self._output(result))
+                self.assertIn("explicitly withdrawn", self._output(result))
+                self.assertFalse(cache.exists())
+
+    def test_release_name_missing_or_null_is_accepted_for_compatibility_without_plutil(self) -> None:
+        payloads = (
+            {"tag_name": "v1.2.3", "draft": False, "prerelease": False},
+            {"name": None, "tag_name": "v1.2.3", "draft": False, "prerelease": False},
+        )
+        for index, payload in enumerate(payloads):
+            with self.subTest(index=index):
+                cache = self.root / f"Compatible-Cache-{index}"
+                arguments = self._remote_arguments()
+                arguments[arguments.index(str(self.cache))] = str(cache)
+                result = self._run(
+                    *arguments,
+                    env=self._environment(
+                        NOVA_INSTALL_PLUTIL="/no/such/plutil",
+                        NOVA_TEST_RELEASE_JSON=json.dumps(payload),
+                    ),
+                )
+                self.assertEqual(result.returncode, 0, self._output(result))
+
+    def test_duplicate_or_malformed_release_name_fails_closed_without_plutil(self) -> None:
+        payloads = (
+            '{"name":"safe","name":"WITHDRAWN","tag_name":"v1.2.3",'
+            '"draft":false,"prerelease":false}',
+            '{"name":"safe","\\u006eame":"WITHDRAWN","tag_name":"v1.2.3",'
+            '"draft":false,"prerelease":false}',
+            '{"name":"bad\\qescape","tag_name":"v1.2.3",'
+            '"draft":false,"prerelease":false}',
+            '{"name":{"title":"WITHDRAWN"},"tag_name":"v1.2.3",'
+            '"draft":false,"prerelease":false}',
+            '{"name":"safe","tag_name":"v1.2.3",'
+            '"draft":false,"prerelease":false} trailing',
+        )
+        for index, payload in enumerate(payloads):
+            with self.subTest(index=index):
+                cache = self.root / f"Invalid-Name-Cache-{index}"
+                arguments = self._remote_arguments()
+                arguments[arguments.index(str(self.cache))] = str(cache)
+                result = self._run(
+                    *arguments,
+                    env=self._environment(
+                        NOVA_INSTALL_PLUTIL="/no/such/plutil",
+                        NOVA_TEST_RELEASE_JSON=payload,
+                    ),
+                )
+                self.assertEqual(result.returncode, 2, self._output(result))
+                self.assertIn("latest-release response is invalid", self._output(result))
                 self.assertFalse(cache.exists())
 
     def test_custom_remote_without_commit_and_symbolic_remote_ref_fail_closed(self) -> None:

@@ -113,11 +113,11 @@ test("release page external links match the approved destinations", async ({ pag
   );
   await expect(page.getByRole("link", { name: "阅读 README", exact: true })).toHaveAttribute(
     "href",
-    "https://github.com/Neo-Isshin/open-nova/blob/v1.0.0/README.md",
+    "https://github.com/Neo-Isshin/open-nova/blob/v1.0.1/README.md",
   );
   await expect(page.getByRole("link", { name: "GPL-3.0-or-later", exact: true })).toHaveAttribute(
     "href",
-    "https://github.com/Neo-Isshin/open-nova/blob/v1.0.0/LICENSE",
+    "https://github.com/Neo-Isshin/open-nova/blob/v1.0.1/LICENSE",
   );
 });
 
@@ -141,7 +141,7 @@ test("release page copy CTA writes the exact visible hosted install command", as
   await expect(page.getByRole("status")).toHaveText("安装命令已复制。");
   expect(await page.evaluate(() => window.__openNovaCopiedText)).toBe(command);
   expect(command).toBe(
-    "zsh -c \"$(curl -fsSL 'https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.0/install/bootstrap.sh')\"",
+    "zsh -c \"$(curl -fsSL 'https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.1/install/bootstrap.sh')\"",
   );
 });
 

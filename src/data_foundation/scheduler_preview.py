@@ -17,7 +17,7 @@ from typing import Any
 import config
 
 from .paths import RuntimePaths, load_paths
-from .settings import read_settings, resolve_pipeline_settings
+from .settings import read_settings
 from .time import (
     SCHEDULER_SYSTEM_TIMEZONE_UNKNOWN_ISSUE_CODE,
     SCHEDULER_TIMEZONE_MISMATCH_ISSUE_CODE,
@@ -525,10 +525,9 @@ def _parse_time(value: str | None, fallback: str) -> tuple[int, int, str]:
 
 def _launchd_jobs(schedule: dict[str, Any], timer: dict[str, Any], paths: RuntimePaths | None = None) -> list[dict[str, Any]]:
     runtime_paths = paths or load_paths()
-    pipeline_settings = resolve_pipeline_settings(runtime_paths)
     base_label = str(timer.get("label") or "open-nova.daily").strip() or "open-nova.daily"
-    py = str(Path(pipeline_settings.get("pythonExecutable") or sys.executable).expanduser())
-    workspace = Path(str(pipeline_settings.get("workingDirectory") or config.WORKSPACE_DIR)).expanduser().absolute()
+    workspace = runtime_paths.home / "app" / "source"
+    py = str(runtime_paths.home / ".venv" / "bin" / "python")
     env = {
         "PATH": MANAGED_LAUNCHD_PATH,
         "PYTHONDONTWRITEBYTECODE": "1",

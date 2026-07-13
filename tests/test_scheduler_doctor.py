@@ -51,6 +51,19 @@ def _launchctl_output(job: dict) -> str:
 class SchedulerDoctorTests(unittest.TestCase):
     def _runtime(self, root: Path, *, mode: str = "system", enabled: bool = True, registered: bool = True):
         paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+        release = paths.home / "app" / "releases" / "fixture-release"
+        venv = paths.home / "app" / "venvs" / "fixture-venv"
+        (release / "src" / "dashboard").mkdir(parents=True)
+        (release / "advanced" / "pipeline").mkdir(parents=True)
+        for script in ("run_daily_pipeline.py", "run_dashboard_foundation_refresh.py"):
+            (release / "advanced" / "pipeline" / script).write_text(
+                "# scheduler fixture\n",
+                encoding="utf-8",
+            )
+        (venv / "bin").mkdir(parents=True)
+        (venv / "bin" / "python").write_text("#!/bin/sh\n", encoding="utf-8")
+        (paths.home / "app" / "source").symlink_to(Path("releases") / release.name)
+        (paths.home / ".venv").symlink_to(Path("app") / "venvs" / venv.name)
         write_settings(
             {
                 "pipeline": {

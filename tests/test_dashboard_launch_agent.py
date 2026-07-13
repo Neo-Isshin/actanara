@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,6 +21,15 @@ from advanced.dashboard import rag_server_launch_agent as rag_agent
 
 
 class DashboardLaunchAgentTests(unittest.TestCase):
+    def _write_runtime_pointers(self, runtime: Path) -> None:
+        release = runtime / "app" / "releases" / "fixture-release"
+        venv = runtime / "app" / "venvs" / "fixture-venv"
+        release.mkdir(parents=True)
+        (venv / "bin").mkdir(parents=True)
+        (venv / "bin" / "python").write_text("#!/bin/sh\n", encoding="utf-8")
+        (runtime / "app" / "source").symlink_to(Path("releases") / release.name)
+        (runtime / ".venv").symlink_to(Path("app") / "venvs" / venv.name)
+
     def test_service_plist_uses_keepalive_and_foundation_env(self):
         plist = agent.build_service_plist(
             label="com.example.dashboard",
@@ -78,6 +88,7 @@ class DashboardLaunchAgentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            self._write_runtime_pointers(paths.home)
             write_settings(
                 {
                     "dashboard": {
@@ -96,14 +107,228 @@ class DashboardLaunchAgentTests(unittest.TestCase):
             with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False):
                 defaults = agent.dashboard_launch_defaults()
 
-        self.assertEqual(defaults["project_root"], root / "project")
-        self.assertEqual(defaults["python"], root / "venv" / "bin" / "python")
+        self.assertEqual(defaults["project_root"], paths.home / "app" / "source")
+        self.assertEqual(defaults["python"], paths.home / ".venv" / "bin" / "python")
+        self.assertNotEqual(defaults["project_root"], root / "project")
+        self.assertNotEqual(defaults["python"], root / "venv" / "bin" / "python")
         self.assertEqual(defaults["host"], "0.0.0.0")
         self.assertEqual(defaults["port"], 4545)
         self.assertEqual(defaults["url"], "http://0.0.0.0:4545/healthz")
         self.assertEqual(defaults["logs_dir"], root / "logs")
         self.assertEqual(defaults["label"], "com.example.dashboard")
         self.assertEqual(defaults["watchdog_label"], "com.example.dashboard.watchdog")
+
+    def test_rag_launch_defaults_use_stable_runtime_source_and_venv(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            self._write_runtime_pointers(paths.home)
+            write_settings(
+                {
+                    "dashboard": {
+                        "projectRoot": str(root / "resolved-release"),
+                        "pythonExecutable": str(root / "resolved-venv" / "bin" / "python"),
+                        "logsDir": str(root / "logs"),
+                    }
+                },
+                paths,
+            )
+            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False):
+                defaults = rag_agent.rag_launch_defaults()
+
+        self.assertEqual(defaults["project_root"], paths.home / "app" / "source")
+        self.assertEqual(defaults["python"], paths.home / ".venv" / "bin" / "python")
+        self.assertEqual(defaults["logs_dir"], root / "logs")
+
+    def test_explicit_runtime_load_failure_never_falls_back_to_login_home(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            selected_home = root / "SelectedRuntime"
+            login_home = root / "LoginHome"
+            login_home.mkdir()
+            with (
+                patch.dict(
+                    os.environ,
+                    {"HOME": str(login_home), "NOVA_HOME": str(selected_home)},
+                    clear=False,
+                ),
+                patch(
+                    "data_foundation.paths.load_paths",
+                    side_effect=RuntimeError("synthetic load failure"),
+                ),
+            ):
+                for defaults in (agent.dashboard_launch_defaults, rag_agent.rag_launch_defaults):
+                    with self.subTest(defaults=defaults.__name__):
+                        with self.assertRaisesRegex(
+                            RuntimeError,
+                            "selected Runtime",
+                        ) as raised:
+                            defaults()
+                        self.assertNotIn(str(login_home / ".open-nova"), str(raised.exception))
+
+            self.assertFalse((login_home / ".open-nova").exists())
+
+    def test_malformed_selected_runtime_settings_fail_closed_without_rewrite(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = initialize_home(root / "SelectedRuntime", legacy_diary_root=root / "Diary")
+            settings_path = paths.config_dir / "settings.json"
+            settings_path.write_bytes(b"{not-json\n")
+            before = settings_path.read_bytes()
+
+            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False):
+                for defaults in (agent.dashboard_launch_defaults, rag_agent.rag_launch_defaults):
+                    with self.subTest(defaults=defaults.__name__):
+                        with self.assertRaisesRegex(RuntimeError, "settings"):
+                            defaults()
+
+            self.assertEqual(settings_path.read_bytes(), before)
+
+    def test_explicit_runtime_mismatch_from_loader_fails_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            selected = initialize_home(root / "SelectedRuntime", legacy_diary_root=root / "Diary")
+            different = initialize_home(root / "DifferentRuntime", legacy_diary_root=root / "OtherDiary")
+            with (
+                patch.dict(os.environ, {"NOVA_HOME": str(selected.home)}, clear=False),
+                patch("data_foundation.paths.load_paths", return_value=different),
+            ):
+                for defaults in (agent.dashboard_launch_defaults, rag_agent.rag_launch_defaults):
+                    with self.subTest(defaults=defaults.__name__):
+                        with self.assertRaisesRegex(RuntimeError, "explicit NOVA_HOME"):
+                            defaults()
+
+    def test_selected_runtime_rejects_absolute_pointer_targets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = initialize_home(root / "SelectedRuntime", legacy_diary_root=root / "Diary")
+            self._write_runtime_pointers(paths.home)
+            write_settings({}, paths)
+            source_pointer = paths.home / "app" / "source"
+            concrete_release = source_pointer.resolve(strict=True)
+            source_pointer.unlink()
+            source_pointer.symlink_to(concrete_release)
+
+            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False):
+                for defaults in (agent.dashboard_launch_defaults, rag_agent.rag_launch_defaults):
+                    with self.subTest(defaults=defaults.__name__):
+                        with self.assertRaisesRegex(RuntimeError, "must be relative"):
+                            defaults()
+
+    def test_direct_writers_preserve_stable_runtime_symlinks_in_managed_plists(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            runtime = root / "Runtime"
+            release = runtime / "app" / "releases" / "commit-a"
+            venv = runtime / "app" / "venvs" / "commit-a"
+            (release / "advanced" / "dashboard").mkdir(parents=True)
+            (venv / "bin").mkdir(parents=True)
+            (venv / "bin" / "python").write_text("#!/bin/sh\n", encoding="utf-8")
+            (runtime / "app" / "source").symlink_to(Path("releases") / release.name)
+            (runtime / ".venv").symlink_to(Path("app") / "venvs" / venv.name)
+
+            stable_source = runtime / "app" / "source"
+            stable_python = runtime / ".venv" / "bin" / "python"
+            logs = runtime / "logs"
+            dashboard_plist = root / "dashboard.plist"
+            watchdog_plist = root / "watchdog.plist"
+            rag_plist = root / "rag.plist"
+            common = {
+                "python": stable_python,
+                "project_root": stable_source,
+                "nova_home": runtime,
+                "logs_dir": logs,
+            }
+            dashboard_args = SimpleNamespace(
+                **common,
+                label="com.example.dashboard",
+                watchdog_label="com.example.dashboard.watchdog",
+                host="127.0.0.1",
+                port=3036,
+                url=None,
+                interval=60,
+                foundation=True,
+            )
+            rag_args = SimpleNamespace(**common, label="com.example.rag-server")
+
+            with (
+                patch.object(agent, "service_plist_path", return_value=dashboard_plist),
+                patch.object(agent, "watchdog_plist_path", return_value=watchdog_plist),
+            ):
+                agent.write_agents(dashboard_args)
+            with patch.object(rag_agent, "service_plist_path", return_value=rag_plist):
+                rag_agent.write_agent(rag_args)
+
+            dashboard = plistlib.loads(dashboard_plist.read_bytes())
+            watchdog = plistlib.loads(watchdog_plist.read_bytes())
+            rag = plistlib.loads(rag_plist.read_bytes())
+
+        self.assertEqual(
+            dashboard["EnvironmentVariables"]["NOVA_DASHBOARD_PROJECT_ROOT"],
+            str(stable_source),
+        )
+        self.assertEqual(
+            dashboard["EnvironmentVariables"]["NOVA_DASHBOARD_PYTHON"],
+            str(stable_python),
+        )
+        self.assertIn(f"cd {stable_source}", dashboard["ProgramArguments"][2])
+        self.assertNotIn(str(release), dashboard["ProgramArguments"][2])
+        self.assertEqual(
+            watchdog["ProgramArguments"][:2],
+            [
+                str(stable_python),
+                str(stable_source / "advanced" / "dashboard" / "dashboard_launch_agent.py"),
+            ],
+        )
+        self.assertEqual(
+            rag["ProgramArguments"][:2],
+            [
+                str(stable_python),
+                str(stable_source / "advanced" / "dashboard" / "rag_server_launch_agent.py"),
+            ],
+        )
+        self.assertEqual(
+            rag["ProgramArguments"][rag["ProgramArguments"].index("--project-root") + 1],
+            str(stable_source),
+        )
+        self.assertNotIn(str(release), "\n".join(rag["ProgramArguments"]))
+
+    def test_direct_writers_reject_concrete_release_and_venv_paths_before_writes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            runtime = root / "Runtime"
+            release = runtime / "app" / "releases" / "commit-a"
+            venv = runtime / "app" / "venvs" / "commit-a"
+            (release / "advanced" / "dashboard").mkdir(parents=True)
+            (venv / "bin").mkdir(parents=True)
+            (venv / "bin" / "python").write_text("#!/bin/sh\n", encoding="utf-8")
+            (runtime / "app" / "source").symlink_to(Path("releases") / release.name)
+            (runtime / ".venv").symlink_to(Path("app") / "venvs" / venv.name)
+            logs = runtime / "logs"
+            common = {
+                "python": venv / "bin" / "python",
+                "project_root": release,
+                "nova_home": runtime,
+                "logs_dir": logs,
+            }
+            dashboard_args = SimpleNamespace(
+                **common,
+                label="com.example.dashboard",
+                watchdog_label="com.example.dashboard.watchdog",
+                host="127.0.0.1",
+                port=3036,
+                url=None,
+                interval=60,
+                foundation=True,
+            )
+            rag_args = SimpleNamespace(**common, label="com.example.rag-server")
+
+            with self.assertRaisesRegex(RuntimeError, "stable Runtime"):
+                agent.write_agents(dashboard_args)
+            with self.assertRaisesRegex(RuntimeError, "stable Runtime"):
+                rag_agent.write_agent(rag_args)
+
+            self.assertFalse(logs.exists())
 
     def test_write_plist_round_trips(self):
         payload = {"Label": "com.example.dashboard", "RunAtLoad": True}

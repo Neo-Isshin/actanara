@@ -47,6 +47,7 @@ from data_foundation.network import (
     is_loopback_host,
     require_loopback_host,
 )
+from data_foundation.source_identity import loaded_source_commit
 
 # ===================== 全局状态 =====================
 embedding_provider = None
@@ -62,6 +63,7 @@ _search_semaphore = None
 _batch_queue = None
 MAX_EXTERNAL_TOP_K = 20
 MAX_SERVER_SEARCH_BUDGET_SECONDS = 60.0
+_LOADED_SOURCE_COMMIT = loaded_source_commit(__file__)
 
 
 def _bounded_top_k(value) -> int:
@@ -272,6 +274,7 @@ async def health():
     index_file = index_state["path"]
     return {
         "status": "ok" if _embedding_provider_ready() else "booting",
+        "sourceCommit": _LOADED_SOURCE_COMMIT,
         "model": rag_config.MODEL_NAME,
         "dimension": rag_config.EMBEDDING_DIM,
         "provider": rag_config.PRODUCTION_MODE,

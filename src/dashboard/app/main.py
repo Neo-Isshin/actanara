@@ -33,6 +33,7 @@ from app.services.dashboard_security import (
 )
 from data_foundation.paths import load_paths
 from data_foundation.settings import resolve_dashboard_settings
+from data_foundation.source_identity import loaded_source_commit
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
 logger = logging.getLogger("dashboard")
@@ -40,6 +41,7 @@ logger = logging.getLogger("dashboard")
 app = FastAPI(title="Open Nova Dashboard", version="3.5")
 _security_sessions = DashboardSessionStore()
 _security_config = dashboard_security_config()
+_LOADED_SOURCE_COMMIT = loaded_source_commit(__file__)
 
 
 def _apply_dashboard_security_headers(response):
@@ -133,7 +135,11 @@ async def tasks_page():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+    return {
+        "status": "ok",
+        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "sourceCommit": _LOADED_SOURCE_COMMIT,
+    }
 
 
 # 静态文件强制 no-cache（防止浏览器缓存旧版）

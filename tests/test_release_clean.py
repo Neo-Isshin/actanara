@@ -32,7 +32,7 @@ def _pre_scan_runtime_source_manifest() -> dict[str, object]:
         },
         "deploymentMode": "release-symlink",
         "copiedAt": "2026-07-11T00:00:00-07:00",
-        "pyprojectVersion": "1.0.0",
+        "pyprojectVersion": "1.0.1",
         "git": {
             "available": False,
             "commit": None,

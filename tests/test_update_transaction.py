@@ -122,7 +122,22 @@ class UpdateTransactionTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-        payload_paths = [source / "pyproject.toml", *sorted(migrations_root.glob("*.sql"))]
+        service_paths = [
+            source / "advanced" / "dashboard" / "dashboard_launch_agent.py",
+            source / "advanced" / "dashboard" / "rag_server_launch_agent.py",
+            source / "advanced" / "pipeline" / "run_daily_pipeline.py",
+            source / "advanced" / "pipeline" / "run_dashboard_foundation_refresh.py",
+        ]
+        for service_path in service_paths:
+            service_path.parent.mkdir(parents=True, exist_ok=True)
+            service_path.write_text("# fixture service entrypoint\n", encoding="utf-8")
+        (source / "src" / "dashboard").mkdir(parents=True, exist_ok=True)
+
+        payload_paths = [
+            source / "pyproject.toml",
+            *service_paths,
+            *sorted(migrations_root.glob("*.sql")),
+        ]
         if include_contract:
             payload_paths.append(contract_path)
         payload_records: list[dict[str, object]] = []
@@ -279,10 +294,17 @@ class UpdateTransactionTests(unittest.TestCase):
             return True
         return True
 
-    def _start_health_server(self) -> tuple[http.server.ThreadingHTTPServer, threading.Thread, int]:
+    def _start_health_server(
+        self,
+        *,
+        source_commit: str | None = None,
+    ) -> tuple[http.server.ThreadingHTTPServer, threading.Thread, int]:
         class HealthHandler(http.server.BaseHTTPRequestHandler):
             def do_GET(self) -> None:
-                body = b'{"status":"ok"}\n'
+                payload = {"status": "ok"}
+                if source_commit is not None:
+                    payload["sourceCommit"] = source_commit
+                body = (json.dumps(payload, sort_keys=True) + "\n").encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
@@ -332,16 +354,75 @@ class UpdateTransactionTests(unittest.TestCase):
         )
         path.chmod(0o755)
 
-    def _write_runtime_plist(self, path: Path, *, label: str, runtime: Path) -> None:
+    def _write_dashboard_binding_plist(
+        self,
+        path: Path,
+        *,
+        label: str,
+        runtime: Path,
+        source_root: Path,
+        venv_root: Path,
+        extra_payload: dict[str, object] | None = None,
+        command: str | None = None,
+    ) -> None:
+        python = venv_root / "bin" / "python"
+        payload: dict[str, object] = {
+            "Label": label,
+            "ProgramArguments": [
+                "/bin/zsh",
+                "-lc",
+                command
+                or (
+                    f"cd {source_root} && exec {python} -m uvicorn app.main:app "
+                    f"--app-dir {source_root / 'src' / 'dashboard'} --host 127.0.0.1 --port 42173"
+                ),
+            ],
+            "EnvironmentVariables": {
+                "NOVA_DASHBOARD_PROJECT_ROOT": str(source_root),
+                "NOVA_DASHBOARD_PYTHON": str(python),
+                "NOVA_HOME": str(runtime),
+                "PYTHONDONTWRITEBYTECODE": "1",
+                "PYTHONPATH": f"{source_root}:{source_root / 'src'}:{source_root / 'src' / 'dashboard'}",
+            },
+        }
+        if extra_payload:
+            payload.update(extra_payload)
         with path.open("wb") as handle:
-            plistlib.dump(
-                {
-                    "Label": label,
-                    "ProgramArguments": [str(runtime / ".venv" / "bin" / "python")],
-                    "EnvironmentVariables": {"NOVA_HOME": str(runtime)},
-                },
-                handle,
-            )
+            plistlib.dump(payload, handle, sort_keys=False)
+
+    def _write_runtime_plist(self, path: Path, *, label: str, runtime: Path) -> None:
+        self._write_dashboard_binding_plist(
+            path,
+            label=label,
+            runtime=runtime,
+            source_root=runtime / "app" / "source",
+            venv_root=runtime / ".venv",
+        )
+
+    def _begin_unloaded_darwin(
+        self,
+        fixture: dict[str, Path],
+        root: Path,
+    ) -> tuple[Path, Path]:
+        state_dir = root / "launchctl-state"
+        state_dir.mkdir()
+        calls_path = root / "launchctl-calls.log"
+        fake_launchctl = root / "launchctl"
+        self._write_stateful_fake_launchctl(
+            fake_launchctl,
+            state_dir=state_dir,
+            calls_path=calls_path,
+        )
+        return (
+            self._begin(
+                fixture,
+                owner_pid=os.getpid(),
+                platform="Darwin",
+                launchctl=str(fake_launchctl),
+                uid=0,
+            ),
+            calls_path,
+        )
 
     def _begin(
         self,
@@ -456,7 +537,7 @@ class UpdateTransactionTests(unittest.TestCase):
             str(fixture["candidate_venv"]),
         )
 
-    def _prepare_and_promote(self, fixture: dict[str, Path], journal: Path) -> None:
+    def _prepare_stopped_candidate(self, fixture: dict[str, Path], journal: Path) -> None:
         self._record_and_verify_source_candidate(fixture, journal)
         self._run("stop", "--state", str(journal))
         self._run(
@@ -474,6 +555,10 @@ class UpdateTransactionTests(unittest.TestCase):
             "--shell-profile",
             str(fixture["profile"]),
         )
+
+    def _prepare_and_promote(self, fixture: dict[str, Path], journal: Path) -> None:
+        self._prepare_stopped_candidate(fixture, journal)
+        self._run("normalize-service-plists", "--state", str(journal))
         self._run("promote", "--state", str(journal))
 
     def test_begin_preserves_preexisting_reserved_artifact(self):
@@ -1584,12 +1669,32 @@ print -r -- "$reserved"
             fixture = self._fixture(root)
             launch_agents = fixture["home"] / "Library" / "LaunchAgents"
             launch_agents.mkdir(parents=True)
-            label = "com.open-nova.session-d-prestop"
-            self._write_runtime_plist(
-                launch_agents / f"{label}.plist",
-                label=label,
-                runtime=fixture["runtime"],
-            )
+            label = "com.open-nova.session-d-prestop.watchdog"
+            with (launch_agents / f"{label}.plist").open("wb") as handle:
+                plistlib.dump(
+                    {
+                        "Label": label,
+                        "ProgramArguments": [
+                            str(fixture["runtime"] / ".venv" / "bin" / "python"),
+                            str(
+                                fixture["runtime"]
+                                / "app"
+                                / "source"
+                                / "advanced"
+                                / "dashboard"
+                                / "dashboard_launch_agent.py"
+                            ),
+                            "check",
+                            "--url",
+                            "http://127.0.0.1:42173/health",
+                            "--label",
+                            "com.open-nova.dashboard",
+                            "--restart",
+                        ],
+                        "EnvironmentVariables": {"NOVA_HOME": str(fixture["runtime"])},
+                    },
+                    handle,
+                )
             state_dir = root / "launchctl-state"
             state_dir.mkdir()
             (state_dir / label).write_text("running\n", encoding="utf-8")
@@ -2025,6 +2130,402 @@ print -r -- "$reserved"
             self.assertEqual(normalized["EnvironmentVariables"]["PYTHONDONTWRITEBYTECODE"], "1")
             self._run("rollback", "--state", str(journal))
             self.assertEqual((launch_agents / f"{label}.plist").read_bytes(), original)
+
+    def test_service_plist_rebinds_two_generation_stale_paths_and_survives_all_forward_gates(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            fixture = self._fixture(root)
+            launch_agents = fixture["home"] / "Library" / "LaunchAgents"
+            launch_agents.mkdir(parents=True)
+            label = "com.open-nova.binding-two-generations-old"
+            plist_path = launch_agents / f"{label}.plist"
+            stale_source = fixture["runtime"] / "app" / "releases" / "two-generations-old"
+            stale_venv = fixture["runtime"] / "app" / "venvs" / "two-generations-old"
+            self._write_dashboard_binding_plist(
+                plist_path,
+                label=label,
+                runtime=fixture["runtime"],
+                source_root=stale_source,
+                venv_root=stale_venv,
+            )
+            plist_path.chmod(0o640)
+            journal, _calls = self._begin_unloaded_darwin(fixture, root)
+            self._prepare_stopped_candidate(fixture, journal)
+
+            self._run("normalize-service-plists", "--state", str(journal))
+
+            normalized_bytes = plist_path.read_bytes()
+            normalized = plistlib.loads(normalized_bytes)
+            stable_source = str(fixture["runtime"].resolve() / "app" / "source")
+            stable_venv = str(fixture["runtime"].resolve() / ".venv")
+            serialized = json.dumps(normalized, sort_keys=True)
+            self.assertIn(stable_source, serialized)
+            self.assertIn(stable_venv, serialized)
+            self.assertNotIn(str(stale_source), serialized)
+            self.assertNotIn(str(stale_venv), serialized)
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            service = next(item for item in state["services"] if item["label"] == label)
+            self.assertTrue(service["plistNormalizationRequired"])
+            self.assertTrue(service["plistNormalizationComplete"])
+            self.assertTrue(service["plistBindingComplete"])
+            self.assertGreaterEqual(service["plistSourceBindingCount"], 1)
+            self.assertGreaterEqual(service["plistVenvBindingCount"], 1)
+            self.assertEqual(
+                service["normalizedPlistSha256"],
+                hashlib.sha256(normalized_bytes).hexdigest(),
+            )
+            self.assertEqual(service["normalizedPlistMode"], 0o640)
+
+            self._run("promote", "--state", str(journal))
+            self._run("restore-services", "--state", str(journal))
+            self._run("verify", "--state", str(journal))
+            self._run("commit", "--state", str(journal))
+
+            committed = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertEqual(committed["status"], "committed")
+            self.assertEqual(plist_path.read_bytes(), normalized_bytes)
+            self.assertEqual(plist_path.stat().st_mode & 0o777, 0o640)
+
+    def test_already_stable_plist_records_durable_binding_without_false_positive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            fixture = self._fixture(root)
+            launch_agents = fixture["home"] / "Library" / "LaunchAgents"
+            launch_agents.mkdir(parents=True)
+            label = "com.open-nova.binding-already-stable"
+            plist_path = launch_agents / f"{label}.plist"
+            self._write_dashboard_binding_plist(
+                plist_path,
+                label=label,
+                runtime=fixture["runtime"],
+                source_root=fixture["runtime"] / "app" / "source",
+                venv_root=fixture["runtime"] / ".venv",
+                extra_payload={"StandardOutPath": "/tmp/open-nova-releases-archive.log"},
+            )
+            original = plist_path.read_bytes()
+            journal, _calls = self._begin_unloaded_darwin(fixture, root)
+            self._prepare_stopped_candidate(fixture, journal)
+
+            self._run("normalize-service-plists", "--state", str(journal))
+
+            self.assertEqual(plist_path.read_bytes(), original)
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            service = next(item for item in state["services"] if item["label"] == label)
+            self.assertFalse(service["plistNormalizationRequired"])
+            self.assertTrue(service["plistNormalizationStarted"])
+            self.assertTrue(service["plistNormalizationComplete"])
+            self.assertTrue(service["plistBindingComplete"])
+            self.assertEqual(
+                service["normalizedPlistSha256"],
+                hashlib.sha256(original).hexdigest(),
+            )
+            self._run("rollback", "--state", str(journal))
+            self.assertEqual(plist_path.read_bytes(), original)
+
+    def test_service_plist_binding_rejects_prefix_confusion_embedded_generation_and_shell_injection(self):
+        cases = (
+            "prefix-confusion",
+            "embedded-generation",
+            "shell-injection",
+            "extra-pythonpath",
+        )
+        for case in cases:
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp).resolve()
+                fixture = self._fixture(root)
+                launch_agents = fixture["home"] / "Library" / "LaunchAgents"
+                launch_agents.mkdir(parents=True)
+                label = f"com.open-nova.binding-{case}"
+                plist_path = launch_agents / f"{label}.plist"
+                stable_source = fixture["runtime"] / "app" / "source"
+                source_root = stable_source
+                extra_payload = None
+                command = None
+                if case == "prefix-confusion":
+                    source_root = Path(str(fixture["runtime"] / "app" / "releases") + "-evil") / "old"
+                elif case == "embedded-generation":
+                    embedded = fixture["runtime"] / "app" / "releases" / "old" / "script.py"
+                    extra_payload = {"OpaqueCommand": f"python={embedded}"}
+                else:
+                    python = fixture["runtime"] / ".venv" / "bin" / "python"
+                    command = (
+                        f"cd {stable_source} && exec {python} -m uvicorn app.main:app "
+                        f"--app-dir {stable_source / 'src' / 'dashboard'} --host 127.0.0.1 "
+                        "--port 42173 ; /usr/bin/true"
+                    )
+                self._write_dashboard_binding_plist(
+                    plist_path,
+                    label=label,
+                    runtime=fixture["runtime"],
+                    source_root=source_root,
+                    venv_root=fixture["runtime"] / ".venv",
+                    extra_payload=extra_payload,
+                    command=command,
+                )
+                if case == "extra-pythonpath":
+                    payload = plistlib.loads(plist_path.read_bytes())
+                    payload["EnvironmentVariables"]["PYTHONPATH"] += ":/tmp/unmanaged-pythonpath"
+                    with plist_path.open("wb") as handle:
+                        plistlib.dump(payload, handle, sort_keys=False)
+                original = plist_path.read_bytes()
+                journal, _calls = self._begin_unloaded_darwin(fixture, root)
+                self._prepare_stopped_candidate(fixture, journal)
+
+                result = self._run(
+                    "normalize-service-plists",
+                    "--state",
+                    str(journal),
+                    check=False,
+                )
+
+                self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+                self.assertTrue(
+                    any(
+                        marker in result.stderr
+                        for marker in (
+                            "confusing",
+                            "embedded concrete generation",
+                            "strict uvicorn",
+                            "exact product path set",
+                        )
+                    ),
+                    result.stderr,
+                )
+                self._run("rollback", "--state", str(journal))
+                self.assertEqual(plist_path.read_bytes(), original)
+
+    def test_stale_service_plist_rollback_restores_exact_bytes_and_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            fixture = self._fixture(root)
+            launch_agents = fixture["home"] / "Library" / "LaunchAgents"
+            launch_agents.mkdir(parents=True)
+            label = "com.open-nova.binding-rollback"
+            plist_path = launch_agents / f"{label}.plist"
+            self._write_dashboard_binding_plist(
+                plist_path,
+                label=label,
+                runtime=fixture["runtime"],
+                source_root=fixture["runtime"] / "app" / "releases" / "stale-source",
+                venv_root=fixture["runtime"] / "app" / "venvs" / "stale-venv",
+            )
+            plist_path.chmod(0o640)
+            original = plist_path.read_bytes()
+            journal, _calls = self._begin_unloaded_darwin(fixture, root)
+            self._prepare_stopped_candidate(fixture, journal)
+            self._run("normalize-service-plists", "--state", str(journal))
+            self.assertNotEqual(plist_path.read_bytes(), original)
+
+            self._run("rollback", "--state", str(journal))
+
+            self.assertEqual(plist_path.read_bytes(), original)
+            self.assertEqual(plist_path.stat().st_mode & 0o777, 0o640)
+
+    def test_direct_service_plists_rebind_program_arguments_working_directory_and_pythonpath(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            fixture = self._fixture(root)
+            runtime = fixture["runtime"]
+            stale_source = runtime / "app" / "releases" / "old-direct-services"
+            stale_venv = runtime / "app" / "venvs" / "old-direct-services"
+            launch_agents = fixture["home"] / "Library" / "LaunchAgents"
+            launch_agents.mkdir(parents=True)
+            payloads = {
+                "com.open-nova.binding-watchdog": {
+                    "ProgramArguments": [
+                        str(stale_venv / "bin" / "python"),
+                        str(stale_source / "advanced" / "dashboard" / "dashboard_launch_agent.py"),
+                        "check",
+                        "--url",
+                        "http://127.0.0.1:42173/health",
+                        "--label",
+                        "com.open-nova.dashboard",
+                        "--restart",
+                    ],
+                    "EnvironmentVariables": {"NOVA_HOME": str(runtime)},
+                },
+                "com.open-nova.binding-rag": {
+                    "ProgramArguments": [
+                        str(stale_venv / "bin" / "python"),
+                        str(stale_source / "advanced" / "dashboard" / "rag_server_launch_agent.py"),
+                        "run",
+                        "--project-root",
+                        str(stale_source),
+                        "--nova-home",
+                        str(runtime),
+                    ],
+                    "EnvironmentVariables": {
+                        "NOVA_HOME": str(runtime),
+                        "PYTHONPATH": f"{stale_source}:{stale_source / 'src'}",
+                    },
+                },
+                "com.open-nova.binding-pipeline": {
+                    "ProgramArguments": [
+                        str(stale_venv / "bin" / "python"),
+                        str(stale_source / "advanced" / "pipeline" / "run_daily_pipeline.py"),
+                    ],
+                    "WorkingDirectory": str(stale_source),
+                    "EnvironmentVariables": {
+                        "NOVA_HOME": str(runtime),
+                        "PYTHONPATH": f"{stale_source}:{stale_source / 'src'}:{stale_source / 'src' / 'dashboard'}",
+                    },
+                },
+                "com.open-nova.binding-dashboard-aggregation": {
+                    "ProgramArguments": [
+                        str(stale_venv / "bin" / "python"),
+                        str(
+                            stale_source
+                            / "advanced"
+                            / "pipeline"
+                            / "run_dashboard_foundation_refresh.py"
+                        ),
+                    ],
+                    "WorkingDirectory": str(stale_source),
+                    "EnvironmentVariables": {
+                        "NOVA_HOME": str(runtime),
+                        "PYTHONPATH": f"{stale_source}:{stale_source / 'src'}:{stale_source / 'src' / 'dashboard'}",
+                    },
+                },
+            }
+            originals: dict[str, bytes] = {}
+            for label, fields in payloads.items():
+                path = launch_agents / f"{label}.plist"
+                with path.open("wb") as handle:
+                    plistlib.dump({"Label": label, **fields}, handle, sort_keys=False)
+                originals[label] = path.read_bytes()
+            journal, _calls = self._begin_unloaded_darwin(fixture, root)
+            self._prepare_stopped_candidate(fixture, journal)
+
+            self._run("normalize-service-plists", "--state", str(journal))
+
+            canonical_runtime = runtime.resolve()
+            for label in payloads:
+                path = launch_agents / f"{label}.plist"
+                text = json.dumps(plistlib.loads(path.read_bytes()), sort_keys=True)
+                self.assertNotIn(str(stale_source), text)
+                self.assertNotIn(str(stale_venv), text)
+                self.assertIn(str(canonical_runtime / "app" / "source"), text)
+                self.assertIn(str(canonical_runtime / ".venv"), text)
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            normalized_services = {
+                item["label"]: item
+                for item in state["services"]
+                if item["label"] in payloads
+            }
+            self.assertEqual(set(normalized_services), set(payloads))
+            self.assertTrue(all(item["plistBindingComplete"] for item in normalized_services.values()))
+            self._run("rollback", "--state", str(journal))
+            for label, original in originals.items():
+                self.assertEqual((launch_agents / f"{label}.plist").read_bytes(), original)
+
+    def test_forward_restore_rejects_available_git_provenance_with_short_commit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            fixture = self._fixture(root)
+            manifest_path = fixture["candidate_source"] / ".open-nova-runtime-source.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["git"] = {
+                "available": True,
+                "commit": "a" * 12,
+                "branch": "main",
+                "remote": "https://github.com/Neo-Isshin/open-nova.git",
+                "dirty": False,
+            }
+            manifest_path.write_text(json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8")
+            launch_agents = fixture["home"] / "Library" / "LaunchAgents"
+            launch_agents.mkdir(parents=True)
+            label = "com.open-nova.binding-short-commit"
+            self._write_runtime_plist(
+                launch_agents / f"{label}.plist",
+                label=label,
+                runtime=fixture["runtime"],
+            )
+            journal, _calls = self._begin_unloaded_darwin(fixture, root)
+            self._prepare_and_promote(fixture, journal)
+
+            result = self._run("restore-services", "--state", str(journal), check=False)
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("not a full commit id", result.stderr)
+            self._run("rollback", "--state", str(journal))
+
+    def test_forward_health_rejects_non_candidate_source_commit_but_rollback_accepts_prior_schema(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            fixture = self._fixture(root)
+            candidate_commit = "a" * 40
+            prior_commit = "b" * 40
+            manifest_path = fixture["candidate_source"] / ".open-nova-runtime-source.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["git"] = {
+                "available": True,
+                "commit": candidate_commit,
+                "branch": "main",
+                "remote": "https://github.com/Neo-Isshin/open-nova.git",
+                "dirty": False,
+            }
+            manifest_path.write_text(json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8")
+            server, server_thread, port = self._start_health_server(source_commit=prior_commit)
+            label = "com.open-nova.dashboard"
+            fixture["settings"].write_text(
+                json.dumps(
+                    {
+                        "dashboard": {
+                            "host": "127.0.0.1",
+                            "port": port,
+                            "healthPath": "/health",
+                            "serviceLabel": label,
+                        }
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            launch_agents = fixture["home"] / "Library" / "LaunchAgents"
+            launch_agents.mkdir(parents=True)
+            plist_path = launch_agents / f"{label}.plist"
+            self._write_runtime_plist(plist_path, label=label, runtime=fixture["runtime"])
+            original = plist_path.read_bytes()
+            state_dir = root / "launchctl-state"
+            state_dir.mkdir()
+            (state_dir / label).write_text("running\n", encoding="utf-8")
+            calls_path = root / "launchctl-calls.log"
+            fake_launchctl = root / "launchctl"
+            self._write_stateful_fake_launchctl(
+                fake_launchctl,
+                state_dir=state_dir,
+                calls_path=calls_path,
+            )
+            try:
+                journal = self._begin(
+                    fixture,
+                    owner_pid=os.getpid(),
+                    platform="Darwin",
+                    launchctl=str(fake_launchctl),
+                    uid=0,
+                )
+                self._prepare_and_promote(fixture, journal)
+
+                result = self._run(
+                    "restore-services",
+                    "--state",
+                    str(journal),
+                    check=False,
+                    env={
+                        "NOVA_INSTALL_TEST_MODE": "1",
+                        "NOVA_INSTALL_TEST_HEALTH_TIMEOUT_SECONDS": "0.2",
+                    },
+                )
+
+                self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+                self.assertIn("non-candidate source provenance", result.stderr)
+                self._run("rollback", "--state", str(journal))
+                self.assertEqual(plist_path.read_bytes(), original)
+                self.assertEqual(os.readlink(fixture["runtime"] / "app" / "source"), "releases/old")
+            finally:
+                server.shutdown()
+                server.server_close()
+                server_thread.join(timeout=5)
 
     def test_begin_rejects_plist_owned_by_a_different_runtime(self):
         with tempfile.TemporaryDirectory() as tmp:

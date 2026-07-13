@@ -44,9 +44,18 @@ class InstallerFullUpgradeTests(unittest.TestCase):
         return digest.hexdigest()
 
     def _start_health_server(self) -> tuple[http.server.ThreadingHTTPServer, threading.Thread, int]:
+        source_commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=ROOT,
+            text=True,
+        ).strip()
+
         class HealthHandler(http.server.BaseHTTPRequestHandler):
             def do_GET(self) -> None:
-                body = b'{"status":"ok"}\n'
+                body = json.dumps(
+                    {"sourceCommit": source_commit, "status": "ok"},
+                    sort_keys=True,
+                ).encode("utf-8") + b"\n"
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
@@ -349,15 +358,79 @@ class InstallerFullUpgradeTests(unittest.TestCase):
         path.chmod(0o755)
 
     def _write_plist(self, path: Path, *, label: str, runtime: Path) -> None:
-        with path.open("wb") as handle:
-            plistlib.dump(
-                {
-                    "Label": label,
-                    "ProgramArguments": [str(runtime / ".venv" / "bin" / "python"), "-c", "pass"],
-                    "EnvironmentVariables": {"NOVA_HOME": str(runtime)},
-                },
-                handle,
+        source = runtime / "app" / "releases" / "old-release"
+        python = runtime / ".venv" / "bin" / "python"
+        environment = {
+            "NOVA_HOME": str(runtime),
+            "PYTHONDONTWRITEBYTECODE": "1",
+        }
+        if label.endswith(".dashboard.watchdog"):
+            arguments = [
+                str(python),
+                str(source / "advanced" / "dashboard" / "dashboard_launch_agent.py"),
+                "check",
+                "--url",
+                "http://127.0.0.1:49151/health",
+                "--label",
+                label.removesuffix(".watchdog"),
+                "--restart",
+            ]
+            payload = {
+                "Label": label,
+                "ProgramArguments": arguments,
+                "EnvironmentVariables": environment,
+            }
+        elif label.endswith(".rag-server"):
+            environment["PYTHONPATH"] = f"{source}:{source / 'src'}"
+            payload = {
+                "Label": label,
+                "ProgramArguments": [
+                    str(python),
+                    str(source / "advanced" / "dashboard" / "rag_server_launch_agent.py"),
+                    "run",
+                    "--project-root",
+                    str(source),
+                    "--nova-home",
+                    str(runtime),
+                ],
+                "EnvironmentVariables": environment,
+            }
+        elif label.endswith((".pipeline", ".dashboard-aggregation")):
+            script = (
+                "run_daily_pipeline.py"
+                if label.endswith(".pipeline")
+                else "run_dashboard_foundation_refresh.py"
             )
+            environment["PYTHONPATH"] = f"{source}:{source / 'src'}:{source / 'src' / 'dashboard'}"
+            payload = {
+                "Label": label,
+                "ProgramArguments": [
+                    str(python),
+                    str(source / "advanced" / "pipeline" / script),
+                ],
+                "WorkingDirectory": str(source),
+                "EnvironmentVariables": environment,
+            }
+        else:
+            environment.update(
+                {
+                    "NOVA_DASHBOARD_PROJECT_ROOT": str(source),
+                    "NOVA_DASHBOARD_PYTHON": str(python),
+                    "PYTHONPATH": f"{source}:{source / 'src'}:{source / 'src' / 'dashboard'}",
+                }
+            )
+            payload = {
+                "Label": label,
+                "ProgramArguments": [
+                    "/bin/zsh",
+                    "-lc",
+                    f"cd {source} && exec {python} -m uvicorn app.main:app "
+                    f"--app-dir {source / 'src' / 'dashboard'} --host 127.0.0.1 --port 49151",
+                ],
+                "EnvironmentVariables": environment,
+            }
+        with path.open("wb") as handle:
+            plistlib.dump(payload, handle, sort_keys=False)
 
     def _fixture(self, root: Path) -> dict[str, object]:
         home = root / "Home"
@@ -662,17 +735,22 @@ class InstallerFullUpgradeTests(unittest.TestCase):
 
     def _assert_protected_after_success(self, fixture: dict[str, object]) -> None:
         plist_paths = set(fixture["plist_paths"].values())
+        runtime = Path(fixture["runtime"]).resolve()
+        stable_source = str(runtime / "app" / "source")
+        stable_venv = str(runtime / ".venv")
         for path, expected_hash in fixture["protected_hashes"].items():
             if path not in plist_paths:
                 self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), expected_hash)
                 continue
             before = plistlib.loads(fixture["protected_bytes"][path])
             after = plistlib.loads(path.read_bytes())
-            expected = dict(before)
-            environment = dict(expected.get("EnvironmentVariables") or {})
-            environment["PYTHONDONTWRITEBYTECODE"] = "1"
-            expected["EnvironmentVariables"] = environment
-            self.assertEqual(after, expected)
+            self.assertEqual(after["Label"], before["Label"])
+            self.assertEqual(after["EnvironmentVariables"]["NOVA_HOME"], str(runtime))
+            self.assertEqual(after["EnvironmentVariables"]["PYTHONDONTWRITEBYTECODE"], "1")
+            serialized = json.dumps(after, sort_keys=True)
+            self.assertIn(stable_source, serialized)
+            self.assertIn(stable_venv, serialized)
+            self.assertNotIn("/app/releases/old-release", serialized)
 
     def _assert_prior_runtime(self, fixture: dict[str, object]) -> None:
         app = Path(fixture["app"])

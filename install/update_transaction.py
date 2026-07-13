@@ -9,6 +9,7 @@ Keychain items, stores launchctl output, or records environment values.
 from __future__ import annotations
 
 import argparse
+import copy
 import errno
 import fcntl
 import hashlib
@@ -18,6 +19,7 @@ import os
 import plistlib
 import re
 import secrets
+import shlex
 import shutil
 import signal
 import sqlite3
@@ -360,6 +362,20 @@ def _load_state(path: Path) -> dict[str, Any]:
         or _lexical_absolute(path) != expected_state_path
     ):
         raise TransactionError("update transaction journal escaped its Runtime transaction root")
+    runtime_aliases = state.get("runtimeAliases", [str(runtime)])
+    if (
+        not isinstance(runtime_aliases, list)
+        or not 1 <= len(runtime_aliases) <= 4
+        or len(runtime_aliases) != len(set(runtime_aliases))
+        or any(
+            not isinstance(value, str)
+            or not Path(value).is_absolute()
+            or os.path.normpath(value) != value
+            or Path(value).resolve(strict=False) != runtime
+            for value in runtime_aliases
+        )
+    ):
+        raise TransactionError("update transaction Runtime alias inventory is invalid")
     expected_directories = _expected_bound_directories(runtime, tx_id)
     _verify_bound_directories(state, expected_directories)
     command_lock_path = tx_dir / "command.lock"
@@ -1467,6 +1483,369 @@ NORMALIZED_PYTHON_SERVICE_KINDS = {
 }
 
 
+def _service_binding_roots(state: dict[str, Any]) -> dict[str, Path]:
+    runtime = Path(state["runtime"])
+    aliases: list[Path] = [runtime]
+    for value in state.get("runtimeAliases") or []:
+        alias = Path(str(value))
+        if (
+            not alias.is_absolute()
+            or os.path.normpath(str(alias)) != str(alias)
+            or alias.resolve(strict=False) != runtime
+        ):
+            raise TransactionError("managed service binding has an unsafe Runtime alias")
+        if alias not in aliases:
+            aliases.append(alias)
+    candidate_source = Path(str(state.get("source", {}).get("candidateTarget") or ""))
+    if not candidate_source.is_absolute() or candidate_source.is_symlink() or not candidate_source.is_dir():
+        raise TransactionError("managed service binding has no valid source candidate")
+    if state.get("mode") == "upgrade":
+        candidate_venv = Path(str(state.get("venv", {}).get("candidateTarget") or ""))
+        if not candidate_venv.is_absolute() or candidate_venv.is_symlink() or not candidate_venv.is_dir():
+            raise TransactionError("managed service binding has no valid venv candidate")
+    else:
+        candidate_venv = runtime / ".venv"
+        if not candidate_venv.exists():
+            raise TransactionError("managed service binding has no active venv")
+    return {
+        "runtime": runtime,
+        "runtimeAliases": tuple(aliases),
+        "sourceStable": runtime / "app" / "source",
+        "sourceGenerations": runtime / "app" / "releases",
+        "sourceCandidate": candidate_source,
+        "venvStable": runtime / ".venv",
+        "venvGenerations": runtime / "app" / "venvs",
+        "venvCandidate": candidate_venv,
+    }
+
+
+def _strict_service_path(value: Any, *, field: str) -> str:
+    if not isinstance(value, str) or not value or any(character in value for character in "\0\r\n"):
+        raise TransactionError(f"managed service {field} is not a safe path")
+    if not value.startswith("/") or os.path.normpath(value) != value:
+        raise TransactionError(f"managed service {field} is not a canonical absolute path")
+    return value
+
+
+def _binding_counterpart_exists(root: Path, remainder: tuple[str, ...]) -> bool:
+    counterpart = root.joinpath(*remainder)
+    return counterpart.exists() or counterpart.is_symlink()
+
+
+def _canonical_runtime_path(value: Any, *, field: str, roots: dict[str, Path]) -> str:
+    text = _strict_service_path(value, field=field)
+    if Path(text) not in roots["runtimeAliases"]:
+        raise TransactionError(f"managed service {field} does not match the selected Runtime")
+    return str(roots["runtime"])
+
+
+def _rebind_service_path(
+    value: Any,
+    *,
+    field: str,
+    roots: dict[str, Path],
+    counts: dict[str, int],
+) -> str:
+    text = _strict_service_path(value, field=field)
+    for alias in roots["runtimeAliases"]:
+        source_stable = str(alias / "app" / "source")
+        source_generations = str(alias / "app" / "releases")
+        venv_stable = str(alias / ".venv")
+        venv_generations = str(alias / "app" / "venvs")
+
+        for prefix, canonical, binding, candidate_root in (
+            (source_stable, roots["sourceStable"], "source", roots["sourceCandidate"]),
+            (venv_stable, roots["venvStable"], "venv", roots["venvCandidate"]),
+        ):
+            if text == prefix or text.startswith(prefix + "/"):
+                remainder = tuple(Path(text).parts[len(Path(prefix).parts) :])
+                if not _binding_counterpart_exists(candidate_root, remainder):
+                    raise TransactionError(
+                        f"managed service {field} has no candidate {binding} counterpart"
+                    )
+                counts[binding] += 1
+                return str(canonical.joinpath(*remainder))
+            if text.startswith(prefix):
+                raise TransactionError(f"managed service {field} uses a confusing {binding} path prefix")
+
+        for prefix, stable, binding, candidate_root in (
+            (source_generations, roots["sourceStable"], "source", roots["sourceCandidate"]),
+            (venv_generations, roots["venvStable"], "venv", roots["venvCandidate"]),
+        ):
+            if text == prefix:
+                raise TransactionError(f"managed service {field} has no {binding} generation")
+            if text.startswith(prefix + "/"):
+                relative = tuple(Path(text).parts[len(Path(prefix).parts) :])
+                generation, *remainder_list = relative
+                if not SAFE_TX_ID_RE.fullmatch(generation) or generation in {".", ".."}:
+                    raise TransactionError(f"managed service {field} has an unsafe {binding} generation")
+                remainder = tuple(remainder_list)
+                if not _binding_counterpart_exists(candidate_root, remainder):
+                    raise TransactionError(
+                        f"managed service {field} has no candidate {binding} counterpart"
+                    )
+                counts[binding] += 1
+                return str(stable.joinpath(*remainder))
+            if text.startswith(prefix):
+                raise TransactionError(f"managed service {field} uses a confusing {binding} path prefix")
+    return text
+
+
+def _reject_residual_generation_paths(value: Any, roots: dict[str, Path], *, field: str = "plist") -> None:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            _reject_residual_generation_paths(child, roots, field=f"{field}.{key}")
+        return
+    if isinstance(value, list):
+        for index, child in enumerate(value):
+            _reject_residual_generation_paths(child, roots, field=f"{field}[{index}]")
+        return
+    if not isinstance(value, str):
+        return
+    for alias in roots["runtimeAliases"]:
+        for suffix in (("app", "releases"), ("app", "venvs")):
+            if str(alias.joinpath(*suffix)) in value:
+                raise TransactionError(
+                    f"managed service {field} retains an embedded concrete generation path"
+                )
+
+
+def _normalize_dashboard_arguments(
+    arguments: Any,
+    *,
+    roots: dict[str, Path],
+    counts: dict[str, int],
+) -> list[str]:
+    if (
+        not isinstance(arguments, list)
+        or len(arguments) != 3
+        or arguments[:2] != ["/bin/zsh", "-lc"]
+        or not isinstance(arguments[2], str)
+    ):
+        raise TransactionError("managed dashboard service has an invalid ProgramArguments shape")
+    try:
+        tokens = shlex.split(arguments[2], posix=True)
+    except ValueError as exc:
+        raise TransactionError("managed dashboard service command is malformed") from exc
+    if (
+        len(tokens) != 14
+        or tokens[0] != "cd"
+        or tokens[2] != "&&"
+        or tokens[3] != "exec"
+        or tokens[5:9] != ["-m", "uvicorn", "app.main:app", "--app-dir"]
+        or tokens[10] != "--host"
+        or tokens[12] != "--port"
+        or not tokens[13].isdigit()
+        or not 1 <= int(tokens[13]) <= 65535
+    ):
+        raise TransactionError("managed dashboard service command is not the strict uvicorn shape")
+    project_root = _rebind_service_path(
+        tokens[1], field="dashboard project root", roots=roots, counts=counts
+    )
+    python = _rebind_service_path(
+        tokens[4], field="dashboard Python", roots=roots, counts=counts
+    )
+    app_dir = _rebind_service_path(
+        tokens[9], field="dashboard app directory", roots=roots, counts=counts
+    )
+    if project_root != str(roots["sourceStable"]):
+        raise TransactionError("managed dashboard project root is not the stable source pointer")
+    if python != str(roots["venvStable"] / "bin" / "python"):
+        raise TransactionError("managed dashboard Python is not the stable venv pointer")
+    if app_dir != str(roots["sourceStable"] / "src" / "dashboard"):
+        raise TransactionError("managed dashboard app directory is not candidate-bound")
+    normalized_tokens = list(tokens)
+    normalized_tokens[1] = project_root
+    normalized_tokens[4] = python
+    normalized_tokens[9] = app_dir
+    command = " ".join(
+        token if token == "&&" else shlex.quote(token)
+        for token in normalized_tokens
+    )
+    return ["/bin/zsh", "-lc", command]
+
+
+def _normalize_direct_arguments(
+    arguments: Any,
+    *,
+    kind: str,
+    roots: dict[str, Path],
+    counts: dict[str, int],
+) -> list[str]:
+    if not isinstance(arguments, list) or not all(isinstance(item, str) for item in arguments):
+        raise TransactionError(f"managed {kind} service has invalid ProgramArguments")
+    normalized = list(arguments)
+    if kind == "watchdog":
+        if (
+            len(normalized) != 8
+            or normalized[2] != "check"
+            or normalized[3] != "--url"
+            or normalized[5] != "--label"
+            or normalized[7] != "--restart"
+        ):
+            raise TransactionError("managed watchdog service has an invalid ProgramArguments shape")
+        normalized[0] = _rebind_service_path(
+            normalized[0], field="watchdog Python", roots=roots, counts=counts
+        )
+        normalized[1] = _rebind_service_path(
+            normalized[1], field="watchdog script", roots=roots, counts=counts
+        )
+        expected_script = roots["sourceStable"] / "advanced" / "dashboard" / "dashboard_launch_agent.py"
+        if normalized[0] != str(roots["venvStable"] / "bin" / "python") or normalized[1] != str(expected_script):
+            raise TransactionError("managed watchdog service is not bound to stable runtime pointers")
+    elif kind == "rag":
+        if (
+            len(normalized) != 7
+            or normalized[2:4] != ["run", "--project-root"]
+            or normalized[5] != "--nova-home"
+        ):
+            raise TransactionError("managed RAG service has an invalid ProgramArguments shape")
+        for index, field in ((0, "RAG Python"), (1, "RAG script"), (4, "RAG project root")):
+            normalized[index] = _rebind_service_path(
+                normalized[index], field=field, roots=roots, counts=counts
+            )
+        normalized[6] = _canonical_runtime_path(
+            normalized[6], field="RAG Runtime", roots=roots
+        )
+        expected_script = roots["sourceStable"] / "advanced" / "dashboard" / "rag_server_launch_agent.py"
+        if (
+            normalized[0] != str(roots["venvStable"] / "bin" / "python")
+            or normalized[1] != str(expected_script)
+            or normalized[4] != str(roots["sourceStable"])
+        ):
+            raise TransactionError("managed RAG service is not bound to stable runtime pointers")
+    elif kind in {"scheduler-pipeline", "scheduler-aggregation"}:
+        if len(normalized) != 2:
+            raise TransactionError("managed scheduler service has an invalid ProgramArguments shape")
+        normalized[0] = _rebind_service_path(
+            normalized[0], field="scheduler Python", roots=roots, counts=counts
+        )
+        normalized[1] = _rebind_service_path(
+            normalized[1], field="scheduler script", roots=roots, counts=counts
+        )
+        script_name = (
+            "run_daily_pipeline.py"
+            if kind == "scheduler-pipeline"
+            else "run_dashboard_foundation_refresh.py"
+        )
+        expected_script = roots["sourceStable"] / "advanced" / "pipeline" / script_name
+        if normalized[0] != str(roots["venvStable"] / "bin" / "python") or normalized[1] != str(expected_script):
+            raise TransactionError("managed scheduler service is not bound to stable runtime pointers")
+    else:
+        raise TransactionError("managed service kind has no binding policy")
+    return normalized
+
+
+def _normalize_service_plist_payload(
+    payload: dict[str, Any],
+    *,
+    service: dict[str, Any],
+    state: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, int], bool]:
+    roots = _service_binding_roots(state)
+    normalized = copy.deepcopy(payload)
+    kind = str(service.get("kind") or "")
+    counts = {"source": 0, "venv": 0}
+    if kind == "dashboard":
+        normalized["ProgramArguments"] = _normalize_dashboard_arguments(
+            normalized.get("ProgramArguments"), roots=roots, counts=counts
+        )
+    else:
+        normalized["ProgramArguments"] = _normalize_direct_arguments(
+            normalized.get("ProgramArguments"), kind=kind, roots=roots, counts=counts
+        )
+
+    environment = normalized.get("EnvironmentVariables")
+    if not isinstance(environment, dict):
+        if kind != "watchdog" or not _legacy_watchdog_targets_runtime(payload, roots["runtime"]):
+            raise TransactionError(f"managed service environment is invalid: {service['label']}")
+        environment = {}
+    else:
+        environment = dict(environment)
+    if environment.get("NOVA_HOME") is None:
+        if kind != "watchdog":
+            raise TransactionError(f"managed service lost Runtime provenance: {service['label']}")
+        environment["NOVA_HOME"] = str(roots["runtime"])
+    environment["NOVA_HOME"] = _canonical_runtime_path(
+        environment.get("NOVA_HOME"), field="Runtime provenance", roots=roots
+    )
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+
+    for key, field in (
+        ("NOVA_DASHBOARD_PROJECT_ROOT", "dashboard environment project root"),
+        ("NOVA_DASHBOARD_PYTHON", "dashboard environment Python"),
+    ):
+        if key in environment:
+            environment[key] = _rebind_service_path(
+                environment[key], field=field, roots=roots, counts=counts
+            )
+    if kind == "dashboard":
+        if environment.get("NOVA_DASHBOARD_PROJECT_ROOT") != str(roots["sourceStable"]):
+            raise TransactionError("managed dashboard environment is missing the stable source binding")
+        if environment.get("NOVA_DASHBOARD_PYTHON") != str(roots["venvStable"] / "bin" / "python"):
+            raise TransactionError("managed dashboard environment is missing the stable venv binding")
+
+    if kind == "watchdog" and "PYTHONPATH" in environment:
+        raise TransactionError(f"managed watchdog service has an unexpected PYTHONPATH: {service['label']}")
+    if "PYTHONPATH" in environment:
+        python_path = environment["PYTHONPATH"]
+        if not isinstance(python_path, str) or not python_path:
+            raise TransactionError(f"managed service PYTHONPATH is invalid: {service['label']}")
+        components = python_path.split(os.pathsep)
+        if any(not component for component in components):
+            raise TransactionError(f"managed service PYTHONPATH is invalid: {service['label']}")
+        normalized_components = [
+            _rebind_service_path(
+                component,
+                field="PYTHONPATH component",
+                roots=roots,
+                counts=counts,
+            )
+            for component in components
+        ]
+        expected_components = {
+            "dashboard": [
+                str(roots["sourceStable"]),
+                str(roots["sourceStable"] / "src"),
+                str(roots["sourceStable"] / "src" / "dashboard"),
+            ],
+            "rag": [
+                str(roots["sourceStable"]),
+                str(roots["sourceStable"] / "src"),
+            ],
+            "scheduler-pipeline": [
+                str(roots["sourceStable"]),
+                str(roots["sourceStable"] / "src"),
+                str(roots["sourceStable"] / "src" / "dashboard"),
+            ],
+            "scheduler-aggregation": [
+                str(roots["sourceStable"]),
+                str(roots["sourceStable"] / "src"),
+                str(roots["sourceStable"] / "src" / "dashboard"),
+            ],
+        }.get(kind)
+        if normalized_components != expected_components:
+            raise TransactionError(f"managed service PYTHONPATH is not the exact product path set: {service['label']}")
+        environment["PYTHONPATH"] = os.pathsep.join(normalized_components)
+    elif kind != "watchdog":
+        raise TransactionError(f"managed service PYTHONPATH is missing: {service['label']}")
+    normalized["EnvironmentVariables"] = environment
+
+    if "WorkingDirectory" in normalized:
+        normalized["WorkingDirectory"] = _rebind_service_path(
+            normalized["WorkingDirectory"],
+            field="WorkingDirectory",
+            roots=roots,
+            counts=counts,
+        )
+    if kind.startswith("scheduler-") and normalized.get("WorkingDirectory") != str(roots["sourceStable"]):
+        raise TransactionError("managed scheduler WorkingDirectory is not the stable source pointer")
+    if counts["source"] < 1 or counts["venv"] < 1:
+        raise TransactionError(f"managed service binding inventory is incomplete: {service['label']}")
+    _reject_residual_generation_paths(normalized, roots)
+    return normalized, counts, normalized != payload
+
+
 def _managed_plist_snapshot(state: dict[str, Any], service: dict[str, Any]) -> dict[str, Any]:
     plist = str(Path(service["plistPath"]).absolute())
     matches = [
@@ -1500,6 +1879,53 @@ def _service_plist_matches_normalized(service: dict[str, Any]) -> bool:
         return False
 
 
+def _verify_service_plist_bindings(state: dict[str, Any]) -> None:
+    if state.get("platform") != "Darwin":
+        return
+    if not state.get("servicePlistNormalizationComplete"):
+        raise TransactionError("managed service plist binding gate was not completed")
+    for service in state.get("services") or []:
+        if service.get("kind") not in NORMALIZED_PYTHON_SERVICE_KINDS:
+            continue
+        record = _managed_plist_snapshot(state, service)
+        path = Path(service["plistPath"])
+        if record.get("kind") == "missing":
+            if (
+                not service.get("plistBindingComplete")
+                or service.get("plistBindingStatus") != "absent"
+                or path.exists()
+                or path.is_symlink()
+            ):
+                raise TransactionError(
+                    f"managed service absent plist binding changed: {service['label']}"
+                )
+            continue
+        if (
+            record.get("kind") != "file"
+            or not service.get("plistNormalizationComplete")
+            or not service.get("plistBindingComplete")
+            or not _service_plist_matches_normalized(service)
+        ):
+            raise TransactionError(f"managed service plist binding is incomplete: {service['label']}")
+        try:
+            payload = plistlib.loads(path.read_bytes())
+        except (OSError, plistlib.InvalidFileException, ValueError) as exc:
+            raise TransactionError(f"managed service plist binding is unreadable: {service['label']}") from exc
+        if not isinstance(payload, dict) or str(payload.get("Label") or "").strip() != service["label"]:
+            raise TransactionError(f"managed service plist binding identity changed: {service['label']}")
+        _normalized, counts, changed = _normalize_service_plist_payload(
+            payload,
+            service=service,
+            state=state,
+        )
+        if (
+            changed
+            or counts["source"] != service.get("plistSourceBindingCount")
+            or counts["venv"] != service.get("plistVenvBindingCount")
+        ):
+            raise TransactionError(f"managed service plist binding changed: {service['label']}")
+
+
 def _restore_normalized_service_plist(
     state: dict[str, Any],
     service: dict[str, Any],
@@ -1529,18 +1955,28 @@ def normalize_service_plists(args: argparse.Namespace) -> int:
         state["servicePlistNormalizationComplete"] = True
         _save_state(state_path, state, event="managed-plists-normalized")
         return 0
-    runtime = Path(state["runtime"])
     for service in state.get("services") or []:
         if service.get("kind") not in NORMALIZED_PYTHON_SERVICE_KINDS:
             continue
         path = Path(service["plistPath"])
         record = _managed_plist_snapshot(state, service)
         if record.get("kind") == "missing":
+            service.update(
+                {
+                    "plistBindingComplete": True,
+                    "plistBindingStatus": "absent",
+                    "plistNormalizationComplete": True,
+                    "plistNormalizationRequired": False,
+                }
+            )
             continue
         if record.get("kind") != "file" or path.is_symlink() or not path.is_file():
             raise TransactionError(f"managed service plist is not a regular file: {service['label']}")
-        if _service_plist_matches_normalized(service):
-            service["plistNormalizationComplete"] = True
+        if (
+            service.get("plistBindingComplete")
+            and service.get("plistNormalizationComplete")
+            and _service_plist_matches_normalized(service)
+        ):
             continue
         if not _file_matches_snapshot(record):
             raise TransactionError(f"managed service definition changed before normalization: {service['label']}")
@@ -1550,46 +1986,39 @@ def normalize_service_plists(args: argparse.Namespace) -> int:
             raise TransactionError(f"managed service plist is unreadable: {service['label']}") from exc
         if not isinstance(payload, dict) or str(payload.get("Label") or "").strip() != service["label"]:
             raise TransactionError(f"managed service plist identity changed: {service['label']}")
-        environment = payload.get("EnvironmentVariables")
-        if not isinstance(environment, dict):
-            if service.get("kind") != "watchdog" or not _legacy_watchdog_targets_runtime(payload, runtime):
-                raise TransactionError(f"managed service environment is invalid: {service['label']}")
-            environment = {}
-        else:
-            environment = dict(environment)
-        changed = False
-        if environment.get("NOVA_HOME") is None:
-            if service.get("kind") != "watchdog":
-                raise TransactionError(f"managed service lost Runtime provenance: {service['label']}")
-            environment["NOVA_HOME"] = str(runtime)
-            changed = True
-        if environment.get("PYTHONDONTWRITEBYTECODE") != "1":
-            environment["PYTHONDONTWRITEBYTECODE"] = "1"
-            changed = True
-        if not changed:
-            service["plistNormalizationRequired"] = False
-            continue
-        payload["EnvironmentVariables"] = environment
+        payload, counts, _semantic_change = _normalize_service_plist_payload(
+            payload,
+            service=service,
+            state=state,
+        )
         normalized = plistlib.dumps(payload, fmt=plistlib.FMT_XML, sort_keys=False)
+        bytes_changed = path.read_bytes() != normalized
         mode = path.stat(follow_symlinks=False).st_mode & 0o777
         service.update(
             {
-                "plistNormalizationRequired": True,
+                "plistNormalizationRequired": bytes_changed,
                 "plistNormalizationStarted": True,
                 "plistNormalizationComplete": False,
+                "plistBindingComplete": False,
+                "plistBindingStatus": "candidate-stable",
+                "plistSourceBindingCount": counts["source"],
+                "plistVenvBindingCount": counts["venv"],
                 "normalizedPlistSha256": hashlib.sha256(normalized).hexdigest(),
                 "normalizedPlistMode": mode,
             }
         )
         _save_state(state_path, state, event=f"managed-plist-normalization-planned:{service['kind']}")
         _maybe_test_fail(f"managed-plist-normalization-planned-{service['kind']}")
-        _atomic_bytes(path, normalized, mode=mode)
+        if bytes_changed:
+            _atomic_bytes(path, normalized, mode=mode)
         if not _service_plist_matches_normalized(service):
             raise TransactionError(f"managed service plist normalization failed: {service['label']}")
         _maybe_test_fail(f"managed-plist-normalization-written-{service['kind']}")
         service["plistNormalizationComplete"] = True
+        service["plistBindingComplete"] = True
         _save_state(state_path, state, event=f"managed-plist-normalized:{service['kind']}")
     state["servicePlistNormalizationComplete"] = True
+    _verify_service_plist_bindings(state)
     _save_state(state_path, state, event="managed-plists-normalized")
     return 0
 
@@ -1659,7 +2088,36 @@ def _wait_for_service_state(
         time.sleep(0.1)
 
 
-def _verify_service_health(state: dict[str, Any]) -> None:
+def _candidate_full_source_commit(state: dict[str, Any]) -> str | None:
+    pointer = state.get("source") if isinstance(state.get("source"), dict) else {}
+    candidate = Path(str(pointer.get("candidateTarget") or ""))
+    if not candidate.is_absolute():
+        return None
+    manifest_path = candidate / ".open-nova-runtime-source.json"
+    try:
+        raw = manifest_path.read_bytes()
+        manifest = json.loads(raw)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise TransactionError("candidate source provenance is unreadable") from exc
+    if hashlib.sha256(raw).hexdigest() != pointer.get("candidateSha256"):
+        raise TransactionError("candidate source provenance changed after validation")
+    git = manifest.get("git") if isinstance(manifest, dict) else None
+    commit = git.get("commit") if isinstance(git, dict) else None
+    available = git.get("available") if isinstance(git, dict) else None
+    if available is True:
+        if not isinstance(commit, str) or not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", commit):
+            raise TransactionError("candidate source provenance is not a full commit id")
+        return commit
+    if commit is not None:
+        raise TransactionError("candidate source provenance availability is inconsistent")
+    return None
+
+
+def _verify_service_health(
+    state: dict[str, Any],
+    *,
+    require_candidate_commit: bool = False,
+) -> None:
     running_kinds = {
         str(service.get("kind") or "")
         for service in state.get("services") or []
@@ -1681,6 +2139,7 @@ def _verify_service_health(state: dict[str, Any]) -> None:
             path = "/" + path
         endpoints.append((kind, host, port, path))
 
+    expected_commit = _candidate_full_source_commit(state) if require_candidate_commit else None
     for kind, host, port, path in endpoints:
         deadline = time.monotonic() + _health_timeout_seconds()
         last_error = "unavailable"
@@ -1699,8 +2158,12 @@ def _verify_service_health(state: dict[str, Any]) -> None:
                         payload = {}
                     status = str(payload.get("status") or "").lower() if isinstance(payload, dict) else ""
                     if status in {"ok", "healthy"}:
-                        break
-                    last_error = "HTTP 200 without an ok health status"
+                        source_commit = payload.get("sourceCommit") if isinstance(payload, dict) else None
+                        if expected_commit is None or source_commit == expected_commit:
+                            break
+                        last_error = "HTTP 200 from a process with non-candidate source provenance"
+                    else:
+                        last_error = "HTTP 200 without an ok health status"
                 else:
                     last_error = f"HTTP {response.status}"
             except (OSError, http.client.HTTPException) as exc:
@@ -1755,6 +2218,8 @@ def _snapshot_path(state_path: Path, state: dict[str, Any], key: str, path: Path
     if kind == "file":
         backup.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         shutil.copy2(path, backup, follow_symlinks=False)
+        _fsync_file(backup)
+        _fsync_dir(backup.parent)
         record["sha256"] = _sha256(path)
         record["mode"] = path.stat(follow_symlinks=False).st_mode & 0o777
         record["backupPath"] = str(backup)
@@ -2769,6 +3234,7 @@ def begin(args: argparse.Namespace) -> int:
             "status": "initializing",
             "phase": "begin",
             "runtime": str(runtime),
+            "runtimeAliases": list(dict.fromkeys((str(runtime), str(runtime_input)))),
             "home": str(home),
             "platform": args.platform,
             "launchctl": launchctl,
@@ -2864,6 +3330,32 @@ def begin(args: argparse.Namespace) -> int:
                     raise TransactionError(
                         f"managed service plist provenance does not match the selected Runtime: {label}"
                     )
+                if plist_path.is_file():
+                    try:
+                        plist_payload = plistlib.loads(plist_path.read_bytes())
+                    except (OSError, plistlib.InvalidFileException, ValueError) as exc:
+                        raise TransactionError(f"managed service plist is unreadable: {label}") from exc
+                    environment = (
+                        plist_payload.get("EnvironmentVariables")
+                        if isinstance(plist_payload, dict)
+                        else None
+                    )
+                    nova_home = environment.get("NOVA_HOME") if isinstance(environment, dict) else None
+                    if isinstance(nova_home, str) and nova_home:
+                        alias = Path(nova_home)
+                        if (
+                            not alias.is_absolute()
+                            or os.path.normpath(nova_home) != nova_home
+                            or alias.resolve(strict=False) != runtime
+                        ):
+                            raise TransactionError(
+                                f"managed service plist has an unsafe Runtime alias: {label}"
+                            )
+                        aliases = state["runtimeAliases"]
+                        if nova_home not in aliases:
+                            if len(aliases) >= 4:
+                                raise TransactionError("managed service Runtime alias inventory is too large")
+                            aliases.append(nova_home)
                 _snapshot_path(state_path, state, "managed-plist", plist_path)
                 loaded, launch_state = _launch_state(launchctl, domain, label)
                 if loaded and not plist_path.is_file():
@@ -3399,6 +3891,7 @@ def promote(args: argparse.Namespace) -> int:
     _verify_critical_control_state(state)
     _verify_live_migration_ledger(state)
     _verify_recorded_candidate_artifacts(state)
+    _verify_service_plist_bindings(state)
     state["status"] = "promoting"
     _save_state(state_path, state, event="promotion-started")
     _promote_pointer(state_path, state, "source")
@@ -3424,6 +3917,7 @@ def restore_services(args: argparse.Namespace) -> int:
             raise TransactionError("candidate service restore requires completed promotion")
         _verify_live_migration_ledger(state)
         _verify_recorded_candidate_artifacts(state)
+        _verify_service_plist_bindings(state)
     if state["platform"] != "Darwin":
         state["status"] = "services-restored"
         _save_state(state_path, state, event="services-restored")
@@ -3473,7 +3967,7 @@ def restore_services(args: argparse.Namespace) -> int:
         if requires_running:
             if launch_state not in RUNNING_STATES:
                 raise TransactionError(f"managed service running state was not restored: {service['label']}")
-    _verify_service_health(state)
+    _verify_service_health(state, require_candidate_commit=not rollback_restore)
     state["status"] = "services-restored"
     _save_state(state_path, state, event="services-restored")
     return 0
@@ -3493,6 +3987,7 @@ def verify(args: argparse.Namespace) -> int:
         raise TransactionError("active source manifest is missing after promotion")
     _verify_recorded_candidate_artifacts(state)
     _verify_live_migration_ledger(state)
+    _verify_service_plist_bindings(state)
     if state["mode"] == "upgrade":
         venv = Path(state["venv"]["path"])
         candidate_venv = Path(state["venv"]["candidateTarget"])
@@ -3831,6 +4326,7 @@ def commit(args: argparse.Namespace) -> int:
     _verify_critical_control_state(state)
     _verify_recorded_candidate_artifacts(state)
     _verify_live_migration_ledger(state)
+    _verify_service_plist_bindings(state)
     state["status"] = "committed"
     _save_state(state_path, state, event="committed")
     _maybe_test_fail("commit-journaled-before-lock-release")

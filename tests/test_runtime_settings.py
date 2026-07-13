@@ -169,7 +169,7 @@ def _v2_runtime_source_manifest(source_locator: dict[str, object]) -> dict[str, 
         },
         "deploymentMode": "release-symlink",
         "copiedAt": "2026-07-11T00:00:00-07:00",
-        "pyprojectVersion": "1.0.0",
+        "pyprojectVersion": "1.0.1",
         "git": {
             "available": True,
             "commit": "abc1234",
@@ -3829,6 +3829,12 @@ class RuntimeSettingsTests(unittest.TestCase):
             root = Path(tmp)
             paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
             fake_home = root / "Home"
+            release = paths.home / "app" / "releases" / "resolved-release"
+            venv = paths.home / "app" / "venvs" / "resolved-venv"
+            release.mkdir(parents=True)
+            venv.mkdir(parents=True)
+            (paths.home / "app" / "source").symlink_to(Path("releases") / release.name)
+            (paths.home / ".venv").symlink_to(Path("app") / "venvs" / venv.name)
             write_settings(
                 {
                     "schedule": {
@@ -3866,21 +3872,35 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertEqual(env["NOVA_HOME"], str(paths.home))
         self.assertEqual(env["PATH"], foundation_scheduler_preview.MANAGED_LAUNCHD_PATH)
         self.assertEqual(env["PYTHONDONTWRITEBYTECODE"], "1")
-        self.assertEqual(env["PYTHONPATH"], f"{root / 'project'}:{root / 'project' / 'src'}:{root / 'project' / 'src' / 'dashboard'}")
+        stable_source = paths.home / "app" / "source"
+        stable_python = paths.home / ".venv" / "bin" / "python"
+        self.assertEqual(
+            env["PYTHONPATH"],
+            f"{stable_source}:{stable_source / 'src'}:{stable_source / 'src' / 'dashboard'}",
+        )
         self.assertNotIn("DIARY_OUTPUT_DIR", env)
         self.assertNotIn("TMP_WORKSPACE", env)
         self.assertNotIn("NOVA_DATA_DB_PATH", env)
         self.assertNotIn("NOVA_DATA_EXPORT_DIR", env)
         self.assertNotIn("WORKSPACE_DIR", env)
         self.assertEqual(parsed["Label"], "nova.phase38.pipeline")
-        self.assertEqual(parsed["WorkingDirectory"], str(root / "project"))
-        self.assertEqual(parsed["ProgramArguments"][0], str(root / "venv" / "bin" / "python"))
+        self.assertEqual(parsed["WorkingDirectory"], str(stable_source))
+        self.assertEqual(parsed["ProgramArguments"][0], str(stable_python))
+        self.assertEqual(
+            parsed["ProgramArguments"][1],
+            str(stable_source / "advanced" / "pipeline" / "run_daily_pipeline.py"),
+        )
         self.assertEqual(parsed["ProgramArguments"], jobs["daily-pipeline"]["programArguments"])
         self.assertEqual(parsed["StartCalendarInterval"], {"Hour": 2, "Minute": 15})
         self.assertEqual(managed["plistPath"], jobs["daily-pipeline"]["plistPath"])
         self.assertFalse(managed["wouldWritePlist"])
         self.assertFalse(managed["wouldCallLaunchctl"])
         self.assertEqual(managed["registrationCommandPreview"][0:2], ["launchctl", "bootstrap"])
+        serialized_jobs = json.dumps(jobs, sort_keys=True)
+        self.assertNotIn(str(root / "project"), serialized_jobs)
+        self.assertNotIn(str(root / "venv"), serialized_jobs)
+        self.assertNotIn(str(release), serialized_jobs)
+        self.assertNotIn(str(venv), serialized_jobs)
 
     def test_onboarding_subsystem_plan_rejects_unknown_profile(self):
         with self.assertRaisesRegex(ValueError, "unknown onboarding profile"):

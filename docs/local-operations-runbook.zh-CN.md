@@ -22,7 +22,7 @@
 ## 3. 一键安装
 
 ```bash
-zsh -c "$(curl -fsSL 'https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.0/install/bootstrap.sh')"
+zsh -c "$(curl -fsSL 'https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.1/install/bootstrap.sh')"
 ```
 
 该版本化入口只用于全新安装。在写 cache 或 Runtime 前，它会拒绝任何已有的

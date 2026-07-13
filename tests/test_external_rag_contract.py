@@ -65,6 +65,29 @@ class ExternalRagContractTests(unittest.TestCase):
         for field in ("quality", "retrievalController", "agentic", "externalAgentContract"):
             self.assertIn(field, contract["searchResponse"]["includes"])
 
+    @unittest.skipUnless(SERVER_DEPS_AVAILABLE, "nova-RAG server dependencies are unavailable")
+    def test_rag_health_publishes_frozen_loaded_source_commit(self):
+        assert embedding_server is not None
+        commit = "2" * 64
+        index_state = {
+            "path": None,
+            "source": "unavailable",
+            "ready": False,
+            "reason": "fixture",
+        }
+        with (
+            patch.object(embedding_server, "_LOADED_SOURCE_COMMIT", commit),
+            patch.object(embedding_server, "get_emb_matrix", return_value=(None, [], [])),
+            patch.object(embedding_server, "_current_index_state", return_value=index_state),
+            patch.object(embedding_server, "_embedding_provider_ready", return_value=False),
+            patch.object(embedding_server, "_read_internal_token", return_value=""),
+        ):
+            payload = asyncio.run(embedding_server.health())
+
+        self.assertEqual(payload["status"], "booting")
+        self.assertEqual(payload["sourceCommit"], commit)
+        self.assertNotIn(str(ROOT), payload.values())
+
     @unittest.skipUnless(FASTAPI_AVAILABLE, "Dashboard router dependencies are unavailable")
     def test_contract_health_and_search_envelopes_publish_auxiliary_usage_prompt(self):
         assert settings_router is not None

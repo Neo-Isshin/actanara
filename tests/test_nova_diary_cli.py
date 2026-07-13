@@ -568,7 +568,7 @@ class OpenNovaCliTests(unittest.TestCase):
 
     def test_update_remote_ref_requires_full_hex_commit(self):
         cli = _load_cli_module()
-        invalid_refs = ["main", "v1.0.0", "abc1234", "a" * 39, "g" * 40, "a" * 63]
+        invalid_refs = ["main", "v9.9.9", "abc1234", "a" * 39, "g" * 40, "a" * 63]
         for ref in invalid_refs:
             with self.subTest(ref=ref), patch.object(cli.subprocess, "run") as run, redirect_stderr(io.StringIO()) as error:
                 code = cli.main(["update", "--dry-run", "--ref", ref])

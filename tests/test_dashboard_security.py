@@ -3,6 +3,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -158,6 +159,17 @@ class DashboardSecurityTests(unittest.TestCase):
             self.assertEqual(response.headers["Content-Security-Policy"], "frame-ancestors 'none'")
             self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")
             self.assertNotIn("default-src", response.headers["Content-Security-Policy"])
+
+    def test_dashboard_health_publishes_frozen_loaded_source_commit(self):
+        from app import main as dashboard_main
+
+        commit = "1" * 40
+        with patch.object(dashboard_main, "_LOADED_SOURCE_COMMIT", commit):
+            payload = asyncio.run(dashboard_main.health())
+
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["sourceCommit"], commit)
+        self.assertNotIn(str(ROOT), payload.values())
 
     def test_main_creates_diary_data_static_directory_before_mount(self):
         main = (ROOT / "src" / "dashboard" / "app" / "main.py").read_text(encoding="utf-8")

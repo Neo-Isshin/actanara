@@ -73,7 +73,7 @@ macOS scheduling uses one planner: `data_foundation.scheduler_preview`.
 - Installer and CLI onboarding apply use the same planner in explicit phases:
   runtime bootstrap, plist write, then launchd registration. This keeps install
   bootstrap auditable without routing through a running Dashboard process.
-- Linux scheduler apply is outside the v1.0.0 product boundary; the managed
+- Linux scheduler apply is outside the v1.0.x product boundary; the managed
   scheduler implementation targets macOS user LaunchAgents.
 
 The expected current state is not "one function owns every call"; it is "one

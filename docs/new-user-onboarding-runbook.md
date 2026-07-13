@@ -1,4 +1,4 @@
-# Open Nova v1.0.0 Installation Guide
+# Open Nova v1.0.1 Installation Guide
 
 This guide covers a new installation, the first health checks, and supported
 updates. GitHub Releases in
@@ -20,16 +20,17 @@ in `~/.config/open-nova/location.json`.
 
 ## Immutable one-line install
 
-Run the versioned v1.0.0 bootstrap:
+Run the versioned v1.0.1 bootstrap:
 
 ```bash
-zsh -c "$(curl -fsSL 'https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.0/install/bootstrap.sh')"
+zsh -c "$(curl -fsSL 'https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.1/install/bootstrap.sh')"
 ```
 
-The URL is pinned to the immutable `v1.0.0` tag. The bootstrap resolves the
+The URL is pinned to the immutable `v1.0.1` tag. The bootstrap resolves the
 latest stable, non-draft, non-prerelease GitHub Release, peels its tag to a full
 commit, clones that exact commit into a detached source cache, and invokes the
-installer. It never tracks `main`, `HEAD`, or a symbolic remote ref.
+installer. It rejects a Release whose title is explicitly marked WITHDRAWN and
+never tracks `main`, `HEAD`, or a symbolic remote ref.
 
 The hosted bootstrap is fresh-install-only. It fails before cloning when it
 detects an existing Open Nova Runtime or managed service. Use `open-nova update`

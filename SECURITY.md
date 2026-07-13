@@ -6,7 +6,8 @@ Security fixes are provided for the current stable Open Nova release line.
 
 | Version | Supported |
 | --- | --- |
-| 1.0.x | Yes |
+| 1.0.1 | Yes |
+| 1.0.0 | No — withdrawn |
 | Earlier private development versions | No public support |
 
 ## Reporting a vulnerability
