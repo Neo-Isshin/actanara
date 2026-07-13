@@ -808,18 +808,19 @@ def _build_subprocess_environment(source_date_epoch: int | None = None) -> dict[
 
 
 def validate_release_toolchain(python: str) -> dict[str, str]:
-    probe = """
+    locked_distributions = json.dumps(tuple(EXPECTED_RELEASE_TOOLCHAIN))
+    probe = f"""
 import importlib.metadata
 import json
 import platform
 
-print(json.dumps({
+payload = {{
     "python": platform.python_version(),
     "pythonImplementation": platform.python_implementation(),
-    "build": importlib.metadata.version("build"),
-    "setuptools": importlib.metadata.version("setuptools"),
-    "wheel": importlib.metadata.version("wheel"),
-}, sort_keys=True))
+}}
+for distribution in {locked_distributions}:
+    payload[distribution] = importlib.metadata.version(distribution)
+print(json.dumps(payload, sort_keys=True))
 """
     try:
         completed = subprocess.run(

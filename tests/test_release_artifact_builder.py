@@ -213,6 +213,10 @@ class ReleaseArtifactBuilderTests(unittest.TestCase):
             self.assertEqual(release_builder.validate_release_toolchain("python"), LOCKED_TOOLCHAIN)
         self.assertIn("-B", run.call_args.args[0])
         self.assertNotIn("PYTHONPATH", run.call_args.kwargs["env"])
+        probe = run.call_args.args[0][-1]
+        for distribution in release_builder.EXPECTED_RELEASE_TOOLCHAIN:
+            with self.subTest(distribution=distribution):
+                self.assertIn(f'"{distribution}"', probe)
 
         wrong = dict(LOCKED_TOOLCHAIN, wheel="0.46.0")
         completed = subprocess.CompletedProcess(
