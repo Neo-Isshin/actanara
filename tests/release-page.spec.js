@@ -205,29 +205,46 @@ test("release page has no horizontal overflow", async ({ page }) => {
   expect(overflow).toBeLessThanOrEqual(1);
 });
 
-test("static dashboard demo exposes the representative synthetic pages", async ({ page }) => {
+test("static dashboard demo exposes the curated real Dashboard pages", async ({ page }) => {
+  test.slow();
   await page.goto(dashboardDemoUrl);
 
-  await expect(page).toHaveTitle("Open Nova Dashboard Demo");
-  await expect(page.getByRole("heading", { name: "当日实时总览" })).toBeVisible();
+  await expect(page).toHaveTitle("Agent Dashboard — 周报 & 日记录");
+  await expect(page.locator("#page-overview")).toBeVisible();
+  await expect(page.locator("#page-overview .page-title")).toHaveText("当日实时总览");
+  await expect(page.locator("#agentTableContainer")).toContainText("活跃");
+  await expect(page.locator("#agentTableContainer")).not.toContainText("undefined");
 
-  for (const [route, heading] of [
-    ["assets", "AI 资产总览"],
-    ["diary-a", "项目交付日记"],
-    ["diary-b", "系统优化日记"],
-    ["blank", "无活动日记"],
-    ["weekly", "周报总览"],
-    ["monthly", "月报总览"],
-    ["tasks", "任务看板"],
-    ["rag", "长期记忆搜索"],
-  ]) {
-    await page.locator(`button[data-route="${route}"]`).click();
-    await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
-  }
+  await expect(page.locator(".sidebar-bottom-nav")).toBeHidden();
+  await expect(page.locator(".sidebar-utility")).toBeHidden();
+  await expect(page.locator('#month-nav .nav-item[onclick*="loadMonthlyReportById"]')).toHaveCount(0);
 
-  await page.locator("#open-settings").click();
-  await expect(page.getByRole("dialog")).toBeVisible();
-  await expect(page.getByText("这是合成数据静态示例。保存、服务控制和写操作均已禁用。")).toBeVisible();
+  await page.evaluate(() => window.showPage("static"));
+  await expect(page.locator("#page-static")).toBeVisible();
+  await expect(page.locator("#page-static .page-title")).toHaveText("AI 资产总览");
+  await expect(page.locator("#aaDevices .aa-device-card")).toHaveCount(2);
+  await expect(page.locator("#aaDevices")).toContainText("Mac mini (Isshin)");
+  await expect(page.locator("#aaDevices")).toContainText("华硕路由器");
+
+  await page.evaluate(() => window.loadReport("2026-W27"));
+  await expect(page.locator("#page-report-2026-W27")).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator("#page-report-2026-W27")).toContainText("W27");
+
+  await page.evaluate(() => window.showDiaryByDate("2026-07-05", null));
+  await expect(page.locator("#page-day-0705")).toBeVisible();
+  await expect(page.locator("#page-day-0705")).toContainText("Xcode.app（已删除）");
+
+  await page.evaluate(() => window.showDiaryByDate("2026-07-04", null));
+  await expect(page.locator("#page-day-0704")).toBeVisible();
+  await expect(page.locator("#page-day-0704")).toContainText("今日无活动");
+
+  await page.evaluate(() => window.showDiaryByDate("2026-07-03", null));
+  await expect(page.locator("#page-day-0703")).toBeVisible();
+
+  await expect(page.locator('a[href="tasks.html"]').first()).toHaveAttribute("href", "tasks.html");
+  await page.goto(new URL("tasks.html", dashboardDemoUrl).href);
+  await expect(page).toHaveTitle("任务看板 — Dashboard");
+  await expect(page.getByRole("heading", { name: "任务看板", exact: true })).toBeVisible();
 });
 
 test("static dashboard demo has no horizontal overflow", async ({ page }) => {
@@ -237,23 +254,48 @@ test("static dashboard demo has no horizontal overflow", async ({ page }) => {
   expect(overflow).toBeLessThanOrEqual(1);
 });
 
-test("static dashboard demo is self-contained and excludes private runtime data", async () => {
-  const source = ["index.html", "style.css", "app.js"]
+test("static dashboard demo uses local assets and excludes private hosts, machine paths, and credentials", async () => {
+  const publicTextFiles = [
+    "README.md",
+    "index.html",
+    "tasks.html",
+    "css/style.css",
+    "js/app.js",
+    "js/autorefresh.js",
+    "js/static-mock.js",
+  ];
+  const source = publicTextFiles
     .map(file => fs.readFileSync(path.join(dashboardDemoRoot, file), "utf8"))
     .join("\n");
 
-  for (const forbidden of [
-    "/Users/",
-    "/Volumes/",
-    "secretRef",
-    "apiKey",
-    "Authorization",
-    "Bearer ",
-    "navigator.sendBeacon",
-    "XMLHttpRequest",
-    "EventSource(",
-    "fetch(",
+  for (const privateLocationPattern of [
+    /(?<![a-z0-9._-])\/(?:Users?|Volumes)\/[^/\s"'<>]+/i,
+    /-Users-[a-z0-9_-]+--/i,
+    /\bgitea\.[a-z0-9.-]+\b/i,
+    /\b[a-z0-9.-]+\.cloud\b/i,
+    /\b(?:git@|ssh:\/\/)[a-z0-9.-]+\b/i,
   ]) {
-    expect(source).not.toContain(forbidden);
+    expect(source).not.toMatch(privateLocationPattern);
   }
+
+  for (const credentialPattern of [
+    /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+    /\bgh[pousr]_[A-Za-z0-9_]{20,}\b/,
+    /\bsk-[A-Za-z0-9_-]{20,}\b/,
+    /\bxox[baprs]-[A-Za-z0-9-]{20,}\b/,
+    /Authorization\s*:\s*Bearer\s+[A-Za-z0-9._~-]{12,}/i,
+  ]) {
+    expect(source).not.toMatch(credentialPattern);
+  }
+
+  for (const pageFile of ["index.html", "tasks.html"]) {
+    const html = fs.readFileSync(path.join(dashboardDemoRoot, pageFile), "utf8");
+    expect(html).not.toMatch(/<script[^>]+src=["']https?:\/\//i);
+    expect(html).toContain('src="js/static-mock.js"');
+  }
+
+  expect(fs.existsSync(path.join(dashboardDemoRoot, "js", "vendor", "chart.umd.min.js"))).toBe(true);
+  expect(fs.existsSync(path.join(dashboardDemoRoot, "js", "vendor", "marked.min.js"))).toBe(true);
+  const demoEntries = fs.readdirSync(dashboardDemoRoot, { recursive: true });
+  expect(demoEntries.some(entry => path.basename(entry) === ".DS_Store")).toBe(false);
 });

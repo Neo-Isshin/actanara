@@ -1,72 +1,112 @@
 # Open Nova Local Operations Runbook
 
-[中文](local-operations-runbook.zh-CN.md) · [Back to English README](../README.md)
+<p align="center">
+  <img src="https://img.shields.io/badge/Language-English%20·%20Current-2563EB?style=for-the-badge" alt="Current language: English">
+  <a href="local-operations-runbook.zh-CN.md"><img src="https://img.shields.io/badge/Language-简体中文-C026D3?style=for-the-badge" alt="切换到简体中文 Runbook"></a>
+</p>
+
+**English** · [简体中文](local-operations-runbook.zh-CN.md) · [Back to the English README](../README.md)
 
 Status: Public operator guide<br>
-Scope: Current local macOS runtime
+Scope: Open Nova `v1.0.1` · Local macOS runtime
 
 ## 1. Purpose
 
-This Runbook covers the complete path from installation through first-run setup, history generation, daily operation, subsystem maintenance, updates, and troubleshooting. The README provides a five-minute start; use this guide whenever an operation needs prerequisites, expected results, logs, or recovery steps.
+The README explains the product and provides a quick start. This Runbook covers the complete operating path from pre-install checks through first-run setup, historical backfill, daily Pipeline use, Dashboard, Nova-Task, `nova-RAG`, updates, backups, and troubleshooting.
 
-## 2. Before Installation
+In this guide, an **agent runtime** means an AI tool environment with its own sessions, logs, memory, and execution context, such as Codex, Claude Code, Gemini CLI, OpenClaw, or Hermes.
 
-- macOS;
-- Python `>= 3.11`; on supported macOS systems, the installer installs a managed standalone Python when no compatible version is available;
-- `git` and `curl` available on `PATH`; `python3` is also required if managed Python installation is disabled;
-- network access to the installation source and selected LLM or embedding provider;
-- enough local storage for Dashboard and optional local embedding dependencies.
+## 2. Version and Release Boundaries
 
-The installer detects supported agent-runtime paths and lets you choose which tools Open Nova should cover.
+- GitHub is the only public release and installation source. Private development archives are not part of the public installation path.
+- The published `v1.0.1` tag and Release remain immutable.
+- The fresh-install command in this guide pins both the `v1.0.1` bootstrap and the exact full source commit for Open Nova.
+- `v1.0.0` has been withdrawn and remains available for audit only. It should not be installed or recommended.
 
-## 3. One-command Installation
+> [!IMPORTANT]
+> Pinning the source commit prevents the Open Nova source from drifting with a future `latest` Release. Third-party dependencies are still resolved at install time according to the release configuration, so this does not make the entire Python dependency environment byte-for-byte reproducible.
+
+## 3. Pre-install Checks
+
+Confirm the following:
+
+- 🍎 You are using macOS;
+- 🛠️ `zsh`, `git`, and `curl` are available on `PATH`;
+- 🐍 Python `>=3.11` is required. On supported Apple Silicon and Intel Macs, the installer can download and verify a managed Python when no compatible version is present;
+- 🌐 GitHub, the Python package index, and the selected LLM / embedding provider are reachable;
+- 💾 Enough local storage is available for the runtime, Dashboard, and optional local-embedding dependencies;
+- 🔐 Provider API keys are ready, but have not been written to shell history, a README, or an ordinary configuration file.
+
+Check the base tools:
 
 ```bash
-zsh -c "$(curl -fsSL 'https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.1/install/bootstrap.sh')"
+command -v zsh
+command -v git
+command -v curl
+python3 --version 2>/dev/null || true
 ```
 
-This versioned entry is fresh-install-only. Before writing cache or Runtime
-state, it refuses any existing target/default/`NOVA_HOME`/location-pointer
-Runtime or managed Open Nova LaunchAgent. Source acquisition resolves the
-latest stable GitHub Release and pins its full commit; it never falls back to
-`main` or `origin/HEAD`.
+The installer detects supported agent-runtime paths and asks the operator which tools to connect during the guided setup.
 
-The installer guides you through:
+## 4. Fresh Installation of v1.0.1
 
-1. interface and pipeline language;
-2. external agent-runtime paths;
-3. LLM Provider, Endpoint, Model, and API key;
-4. optional `nova-RAG` enablement;
-5. local or cloud embedding configuration;
-6. managed macOS scheduling and the Dashboard service.
+Use this strictly pinned command:
 
-Provider keys are stored in the runtime-local secret store at `$NOVA_HOME/state/secrets`. Open Nova creates the directory with mode `0700` and each secret file with mode `0600`; the user does not need to configure Keychain, and Pipeline or LaunchAgent jobs can run unattended without recurring authorization prompts. A cloud embedding key, when configured, uses the same secret store. Runtime settings, databases, logs, and generated assets remain in user-owned local paths. Requests sent to configured LLM or embedding providers follow the selected provider's endpoint and data policy.
+```bash
+bootstrap="$(curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 10 --max-time 30 'https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.1/install/bootstrap.sh')" && [ -n "$bootstrap" ] && NOVA_INSTALL_SOURCE_URL='https://github.com/Neo-Isshin/open-nova.git' NOVA_INSTALL_REF='82bbdbd83e35724441c7005dfc0b555d413fcf93' zsh -c "$bootstrap"
+```
 
-An existing `macos-keychain` secret reference is accepted only for compatibility migration. Open Nova copies a readable legacy secret into the runtime-file store and does not automatically delete the old Keychain item. If macOS does not allow the old item to be read, enter that provider key once in Dashboard.
+This command has two immutable anchors:
 
-## 4. Installation Summary and Runtime Paths
+1. The bootstrap comes from the immutable `v1.0.1` tag;
+2. The Open Nova source is pinned to the full commit `82bbdbd83e35724441c7005dfc0b555d413fcf93`.
 
-Keep the terminal summary after installation. It contains the active Dashboard URL, runtime location, and common commands.
+> [!NOTE]
+> Supplying an explicit commit bypasses the bootstrap's future dynamic checks for the `latest` Release and its `WITHDRAWN` marker. This is the deliberate tradeoff required to keep source content fixed. If the project later withdraws this version, follow GitHub security advisories and the Release status.
+
+> [!WARNING]
+> This command is for a fresh installation only. If the bootstrap detects an existing Open Nova runtime, an active runtime pointer, or a managed LaunchAgent, it stops before writing to the installation source cache. For an existing installation, run `open-nova update` or `open-nova update --dry-run` to review the plan, then use `open-nova update --apply` to perform the update.
+
+The installation wizard covers, in order:
+
+1. Interface language and Pipeline language;
+2. External agent-runtime paths;
+3. LLM Provider, Endpoint, Model, and API Key;
+4. Whether to enable `nova-RAG`;
+5. Local or cloud embedding configuration;
+6. macOS Dashboard and scheduler services.
+
+The public installer locale uses `zh-CN` or `en-US`; the runtime's internal Pipeline profile uses `zh` or `en`. Users normally select a language in the installation wizard and should not manually mix values from these two groups.
+
+## 5. Installer Write Locations
 
 | Path | Purpose |
 | :--- | :--- |
-| `~/.open-nova` | Runtime home |
+| `~/.cache/open-nova/installer` | Installation source cache |
+| `~/.open-nova` | Runtime, virtual environment, settings, database, logs, secrets, and generated assets |
 | `~/.config/open-nova/location.json` | Active runtime pointer |
-| `~/.open-nova/artifacts/diary` | Diaries and period summaries |
-| `~/.open-nova/state/logs` | Pipeline, service, and installer logs |
-| `~/.open-nova/state/secrets` | Runtime-local provider-key store (`0700` directory, `0600` files) |
-| `~/.open-nova/bin/open-nova` | Product CLI |
-| `~/Library/LaunchAgents/` | Managed macOS user-service plists |
+| `~/.local/bin/open-nova` | User-facing CLI entry on `PATH` |
+| `~/.zprofile` | Marked `PATH` block; disable during installation with `--no-shell-path` |
+| `~/Desktop/Open Nova` | Desktop shortcut to the diary directory, created by default |
+| `~/Library/LaunchAgents/` | Dashboard, Scheduler, and optional RAG services |
 
-Default Dashboard URL:
+Provider keys are stored in `$NOVA_HOME/state/secrets`. The secrets directory uses mode `0700`, and each secret file uses mode `0600`.
+
+Legacy `macos-keychain` references are used only for compatibility migration: readable secrets are copied to the runtime secret store, but Open Nova does not automatically delete old Keychain items. If a legacy secret cannot be read, enter the provider key again in the Dashboard.
+
+## 6. Installation Summary and Basic Verification
+
+Keep the terminal summary after installation. It contains the actual Dashboard URL, runtime location, and common commands.
+
+Default Dashboard address:
 
 ```text
 http://127.0.0.1:3036/dashboard
 ```
 
-If `3036` is occupied, the installer selects another port. The installation summary and active runtime settings are authoritative.
+If `3036` is occupied, the installer selects another port. Always use the installation summary and current runtime settings as the authority.
 
-## 5. Post-install Verification
+Run these read-only commands first:
 
 ```bash
 open-nova doctor
@@ -75,148 +115,150 @@ open-nova onboard status
 open-nova config show
 ```
 
-Inspect individual subsystems when needed:
+Inspect individual subsystems:
 
 ```bash
 open-nova doctor --installer
 open-nova doctor --pipeline
 open-nova doctor --scheduler
-open-nova doctor --rag        # Only when nova-RAG is enabled
+open-nova doctor --rag
 ```
 
-A warning does not always block operation. Resolve errors and explicit readiness failures first. Verify the runtime pointer, LLM provider, Dashboard, scheduler, and optional RAG Server state.
+A warning does not always block operation. Resolve errors and explicit readiness failures first. Focus on the runtime pointer, Provider, Dashboard, scheduler, and optional RAG Server.
 
-## 6. Configure the LLM Provider
+## 7. Configure the LLM Provider
 
-1. Open Dashboard Settings;
-2. select the Provider;
-3. verify the Endpoint and Model;
-4. enter the API key;
-5. run the availability test;
-6. save only after the test passes.
+1. Open the Dashboard URL shown in the installation summary;
+2. Open LLM Provider settings;
+3. Select the Provider and verify the Endpoint and Model;
+4. Enter the API Key;
+5. Run the availability test;
+6. Save only after the test passes.
 
-Then verify:
+Then run:
 
 ```bash
 open-nova model show
 open-nova doctor --pipeline
 ```
 
-Never place a real key in README files, logs, shell history, committed files, or ordinary settings fields. To rotate a key, create the replacement at the provider first, then update it through Dashboard. Open Nova writes the replacement to the runtime-file secret store; no separate Keychain configuration is required.
+Never put a real key in a README, Issue, log, shell history, Git-tracked file, or ordinary settings field. When an external LLM or cloud embedding provider is configured, relevant derived work content is sent according to the selected endpoint and provider data policy.
 
-## 7. First History Generation
+## 8. First Historical-Data Generation
 
-### 7.1 Preview the Plan
+### 8.1 Preview the Plan
 
-Select **Generate Historical Data** in Dashboard, choose a date range, and select **Preview Plan**. Review:
+Select **Generate Historical Data** in the Dashboard, choose a date range, and preview the plan first. Review:
 
-- pending daily records;
-- weekly and monthly reports;
-- existing daily artifacts that will be skipped, plus weekly and monthly reports that will be regenerated;
-- estimated LLM calls;
-- `nova-RAG` synchronization tasks;
-- the final selected tasks.
+- Pending daily records;
+- Weekly and monthly reports;
+- Existing artifacts that will be skipped or regenerated;
+- Estimated LLM calls;
+- Nova-Task tasks;
+- `nova-RAG` synchronization tasks, when enabled.
 
-Clear tasks you do not want to run. Plan preview does not mutate the runtime.
+Clear tasks you do not want to run. Plan preview does not write to the runtime.
 
-### 7.2 Queue Generation
+### 8.2 Queue and Monitor
 
-After reviewing the plan, select **Queue Generation**. Open Nova runs only selected tasks:
+After confirmation, add the selected tasks to the background queue. Large date ranges take longer; dates without activity may produce only structured placeholder artifacts and may not call an LLM.
 
-- Base Pipeline generates daily and period artifacts;
-- Foundation persists normalized activity, reports, and snapshots;
-- Nova-Task updates task candidates and evidence;
-- when enabled and ready, `nova-RAG` synchronizes the retrieval index.
-
-Large ranges may take time. Blank dates can produce structured placeholder artifacts without an LLM call.
-
-### 7.3 Monitor, Cancel, and Retry
-
-Use **Background Tasks** and **Messages** to inspect status. A running job can receive a cancellation request, and partial failures can retry only failed items. Keep at most one active history-backfill job per runtime.
+Use Background Tasks and Messages to inspect status. A running job can receive a cancellation request, and some partially failed backfill jobs can retry only failed items. Keep at most one active historical-backfill job per runtime.
 
 After completion, inspect:
 
-- Diary;
-- weekly and monthly reports;
+- Diaries and period reports;
 - AI Assets;
-- Nova-Task;
-- `nova-RAG` status and search results.
+- Nova-Task board;
+- `nova-RAG` status and search results, when enabled.
 
-## 8. Daily Base Pipeline Operation
+## 9. Daily Base Pipeline Operation
 
-Run today or a specific date manually:
+Run manually:
 
 ```bash
 open-nova pipeline
 open-nova pipeline YYYY-MM-DD
 ```
 
-The Pipeline reads configured external-tool paths and attributes workspaces from observed evidence. Do not rely on the command's CWD as the only attribution source.
+Without a date, `open-nova pipeline` processes the **previous calendar day in the configured time zone**; it is not a shortcut for processing today. Use `YYYY-MM-DD` when specifying a date.
 
-The macOS installer registers managed LaunchAgents by default. Check scheduling with:
+The Pipeline writes diaries, reports, and Foundation data. If the target date has already been generated completely, only an explicit `--force` regenerates it from the frozen Foundation input.
+
+Open Nova attributes workspaces using execution evidence from external runtimes. It does not treat the CLI's current directory as the sole attribution source.
+
+Check managed scheduling:
 
 ```bash
 open-nova doctor --scheduler
 ```
 
-Before moving scheduling to external automation or another cron job, prevent duplicate execution with the managed schedule.
+If an external automation system will invoke the Pipeline, prevent duplicate execution with the installer-managed schedule.
 
-## 9. Dashboard Operations
+## 10. Daily Dashboard Operations
 
-Use Dashboard to:
+Use the Dashboard to:
 
-- review daily, weekly, and monthly reports;
-- inspect live usage and AI assets;
-- configure LLM providers, tool paths, and scheduling;
-- plan history backfills;
-- monitor background tasks and messages;
-- review Nova-Task;
-- operate `nova-RAG`.
+- Review daily, weekly, and monthly diaries;
+- Inspect live usage, AI Assets, and workspace attribution;
+- Configure Providers, external-tool paths, and scheduling;
+- Plan historical backfills;
+- Monitor background tasks and messages;
+- Review Nova-Task;
+- Operate optional `nova-RAG`.
 
-If Dashboard becomes unavailable:
+If the service becomes unavailable:
 
 ```bash
 open-nova dashboard restart
 open-nova doctor --installer
 ```
 
-## 10. Nova-Task Operations
+Do not assume the Dashboard always uses port `3036`. Check the installation summary or `open-nova config show` first.
 
-Nova-Task is a Beta subsystem. It derives candidate tasks and evidence from real agent-runtime activity, conversations, and tool results while preserving human review and takeover.
+## 11. Nova-Task Operations
+
+Open the task board in the Dashboard. The CLI `task` command only reads and prints task statistics; it does not open the interface:
 
 ```bash
 open-nova task
+open-nova task --json
 ```
+
+Nova-Task is a Beta subsystem. It derives a task structure from real runtime activity, conversations, file changes, tool results, and execution evidence.
 
 Operating principles:
 
-- retain human review for top-level or high-impact changes;
-- allow routine child-task maintenance, but audit incorrect attribution periodically;
-- before importing an RFC, PRD, Roadmap, or Audit, confirm that it contains no information that should stay outside the local work graph;
-- treat the task board as a record of actual work, not a conventional backlog.
+- Retain human review for top-level or high-impact tasks;
+- Allow the system to maintain routine subtasks, but check status and attribution periodically;
+- Before importing an RFC, PRD, Roadmap, or Audit, confirm that its contents are appropriate for the local task graph;
+- Treat the task graph as a description of real work, not a traditional hand-written to-do list.
 
-## 11. nova-RAG Operations
+## 12. nova-RAG Operations
 
-Check readiness:
+Check status:
 
 ```bash
 open-nova doctor --rag
 ```
 
-Search:
+Search local memory:
 
 ```bash
+open-nova search "deployment issue" --top-k 5
 open-nova search "deployment issue" --top-k 5 --json
 ```
 
-Preview maintenance first:
+Automation consuming JSON output should check the `available` field. When RAG is unavailable, the command may still return a successful structured status response.
+
+Preview maintenance operations first:
 
 ```bash
 open-nova rag-update --dry-run
 open-nova rag-rebuild --dry-run
 ```
 
-Applying an update or rebuild requires explicit confirmation. External agent runtimes should prefer the read-only Dashboard facade:
+External agent runtimes should prefer the Dashboard's read-only facade:
 
 ```text
 GET  /api/rag/external/health
@@ -225,45 +267,52 @@ GET  /api/rag/external/contract
 POST /api/rag/external/search
 ```
 
-The default Dashboard base URL is `http://127.0.0.1:3036`; the direct RAG Server defaults to `http://127.0.0.1:3037`. Active runtime settings are authoritative.
+The default Dashboard base URL is `http://127.0.0.1:3036`; the direct RAG Server defaults to `http://127.0.0.1:3037`. The runtime settings determine the actual ports.
 
-## 12. Updates and Rollback Preparation
+The external-runtime contract allows only health checks, statistics, contract reads, and search. It does not permit memory writes, index changes, global-setting changes, or service-lifecycle control.
 
-Preview an update:
+## 13. Updates
+
+View the update plan:
+
+```bash
+open-nova update
+```
+
+Run a no-change preview:
 
 ```bash
 open-nova update --dry-run
 ```
 
-Apply a guarded update:
+Apply a protected update:
 
 ```bash
 open-nova update --apply
 ```
 
-Select an explicit immutable commit (full 40- or 64-character hexadecimal object ID):
+- With no arguments, the command displays only the plan;
+- `--dry-run` runs a bootstrap and installer preview, but with a cold cache it mainly shows the source-acquisition plan and is not a complete end-to-end validation of the candidate version;
+- Only `--apply` performs the real update transaction.
+
+Select an immutable full commit:
 
 ```bash
 open-nova update --dry-run --ref <full-commit-sha>
 open-nova update --apply --ref <full-commit-sha>
 ```
 
-Omitting `--ref` resolves the latest non-draft, non-prerelease GitHub
-Release, peels its tag to a full commit, and pins that commit. A custom
-`--source-url` requires an explicit full commit. `--source-root` uses the
-supplied checkout exactly as-is and cannot be combined with `--ref`.
-
 Before updating:
 
-1. let active jobs finish;
-2. save the current `open-nova doctor` output;
-3. back up runtime settings and important generated assets;
-4. record the current runtime and commit;
-5. run Dry Run first.
+1. Confirm that the Pipeline and background tasks have finished;
+2. Save the output of `open-nova doctor`;
+3. Back up runtime settings and important generated assets;
+4. Record the current runtime and commit;
+5. Run the plan or Dry Run first.
 
-## 13. Logs and Troubleshooting
+## 14. Logs and Troubleshooting
 
-Inspect these locations first:
+Check these locations first:
 
 ```text
 ~/.open-nova/state/logs/
@@ -273,39 +322,57 @@ Inspect these locations first:
 
 Troubleshoot in this order:
 
-1. confirm the runtime pointer;
-2. confirm the Dashboard URL and port;
-3. test the LLM provider;
-4. confirm that `$NOVA_HOME/state/secrets` exists with mode `0700`, its secret files use mode `0600`, and Pipeline or LaunchAgents use the same `NOVA_HOME`;
-5. verify external-tool paths;
-6. check for a missing or duplicate scheduler;
-7. verify the RAG Server and active index;
-8. inspect failed, cancelled, or retryable background tasks.
+1. Is the runtime pointer correct?
+2. Does the Dashboard URL and port match the installation summary?
+3. Does the LLM Provider test pass?
+4. Does `$NOVA_HOME/state/secrets` use mode `0700`, with secret files using `0600`?
+5. Do the Pipeline and LaunchAgents use the same `NOVA_HOME`?
+6. Do external-tool paths exist, and are they enabled?
+7. Is the Scheduler duplicated, missing, or failing?
+8. Are the RAG Server and active index ready?
+9. Are background tasks failed, canceled, or retryable?
 
-When reporting an issue, retain the command, relevant output, log paths, runtime pointer, and subsystem Doctor output. Never paste a real secret.
+When filing an Issue, include commands, necessary output, log paths, the runtime pointer, and relevant Doctor results. Remove secrets, email addresses, usernames, private project names, machine paths, and work content.
 
-## 14. Data, Backups, and Privacy
+## 15. Data, Backups, and Privacy
 
-- Do not commit runtime databases, logs, caches, generated diaries, or keys;
-- inspect screenshots for email addresses, usernames, project names, local paths, and work content before publishing;
-- external LLM and embedding requests are processed by the configured provider;
-- back up important diaries, reports, Nova-Task data, and runtime settings;
-- before removing or migrating a runtime, stop managed services and verify that backups are restorable.
+- Do not commit runtime databases, logs, caches, secrets, generated diaries, or indexes;
+- Before publishing screenshots, check for email addresses, usernames, project names, machine paths, token / RAG metrics, and work content;
+- Prefer a disposable, isolated runtime with fully synthetic data when publishing screenshots;
+- External LLM / embedding requests are processed by the user's configured provider;
+- Back up important diaries, reports, Nova-Task data, and runtime settings regularly;
+- Before deleting or migrating a runtime, stop managed services and confirm that the backup can be restored.
 
-## 15. Completion Checklist
+## 16. Uninstallation Boundary
 
-- [ ] Dashboard is reachable;
-- [ ] LLM provider availability test passes;
-- [ ] Pipeline Doctor has no blocking errors;
-- [ ] scheduler state matches the intended configuration;
-- [ ] first history generation has completed or is observable;
-- [ ] Diary, AI Assets, and Nova-Task contain expected data;
-- [ ] when `nova-RAG` is enabled, Server, index, and search are ready;
-- [ ] log, update, and backup locations are understood.
+Open Nova `v1.0.1` does not include a product-level one-command uninstaller. Do not remove only `~/.open-nova`, because this can leave behind:
 
-## 16. Related References
+- macOS LaunchAgents;
+- The `~/.local/bin/open-nova` CLI shim;
+- The runtime location pointer;
+- The marked `PATH` block in `~/.zprofile`;
+- The desktop shortcut;
+- The installation source cache.
 
-- [New-user installation guide](new-user-onboarding-runbook.md)
-- [CLI product boundary](cli-boundary.md)
-- [RAG external agent contract](rag-external-agent-contract.md)
-- [Back to English README](../README.md)
+Until a verified uninstall workflow is published, keep the runtime or make a complete backup first, then review every write location in the installation summary individually.
+
+## 17. Completion Checklist
+
+- [ ] The Dashboard is reachable, and its URL matches the installation summary;
+- [ ] The LLM Provider test passes;
+- [ ] `open-nova doctor` reports no blocking errors;
+- [ ] Scheduler status matches expectations;
+- [ ] The first historical backfill is complete or observable;
+- [ ] Diaries, AI Assets, and Nova-Task contain expected data;
+- [ ] When `nova-RAG` is enabled, the Server, active index, and search work correctly;
+- [ ] Log, update, backup, and uninstallation boundaries are understood.
+
+## 18. Related References
+
+- [English README](../README.md)
+- [Chinese README](../README.zh-CN.md)
+- [Chinese Local Operations Runbook](local-operations-runbook.zh-CN.md)
+- [New User Onboarding Runbook](new-user-onboarding-runbook.md)
+- [CLI Product Boundary](cli-boundary.md)
+- [nova-RAG External Agent Runtime Contract](rag-external-agent-contract.md)
+- [GitHub Releases](https://github.com/Neo-Isshin/open-nova/releases)

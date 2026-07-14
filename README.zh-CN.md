@@ -1,120 +1,162 @@
-<div align="center">
+<h1 align="center">
+  <img src="docs/assets/banner.png" alt="Open Nova" width="650">
+</h1>
 
-<img src="docs/assets/banner.png" alt="Open Nova" width="650">
+<p align="center">
+  <strong>跨多 Agent Runtime 共享记忆，将相互独立的 Agent 活动整合为可检索、可复用的本地 AI 资产。</strong>
+  <br>
+  高度自动化的 AI 资产运维 · 跨 Runtime 记忆共享 · LLM 深度参与
+</p>
 
-### 跨多 Agent runtime 共享记忆，将相互独立的Agent活动统一整合沉淀为可检索、可复用的本地 AI 资产。
+<p align="center">
+  <img src="https://img.shields.io/badge/Language-简体中文%20·%20当前-C026D3?style=for-the-badge" alt="当前语言：简体中文">
+  <a href="README.md"><img src="https://img.shields.io/badge/Language-English-2563EB?style=for-the-badge" alt="Switch to English README"></a>
+</p>
 
-**全自动 AI 资产运维 · 跨 Agent runtime 共享记忆 · LLM深度参与**
+<p align="center">
+  <a href="https://neo-isshin.github.io/open-nova/"><img src="https://img.shields.io/badge/Website-GitHub%20Pages-2563EB" alt="Website"></a>
+  <a href="https://github.com/Neo-Isshin/open-nova/releases/tag/v1.0.1"><img src="https://img.shields.io/badge/Release-v1.0.1-0EA5E9" alt="Release v1.0.1"></a>
+  <a href="#quick-start"><img src="https://img.shields.io/badge/Install-pinned%20v1.0.1-0284C7" alt="Pinned v1.0.1 install command"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0--or--later-16A34A" alt="License"></a>
+  <a href="https://discord.gg/JvJHngZWz"><img src="https://img.shields.io/badge/Discord-加入-5865F2" alt="Discord"></a>
+</p>
 
-[![官网](https://img.shields.io/badge/Website-release%20page-2563EB)](https://neo-isshin.github.io/open-nova/)
-[![一行安装](https://img.shields.io/badge/One--liner-GitHub-0EA5E9)](https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.1/install/bootstrap.sh)
-[![文档](https://img.shields.io/badge/Docs-release%20page-1D4ED8)](https://neo-isshin.github.io/open-nova/)
-[![中文](https://img.shields.io/badge/Lang-中文-2563EB)](README.zh-CN.md)
-[![English](https://img.shields.io/badge/Lang-English-64748B)](README.md)
-[![Discord](https://img.shields.io/badge/Discord-加入-5865F2)](https://discord.gg/JvJHngZWz)
+<p align="center">
+  <a href="https://neo-isshin.github.io/open-nova/">官网发布页</a> ·
+  <a href="https://neo-isshin.github.io/open-nova/dashboard-demo/"><strong>真实 Dashboard 静态 Demo</strong></a> ·
+  <a href="docs/local-operations-runbook.zh-CN.md"><strong>中文本地操作 Runbook</strong></a> ·
+  <a href="docs/rag-external-agent-contract.md">nova-RAG 外部合约（English）</a>
+</p>
 
-[官网发布页](https://neo-isshin.github.io/open-nova/) · [完整操作 Runbook](docs/local-operations-runbook.zh-CN.md) · [RAG 外部 Agent runtime 合约](docs/rag-external-agent-contract.md) · [English README](README.md)
+Open Nova 是一个高度自动化、结构化、本地优先的 AI 资产运维系统。它从受支持的 Agent Runtime 中整理会话、任务、用量和工作轨迹，将零散活动沉淀为统一的本地数据、日记、任务证据和可检索记忆。
 
-</div>
+Open Nova 也是一个 **LLM 深度参与**的系统：LLM 参与总结、任务提取、学习资产生成和知识组织；数据采集、解析、归因、调度、持久化和安全边界则由确定性组件控制。
 
-Open Nova 是一个高度自动化、结构化、非侵入的本地 AI 资产运维系统，由 LLM 深度参与，为用户将积累的 AI 资产沉淀为可复用的知识与工具。
+> 本文中的 **Agent Runtime** 指拥有独立会话、日志、记忆和执行上下文的 AI 工具环境，例如 Codex、Claude Code、Gemini CLI、OpenClaw 和 Hermes。
 
-当你寻求以下需求满足时，Open Nova 会很适合：
+<a id="why-open-nova"></a>
+## 🌟 为什么需要 Open Nova
 
-- 🤖 **跨多 Agent runtime 共享记忆**：将任何 Agent runtime 的会话、任务、笔记结构化沉淀为可检索证据，且任何 Agent runtime 均可直接使用其他 Agent runtime 的工作记忆；
-- 📓 **自动化任务识别与落盘系统** (Beta)：高度结构化总结每日任务成果，由统一的任务系统进行管理与呈现；
-- 🌍 **全自动总结与精美 Dashboard**：自动化呈现每日/周/月工作总结，随时总结与回味你与各 Agent runtime 的共同成长；
-- 📖 **与 Agent 共同进步**：自动总结遇到的困难与解决方案，并生成建议，沉淀丰富你的学习资产；
-- 🚉 **一站式管理所有 Agent**：随时查看你所有 Agent 的各种状态，无论实时还是 lifetime，尽在掌握。支持实时编辑各个 Agent 的 `SKILL.md`；
+同一个用户可能在同一周、甚至同一个项目中轮换使用多个 Agent Runtime。每个工具都有自己的日志、会话、Skill、记忆、Token 用量和任务轨迹；它们往往真实记录了工作，却彼此隔离。
 
+Open Nova 希望打通这些壁垒：让 `Codex` 能查找 `Claude Code` 已经完成的工作，让不同 Runtime 的活动被统一总结和展示，也让任务成果、解决过的困难和调试证据不再随会话消失。
 
-## 🌟 为什么是 Open Nova
+你可以用它：
 
-同一个用户可能在同一周内、甚至同一个项目内使用多个 AI Agent runtime，如 `Codex`、`Claude Code`、`Gemini CLI`、`OpenClaw`、`Hermes`。每个工具都有自己的日志、会话、技能、记忆、Token 用量和任务轨迹。
+- 🤖 **跨 Runtime 共享记忆**：将受支持 Runtime 的会话、任务和笔记转换为结构化证据；启用 `nova-RAG` 后，外部 Runtime 可以通过只读合约检索这些记忆。
+- 📓 **自动识别和落盘任务**（Beta）：从真实活动和工具结果中提取候选任务、证据和状态，交给 `Nova-Task` 统一组织与审阅。
+- 🌍 **自动生成每日、每周和每月总结**：在 Dashboard 中查看工作进展、AI 资产增长与 Token 用量。
+- 📖 **与 Agent 共同进步**：从困难、解决方案和实践建议中积累可复用的学习资产。
+- 🚉 **集中管理受支持的 Runtime**：查看活动、用量和运行状态，并审阅或编辑受支持 Runtime 的 `SKILL.md`。
 
-而 Open Nova 的愿景就是打通这些 Agent runtime 之间的壁垒，比如让 `Codex` 也能随时知道 `Claude` 干了什么，也能够将用户零散的工作自动化总结至一处并以漂亮的报告/报表呈现，甚至能够自动为用户归类与落盘实际发生的工作成果、克服困难时遇到的阻碍 —— 而这些是完全自动化的。
+## 📚 内容导航
 
+- [核心优势](#core-advantages) · [工作原理与系统构成](#how-it-works) · [支持范围](#support)
+- [快速开始](#quick-start) · [Dashboard、截图与交互 Demo](#dashboard) · [Nova-Task](#nova-task)
+- [nova-RAG](#nova-rag) · [隐私与安全](#privacy-security) · [开发与测试](#development)
+- [文档导航](#documentation) · [许可证](#license) · [Give me a Star](#give-star)
 
-| 能力 | 说明 |
-| :--- | :--- |
-| **全自动化管线** | 自动采集所有 Agent runtime 原始活动，清洗、解析、分析、结构化所有可能的资产，持久化进入数据基座。 |
-| **持久化 AI 资产层** | 将受支持工具、会话、用量事件、任务、报告和生成日记规范化到本地 `Foundation` 系统中。 |
-| **工作区自动归属** | 即使工作不是从项目目录启动，也能根据工具证据关联工作区、Agent runtime、定时任务和源码路径。 |
-| **智能任务管理系统** | 从所有 Agent runtime 活动中捕捉一切任务细节、证据、状态、候选项和审阅上下文，由 Nova-task 系统统一解析、归类、维护、呈现。 |
-| **自研 nova-RAG** | 提供精心优化的 RAG 检索能力，向其他 Agent runtime 暴露只读搜索合约，实现跨 Agent runtime 共享记忆。 |
-| **完全的设置中心** | 可自定义整个系统的配置，包括时区、管线运行、LLM 偏好、RAG 参数。 |
-
+<a id="core-advantages"></a>
 ## 💫 核心优势
 
-- **解析器优先的整理系统**：各数据源专用解析器会先规范化会话、任务、用量记录、定时任务活动、报告和工作区信号，再进入总结、任务证据或 RAG 流程。
-- **非侵入 runtime**：读取配置好的工具位置，写入自己的 runtime 主目录，不接管用户的 Agent runtime、Shell、编辑器或模型网关。
-- **覆盖后台自动化**：项目上下文不只依赖当前 Shell 目录；定时任务、后台脚本和跨目录 Agent runtime 运行也能通过工具证据被归因到对应工作区。
-- **来自真实工作的任务记忆**：`Nova-Task` 将已观察到的 Agent runtime 活动转化为任务权威源和审阅界面，不仅分析对话内容，也会评估 tool results 等关键工程信息来判断工作完成度，让任务看板反映真实发生的工作，而不是另一个需要手工维护的待办清单。
-- **低成本模型友好**：结构化提示词、明确结构约束和优化过的执行器，让参数较小或成本较低的模型也能产出可用结构化结果。更强模型可以提升质量，但系统不绑定单一高价模型路径。
-- **工具技能可编辑**：每个工具相关的技能和外部 Agent runtime 集成文件由操作者控制，在 dashboard 直接实现可查看、可调整、可审计。
-- **具备 Agentic RAG 能力的 nova-RAG**：`nova-RAG` 是 Open Nova 自研的 RAG 系统，向外部 Agent runtime 提供只读搜索，并通过评估查询、候选提升和回滚管理召回质量，可作为你的专属 RAG系统。
-- **完全专属**：所有资产均来自你与各 Agent runtime 的活动记录，打造专属于你的 AI 资产。
+- **解析器优先**：先将不同 Runtime 的会话、任务、用量、定时活动和工作区信号标准化，再进入总结、任务证据或 RAG 流程，而不是将未处理的原始日志直接交给 LLM。
+- **可靠的工作区归因**：项目上下文不只依赖当前 Shell 目录；定时任务、后台脚本和跨目录 Runtime 活动也能通过执行证据关联到正确工作区。
+- **基于真实工作的任务证据**：`Nova-Task` 不仅分析对话，也结合工具结果和交付证据判断任务状态，让看板更接近实际发生的工程工作。
+- **本地优先且边界清晰**：Open Nova 读取已配置的工具位置，把数据写入自己的 Runtime Home，不改写外部 Runtime 的历史或接管其执行。
+- **模型成本友好**：结构化提示词、明确 Schema 和可控的编排流程，让轻量或成本友好的模型也能产出可用结果，同时不锁定单一 Provider。
+- **集成由用户控制**：工具 Skill、外部 Runtime 定义和关键设置可查看、可编辑、可审计，不以隐式方式接管全局工具链。
+- **受保护的 Agentic RAG 生命周期**：`nova-RAG` 通过评估查询、候选提升、召回校准和安全回滚管理检索质量，并且只向外部 Runtime 暴露受限的只读合约。
 
-## 💻 系统构成
+<a id="how-it-works"></a>
+## 🧭 工作原理
 
-| 子系统 / 模块 | 价值与作用 |
+```text
+受支持的 Agent Runtime
+        ↓
+解析、归因与标准化
+        ↓
+Foundation 本地事实层
+        ↓
+Base Pipeline · Nova-Task · Dashboard
+        ↓
+nova-RAG（可选）→ 外部 Runtime 只读检索
+```
+
+| 系统 | 核心职责 |
 | :--- | :--- |
-| **`Foundation`** | 规范化并落盘 AI 活动、工作区归因、快照、报告、任务证据和修复审计记录的本地事实源。 |
-| **`Dashboard`** | 在浏览器界面中查看日记、AI 资产指标、Token 用量、设置、`Foundation` 操作、后台任务和任务审阅。 |
-| **`base-pipeline`** | 基于用户 AI 工作自动生成叙事记录、技术进展、学习笔记和任务摘要。 |
-| **`nova-RAG`** | Open Nova 自研的可选 RAG 系统，具备 Agentic RAG 能力，支持本地或云端 embedding、校准后的召回、外部只读搜索和受保护的索引生命周期。 |
-| **`Nova-Task`** | 由 LLM 深度驱动的任务权威源和审阅界面，用于处理真实任务证据。 |
-| **`归因解析器`** | 面向工作区、Agent runtime、会话、定时任务、用量记录和工具证据的识别与分类层。 |
-| **`安装器`** | 支持 dry-run 规划、依赖分组、runtime 引导、macOS `LaunchAgent` 注册、doctor 检查和升级路径。 |
+| **`Foundation`** | 将 AI 活动、工作区归因、快照、报告、任务证据和修复记录规范化到本地事实层。 |
+| **`Base Pipeline`** | 从 Runtime 活动中生成叙事日记、技术进展、学习记录和任务总结。 |
+| **`Dashboard`** | 统一呈现日记、AI 资产、Token 用量、设置、Foundation 操作、后台任务和任务看板。 |
+| **`Nova-Task`** | 根据真实工作证据维护可审阅的任务图谱。 |
+| **`nova-RAG`** | 可选的本地或云端 Embedding 检索子系统，提供受保护的索引生命周期与外部只读检索。 |
+| **归因解析器** | 识别 Runtime、会话、工作区、定时任务、用量事件和执行证据，包括从项目目录外启动的工作。 |
+| **安装器** | 处理依赖检测、Runtime 初始化、macOS LaunchAgent、Doctor 检查和受保护的更新事务。 |
 
-当前外部工具设置支持 `OpenClaw`、`Claude Code`、`Codex`、`Gemini CLI` 和 `Hermes` 等路径族。这些集成被视为操作者拥有的配置，而不是隐藏式接管全局工具环境。
+这些优势由本地事实层、Pipeline、任务系统、Dashboard 和可选检索子系统共同实现。
 
-## 💽 前置要求
+<a id="support"></a>
+## 💻 支持范围与前置要求
 
-Open Nova 当前优先面向本地 macOS 运行环境：
+Open Nova v1.0.x 的托管安装优先面向本地 macOS 用户环境：
 
-- 🍎 **默认支持目标为 macOS**：引导式安装器和托管调度器默认使用 macOS `LaunchAgent` 服务。
-- 🐍 **Python 环境**：需要 Python `>= 3.11`（推荐 Python `3.12`）。
-- 📦 **依赖自动安装**：系统会自动检测依赖，缺失依赖会自动安装。运行 `Dashboard` 和 `nova-RAG` 本地 embedding 时会安装额外的 Python 包；首次安装可能会下载 `torch`、`sentence-transformers` 等较大的依赖。
-- 🐧 **Linux & Windows 兼容性**：暂不是一行安装（One-liner）的一等支持目标。高级用户可以从本地 Checkout 并手动运行单个组件。下一个大版本会加入对 Windows 与 Linux 的原生支持，以及跨设备 Agent runtime 支持（仅限 Linux/macOS）。
-- ⚙️ **PATH 要求**：安装前请确认 `git`、`curl` 和兼容的 `python3` 已在环境变量 `PATH` 中可用。
+- 🍎 **macOS 是一等支持目标**：引导式安装、Dashboard 服务和托管调度默认使用用户级 `LaunchAgent`。
+- 🛠️ **基础工具**：安装前需确认 `zsh`、`git` 和 `curl` 可用，无需 `sudo`。
+- 🐍 **Python**：运行需要 Python `>=3.11`。受支持的 Apple Silicon 与 Intel Mac 如果缺少兼容 Python，安装器会自动下载并校验托管 Python。
+- 🌐 **网络和磁盘**：安装期间需要访问 GitHub、Python 包索引及你选择的模型服务。启用本地 `nova-RAG` 时，首次运行可能下载 `torch`、`sentence-transformers` 和模型权重。
+- 🐧 **Linux 与 Windows**：不是 v1.0.x 一行安装和托管服务的一等支持目标；高级用户可从源码手动运行部分组件。
 
-**Open Nova 当前支持 5 种 Agent runtime：**<br>
-🦞 `OpenClaw`、✳️ `Claude Code`、🤖 `Codex`、✨ `Gemini CLI`、⚕️ `Hermes`
+### 当前支持的 Agent Runtime
 
-更多 Agent runtime 将在下一个大版本得到支持，包括 `Cursor`、`Antigravity`、`OpenCode` 等。
+| Runtime | v1.0.x 定位 |
+| :--- | :--- |
+| 🦞 **OpenClaw** | 受支持的外部工具路径族 |
+| ✳️ **Claude Code** | 受支持的外部工具路径族 |
+| 🤖 **Codex** | 受支持的外部工具路径族 |
+| ✨ **Gemini CLI** | 受支持的外部工具路径族 |
+| ⚕️ **Hermes** | 受支持的外部工具路径族 |
 
+实际可采集内容取决于本机是否存在兼容日志、会话或用量数据，以及对应路径是否已在设置中启用。更多 Runtime 与跨平台能力属于后续版本范围，不应从 v1.0.x README 推断为已支持能力。
+
+<a id="quick-start"></a>
 ## 🎥 快速开始
 
 > [!TIP]
 > **一行部署，然后静等繁荣。**
 
-### 1. 一键安装 (One-liner)
+### 1. 安装 v1.0.1
 
-通过托管 bootstrap 脚本安装：
+下面的 one-liner 同时固定 `v1.0.1` bootstrap 与实际安装源码提交，不追踪 `main` 或未来的 `latest` Release：
 
 ```bash
-zsh -c "$(curl -fsSL 'https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.1/install/bootstrap.sh')"
+bootstrap="$(curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 10 --max-time 30 'https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.1/install/bootstrap.sh')" && [ -n "$bootstrap" ] && NOVA_INSTALL_SOURCE_URL='https://github.com/Neo-Isshin/open-nova.git' NOVA_INSTALL_REF='82bbdbd83e35724441c7005dfc0b555d413fcf93' zsh -c "$bootstrap"
 ```
 
-托管 bootstrap 只用于全新安装。它会先把最新正式 GitHub Release
-解析为完整 commit，再获取源码；没有正式 Release 时将安全阻断。若已存在任何
-Open Nova Runtime 或托管 LaunchAgent，请改用
-`open-nova update --dry-run`，确认后执行 `open-nova update --apply`。
-上面的版本化 `v1.0.1` URL 是本版本的不可变安装入口，不会追踪 `main`。
+> [!NOTE]
+> 这里采用“严格固定 v1.0.1”：显式 commit 会跳过 bootstrap 对未来 `latest` Release 和 `WITHDRAWN` 标记的动态检查，从而固定 Open Nova 源码内容，不随 `latest` 漂移。第三方依赖仍按发布配置在安装时解析，因此这里不承诺整个依赖环境逐字节可复现。这项取舍不会改动已发布的 v1.0.1 tag 或 Release。
+
+> [!IMPORTANT]
+> 这条命令仅用于全新安装。如果 bootstrap 发现已有 Open Nova Runtime、活动 Runtime 指针或托管 LaunchAgent，会在写入源码缓存前安全终止。已有安装应先运行 `open-nova update` 或 `open-nova update --dry-run` 检查计划，再用 `open-nova update --apply` 执行更新。
 
 > [!WARNING]
-> v1.0.0 已撤回：其更新事务可能使托管服务仍绑定到旧的具体源码目录。
-> 该版本的不可变 tag 和制品仅保留供审计，请勿安装或推荐。
+> `v1.0.0` 已撤回：它的更新事务可能使托管服务继续绑定到旧的具体源码目录。该版本的不可变 tag 和制品仅供审计，请勿安装或推荐。
 
-> [!NOTE]
-> 安装器会引导您配置 LLM Provider，并将 Provider Key 写入 Runtime 本地密钥目录 `$NOVA_HOME/state/secrets`（目录权限 `0700`、密钥文件权限 `0600`）。该机制支持无人值守运行，用户无需配置 Keychain，也不会遇到周期性重新授权。`nova-RAG` 为可选子系统；如配置云端 Embedding Key，也使用同一密钥目录。
->
-> 已有 `macos-keychain` 引用仅用于兼容迁移。若旧 Keychain item 无法读取，请在 Dashboard 中重新输入一次对应 Provider Key；Open Nova 不会自动删除旧 Keychain item。
+#### 安装器会写入哪些位置
+
+| 路径 | 用途 |
+| :--- | :--- |
+| `~/.cache/open-nova/installer` | 安装源码缓存 |
+| `~/.open-nova` | Runtime、虚拟环境、设置、数据库、日志、密钥和生成资产 |
+| `~/.config/open-nova/location.json` | 当前活动 Runtime 指针 |
+| `~/.local/bin/open-nova` | 面向用户 `PATH` 的 CLI 入口 |
+| `~/.zprofile` | 默认写入带标记的 `PATH` 配置；可用 `--no-shell-path` 禁用 |
+| `~/Desktop/Open Nova` | 默认创建指向日记目录的快捷链接 |
+| `~/Library/LaunchAgents/` | macOS 用户级 Dashboard、Scheduler 和可选 RAG 服务 |
+
+启用 `nova-RAG` 并在向导中选择外部 Agent Runtime 时，安装器还可以注册缺失的只读检索 Skill；已有 Skill 不会被隐式覆盖。
 
 ### 2. 基础验证
 
-安装完成后，先运行以下只读命令：
+安装完成后，先运行以下只读命令。它们不会初始化新 Runtime，也不会修改现有设置：
 
 ```bash
 open-nova doctor
@@ -123,185 +165,274 @@ open-nova onboard status
 open-nova config show
 ```
 
-安装摘要会显示实际 Dashboard URL。默认地址为 `http://127.0.0.1:3036/dashboard`；若端口被占用，请使用摘要中自动选择的新地址。
+如需定向诊断：
 
-## 🧭 Onboarding：首次使用引导
-
-### 1. 打开 Dashboard
-
-使用安装摘要中的 URL 打开 Dashboard。确认页面可以访问，并检查右上角的后台任务与消息状态。
-
-### 2. 配置并检测 LLM Provider
-
-进入设置页面，确认 Provider、Endpoint、Model 和 API Key。先执行可用性检测，检测通过后再保存设置。叙事日记、周期总结和需要 LLM 的历史任务依赖这套配置。
-
-### 3. 生成第一批历史数据
-
-1. 点击 Dashboard 中的“生成历史数据”，选择希望补全的日期范围。
-2. 先点击“计划预览”，检查待生成的日记、周报、月报、预计 LLM 调用量和 `nova-RAG` 同步任务。
-3. 取消勾选不需要生成的任务，然后点击“排队生成”。
-4. 系统只执行计划中勾选的任务；`nova-RAG` 任务仅在其已启用并可用时执行。
-
-> [!NOTE]
-> 历史数据生成在后台运行。较长日期范围可能需要较长时间；空白日期可能只生成结构化占位产物，不一定调用 LLM。
-
-### 4. 查看进度与结果
-
-在“后台任务”和“消息”中查看排队、运行、失败和重试状态。任务完成后，刷新日记、AI 资产、Nova-Task 和 `nova-RAG` 页面查看结果。失败任务可从消息或后台任务入口重试。
-
-### 5. 完成 Onboarding
-
-- [ ] Dashboard 可以正常打开；
-- [ ] LLM Provider 检测通过并已保存；
-- [ ] `open-nova doctor` 没有阻断性错误；
-- [ ] 历史数据计划预览与勾选任务符合预期；
-- [ ] 第一批任务已完成或正在后台运行；
-- [ ] 日记和 AI 资产页面已有数据；
-- [ ] Nova-Task 已出现任务证据；
-- [ ] 启用 `nova-RAG` 时，Server 和索引状态正常。
-
-完整的首次运行、日常操作、调度、更新和故障排查流程见 [本地操作 Runbook](docs/local-operations-runbook.zh-CN.md)。
-
-## 📂 Runtime 布局
-
-默认情况下，Open Nova 使用用户本地路径：
-
-| 本地路径 | 用途说明 |
-| :--- | :--- |
-| **`~/.open-nova`** | Runtime 主目录 (Runtime Home) |
-| **`~/.config/open-nova/location.json`** | 当前活动 Runtime 指针 |
-| **`~/.open-nova/state/secrets`** | Runtime 本地 LLM 与可选云端 Embedding Provider 密钥 |
-| **`~/.open-nova/artifacts/diary`** | 生成的日记与总结输出目录 |
-| **`~/.open-nova/bin/open-nova`** | CLI 命令行 Shim 链接 |
-
-安装器还会创建面向用户的 `~/.local/bin/open-nova` Shim。使用 `--no-shell-path` 可保持 Shell profile 不变；使用 `--shell-path-file /path/to/profile` 可明确指定需要更新的 profile 文件。
-
-## 🔧 Base Pipeline
-
-- macOS 安装器默认注册 Open Nova 托管的用户级 LaunchAgent；plist 位于 `~/Library/LaunchAgents/`。
-- Pipeline 从已配置的外部工具路径采集活动，并根据实际工具证据完成工作区归属。
-- 使用 `open-nova doctor --scheduler` 检查托管调度状态。
-- 手动运行指定日期的日常管线：`open-nova pipeline [YYYY-MM-DD]`。
-- 如需由外部 Agent runtime 定时调用，应先避免与系统托管调度重复运行；Dashboard 设置页提供相应提示词。
-
-## 📊 控制面板 (Dashboard)
-
-`Dashboard` 是一个本地 FastAPI 应用，包含动态与静态 UI 资源。本地默认访问地址为：
-
-```text
-http://127.0.0.1:3036/dashboard
+```bash
+open-nova doctor --installer
+open-nova doctor --pipeline
+open-nova doctor --scheduler
+open-nova doctor --rag
 ```
 
+安装摘要会显示实际 Dashboard URL。默认为 `http://127.0.0.1:3036/dashboard`；如果端口已被占用，请使用摘要中自动选择的新地址。
+
+### 3. 完成首次运行
+
+1. **打开 Dashboard**：使用安装摘要中的 URL，检查右上角的后台任务与消息状态。
+2. **配置 LLM Provider**：确认 Provider、Endpoint、Model 和 API Key，先执行可用性测试，再保存设置。
+3. **预览历史数据计划**：选择日期范围，检查待生成日记、周报、月报、预计 LLM 调用和可选 RAG 任务。
+4. **排队执行**：取消不需要的任务，再将其余项目加入后台队列。
+5. **查看结果**：在“后台任务”和“消息”中查看进度，完成后刷新日记、AI 资产、Nova-Task 和可选 `nova-RAG`。
+
 > [!NOTE]
-> 若默认 `3036` 端口被占用，安装器会自动选择其他可用端口；请以安装完成摘要中显示的 Dashboard URL 为准。
+> 历史数据生成在后台运行。较长日期范围可能需要更长时间；没有活动的日期可能只生成结构化占位产物，不一定调用 LLM。
 
-控制面板包括以下核心视窗：
-- 📅 **每日和周期日记视图**：查看自动生成的 Narrative、Technical、Learning 记录；
-- 📈 **实时数据总览与 AI 资产指标**：可视化的用量数据分析统计；
-- 🔧 **Foundation 操作与每日 QA 面板**：快速审计与修复数据；
-- ✉️ **后台任务与消息界面**：直观展示系统常驻进程状态；
-- ⚙️ **系统设置与偏好面板**：包括 LLM Provider、调度器和运行状态视图；
-- 📋 **任务看板与 Nova-Task 审阅**：直观管理和验证实际工作任务证据；
-- 🔍 **RAG 检索控制**：在启用 `RAG` 配置后进行全局语义搜索及召回质量管理。
+<details>
+<summary><strong>首次运行检查清单</strong></summary>
 
-### 🖼️ 界面预览
+- [ ] Dashboard 可以正常打开。
+- [ ] LLM Provider 检测通过并已保存。
+- [ ] `open-nova doctor` 没有阻断性错误。
+- [ ] 历史数据计划与勾选任务符合预期。
+- [ ] 首批任务已完成或可以在后台观察。
+- [ ] 日记、AI 资产与 Nova-Task 已有内容。
+- [ ] 启用 `nova-RAG` 时，Server 和活动索引已就绪。
 
-本地 Dashboard 是 Open Nova 的主要操作界面。隐私安全、完全使用合成数据的交互预览可在
-[公开发布页](https://neo-isshin.github.io/open-nova/)访问，仓库内也保留了
-[docs/dashboard-demo/index.html](docs/dashboard-demo/index.html)。该 Demo 不会连接本机
-Open Nova Runtime。
+</details>
+
+当前 v1.0.1 面向 macOS 本地 Runtime；完整的安装前检查、首次配置、历史回填、日常 Pipeline、Dashboard / Nova-Task / nova-RAG 运维、更新与故障排查，请参阅<a href="docs/local-operations-runbook.zh-CN.md">中文本地操作 Runbook</a>。
+
+<a id="dashboard"></a>
+## 📊 Dashboard、截图与交互 Demo
+
+Dashboard 是 Open Nova 的主要操作界面，包括：
+
+- 📅 每日、每周和每月日记；
+- 📈 实时概览、Token 用量与 AI 资产指标；
+- 🔧 Foundation 操作、每日 QA 与数据修复；
+- ✉️ 后台任务和消息；
+- ⚙️ LLM Provider、调度、Runtime 与外部工具设置；
+- 📋 Nova-Task 任务看板与证据审阅；
+- 🔍 启用 RAG 后的语义检索与召回质量视图。
+
+### 🖼️ 真实 Dashboard 截图
+
+以下图片来自 Open Nova 的真实 Dashboard 开发与运行界面，沿用项目本身的设计、布局、排版和组件，不是重新绘制的演示页，也不是官网发布页的营销示意图。截图中的 **nova-RAG v2** 指 RAG 子系统的索引与检索代际，不是 Open Nova v2 产品版本；当前产品版本仍为 `v1.0.1`。
+
+<details>
+<summary><strong>展开 Dashboard 首页真实截图</strong></summary>
 
 <p align="center">
-  <a href="https://neo-isshin.github.io/open-nova/">
-    <img src="docs/assets/open-nova-product.svg" alt="Open Nova 产品概览" width="100%">
+  <a href="docs/assets/dashboard/dashboard-home.png">
+    <img src="docs/assets/dashboard/dashboard-home.png" alt="Open Nova Dashboard 首页" width="100%">
   </a>
 </p>
 
-## ⚙️ Nova-Task System
+<p align="center"><sub>Open Nova Dashboard 首页；点击图片查看原图。</sub></p>
 
-得益于领先的业务逻辑设计，nova-task得以与人类在任务管理系统上实现良好的协同。可随时由人类接管，人类也可放心地将任务交给nova-task进行自动化维护。
-自动化维护的情况下，nova-task可以自主识别任务节点级别、更新任务状态、挂载新的子任务、优化任务树。——对于重要的一级节点，会交给人类审批后再挂载新的子任务。而对于普通的二级、三级子任务，则完全自主完成。
-`nova-Task` 致力于成为用户的“真实工作图谱“，记录实际发生的工程工作、而不是计划中想做的工作。这对AI时代非常有价值，因为很多工作不是从明确ticket开始，而是从对话、排查、修复、试验、回滚、验证中自然生长出来的。
-`nova-Task` 也负责“任务状态追踪系统”的职责，包括已有工作看板的增添、状态机更新。用户输入RFC、PRD、roadmap、Audit等工程文档后，nova-task可调用LLM将专业工程文档拆解为符合nova-task标准的任务树，从而进行迭代维护。
+</details>
+
+<details>
+<summary><strong>展开 W27 周报真实截图</strong></summary>
+
+<p align="center">
+  <a href="docs/assets/dashboard/dashboard-weekly-full.png">
+    <img src="docs/assets/dashboard/dashboard-weekly-overview.png" alt="Open Nova Dashboard W27 周报概览" width="100%">
+  </a>
+</p>
+
+<p align="center"><sub>W27 示例报告；点击图片查看完整周报长图。</sub></p>
+
+</details>
 
 
-## 🤖 nova-RAG 外部 Agent runtime 边界
+<details>
+<summary><strong>展开 AI 资产真实截图</strong></summary>
 
-`nova-RAG` 是 Open Nova 自研的检索系统。它旨在为外部 Agent runtime 提供读取个人工作记忆的只读查询能力，同时**严禁**外部 Agent runtime 获得对记忆、索引、全局设置或服务生命周期的写入/修改权限。召回质量通过 `nova-RAG` 索引生命周期、评估查询、候选提升 (Candidate Promotion) 和回滚路径管理。
+<p align="center">
+  <a href="docs/assets/dashboard/dashboard-ai-assets-long.png">
+    <img src="docs/assets/dashboard/dashboard-ai-assets-overview.png" alt="Open Nova Dashboard AI 资产概览" width="100%">
+  </a>
+</p>
 
-`nova-RAG` 通过对**服务端**和**客户端（外部Agent runtime）**同时优化，以实现Agentic RAG级别的召回质量：
-- **Server-side Agentic**：确定性、低成本、baseline-first、自适应 pass。
-- **Skill-side Agentic**：使用外部 Agent 自身 LLM，只在服务端返回 weak/ambiguous 时反思。
+<p align="center"><sub>点击图片查看 AI 资产完整长图。</sub></p>
 
-#### 1. 优先使用的 Dashboard 代理接口 (默认基址 `http://127.0.0.1:3036`)
-外部 Agent runtime 应当优先调用此只读 Facade 接口：
-```text
-GET  /api/rag/external/health    # 外部健康检查
-GET  /api/rag/external/stats     # 召回与索引统计
-GET  /api/rag/external/contract  # 外部接口合约声明
-POST /api/rag/external/search    # 语义记忆搜索接口
-```
+</details>
 
-#### 2. 直接调用 nova-RAG 独立服务端接口 (默认基址 `http://127.0.0.1:3037`)
-```text
-GET  /health                     # 基础健康检查
-GET  /stats                      # 索引库状态
-POST /search                     # 记忆检索接口
-```
+<details>
+<summary><strong>展开 Nova-Task 真实任务图谱</strong></summary>
 
-> [!IMPORTANT]
-> - 实际主机和端口以当前 runtime 设置为准。`POST /encode` 为系统内部 Embedding 计算接口，不属于外部 Agent runtime 合约公开边界。
-> - 任何写入记忆、创建 Source 数据源、重建索引、修改配置参数、启动/停止服务等写操作（Mutation）请求，均会被外部命名空间严格拒绝。详见 [docs/rag-external-agent-contract.md](docs/rag-external-agent-contract.md)。
+<p align="center">
+  <a href="docs/assets/dashboard/dashboard-nova-task.png">
+    <img src="docs/assets/dashboard/dashboard-nova-task.png" alt="Open Nova Nova-Task 真实任务图谱" width="100%">
+  </a>
+</p>
 
-## 📐 开发与测试
+</details>
 
-若要在本地进行二次开发或调试，请按照以下步骤搭建可编辑环境：
+<details>
+<summary><strong>展开 nova-RAG 状态与检索界面</strong></summary>
 
-### 1. 搭建本地开发环境
+<p align="center">
+  <a href="docs/assets/dashboard/dashboard-nova-rag.png">
+    <img src="docs/assets/dashboard/dashboard-nova-rag.png" alt="Open Nova nova-RAG 状态与检索界面" width="100%">
+  </a>
+</p>
+
+</details>
+
+### ▶️ 真实静态交互 Demo
+
+<a href="https://neo-isshin.github.io/open-nova/dashboard-demo/"><strong>Dashboard 静态 Demo</strong></a>直接保存了真实 Dashboard 的 HTML、CSS、组件、布局与交互代码，只将后端 API 替换为固定静态数据，因此不会连接或改写本机 Open Nova Runtime。当前展示数据仅保留：实时总览、AI 资产、Nova-Task 任务看板、一份 W27 周报、两份普通日记，以及一份 Blank Day 日记。为完整呈现周报组件，W27 指标依据既有真实截图的字段与量级补入了明确标注的展示性数据，不代表某次真实运行统计。
+
+<p align="center">
+  ▶ <a href="https://neo-isshin.github.io/open-nova/dashboard-demo/"><strong>打开真实 Dashboard 静态 Demo</strong></a>
+</p>
+
+> [!NOTE]
+> Demo 也随仓库保存在 [`docs/dashboard-demo/index.html`](docs/dashboard-demo/index.html)，可从本地 Checkout 打开。<a href="https://neo-isshin.github.io/open-nova/">官网发布页</a>仍用于版本介绍与安装，交互 Demo 使用独立的 `/dashboard-demo/` 地址。
+
+### Runtime 布局
+
+| 默认路径 | 用途 |
+| :--- | :--- |
+| `~/.open-nova` | 主 Runtime Home |
+| `~/.config/open-nova/location.json` | 活动 Runtime 指针 |
+| `~/.open-nova/config/settings.json` | Runtime 设置 |
+| `~/.open-nova/data/nova_data.sqlite3` | Foundation SQLite 数据库 |
+| `~/.open-nova/state/secrets` | LLM 与可选云端 Embedding Provider 密钥 |
+| `~/.open-nova/artifacts/diary` | 日记与总结 |
+| `~/.open-nova/artifacts/reports` | 报告输出 |
+| `~/.open-nova/bin/open-nova` | Runtime 内的 CLI shim |
+
+Runtime 数据库、日记、报告、日志、缓存、密钥与本地 LaunchAgent 产物都不应提交到源码仓库。
+
+### 常用命令
+
+搜索 `nova-RAG` 中的本地记忆：
+
 ```bash
-# 创建并激活虚拟环境
+open-nova search "deployment issue" --top-k 5
+open-nova search "deployment issue" --top-k 5 --json
+```
+
+该命令通过 Dashboard 的只读外部检索接口工作。自动化脚本使用 JSON 输出时应检查 `available` 字段；RAG 暂不可用时，命令仍可能成功返回结构化状态。
+
+手动运行每日 Pipeline：
+
+```bash
+open-nova pipeline
+open-nova pipeline 2026-07-12
+```
+
+不指定日期时，Pipeline 默认处理当前配置时区的前一个日历日。Pipeline 会写入日记、报告和 Foundation 数据；如果目标日期已完整生成，只有明确使用 `--force` 才会基于冻结的 Foundation 输入重新生成。
+
+检查或执行更新：
+
+```bash
+open-nova update
+open-nova update --dry-run
+open-nova update --apply
+```
+
+- `open-nova update` 仅显示更新计划。
+- `--dry-run` 运行 bootstrap 和安装器的无变更预演；冷缓存时主要展示源码获取计划，不等于完整候选版本 E2E 验证。
+- `--apply` 才会执行实际的受保护更新事务。
+
+Open Nova v1.0.1 尚未提供产品级一键卸载器。请不要仅删除 `~/.open-nova`；这会遗留 LaunchAgent、CLI shim、Runtime 指针、Shell `PATH` 区块、桌面链接和安装缓存。
+
+<a id="nova-task"></a>
+## 📋 Nova-Task：真实工作图谱
+
+`Nova-Task` 不只是另一个待办清单。它希望根据对话、文件变更、工具结果和执行证据，记录实际发生的工程工作。
+
+这是一张**真实工作图谱**：很多有价值的工作并不从明确 ticket 开始，而是在对话、排查、修复、试验、回滚和验证中自然生长。`Nova-Task` 将这些轨迹转换为可审阅、可持续维护的任务结构。
+
+在自动维护模式下，`Nova-Task` 可以识别层级、更新状态、挂载子任务并优化任务树。影响较大的一级节点保留人工审阅，常规的二级、三级更新可按规则自动处理；人类随时可以接管。
+
+导入 RFC、PRD、Roadmap 或 Audit 类文档后，Open Nova 还可以调用 LLM 将其拆解为可迭代审阅和维护的 `Nova-Task` 任务树。
+
+<a id="nova-rag"></a>
+## 🤖 nova-RAG：共享记忆与只读边界
+
+`nova-RAG` 是 Open Nova 的可选检索子系统，支持本地或云端 Embedding。它向外部 Agent Runtime 提供查询个人工作记忆的只读能力，同时拒绝写入记忆、修改索引、更改全局设置或控制服务生命周期。
+
+检索质量在两层进行管理：
+
+- **Server-side Agentic**：确定性、低成本、baseline-first 的自适应检索 pass。
+- **Skill-side Agentic**：只在服务端返回 weak/ambiguous 证据时，才使用外部 Runtime 自身的 LLM 进一步反思。
+
+`nova-RAG` 还通过评估查询、候选提升、受保护的索引生命周期和安全回滚路径管理召回质量。
+
+<details>
+<summary><strong>外部只读 API 概览</strong></summary>
+
+优先使用 Dashboard Facade（默认 `http://127.0.0.1:3036`）：
+
+```text
+GET  /api/rag/external/health
+GET  /api/rag/external/stats
+GET  /api/rag/external/contract
+POST /api/rag/external/search
+```
+
+直接 nova-RAG 服务（默认 `http://127.0.0.1:3037`）：
+
+```text
+GET  /health
+GET  /stats
+POST /search
+```
+
+实际主机和端口以当前 Runtime 设置为准。`POST /encode` 仅用于内部 Embedding 计算，不属于外部 Runtime 合约。
+
+</details>
+
+完整安全边界、请求结构与错误语义见<a href="docs/rag-external-agent-contract.md">nova-RAG 外部 Agent Runtime 合约</a>。
+
+<a id="privacy-security"></a>
+## 🔐 隐私与安全
+
+- **本地优先**：Runtime 状态、Foundation 数据库、生成资产和索引保存在用户拥有的本地路径中。
+- **密钥权限**：Provider Key 保存在 `$NOVA_HOME/state/secrets`；密钥目录使用 `0700`，密钥文件使用 `0600`。
+- **Keychain 迁移**：旧的 `macos-keychain` 引用仅用于兼容迁移。能读取的旧密钥会被复制到 Runtime Secret Store；Open Nova 不会自动删除旧 Keychain item。
+- **外部 Provider 边界**：如果你配置了外部 LLM 或 Embedding Provider，相关派生工作内容会按照所选 Endpoint 和 Provider 数据政策发送。
+- **输入内容**：如果原始日志、日记或用户选定材料中已有密钥或敏感信息，生成日记、报告、快照与索引可能忠实保留这些内容。
+- **非侵入边界**：Open Nova 不改写受支持 Agent Runtime 的历史数据或接管其执行；它会创建自己的 Runtime、CLI shim、可选 Skill 和托管服务。
+
+<a id="development"></a>
+## 📐 开发、测试与可复现发布
+
+<details>
+<summary><strong>展开开发与测试命令</strong></summary>
+
+创建本地可编辑开发环境：
+
+```bash
 python3 -m venv .venv
 source .venv/bin/activate
-
-# 升级 pip 并安装可编辑模式依赖
 python -m pip install --upgrade pip
 python -m pip install -e ".[dashboard,rag-local]"
 ```
 
-### 2. 运行单元测试
+在隔离的 venv、`HOME`、`NOVA_HOME` 和固定业务时钟中运行发布测试集：
+
 ```bash
-# 在一次性 venv、HOME、NOVA_HOME 和固定业务时钟中运行发布测试集
 python tests/run_isolated_release_suite.py
 ```
 
-若只需在已准备好的开发环境中运行一项定向测试，可使用
-`python -m unittest tests.test_module.TestClass.test_name`。
+运行确定性的前端与 Release Page 测试：
 
-### 3. 运行前端与端到端测试
-若 Node.js 测试工具链可用，可运行静态检查及 Playwright 自动化测试：
 ```bash
-# 按 lockfile 安装 Node 依赖
 npm ci
-
-# 检查静态 JavaScript 语法
 node --check src/dashboard/app/static/js/app.js
-
-# 运行确定性的 Release Page 与 Dashboard context 测试
 npm run test:dashboard-live-context
 npm run test:release-page
 ```
 
-> [!NOTE]
-> 真实 Dashboard Gate 是显式 opt-in 且具破坏性的测试。只能针对已播种的一次性
-> Runtime 运行 `npm run test:dashboard-live`，并把
-> `OPEN_NOVA_DASHBOARD_LIVE_BASE_URL` 指向它的 loopback URL。生成的数据库、
-> Runtime 日志、临时文件、证据和本地 secret-store 数据必须保持 untracked，禁止提交。
+`npm run test:dashboard-live` 是显式 opt-in 且可能修改 Runtime 的真实 Dashboard Gate，只应对已播种的一次性 Runtime 运行。
 
-### 4. 复现发布构件
-
-发布构建器只接受干净且已提交的 Git 工作树，并把输出写到仓库外。先安装精确锁定的
-发布工具链，再使用提交时间作为确定性的归档时间戳。`-B` 还会阻止当前调用向源码树
-写入 Python bytecode：
+复现 v1.0.1 发布构件：
 
 ```bash
 python -B -m pip install -r requirements-release.txt
@@ -313,35 +444,59 @@ python -B -m tools.release.build_release \
   --expected-version 1.0.1
 ```
 
-构建器会在创建输出前验证 `build==1.5.1`、`packaging==26.2`、
-`pyproject-hooks==1.2.0`、`setuptools==83.0.0` 和 `wheel==0.47.0`，在最小环境中
-以 no-isolation 方式构建 package，并证明包含 ignored 文件在内的完整源码文件集合没有
-变化。输出包含公开源码与 Runtime payload manifest、
-归一化 Runtime 归档、wheel、sdist、provenance 和 `SHA256SUMS`。测试、发布依赖清单与
-发布工具属于公开源码资产，但不会进入任何 Runtime 或 Python package payload。
+发布构建器只接受干净、已提交的 Git 工作树，并把输出写到仓库外。制品包括公开源码与 Runtime payload manifest、归一化 Runtime 归档、wheel、sdist、provenance 和 `SHA256SUMS`。
 
-## 📄 关联文档
+</details>
 
-- 📖 [新用户安装手册](docs/new-user-onboarding-runbook.md)
-- ⚙️ [完整本地操作 Runbook](docs/local-operations-runbook.zh-CN.md)
-- 🧭 [CLI 产品边界](docs/cli-boundary.md)
-- 🤖 [RAG 外部 Agent runtime 合约](docs/rag-external-agent-contract.md)
-- 🧩 [Nova-Task 工作图谱对账](docs/nova-task-work-graph-reconciliation.md)
-- 🧹 [发布清理清单](docs/production-clean-inventory.md)
-- ✅ [v1.0.1 发布保证摘要](docs/v1-release-assurance.md)
-- 🌐 [现代发布页](https://neo-isshin.github.io/open-nova/)
-- 🧾 [更新日志](CHANGELOG.md)
-- 🔐 [安全策略](SECURITY.md)
-- 🕰️ [公开项目历史](HISTORY.md)
+<a id="documentation"></a>
+## 📄 文档导航
 
+### 用户与日常操作
+
+- ⚙️ <a href="docs/local-operations-runbook.zh-CN.md"><strong>中文本地操作 Runbook</strong></a>
+- 📖 <a href="docs/new-user-onboarding-runbook.md">新用户安装手册（English）</a>
+- 🧭 <a href="docs/cli-boundary.md">CLI 产品边界（English）</a>
+
+### 集成与产品设计
+
+- 🤖 <a href="docs/rag-external-agent-contract.md">nova-RAG 外部 Agent Runtime 合约（English）</a>
+- 🧩 <a href="docs/nova-task-work-graph-reconciliation.md">Nova-Task 工作图谱对账</a>
+
+### 发布、安全与项目历史
+
+- ✅ <a href="docs/v1-release-assurance.md">v1.0.1 发布保证</a>
+- 🧹 <a href="docs/production-clean-inventory.md">发布清理清单</a>
+- 🧾 <a href="CHANGELOG.md">更新日志</a>
+- 🔐 <a href="SECURITY.md">安全策略</a>
+- 🕰️ <a href="HISTORY.md">公开项目历史</a>
+
+<a id="license"></a>
 ## ⚖️ 许可证
 
 Copyright © 2026 Neo-Isshin.
 
-Open Nova 是自由软件，采用 [GNU 通用公共许可证第 3 版或任何后续版本](LICENSE)，SPDX 标识为 `GPL-3.0-or-later`。
+Open Nova 是自由软件，采用 <a href="LICENSE">GNU 通用公共许可证第 3 版或任何后续版本</a>，SPDX 标识为 `GPL-3.0-or-later`。
 
 ## 🙏 致谢
 
-Open Nova 的诞生得益于众多优秀的 AI 编程工具及其开源社区。感谢这些工具把 Token 用量写入本地日志，使统一的可视化和资产归口成为可能。
+Open Nova 的诞生得益于众多优秀的 AI 编程工具及其开源社区。感谢这些工具将 Token 用量和活动保存在本地日志中，使统一可视化、资产归集与跨 Runtime 记忆共享成为可能。
 
-同时感谢 [getdesign.md](https://getdesign.md)（或相关社区）为 Dashboard 提供的前端设计灵感。
+也感谢 <a href="https://getdesign.md">getdesign.md</a> 社区对 Dashboard 布局与视觉方向的启发。
+
+<hr>
+
+<a id="give-star"></a>
+<div align="center">
+
+<h2>⭐ Give me a Star</h2>
+
+<p>
+如果 Open Nova 帮助你把分散的 AI 工作沉淀为可检索、可复用的本地资产，<br>
+欢迎点亮一颗 Star，让更多人发现这个项目。
+</p>
+
+<a href="https://github.com/Neo-Isshin/open-nova">
+  <img src="https://img.shields.io/github/stars/Neo-Isshin/open-nova?style=for-the-badge&amp;logo=github&amp;label=Give%20me%20a%20Star&amp;color=F5B942" alt="Give Open Nova a Star">
+</a>
+
+</div>

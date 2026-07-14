@@ -1,122 +1,162 @@
-<div align="center">
+<h1 align="center">
+  <img src="docs/assets/banner.png" alt="Open Nova" width="650">
+</h1>
 
-<img src="docs/assets/banner.png" alt="Open Nova" width="650">
+<p align="center">
+  <strong>Share memory across agent runtimes and turn siloed activity into searchable, reusable local AI assets.</strong>
+  <br>
+  Highly Automated AI Asset Operations · Cross-Runtime Memory Sharing · Deep LLM Involvement
+</p>
 
-### Share memory across independent agent runtimes and turn siloed activity into searchable, reusable local AI assets.
+<p align="center">
+  <img src="https://img.shields.io/badge/Language-English%20·%20Current-2563EB?style=for-the-badge" alt="Current language: English">
+  <a href="README.zh-CN.md"><img src="https://img.shields.io/badge/Language-简体中文-C026D3?style=for-the-badge" alt="切换到简体中文 README"></a>
+</p>
 
-**Fully Automated AI Asset Operations · Memory Sharing Across Agent Runtimes · LLM-Engaged Workflows**
+<p align="center">
+  <a href="https://neo-isshin.github.io/open-nova/"><img src="https://img.shields.io/badge/Website-GitHub%20Pages-2563EB" alt="Website"></a>
+  <a href="https://github.com/Neo-Isshin/open-nova/releases/tag/v1.0.1"><img src="https://img.shields.io/badge/Release-v1.0.1-0EA5E9" alt="Release v1.0.1"></a>
+  <a href="#quick-start"><img src="https://img.shields.io/badge/Install-pinned%20v1.0.1-0284C7" alt="Pinned v1.0.1 install command"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0--or--later-16A34A" alt="License"></a>
+  <a href="https://discord.gg/JvJHngZWz"><img src="https://img.shields.io/badge/Discord-Join-5865F2" alt="Discord"></a>
+</p>
 
-[![Website](https://img.shields.io/badge/Website-release%20page-2563EB)](https://neo-isshin.github.io/open-nova/)
-[![One-liner](https://img.shields.io/badge/One--liner-GitHub-0EA5E9)](https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.1/install/bootstrap.sh)
-[![Docs](https://img.shields.io/badge/Docs-release%20page-1D4ED8)](https://neo-isshin.github.io/open-nova/)
-[![中文](https://img.shields.io/badge/Lang-中文-2563EB)](README.zh-CN.md)
-[![English](https://img.shields.io/badge/Lang-English-64748B)](README.md)
-[![Discord](https://img.shields.io/badge/Discord-join-5865F2)](https://discord.gg/JvJHngZWz)
+<p align="center">
+  <a href="https://neo-isshin.github.io/open-nova/">Release Website</a> ·
+  <a href="https://neo-isshin.github.io/open-nova/dashboard-demo/"><strong>Real Dashboard Static Demo</strong></a> ·
+  <a href="docs/local-operations-runbook.md"><strong>Local Operations Runbook</strong></a> ·
+  <a href="docs/rag-external-agent-contract.md">nova-RAG External Contract</a>
+</p>
 
-[Website](https://neo-isshin.github.io/open-nova/) · [Complete Operations Runbook](docs/local-operations-runbook.md) · [External Agent Runtime Contract](docs/rag-external-agent-contract.md) · [中文 README](README.zh-CN.md)
+Open Nova is a highly automated, structured, local-first AI asset operations system. It organizes sessions, tasks, usage, and work traces from supported agent runtimes, turning fragmented activity into unified local data, diaries, task evidence, and searchable memory.
 
-</div>
+Open Nova is also a system with **deep LLM involvement**: LLMs participate in summarization, task extraction, learning-asset generation, and knowledge organization, while deterministic components control data collection, parsing, attribution, scheduling, persistence, and security boundaries.
 
-Open Nova is a highly automated, structured, and non-invasive local AI asset operations system. It is an **LLM-engaged system**: LLMs participate throughout summarization, task synthesis, learning extraction, and knowledge organization, while deterministic components retain control over collection, parsing, attribution, scheduling, persistence, and security boundaries.
+> In this README, an **agent runtime** means an AI tool environment with its own sessions, logs, memory, and execution context, such as Codex, Claude Code, Gemini CLI, OpenClaw, or Hermes.
 
-In this README, an **agent runtime** means an independent AI tool environment—such as Codex, Claude Code, Gemini CLI, OpenClaw, or Hermes—with its own sessions, logs, memory, and execution context.
-
-Open Nova is ideal for people who want to:
-
-- 🤖 **Share memory across agent runtimes:** Turn sessions, tasks, and notes from independent runtimes into structured, searchable evidence, so each runtime can build on work completed elsewhere.
-- 📓 **Automate task recognition and persistence** (Beta): Extract candidate tasks and deliverables from daily activity, then organize and present them through a unified task board for review.
-- 🌍 **Generate automated summaries in a single-pane-of-glass Dashboard:** Review daily, weekly, and monthly summaries in one place and follow how your work with AI evolves over time.
-- 📖 **Learn alongside your agents:** Capture challenges, solutions, and practical recommendations as a growing personal knowledge base.
-- 🚉 **Manage supported runtimes in one place:** Monitor real-time and lifetime activity, and inspect or edit each runtime's `SKILL.md` files directly.
-
+<a id="why-open-nova"></a>
 ## 🌟 Why Open Nova
 
-A single user may work with several independent agent runtimes—including `Codex`, `Claude Code`, `Gemini CLI`, `OpenClaw`, and `Hermes`—within the same week or even the same project. Each tool produces its own siloed logs, sessions, skills, memory, token metrics, and task history.
+A single user may switch among several agent runtimes within the same week—or even within the same project. Each tool has its own logs, sessions, skills, memory, token usage, and task history. These records often capture real work, yet remain isolated from one another.
 
-Open Nova breaks down those silos. It allows `Codex` to reuse context captured from `Claude Code`, consolidates fragmented activity into polished reports and dashboards, and preserves tangible deliverables, resolved obstacles, and debugging evidence as durable local assets.
+Open Nova is designed to break down those barriers: it lets `Codex` find work already completed in `Claude Code`, unifies activity from different runtimes into summaries and dashboards, and preserves deliverables, resolved obstacles, and debugging evidence beyond the life of an individual session.
 
-| Capability | Description |
-| :--- | :--- |
-| **Automated Pipeline** | Ingests raw activity from supported agent runtimes, then cleans, parses, analyzes, structures, and persists recognized assets into a local data store. |
-| **AI Asset Persistence Layer** | Normalizes supported tool logs, sessions, usage events, tasks, reports, and generated diaries in the local `Foundation` system. |
-| **Automatic Workspace Attribution** | Associates activity with the correct workspaces, runtimes, scheduled jobs, and source repositories—even when work starts outside the project directory. |
-| **Smart Task Management** | Extracts candidate task details, evidence, status, and review context from runtime activity, then lets `Nova-Task` organize and present them for review. |
-| **Built-in `nova-RAG`** | Provides an optimized local RAG engine and a secure, read-only search contract for external runtimes, enabling cross-runtime memory retrieval. |
-| **Comprehensive Settings Hub** | Provides one interface for time zones, pipeline execution, LLM preferences, external tool paths, and RAG settings. |
+You can use it to:
 
+- 🤖 **Share memory across runtimes:** Convert sessions, tasks, and notes from supported runtimes into structured evidence. With `nova-RAG` enabled, external runtimes can retrieve that memory through a read-only contract.
+- 📓 **Automatically recognize and persist tasks** (Beta): Extract candidate tasks, evidence, and status from real activity and tool results, then organize and review them in `Nova-Task`.
+- 🌍 **Automatically generate daily, weekly, and monthly summaries:** Review progress, AI asset growth, and token usage in the Dashboard.
+- 📖 **Improve alongside your agents:** Accumulate reusable learning assets from challenges, solutions, and practical recommendations.
+- 🚉 **Manage supported runtimes in one place:** Review activity, usage, and runtime status, and inspect or edit supported runtimes' `SKILL.md` files.
+
+## 📚 Contents
+
+- [Key Advantages](#core-advantages) · [How It Works and System Components](#how-it-works) · [Support](#support)
+- [Quick Start](#quick-start) · [Dashboard, Screenshots, and Interactive Demo](#dashboard) · [Nova-Task](#nova-task)
+- [nova-RAG](#nova-rag) · [Privacy and Security](#privacy-security) · [Development and Testing](#development)
+- [Documentation](#documentation) · [License](#license) · [Give me a Star](#give-star)
+
+<a id="core-advantages"></a>
 ## 💫 Key Advantages
 
-- **Parser-first processing:** Source-specific parsers normalize sessions, tasks, usage records, scheduled-job activity, reports, and workspace signals before routing them into summarization, task-evidence, or RAG indexing workflows.
-- **Non-invasive runtime:** Open Nova reads configured tool directories and writes to its own runtime home without taking over your agent runtimes, shell, editor, or model gateway.
-- **Reliable background attribution:** Context is not limited to the active terminal directory. Scheduled jobs, background scripts, and out-of-directory runtime activity can still be mapped to the correct workspace through execution evidence.
-- **Evidence-backed task history:** `Nova-Task` turns observed runtime activity into a reviewable task record, not only analyzing conversation but also evaluating tool results to determine work completion. This ensures the task board reflects actual work performed, reducing the need for manual tracking.
-- **Model-efficient by design:** Structured prompts, strict schemas, and optimized orchestration allow lightweight or cost-efficient models to produce useful results without locking the system to a premium model.
-- **User-controlled integrations:** Tool-specific skills and external-runtime integration definitions remain transparent, editable, and auditable from the Dashboard.
-- **Agentic RAG capabilities:** `nova-RAG` provides a local search facade for external runtimes and manages retrieval quality through evaluation queries, candidate promotion, and safe rollback paths.
-- **Local-first and personal:** Runtime state and generated assets remain under your control. Calls to configured LLM or embedding providers use the endpoints and policies you select.
+- **Parser-first processing:** Source-specific parsers normalize sessions, tasks, usage, scheduled activity, and workspace signals before data enters summarization, task-evidence, or RAG workflows. Raw, unprocessed logs are not handed directly to an LLM.
+- **Reliable workspace attribution:** Project context is not inferred solely from the current shell directory. Scheduled jobs, background scripts, and out-of-directory runtime activity can still be associated with the correct workspace through execution evidence.
+- **Task evidence grounded in real work:** `Nova-Task` evaluates tool results and delivery evidence as well as conversations when determining task status, keeping the board closer to the engineering work that actually occurred.
+- **Local-first with explicit boundaries:** Open Nova reads configured tool locations and writes to its own runtime home. It does not rewrite external-runtime history or take over runtime execution.
+- **Model-cost efficient:** Structured prompts, explicit schemas, and controlled orchestration let lightweight or cost-efficient models produce useful output without locking the system to one provider.
+- **User-controlled integrations:** Tool skills, external-runtime definitions, and critical settings remain visible, editable, and auditable instead of implicitly taking over the global toolchain.
+- **Protected Agentic RAG lifecycle:** `nova-RAG` manages retrieval quality through evaluation queries, candidate promotion, recall calibration, and safe rollback, while exposing only a restricted read-only contract to external runtimes.
 
-## 💻 System Components
+<a id="how-it-works"></a>
+## 🧭 How It Works
 
-| Subsystem / Module | Role and core function |
+```text
+Supported Agent Runtimes
+        ↓
+Parsing, Attribution, and Normalization
+        ↓
+Foundation Local Fact Layer
+        ↓
+Base Pipeline · Nova-Task · Dashboard
+        ↓
+nova-RAG (optional) → Read-only Retrieval for External Runtimes
+```
+
+| System | Core responsibility |
 | :--- | :--- |
-| **`Foundation`** | The local source of truth for normalized AI activity, workspace mappings, snapshots, reports, task evidence, and repair audit records. |
-| **`Dashboard`** | A single-pane-of-glass web interface for diaries, AI metrics, token usage, settings, Foundation operations, background tasks, and task boards. |
-| **`base-pipeline`** | The orchestration engine that processes runtime logs into daily diaries, technical milestones, learning notes, and task summaries. |
-| **`nova-RAG`** | A self-contained Agentic RAG service with local or cloud embeddings, calibrated retrieval, external read-only APIs, and a guarded index lifecycle. |
-| **`Nova-Task`** | An LLM-assisted task system and review surface for evidence derived from real work. |
-| **`Attribution Parser`** | Identifies and classifies workspaces, agent runtimes, sessions, scheduled jobs, usage records, and execution evidence. |
-| **`Installer`** | Handles dry-run installation plans, dependency resolution, runtime bootstrapping, macOS `LaunchAgent` registration, Doctor diagnostics, and updates. |
+| **`Foundation`** | Normalizes AI activity, workspace attribution, snapshots, reports, task evidence, and repair records into a local fact layer. |
+| **`Base Pipeline`** | Generates narrative diaries, technical progress, learning records, and task summaries from runtime activity. |
+| **`Dashboard`** | Presents diaries, AI assets, token usage, settings, Foundation operations, background tasks, and task boards in one place. |
+| **`Nova-Task`** | Maintains a reviewable task graph based on evidence from real work. |
+| **`nova-RAG`** | Optional local- or cloud-embedding retrieval subsystem with a protected index lifecycle and external read-only retrieval. |
+| **Attribution Parsers** | Identify runtimes, sessions, workspaces, scheduled jobs, usage events, and execution evidence, including work launched outside project directories. |
+| **Installer** | Handles dependency checks, runtime initialization, macOS LaunchAgents, Doctor diagnostics, and protected update transactions. |
 
-Open Nova currently supports path families for `OpenClaw`, `Claude Code`, `Codex`, `Gemini CLI`, and `Hermes`. These integrations remain user-owned configuration and do not take over your global toolchain.
+Together, the local fact layer, Pipeline, task system, Dashboard, and optional retrieval subsystem deliver these capabilities.
 
-## 💽 Prerequisites
+<a id="support"></a>
+## 💻 Support and Prerequisites
 
-Open Nova is currently optimized for local macOS environments:
+The hosted Open Nova v1.0.x installation path is designed first for local macOS user environments:
 
-- 🍎 **Native macOS support:** The guided installer and managed scheduler use macOS `LaunchAgent` services by default.
-- 🐍 **Python environment:** Python `>= 3.11` is required; Python `3.12` is recommended.
-- 📦 **Automatic dependency installation:** The installer detects and installs missing requirements. Dashboard and local `nova-RAG` embeddings require additional Python packages; the first setup may download larger libraries such as `torch` and `sentence-transformers`.
-- 🐧 **Linux and Windows compatibility:** These platforms are not first-class one-liner targets in v1.0.x. Advanced users can check out the source and run individual components manually; the supported managed Runtime and service workflow targets macOS.
-- ⚙️ **System utilities:** Make sure `git`, `curl`, and a compatible `python3` are available on `PATH` before running the installer.
+- 🍎 **macOS is the first-class target:** Guided installation, Dashboard services, and managed scheduling use user-level `LaunchAgent` services by default.
+- 🛠️ **Base tools:** Verify that `zsh`, `git`, and `curl` are available before installation. `sudo` is not required.
+- 🐍 **Python:** Python `>=3.11` is required. On supported Apple Silicon and Intel Macs, the installer downloads and verifies a managed Python when no compatible version is available.
+- 🌐 **Network and storage:** Installation needs access to GitHub, the Python package index, and your selected model services. The first local `nova-RAG` run may download `torch`, `sentence-transformers`, and model weights.
+- 🐧 **Linux and Windows:** They are not first-class targets for the v1.0.x one-liner or managed services. Advanced users can run some components manually from source.
 
-**Open Nova currently supports five agent runtimes:**<br>
-🦞 `OpenClaw`, ✳️ `Claude Code`, 🤖 `Codex`, ✨ `Gemini CLI`, and ⚕️ `Hermes`.
+### Currently Supported Agent Runtimes
 
-More runtimes are planned for the next major version, including `Cursor`, `Antigravity`, and `OpenCode`.
+| Runtime | v1.0.x status |
+| :--- | :--- |
+| 🦞 **OpenClaw** | Supported external-tool path family |
+| ✳️ **Claude Code** | Supported external-tool path family |
+| 🤖 **Codex** | Supported external-tool path family |
+| ✨ **Gemini CLI** | Supported external-tool path family |
+| ⚕️ **Hermes** | Supported external-tool path family |
 
+The available data depends on whether compatible logs, sessions, or usage records exist locally and whether their paths are enabled in Settings. Additional runtimes and broader cross-platform support belong to future releases and should not be inferred as v1.0.x capabilities.
+
+<a id="quick-start"></a>
 ## 🎥 Quick Start
 
 > [!TIP]
-> **Deploy with a single command, then let the system handle the rest.**
+> **Deploy with one command, then let prosperity follow.**
 
-### 1. One-command Installation
+### 1. Install v1.0.1
 
-Run the hosted bootstrap script in your terminal:
+The following one-liner pins both the `v1.0.1` bootstrap and the exact source commit used for installation. It does not track `main` or a future `latest` Release:
 
 ```bash
-zsh -c "$(curl -fsSL 'https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.1/install/bootstrap.sh')"
+bootstrap="$(curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 10 --max-time 30 'https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.1/install/bootstrap.sh')" && [ -n "$bootstrap" ] && NOVA_INSTALL_SOURCE_URL='https://github.com/Neo-Isshin/open-nova.git' NOVA_INSTALL_REF='82bbdbd83e35724441c7005dfc0b555d413fcf93' zsh -c "$bootstrap"
 ```
 
-The hosted bootstrap is fresh-install-only. It resolves the latest stable
-GitHub Release to its full commit before acquiring source, and fails closed
-when no stable Release exists. If any Open Nova Runtime or managed LaunchAgent
-already exists, use `open-nova update --dry-run` followed by
-`open-nova update --apply` instead. The versioned `v1.0.1` URL above is the
-immutable installation entry for this release and never tracks `main`.
+> [!NOTE]
+> This README deliberately uses a strictly pinned v1.0.1 installation. Supplying the explicit commit bypasses the bootstrap's future dynamic checks for the `latest` Release and its `WITHDRAWN` marker, thereby keeping the Open Nova source fixed instead of allowing it to drift with `latest`. Third-party dependencies are still resolved at install time according to the release configuration, so this does not promise byte-for-byte reproducibility of the entire dependency environment. This choice does not modify the published v1.0.1 tag or Release.
+
+> [!IMPORTANT]
+> This command is for a fresh installation only. If the bootstrap detects an existing Open Nova runtime, an active runtime pointer, or a managed LaunchAgent, it stops safely before writing to the source cache. For an existing installation, run `open-nova update` or `open-nova update --dry-run` to review the plan, then use `open-nova update --apply` to perform the update.
 
 > [!WARNING]
-> v1.0.0 is withdrawn because its update transaction could leave managed
-> services bound to an older concrete source directory. Its immutable tag and
-> artifacts remain available for audit only; do not install or recommend it.
+> `v1.0.0` has been withdrawn: its update transaction could leave managed services bound to an old concrete source directory. Its immutable tag and artifacts remain available for audit only. Do not install or recommend it.
 
-> [!NOTE]
-> The installer guides you through LLM provider setup and stores provider keys in the runtime-local secret store at `$NOVA_HOME/state/secrets` (directory mode `0700`, secret-file mode `0600`). It works unattended and requires no Keychain setup or recurring authorization. `nova-RAG` is optional; a cloud embedding key, when configured, uses the same secret store.
->
-> Existing `macos-keychain` references are supported only for compatibility migration. If an old Keychain item cannot be read, enter that provider key once in Dashboard; Open Nova does not automatically delete the old Keychain item.
+#### Installer Write Locations
+
+| Path | Purpose |
+| :--- | :--- |
+| `~/.cache/open-nova/installer` | Installation source cache |
+| `~/.open-nova` | Runtime, virtual environment, settings, database, logs, secrets, and generated assets |
+| `~/.config/open-nova/location.json` | Active runtime pointer |
+| `~/.local/bin/open-nova` | User-facing CLI entry on `PATH` |
+| `~/.zprofile` | Receives a marked `PATH` block by default; disable with `--no-shell-path` |
+| `~/Desktop/Open Nova` | Desktop shortcut to the diary directory, created by default |
+| `~/Library/LaunchAgents/` | User-level macOS Dashboard, Scheduler, and optional RAG services |
+
+When `nova-RAG` is enabled and external agent runtimes are selected in the wizard, the installer can also register missing read-only retrieval skills. Existing skills are never overwritten implicitly.
 
 ### 2. Basic Verification
 
-Run these read-only commands after installation:
+After installation, run these read-only commands first. They do not initialize a new runtime or change existing settings:
 
 ```bash
 open-nova doctor
@@ -125,204 +165,272 @@ open-nova onboard status
 open-nova config show
 ```
 
-The installation summary shows the active Dashboard URL. The default is `http://127.0.0.1:3036/dashboard`; if the port is occupied, use the automatically selected URL from the summary.
+For targeted diagnostics:
 
-## 🧭 Onboarding: First-Run Guide
-
-### 1. Open the Dashboard
-
-Open the URL shown in the installation summary. Confirm that the page loads, then check the background-task and message indicators in the upper-right corner.
-
-### 2. Configure and Test the LLM Provider
-
-Open Settings and verify the Provider, Endpoint, Model, and API key. Run the availability test before saving. Narrative diaries, period summaries, and history tasks that require an LLM use this configuration.
-
-### 3. Generate the First Set of Historical Data
-
-1. Select **Generate Historical Data** in the Dashboard and choose the date range to complete.
-2. Select **Preview Plan** first. Review the pending diaries, weekly and monthly reports, estimated LLM calls, and `nova-RAG` synchronization tasks.
-3. Clear any tasks you do not want to run, then select **Queue Generation**.
-4. Open Nova runs only the selected tasks. `nova-RAG` tasks run only when the subsystem is enabled and ready.
-
-> [!NOTE]
-> History generation runs in the background. Large date ranges may take time; blank dates may produce structured placeholder artifacts without calling an LLM.
-
-### 4. Monitor Progress and Results
-
-Use **Background Tasks** and **Messages** to inspect queued, running, failed, and retryable work. After completion, refresh Diary, AI Assets, Nova-Task, and `nova-RAG`. Failed items can be retried from the task or message surface.
-
-### 5. Complete Onboarding
-
-- [ ] Dashboard opens successfully;
-- [ ] LLM provider test passes and the settings are saved;
-- [ ] `open-nova doctor` reports no blocking errors;
-- [ ] The history plan and selected tasks are correct;
-- [ ] The first tasks have completed or are observable in the background;
-- [ ] Diary and AI Assets contain data;
-- [ ] Nova-Task contains task evidence;
-- [ ] When `nova-RAG` is enabled, the Server and active index are ready.
-
-For the complete first-run, daily operations, scheduling, update, and troubleshooting workflow, see the [Local Operations Runbook](docs/local-operations-runbook.md).
-
-## 📂 Runtime Layout
-
-Open Nova stores its state in local, user-owned paths:
-
-| Path | Description |
-| :--- | :--- |
-| **`~/.open-nova`** | Main runtime home |
-| **`~/.config/open-nova/location.json`** | Pointer to the active runtime location |
-| **`~/.open-nova/state/secrets`** | Runtime-local LLM and optional cloud-embedding provider keys |
-| **`~/.open-nova/artifacts/diary`** | Generated diaries and summaries |
-| **`~/.open-nova/bin/open-nova`** | CLI shim executable |
-
-The installer also creates the user-facing shim at `~/.local/bin/open-nova`. Use `--no-shell-path` to leave shell profiles unchanged, or `--shell-path-file /path/to/profile` to select the profile file explicitly.
-
-> [!WARNING]
-> Runtime databases, generated diaries, logs, temporary caches, local `LaunchAgent` artifacts, and secret-bearing configuration files must remain untracked and must not be committed.
-
-## 🔧 Base Pipeline
-
-- On macOS, the installer registers managed user LaunchAgents under `~/Library/LaunchAgents/`.
-- The Pipeline reads configured external-tool paths and attributes activity to workspaces using observed tool evidence.
-- Check managed scheduling with `open-nova doctor --scheduler`.
-- Run a specific business date manually with `open-nova pipeline [YYYY-MM-DD]`.
-- Before scheduling through an external agent runtime, prevent duplicate execution with the managed system schedule. The Dashboard Settings page provides a reusable scheduling prompt.
-
-## 📊 Dashboard
-
-The `Dashboard` is a locally hosted FastAPI web application. Its default URL is:
-
-```text
-http://127.0.0.1:3036/dashboard
+```bash
+open-nova doctor --installer
+open-nova doctor --pipeline
+open-nova doctor --scheduler
+open-nova doctor --rag
 ```
 
+The installation summary displays the actual Dashboard URL. The default is `http://127.0.0.1:3036/dashboard`; if that port is occupied, use the automatically selected address shown in the summary.
+
+### 3. Complete the First Run
+
+1. **Open the Dashboard:** Use the URL in the installation summary and check the background-task and message indicators in the upper-right corner.
+2. **Configure the LLM Provider:** Verify the Provider, Endpoint, Model, and API Key. Run the availability test before saving.
+3. **Preview the historical-data plan:** Select a date range and review pending diaries, weekly and monthly reports, estimated LLM calls, and optional RAG tasks.
+4. **Queue generation:** Clear any tasks you do not need, then add the remaining work to the background queue.
+5. **Review results:** Monitor progress in Background Tasks and Messages. When complete, refresh Diary, AI Assets, Nova-Task, and optional `nova-RAG` views.
+
 > [!NOTE]
-> If port `3036` is already in use, the installer automatically selects another available port. Use the URL displayed in the installation summary.
+> Historical-data generation runs in the background. Large date ranges can take longer; days without activity may produce only structured placeholder artifacts and may not call an LLM.
 
-Dashboard highlights include:
+<details>
+<summary><strong>Expand the first-run checklist</strong></summary>
 
-- 📅 **Daily and period diaries:** Browse generated Narrative, Technical, and Learning records.
-- 📈 **Live overview and AI asset metrics:** Track usage and asset-growth statistics.
-- 🔧 **Foundation operations and Daily QA:** Run consistency checks and repair data.
-- ✉️ **Background tasks and messages:** Monitor resident processes and execution status.
-- ⚙️ **Settings and preferences:** Configure LLM providers, schedules, runtime state, and external tool paths.
-- 📋 **Nova-Task board:** Review and validate tasks backed by real runtime evidence.
-- 🔍 **RAG console:** Run semantic searches and inspect retrieval quality when RAG is enabled.
+- [ ] The Dashboard opens successfully.
+- [ ] The LLM Provider test passes and the settings are saved.
+- [ ] `open-nova doctor` reports no blocking errors.
+- [ ] The history plan and selected tasks match expectations.
+- [ ] The first tasks have completed or are observable in the background.
+- [ ] Diary, AI Assets, and Nova-Task contain data.
+- [ ] When `nova-RAG` is enabled, the Server and active index are ready.
 
-### 🖼️ Interface Preview
+</details>
 
-The local Dashboard is Open Nova's primary control surface. A privacy-safe,
-fully synthetic interactive preview is available on the
-[public release page](https://neo-isshin.github.io/open-nova/) and is also
-bundled at [docs/dashboard-demo/index.html](docs/dashboard-demo/index.html).
-It uses generated sample data and never connects to a local Open Nova Runtime.
+Open Nova v1.0.1 targets a local macOS runtime. For complete pre-install checks, first-run setup, historical backfill, daily Pipeline, Dashboard / Nova-Task / nova-RAG operations, updates, and troubleshooting, see the [Local Operations Runbook](docs/local-operations-runbook.md).
+
+<a id="dashboard"></a>
+## 📊 Dashboard, Screenshots, and Interactive Demo
+
+The Dashboard is Open Nova's primary operating surface. It includes:
+
+- 📅 Daily, weekly, and monthly diaries;
+- 📈 Live overview, token usage, and AI asset metrics;
+- 🔧 Foundation operations, Daily QA, and data repair;
+- ✉️ Background tasks and messages;
+- ⚙️ LLM Provider, scheduling, runtime, and external-tool settings;
+- 📋 Nova-Task board and evidence review;
+- 🔍 Semantic search and retrieval-quality views when RAG is enabled.
+
+### 🖼️ Real Dashboard Screenshots
+
+The images below come from the real Open Nova Dashboard during development and operation. They preserve the project's own design, layout, typography, and components; they are neither redrawn mockups nor marketing illustrations from the release website. **nova-RAG v2** in a screenshot refers to the index and retrieval generation of the RAG subsystem, not an Open Nova v2 product release. The current product version remains `v1.0.1`.
+
+<details>
+<summary><strong>Expand the real Dashboard home screenshot</strong></summary>
 
 <p align="center">
-  <a href="https://neo-isshin.github.io/open-nova/">
-    <img src="docs/assets/open-nova-product.svg" alt="Open Nova product overview" width="100%">
+  <a href="docs/assets/dashboard/dashboard-home.png">
+    <img src="docs/assets/dashboard/dashboard-home.png" alt="Open Nova Dashboard home" width="100%">
   </a>
 </p>
 
-## ⚙️ Nova-Task System
+<p align="center"><sub>Open Nova Dashboard home; select the image to view it at full size.</sub></p>
 
-Nova-Task is designed for collaboration between automated maintenance and human control. A user can take over at any time or let Nova-Task maintain ordinary task structure automatically.
+</details>
 
-In automatic mode, Nova-Task can recognize task hierarchy, update state, attach child tasks, and refine the task tree. High-impact top-level changes remain subject to human review, while routine second- and third-level task updates can proceed autonomously.
+<details>
+<summary><strong>Expand the real W27 weekly report screenshot</strong></summary>
 
-Nova-Task aims to become a **real-work graph**: a record of engineering work that actually happened rather than a list of intended work. This distinction matters in AI-assisted development, where useful work often grows from investigation, debugging, experiments, rollback, and validation instead of starting from a formal ticket.
+<p align="center">
+  <a href="docs/assets/dashboard/dashboard-weekly-full.png">
+    <img src="docs/assets/dashboard/dashboard-weekly-overview.png" alt="Open Nova Dashboard W27 weekly report overview" width="100%">
+  </a>
+</p>
 
-Nova-Task also tracks task state and evolves existing work graphs. When a user imports an RFC, PRD, Roadmap, or Audit, an LLM can decompose the document into a Nova-Task-compatible task tree for iterative review and maintenance.
+<p align="center"><sub>W27 example report; select the image to view the complete long-form report.</sub></p>
 
-## 🤖 External Agent Runtime Boundary for nova-RAG
+</details>
 
-`nova-RAG` exposes a secure, read-only interface that allows external agent runtimes to query your personal memory index. External runtimes are **strictly prohibited** from writing memories, modifying indexes or global settings, or controlling the service lifecycle. Retrieval quality is managed through evaluation queries, candidate promotion, and safe rollback paths.
+<details>
+<summary><strong>Expand the real AI Assets screenshot</strong></summary>
 
-`nova-RAG` improves retrieval at both the **server** and **client skill** layers:
+<p align="center">
+  <a href="docs/assets/dashboard/dashboard-ai-assets-long.png">
+    <img src="docs/assets/dashboard/dashboard-ai-assets-overview.png" alt="Open Nova Dashboard AI Assets overview" width="100%">
+  </a>
+</p>
 
-- **Server-side Agentic:** Deterministic, low-cost, baseline-first, adaptive retrieval passes.
-- **Skill-side Agentic:** Uses the external runtime's own LLM to reflect only when the server reports weak or ambiguous evidence.
+<p align="center"><sub>Select the image to view the complete AI Assets page.</sub></p>
 
-#### 1. Preferred Dashboard Facade API (default base URL: `http://127.0.0.1:3036`)
+</details>
 
-External runtimes should use this read-only facade whenever possible:
+<details>
+<summary><strong>Expand the real Nova-Task work graph</strong></summary>
 
-```text
-GET  /api/rag/external/health    # Check API health
-GET  /api/rag/external/stats     # Inspect index and retrieval statistics
-GET  /api/rag/external/contract  # View the active integration contract
-POST /api/rag/external/search    # Search semantic memory
-```
+<p align="center">
+  <a href="docs/assets/dashboard/dashboard-nova-task.png">
+    <img src="docs/assets/dashboard/dashboard-nova-task.png" alt="Real Open Nova Nova-Task work graph" width="100%">
+  </a>
+</p>
 
-#### 2. Direct nova-RAG Service API (default base URL: `http://127.0.0.1:3037`)
+</details>
 
-Use these endpoints for direct, read-only integrations:
+<details>
+<summary><strong>Expand the nova-RAG status and retrieval interface</strong></summary>
 
-```text
-GET  /health                     # Check service health
-GET  /stats                      # Inspect index status
-POST /search                     # Search memory directly
-```
+<p align="center">
+  <a href="docs/assets/dashboard/dashboard-nova-rag.png">
+    <img src="docs/assets/dashboard/dashboard-nova-rag.png" alt="Open Nova nova-RAG status and retrieval interface" width="100%">
+  </a>
+</p>
 
-> [!IMPORTANT]
-> - Host and port values come from the active runtime settings. `POST /encode` is reserved for internal embedding computation and is not part of the external-runtime contract.
-> - The external API namespace rejects all state-changing requests, including writing memories, adding sources, rebuilding indexes, modifying settings, and starting or stopping services. See the [External Agent Runtime Contract](docs/rag-external-agent-contract.md) for details.
+</details>
 
-## 📐 Development and Testing
+### ▶️ Real Static Interactive Demo
 
-To develop or test Open Nova locally, create an editable installation:
+The [Dashboard Static Demo](https://neo-isshin.github.io/open-nova/dashboard-demo/) preserves the real Dashboard HTML, CSS, components, layout, and interaction code, replacing only backend APIs with fixed static data. It never connects to or modifies a local Open Nova runtime. The published demo dataset contains only the live overview, AI Assets, Nova-Task board, one W27 weekly report, two ordinary diaries, and one Blank Day diary. To fully demonstrate the weekly-report components, clearly identified display data was added to the W27 metrics based on the fields and approximate scale visible in the existing real screenshot; those values do not represent statistics from a specific real run.
 
-### 1. Set Up a Local Development Environment
+<p align="center">
+  ▶ <a href="https://neo-isshin.github.io/open-nova/dashboard-demo/"><strong>Open the Real Dashboard Static Demo</strong></a>
+</p>
+
+The version-controlled static snapshot is available at [`docs/dashboard-demo/index.html`](docs/dashboard-demo/index.html). The [release website](https://neo-isshin.github.io/open-nova/) remains the product and installation overview rather than the interactive Dashboard itself.
+
+### Runtime Layout
+
+| Default path | Purpose |
+| :--- | :--- |
+| `~/.open-nova` | Main runtime home |
+| `~/.config/open-nova/location.json` | Active runtime pointer |
+| `~/.open-nova/config/settings.json` | Runtime settings |
+| `~/.open-nova/data/nova_data.sqlite3` | Foundation SQLite database |
+| `~/.open-nova/state/secrets` | LLM and optional cloud-embedding provider keys |
+| `~/.open-nova/artifacts/diary` | Diaries and summaries |
+| `~/.open-nova/artifacts/reports` | Report output |
+| `~/.open-nova/bin/open-nova` | Runtime-local CLI shim |
+
+Runtime databases, diaries, reports, logs, caches, secrets, and local LaunchAgent artifacts must not be committed to the source repository.
+
+### Common Commands
+
+Search local memory through `nova-RAG`:
 
 ```bash
-# Create and activate a virtual environment
+open-nova search "deployment issue" --top-k 5
+open-nova search "deployment issue" --top-k 5 --json
+```
+
+This command uses the Dashboard's read-only external retrieval API. Automation consuming JSON output should check the `available` field; when RAG is unavailable, the command may still return a successful structured status response.
+
+Run the daily Pipeline manually:
+
+```bash
+open-nova pipeline
+open-nova pipeline 2026-07-12
+```
+
+Without a date, the Pipeline processes the previous calendar day in the configured time zone. It writes diaries, reports, and Foundation data. If the target date has already been generated completely, regeneration from the frozen Foundation input requires an explicit `--force`.
+
+Review or apply an update:
+
+```bash
+open-nova update
+open-nova update --dry-run
+open-nova update --apply
+```
+
+- `open-nova update` only displays the update plan.
+- `--dry-run` runs a no-change bootstrap and installer preview. With a cold cache, it mainly shows the source-acquisition plan and is not a complete candidate-version E2E validation.
+- Only `--apply` executes the protected update transaction.
+
+Open Nova v1.0.1 does not yet include a product-level one-command uninstaller. Do not remove only `~/.open-nova`; doing so leaves LaunchAgents, the CLI shim, runtime pointer, shell `PATH` block, desktop shortcut, and installation cache behind.
+
+<a id="nova-task"></a>
+## 📋 Nova-Task: A Graph of Real Work
+
+`Nova-Task` is more than another to-do list. It is designed to record engineering work that actually happened, based on conversations, file changes, tool results, and execution evidence.
+
+It is a **graph of real work**: much valuable work does not begin with a formal ticket but grows naturally through discussion, investigation, repair, experimentation, rollback, and verification. `Nova-Task` converts those traces into a reviewable, maintainable task structure.
+
+In automatic-maintenance mode, `Nova-Task` can detect hierarchy, update status, attach subtasks, and refine the task tree. High-impact top-level nodes retain human review, while routine second- and third-level updates can proceed under configured rules. A person can take over at any time.
+
+After an RFC, PRD, Roadmap, or Audit document is imported, Open Nova can also ask an LLM to decompose it into an iterative `Nova-Task` tree for review and maintenance.
+
+<a id="nova-rag"></a>
+## 🤖 nova-RAG: Shared Memory with a Read-Only Boundary
+
+`nova-RAG` is Open Nova's optional retrieval subsystem with local or cloud embeddings. It gives external agent runtimes read-only access to a user's work memory while refusing memory writes, index changes, global-setting changes, or service-lifecycle control.
+
+Retrieval quality is managed at two levels:
+
+- **Server-side Agentic:** A deterministic, low-cost, baseline-first adaptive retrieval pass.
+- **Skill-side Agentic:** The external runtime's own LLM reflects further only when the server returns weak or ambiguous evidence.
+
+`nova-RAG` also manages recall quality through evaluation queries, candidate promotion, a protected index lifecycle, and safe rollback paths.
+
+<details>
+<summary><strong>Expand the external read-only API overview</strong></summary>
+
+Prefer the Dashboard facade (default `http://127.0.0.1:3036`):
+
+```text
+GET  /api/rag/external/health
+GET  /api/rag/external/stats
+GET  /api/rag/external/contract
+POST /api/rag/external/search
+```
+
+Direct nova-RAG service (default `http://127.0.0.1:3037`):
+
+```text
+GET  /health
+GET  /stats
+POST /search
+```
+
+The current runtime settings determine the actual host and ports. `POST /encode` is for internal embedding computation and is not part of the external-runtime contract.
+
+</details>
+
+For the complete security boundary, request schema, and error semantics, see the [nova-RAG External Agent Runtime Contract](docs/rag-external-agent-contract.md).
+
+<a id="privacy-security"></a>
+## 🔐 Privacy and Security
+
+- **Local-first:** Runtime state, the Foundation database, generated assets, and indexes remain in user-owned local paths.
+- **Secret permissions:** Provider keys live in `$NOVA_HOME/state/secrets`; the directory uses mode `0700`, and secret files use mode `0600`.
+- **Keychain migration:** Legacy `macos-keychain` references are used only for compatibility migration. Readable legacy secrets are copied to the runtime secret store; Open Nova does not automatically delete old Keychain items.
+- **External-provider boundary:** If an external LLM or embedding provider is configured, relevant derived work content is sent according to the selected endpoint and provider data policy.
+- **Input content:** If source logs, diaries, or user-selected material already contain secrets or sensitive information, generated diaries, reports, snapshots, and indexes may faithfully preserve that content.
+- **Non-invasive boundary:** Open Nova does not rewrite supported runtimes' historical data or take over their execution. It creates its own runtime, CLI shim, optional skills, and managed services.
+
+<a id="development"></a>
+## 📐 Development, Testing, and Reproducible Releases
+
+<details>
+<summary><strong>Expand development and test commands</strong></summary>
+
+Create a local editable development environment:
+
+```bash
 python3 -m venv .venv
 source .venv/bin/activate
-
-# Upgrade pip and install the package in editable mode
 python -m pip install --upgrade pip
 python -m pip install -e ".[dashboard,rag-local]"
 ```
 
-### 2. Run Unit Tests
+Run the release suite with isolated virtual environment, `HOME`, `NOVA_HOME`, and a fixed business clock:
 
 ```bash
-# Run the release suite in a disposable venv, HOME, NOVA_HOME, and fixed business clock
 python tests/run_isolated_release_suite.py
 ```
 
-For a targeted test inside an already prepared development environment, use
-`python -m unittest tests.test_module.TestClass.test_name`.
-
-### 3. Run UI and End-to-End Tests
-
-If Node.js is available, run the static JavaScript check and Playwright test suite:
+Run deterministic frontend and Release Page tests:
 
 ```bash
-# Install the locked Node dependencies
 npm ci
-
-# Verify JavaScript syntax
 node --check src/dashboard/app/static/js/app.js
-
-# Run the deterministic Release Page and Dashboard-context tests
 npm run test:dashboard-live-context
 npm run test:release-page
 ```
 
-> [!NOTE]
-> The real Dashboard gate is opt-in and destructive. Run
-> `npm run test:dashboard-live` only against a seeded disposable Runtime with
-> `OPEN_NOVA_DASHBOARD_LIVE_BASE_URL` set to its loopback URL. Generated
-> databases, Runtime logs, temporary files, evidence, and local secret-store
-> data must remain untracked and must not be committed.
+`npm run test:dashboard-live` is an explicit opt-in gate against a real Dashboard and may mutate the runtime. Run it only against a seeded, disposable runtime.
 
-### 4. Reproduce Release Artifacts
-
-The release builder accepts only a clean, committed Git tree and writes outside
-the repository. Install the exact release toolchain, then use the commit time as
-the deterministic archive timestamp. `-B` also prevents the invocation itself
-from writing bytecode into the source tree:
+Reproduce v1.0.1 release artifacts:
 
 ```bash
 python -B -m pip install -r requirements-release.txt
@@ -334,37 +442,60 @@ python -B -m tools.release.build_release \
   --expected-version 1.0.1
 ```
 
-The builder verifies `build==1.5.1`, `packaging==26.2`,
-`pyproject-hooks==1.2.0`, `setuptools==83.0.0`, and `wheel==0.47.0` before
-creating output, runs the package build without dependency isolation in a
-minimal environment, and proves that the complete source file set—including
-ignored files—did not change. The output includes public-source and
-Runtime-payload manifests, a normalized Runtime archive, wheel, sdist,
-provenance, and `SHA256SUMS`. Tests, release requirements, and release tooling
-remain public source assets but are excluded from every Runtime/package payload.
+The release builder accepts only a clean, committed Git worktree and writes output outside the repository. Artifacts include public-source and runtime-payload manifests, a normalized runtime archive, wheel, sdist, provenance, and `SHA256SUMS`.
 
-## 📄 Related Documentation
+</details>
 
-- 📖 [New User Onboarding Guide](docs/new-user-onboarding-runbook.md)
-- ⚙️ [Complete Local Operations Runbook](docs/local-operations-runbook.md)
+<a id="documentation"></a>
+## 📄 Documentation
+
+### User and Daily Operations
+
+- ⚙️ [English Local Operations Runbook](docs/local-operations-runbook.md)
+- 🇨🇳 [Chinese Local Operations Runbook](docs/local-operations-runbook.zh-CN.md)
+- 📖 [New User Onboarding Runbook](docs/new-user-onboarding-runbook.md)
 - 🧭 [CLI Product Boundary](docs/cli-boundary.md)
-- 🤖 [External Agent Runtime Contract](docs/rag-external-agent-contract.md)
-- 🧩 [Nova-Task Work Graph Reconciliation](docs/nova-task-work-graph-reconciliation.md)
-- 🧹 [Production-clean Inventory](docs/production-clean-inventory.md)
+
+### Integration and Product Design
+
+- 🤖 [nova-RAG External Agent Runtime Contract](docs/rag-external-agent-contract.md)
+- 🧩 [Nova-Task Work-Graph Reconciliation](docs/nova-task-work-graph-reconciliation.md)
+
+### Release, Security, and Project History
+
 - ✅ [v1.0.1 Release Assurance](docs/v1-release-assurance.md)
-- 🌐 [Modern Release Page](https://neo-isshin.github.io/open-nova/)
+- 🧹 [Production Cleanup Inventory](docs/production-clean-inventory.md)
 - 🧾 [Changelog](CHANGELOG.md)
 - 🔐 [Security Policy](SECURITY.md)
 - 🕰️ [Public Project History](HISTORY.md)
 
+<a id="license"></a>
 ## ⚖️ License
 
 Copyright © 2026 Neo-Isshin.
 
-Open Nova is free software licensed under the [GNU General Public License version 3 or any later version](LICENSE), identified by the SPDX expression `GPL-3.0-or-later`.
+Open Nova is free software licensed under the [GNU General Public License, version 3 or any later version](LICENSE), with SPDX identifier `GPL-3.0-or-later`.
 
 ## 🙏 Acknowledgements
 
-Open Nova is made possible by the vibrant ecosystem of AI coding tools and their open-source communities. We are grateful that these tools store token-usage and activity data in local logs, making unified visualization and asset consolidation possible.
+Open Nova exists thanks to outstanding AI coding tools and their open-source communities. Their local activity and token-usage logs make unified visualization, asset consolidation, and cross-runtime memory sharing possible.
 
-Special thanks to the [getdesign.md](https://getdesign.md) community for inspiring the layout and visual direction of the Dashboard.
+Thanks also to the [getdesign.md](https://getdesign.md) community for inspiration on the Dashboard's layout and visual direction.
+
+<hr>
+
+<a id="give-star"></a>
+<div align="center">
+
+<h2>⭐ Give me a Star</h2>
+
+<p>
+If Open Nova helps you turn fragmented AI work into searchable, reusable local assets,<br>
+please give it a Star so more people can discover the project.
+</p>
+
+<a href="https://github.com/Neo-Isshin/open-nova">
+  <img src="https://img.shields.io/github/stars/Neo-Isshin/open-nova?style=for-the-badge&amp;logo=github&amp;label=Give%20me%20a%20Star&amp;color=F5B942" alt="Give Open Nova a Star">
+</a>
+
+</div>

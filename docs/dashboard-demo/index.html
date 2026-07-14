@@ -1,100 +1,618 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Open Nova Dashboard static product demo with synthetic data.">
-  <title>Open Nova Dashboard Demo</title>
-  <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Dashboard — 周报 & 日记录</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<script src="js/vendor/chart.umd.min.js"></script>
+<script src="js/vendor/marked.min.js"></script>
+<script src="js/static-mock.js"></script>
+
+  <link rel="stylesheet" href="css/style.css?v=20260629-home7">
 </head>
 <body>
-  <aside class="sidebar">
-    <a class="brand" href="#overview" data-route="overview"><span>OPEN</span> NOVA</a>
-    <p class="demo-badge">STATIC DEMO · SYNTHETIC DATA</p>
-    <nav aria-label="Demo navigation">
-      <button class="nav-item active" data-route="overview">⌁ 当日实时总览</button>
-      <button class="nav-item" data-route="assets">◫ AI 资产</button>
-      <button class="nav-item" data-route="diary-a">▤ 日记 · 项目交付</button>
-      <button class="nav-item" data-route="diary-b">▤ 日记 · 系统优化</button>
-      <button class="nav-item" data-route="blank">◇ Blank day</button>
-      <button class="nav-item" data-route="weekly">▥ 周报</button>
-      <button class="nav-item" data-route="monthly">▦ 月报</button>
-      <button class="nav-item" data-route="tasks">✓ Nova-Task</button>
-      <button class="nav-item" data-route="rag">⌕ nova-RAG</button>
-    </nav>
-    <button class="settings-button" id="open-settings">⚙ 设置示例</button>
-  </aside>
 
-  <main>
-    <header class="topbar">
-      <div><span class="status-dot"></span> Open Nova v1</div>
-      <div class="top-actions"><button id="language-toggle">EN</button><a href="../index.html">返回发布页</a></div>
-    </header>
+<!-- ═══════════════════ SIDEBAR ═══════════════════ -->
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <div class="sidebar-brand">
+      <button type="button" class="sidebar-brand-home" onclick="showPage('home')" aria-label="Open Nova home">
+        <img class="sidebar-brand-banner" src="img/banner.png" alt="Open Nova" width="174" height="51">
+      </button>
+      <span id="sseStatus" data-i18n="sseConnecting" style="margin-left:auto;font-size:10px;color:var(--slate)">⏳ 连接中</span>
+    </div>
+  </div>
+  <nav class="sidebar-nav">
 
-    <section class="page active" data-page="overview">
-      <div class="page-heading"><div><p class="eyebrow">TODAY · SYNTHETIC SNAPSHOT</p><h1>当日实时总览</h1><p>多个 Agent runtime 的本地活动汇总，不连接真实 Runtime。</p></div><span class="pill">实时数据示例</span></div>
-      <div class="kpi-grid">
-        <article class="kpi"><span>今日 Tokens</span><strong>128,640</strong><small>较昨日 +12.4%</small></article>
-        <article class="kpi"><span>消息</span><strong>846</strong><small>5 个 runtime</small></article>
-        <article class="kpi"><span>活跃项目</span><strong>6</strong><small>自动 workspace 归属</small></article>
-        <article class="kpi"><span>已完成任务</span><strong>9</strong><small>来自 Nova-Task 证据</small></article>
+    <!-- 总览 -->
+    <div class="nav-section">
+      <div class="nav-section-title open" onclick="toggleSection(this)">
+        📊 <span data-i18n="navOverview">总览</span>
+        <span class="arrow">›</span>
       </div>
-      <div class="two-column">
-        <article class="panel"><div class="panel-title"><h2>24 小时活动趋势</h2><span>Tokens</span></div><div class="bars" aria-label="Synthetic hourly token chart"><i style="--h:28%"></i><i style="--h:42%"></i><i style="--h:34%"></i><i style="--h:68%"></i><i style="--h:56%"></i><i style="--h:88%"></i><i style="--h:76%"></i><i style="--h:94%"></i><i style="--h:62%"></i><i style="--h:45%"></i><i style="--h:31%"></i><i style="--h:18%"></i></div></article>
-        <article class="panel"><div class="panel-title"><h2>Agent / Workspace</h2><span>今日</span></div><div class="rank-list"><div><b>Codex · open-nova</b><span>48.2k</span></div><div><b>Claude Code · atlas-ui</b><span>31.7k</span></div><div><b>Hermes · Hermes</b><span>22.4k</span></div><div><b>Gemini CLI · research-notes</b><span>15.8k</span></div></div></article>
+      <div class="nav-items open">
+        <div class="nav-item active" onclick="showPage('overview', this)">
+          <span class="nav-item-dot active"></span>
+          <span data-i18n="navTodayOverview">当日实时总览</span>
+        </div>
+        <div class="nav-item" onclick="showPage('static', this)">
+          <span class="nav-item-dot"></span>
+          <span data-i18n="navAiAssets">AI 资产</span>
+        </div>
+        <a class="nav-item" href="tasks.html" style="text-decoration:none">
+          <span style="width:6px;height:6px;border-radius:50%;background:var(--border);flex-shrink:0"></span>
+          📋 <span data-i18n="navTaskBoardBeta">任务看板 (Beta) ↗</span>
+        </a>
       </div>
-      <article class="panel activity"><div class="panel-title"><h2>最新活动</h2><span>Foundation evidence</span></div><div class="timeline"><div><time>16:42</time><p><b>Release candidate checks completed</b><br>Installer dry-run、Dashboard 与 nova-RAG health 均通过。</p></div><div><time>15:18</time><p><b>Workspace attribution refreshed</b><br>6 个项目已从结构化 session cwd 归属。</p></div><div><time>13:05</time><p><b>Nova-Task evidence updated</b><br>3 个候选任务进入人工审阅队列。</p></div></div></article>
-    </section>
+    </div>
 
-    <section class="page" data-page="assets">
-      <div class="page-heading"><div><p class="eyebrow">AI ASSET OPERATIONS</p><h1>AI 资产总览</h1><p>会话、技能、记忆、任务与知识索引的统一只读视图。</p></div><span class="pill">活跃天数 42</span></div>
-      <div class="kpi-grid"><article class="kpi"><span>累计 Tokens</span><strong>8.9M</strong></article><article class="kpi"><span>Agent 实例</span><strong>11</strong></article><article class="kpi"><span>Skills</span><strong>64</strong></article><article class="kpi"><span>RAG Chunks</span><strong>12,480</strong></article></div>
-      <div class="tool-grid"><article class="tool-card orange"><span>OpenClaw</span><strong>3.1M</strong><small>6 agents · 18 workspaces</small></article><article class="tool-card gold"><span>Claude Code</span><strong>2.4M</strong><small>8 workspaces</small></article><article class="tool-card green"><span>Codex</span><strong>2.0M</strong><small>12 workspaces</small></article><article class="tool-card purple"><span>Gemini CLI</span><strong>920k</strong><small>4 workspaces</small></article><article class="tool-card amber"><span>Hermes</span><strong>480k</strong><small>1 logical agent</small></article><article class="tool-card coming"><span>＋</span><strong>更多 AI 工具支持</strong><small>coming soon</small></article></div>
-      <article class="panel"><div class="panel-title"><h2>Agent Tree</h2><span>示例</span></div><div class="tree"><div>▾ OpenClaw <span>6 agents</span></div><div class="indent">├─ main · 18 workspaces</div><div>▾ Codex <span>12 workspaces</span></div><div class="indent">├─ open-nova · active</div><div>▾ Hermes <span>1 agent</span></div><div class="indent">└─ Hermes · active</div></div></article>
-    </section>
+    <!-- 月份导航（动态生成） -->
+    <div id="month-nav"></div>
 
-    <section class="page" data-page="diary-a">
-      <div class="page-heading"><div><p class="eyebrow">DAILY DIARY · 2026-07-08</p><h1>项目交付日记</h1><p>叙事、技术与学习记录来自结构化 Foundation 证据。</p></div><span class="pill success">Pipeline complete</span></div>
-      <article class="document"><h2>今日概览</h2><p>完成 Dashboard 发布候选页面、Installer 生命周期验证与 nova-RAG 外部只读合约检查。主要改动均通过针对性测试，并形成可追溯的任务证据。</p><h2>技术进展</h2><ul><li>统一 Runtime 更新前后的服务生命周期。</li><li>验证 Dashboard 与 RAG 使用持久端口恢复。</li><li>完善静态发布页面的移动端布局。</li></ul><h2>学习与决策</h2><blockquote>发布验证应基于最终来源，而不是仅测试本地工作树。</blockquote></article>
-    </section>
+  </nav>
+  <div class="sidebar-bottom-nav">
+    <div class="nav-item nav-item-strong" onclick="showPage('rag-search', this)">
+      <span class="nav-item-dot"></span>
+      nova-RAG
+    </div>
+    <div class="nav-item nav-item-strong" onclick="showPage('foundation-ops', this)">
+      <span class="nav-item-dot"></span>
+      <span data-i18n="navFoundationOps">Foundation 运维</span>
+    </div>
+  </div>
+  <div class="sidebar-utility">
+    <button type="button" class="utility-btn" onclick="openSettingsModal()" title="系统设置" data-i18n="settingsButton" data-i18n-title="settingsTitle">⚙️ 设置</button>
+    <button type="button" class="utility-btn" onclick="openLlmProviderModal()" title="日记生成 LLM Provider" data-i18n="llmButton" data-i18n-title="llmTitle">🔑 LLM</button>
+    <button type="button" class="utility-btn utility-btn-muted" onclick="openGithubTodo()" title="GitHub 项目主页待配置" data-i18n-title="githubTitle">GitHub</button>
+    <button type="button" class="utility-btn utility-btn-muted" onclick="openI18nTodo()" title="中英文切换待实现" data-i18n-title="i18nTitle">中/EN</button>
+  </div>
+</aside>
 
-    <section class="page" data-page="diary-b">
-      <div class="page-heading"><div><p class="eyebrow">DAILY DIARY · 2026-07-09</p><h1>系统优化日记</h1><p>展示另一篇正常日记的代表性内容。</p></div><span class="pill success">Pipeline complete</span></div>
-      <article class="document"><h2>今日概览</h2><p>优化 RAG baseline-first 召回策略和外部 Agent Skill，使弱召回能够在严格预算内执行查询改写与证据合并。</p><h2>已验证</h2><div class="check-list"><span>✓ Search latency budget</span><span>✓ Evidence provenance</span><span>✓ Read-only mutation boundary</span><span>✓ Installer update dry-run</span></div><h2>后续</h2><p>在更大索引上持续记录 P50/P95、timeout rate 与每个 retrieval pass 的耗时。</p></article>
-    </section>
+<!-- ═══════════════════ MAIN ═══════════════════ -->
+<main class="main">
+  <button type="button" class="history-backfill-button" id="historyBackfillButton" onclick="openHistoryBackfillModal()" title="生成历史数据" data-i18n-title="historyBackfill">
+    <span data-i18n="historyBackfill">生成历史数据</span>
+  </button>
+  <button type="button" class="task-monitor-button" id="taskMonitorButton" onclick="openBackgroundTasksModal()" title="后台任务监控" data-i18n-title="backgroundTasksMonitor">
+    <span class="task-monitor-dot" id="taskMonitorDot"></span>
+    <span data-i18n="backgroundTasks">后台任务</span>
+    <b id="taskMonitorCount">0</b>
+  </button>
+  <button type="button" class="msgbox-button" id="msgboxButton" onclick="openMsgboxModal()" title="消息与待处理事项" data-i18n-title="messagesTitle">
+    <span class="msgbox-dot" id="msgboxDot"></span>
+    <span data-i18n="messagesShort">消息</span>
+    <b id="msgboxCount">0</b>
+  </button>
 
-    <section class="page" data-page="blank">
-      <div class="page-heading"><div><p class="eyebrow">BLANK DAY · 2026-07-06</p><h1>无活动日记</h1><p>Blank-day 快路径不会错误进入 Technical 或 Learning Pass。</p></div><span class="pill muted">No activity</span></div>
-      <article class="document blank-card"><span class="blank-icon">◇</span><h2>今天没有检测到可归档的 Agent 活动</h2><p>Open Nova 已保留日期、天气与调度状态，并跳过不必要的 LLM 生成。</p><div class="check-list"><span>✓ Narrative skipped</span><span>✓ Technical skipped</span><span>✓ Learning skipped</span><span>✓ Foundation marker written</span></div></article>
-    </section>
-
-    <section class="page" data-page="weekly">
-      <div class="page-heading"><div><p class="eyebrow">WEEKLY · JUL 06–12</p><h1>周报总览</h1><p>本周工作、资产增长和任务证据的周期汇总。</p></div><span class="pill">7 days</span></div>
-      <div class="kpi-grid"><article class="kpi"><span>Tokens</span><strong>742k</strong></article><article class="kpi"><span>完成任务</span><strong>21</strong></article><article class="kpi"><span>知识增长</span><strong>＋640</strong></article><article class="kpi"><span>活跃项目</span><strong>8</strong></article></div>
-      <div class="two-column"><article class="panel"><div class="panel-title"><h2>本周成果</h2></div><ol class="outcomes"><li>完成 v1 Installer 和 update 生命周期验证。</li><li>建立外部 Agent 的只读 RAG Skill。</li><li>统一双语 README 与本地运维 Runbook。</li></ol></article><article class="panel"><div class="panel-title"><h2>风险与建议</h2></div><p>发布前继续执行 clean clone、GitHub one-liner 和静态 Demo 泄漏检查。</p><div class="progress"><span style="width:82%"></span></div><small>Release readiness 82%</small></article></div>
-    </section>
-
-    <section class="page" data-page="monthly">
-      <div class="page-heading"><div><p class="eyebrow">MONTHLY · JULY 2026</p><h1>月报总览</h1><p>从每日证据到长期能力建设的聚合视图。</p></div><span class="pill">Month to date</span></div>
-      <div class="month-grid"><article class="panel"><h2>核心主题</h2><div class="tag-cloud"><span>Foundation</span><span>nova-RAG</span><span>Installer</span><span>Dashboard</span><span>Nova-Task</span><span>Release</span></div></article><article class="panel"><h2>资产变化</h2><div class="metric-row"><span>RAG chunks</span><b>＋2,840</b></div><div class="metric-row"><span>Task evidence</span><b>＋126</b></div><div class="metric-row"><span>Skills</span><b>＋8</b></div></article><article class="panel wide"><h2>月度判断</h2><p>Open Nova 已从开发验证阶段进入发布收尾阶段。核心数据边界、更新流程和外部 Agent 集成均已具备可审计契约。</p></article></div>
-    </section>
-
-    <section class="page" data-page="tasks">
-      <div class="page-heading"><div><p class="eyebrow">NOVA-TASK · BETA</p><h1>任务看板</h1><p>任务状态来自实际会话、工具结果和交付证据。</p></div><button class="primary" data-demo-action="review">打开审阅示例</button></div>
-      <div class="board"><div class="column"><h2>待审阅 <span>2</span></h2><article class="task"><b>Release clean audit</b><p>检查发布包中是否包含日志和生成物。</p><small>3 evidence items</small></article><article class="task"><b>GitHub Pages demo</b><p>验证桌面端与移动端展示。</p><small>2 evidence items</small></article></div><div class="column"><h2>进行中 <span>2</span></h2><article class="task active-task"><b>v1 functional review</b><p>跨 Foundation、RAG、Installer 的深度审查。</p><small>In progress</small></article><article class="task"><b>Update matrix</b><p>全新安装、升级与回滚验证。</p><small>6 checks</small></article></div><div class="column"><h2>已完成 <span>3</span></h2><article class="task done"><b>External RAG Skill</b><p>只读多轮召回协议已验证。</p><small>✓ Completed</small></article><article class="task done"><b>README refresh</b><p>双语文档与截图已对齐。</p><small>✓ Completed</small></article></div></div>
-    </section>
-
-    <section class="page" data-page="rag">
-      <div class="page-heading"><div><p class="eyebrow">NOVA-RAG · READ ONLY</p><h1>长期记忆搜索</h1><p>静态示例不会发送请求或访问真实索引。</p></div><span class="pill success">Index ready</span></div>
-      <article class="panel search-panel"><label for="demo-query">搜索记忆</label><div class="search-row"><input id="demo-query" value="更新时如何保持 Dashboard 端口不变？"><button class="primary" id="demo-search">搜索</button></div><div id="search-result" class="search-results"><article><span class="score">0.92</span><div><b>[C1] Update lifecycle decision</b><p>升级流程会停止受管服务、复用持久化端口，并在源码和依赖更新后重新注册 LaunchAgent。</p><small>canonical · decision · synthetic-source</small></div></article><article><span class="score">0.86</span><div><b>[C2] Installer regression evidence</b><p>执行级测试验证 Dashboard、watchdog 和 nova-RAG 三个 plist 均被安全 bootout。</p><small>current-state · test-evidence · synthetic-source</small></div></article></div></article>
-    </section>
-  </main>
-
-  <div class="modal-backdrop" id="settings-modal" hidden>
-    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title"><div class="modal-header"><div><p class="eyebrow">ONE-CLICK PANEL EXAMPLE</p><h2 id="settings-title">Settings</h2></div><button class="icon-button" id="close-settings" aria-label="关闭">×</button></div><div class="settings-tabs"><button class="active">General</button><button>Schedule</button><button>nova-RAG</button></div><div class="form-grid"><label>Timezone<input value="America/Los_Angeles" readonly></label><label>Dashboard URL<input value="http://127.0.0.1:3036/dashboard" readonly></label><label>External scheduler<textarea readonly>外部 Agent 仅负责触发任务；Open Nova 负责管线和 snapshot 逻辑。</textarea></label></div><p class="demo-note">这是合成数据静态示例。保存、服务控制和写操作均已禁用。</p></section>
+  <!-- ┌─ 首页 ── -->
+  <div id="page-home" class="page active">
+    <div class="dashboard-welcome" id="dashboardWelcome">
+      <img class="dashboard-welcome-banner" src="img/banner.png" alt="Open Nova">
+      <div class="dashboard-welcome-title" data-i18n="welcomeTagline">专属于你的AI资产，是你这个时代最重要的资产</div>
+      <div class="dashboard-welcome-meta">Copyright © Open Nova · Neo-Isshin · nxc8335@gmail.com</div>
+    </div>
   </div>
 
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js"></script>
+  <!-- ┌─ 总览 ── -->
+  <div id="page-overview" class="page">
+    <div class="page-header">
+      <div class="page-title" data-i18n="overviewTitle">当日实时总览</div>
+      <div class="page-subtitle" id="overviewSubtitle"><span id="overviewDate" data-i18n="loadingDots">加载中...</span> · <span data-i18n="realtimeMonitoring">实时监控</span></div>
+      <div class="page-badge">📊 <span data-i18n="realtimeData">实时数据</span></div>
+      <div style="margin-top:12px;display:flex;gap:8px">
+        <a href="tasks.html" style="display:inline-flex;align-items:center;gap:4px;padding:6px 14px;background:var(--purple);color:white;border-radius:6px;text-decoration:none;font-size:13px;transition:background 0.15s" onmouseover="this.style.background='var(--purple-hover)'" onmouseout="this.style.background='var(--purple)'">📋 <span data-i18n="taskBoard">任务看板</span></a>
+        <div id="sseLiveIndicator" style="display:inline-flex;align-items:center;gap:4px;padding:6px 12px;background:rgba(21,190,83,0.1);color:var(--success-text);border-radius:6px;font-size:12px">
+          <span style="width:6px;height:6px;border-radius:50%;background:var(--success);display:inline-block"></span> <span data-i18n="realtimeSync">实时同步</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ Section A: 核心指标卡片 ═══ -->
+    <div class="tc-kpi-grid" id="tcKpiGrid">
+      <div class="tc-kpi-card">
+        <div class="tc-kpi-icon"><span id="tcRateEmoji">🔥</span></div>
+        <div class="tc-kpi-label" data-i18n="totalTokens">总消耗 Token</div>
+        <div class="tc-kpi-value" id="tcTotalTokens">—</div>
+      </div>
+      <div class="tc-kpi-card">
+        <div class="tc-kpi-icon">💬</div>
+        <div class="tc-kpi-label" data-i18n="totalMessages">总消息数</div>
+        <div class="tc-kpi-value" id="tcTotalMessages">—</div>
+      </div>
+      <div class="tc-kpi-card">
+        <div class="tc-kpi-icon">💾</div>
+        <div class="tc-kpi-label" data-i18n="cacheHitRate">缓存命中率</div>
+        <div class="tc-kpi-value" id="tcCacheRate">—</div>
+      </div>
+      <div class="tc-kpi-card">
+        <div class="tc-kpi-icon">⚡</div>
+        <div class="tc-kpi-label" data-i18n="currentRate">当前速率</div>
+        <div class="tc-kpi-value" id="tcHourlyRate">—</div>
+      </div>
+      <div class="tc-kpi-card">
+        <div class="tc-kpi-icon">🛠️</div>
+        <div class="tc-kpi-label" data-i18n="activeTools">活跃工具</div>
+        <div class="tc-kpi-value" id="tcActiveTools">—</div>
+      </div>
+    </div>
+
+    <!-- ═══ Section B: 24小时热力时间线 ═══ -->
+    <div class="tc-section">
+      <div class="section-title"><span class="section-title-num">01</span> <span data-i18n="token24h">24 小时 Token 消耗</span></div>
+      <div class="tc-timeline" id="tcTimeline">
+        <!-- dynamically generated -->
+      </div>
+    </div>
+
+    <!-- ═══ Section C: 工具详情卡片 ═══ -->
+    <div class="tc-section">
+      <div class="section-title"><span class="section-title-num">02</span> <span data-i18n="toolDetails">工具详情</span></div>
+      <div class="tc-tools-grid" id="tcToolsGrid">
+        <!-- dynamically generated -->
+      </div>
+    </div>
+
+    <!-- ═══ Section D: Agent / Workspace 今日实时消耗 ═══ -->
+    <div class="section">
+      <div class="section-title">
+        <span class="section-title-num">03</span>
+        <span data-i18n="agentWorkspaceRealtime">Agent / Workspace 实时消耗</span>
+        <span style="font-size:11px;color:var(--slate);font-weight:400;margin-left:auto" id="agentUpdateTime"></span>
+      </div>
+      <div id="agentTableContainer">
+        <div class="chart-card" style="padding:40px;text-align:center;color:var(--slate)">⏳ <span data-i18n="waitingRealtimeUsage">等待实时消耗数据...</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ┌─ Foundation 运维 ── -->
+  <div id="page-foundation-ops" class="page">
+    <div class="page-header">
+      <div class="page-title" data-i18n="foundationOpsTitle">Foundation 运维</div>
+      <div class="page-subtitle" id="foSubtitle" data-i18n="foundationOpsSubtitle">Daily QA、快照刷新与 job 状态</div>
+      <div class="page-badge">Foundation-first</div>
+    </div>
+    <div class="fo-bento-grid">
+    <div class="fo-panel fo-daily-qa-panel fo-span-12">
+      <div class="fo-panel-head">
+        <div>
+          <div class="fo-panel-title">Daily QA</div>
+          <div class="fo-panel-subtitle" data-i18n="dailyQaSubtitle">按业务日期检查日记产物、Foundation 输入与 pipeline 恢复状态</div>
+        </div>
+        <div class="fo-date-control">
+          <input type="date" id="foDailyQaDate">
+          <button class="wr-export-btn" id="foDailyQaReloadBtn" onclick="loadFoundationDailyQa()" data-i18n="readQa">读取 QA</button>
+        </div>
+      </div>
+      <div id="foDailyQaOverview" class="fo-daily-qa-overview" data-i18n="loadingEllipsis">加载中…</div>
+      <div id="foDailyQa" data-i18n="loadingEllipsis">加载中…</div>
+    </div>
+    <div class="fo-panel fo-daily-pipeline-panel fo-span-7">
+      <div class="fo-panel-head">
+        <div>
+          <div class="fo-panel-title" data-i18n="dailyPipelineResult">当天管线结果</div>
+          <div class="fo-panel-subtitle" data-i18n="dailyPipelineSubtitle">按业务日期查看最新运行、生成文件、lesson 与 task evidence 指标</div>
+        </div>
+        <div class="fo-date-control">
+          <input type="date" id="foDailyPipelineDate">
+          <button class="wr-export-btn" id="foDailyPipelineReloadBtn" onclick="loadFoundationDailyPipelineSummary()" data-i18n="readMetrics">读取指标</button>
+        </div>
+      </div>
+      <div id="foDailyPipelineSummary" data-i18n="loadingEllipsis">加载中…</div>
+    </div>
+    <div class="fo-panel fo-repair-runs-panel fo-span-5">
+      <div class="fo-panel-head">
+        <div>
+          <div class="fo-panel-title" data-i18n="repairAudit">修复执行审计</div>
+          <div class="fo-panel-subtitle" data-i18n="repairAuditSubtitle">最近的 allowlisted Daily QA repair runs；非 allowlisted 动作仍保持 manual-only</div>
+        </div>
+        <button class="wr-export-btn" id="foRepairRunsReloadBtn" onclick="loadFoundationRepairRuns()" data-i18n="reload">重新读取</button>
+      </div>
+      <div id="foRepairRuns" data-i18n="loadingEllipsis">加载中…</div>
+    </div>
+    <div class="fo-toolbar fo-span-12">
+      <button class="wr-export-btn" id="foRefreshTodayBtn" onclick="foundationRefreshToday()" data-i18n="refreshToday">刷新今日</button>
+      <button class="wr-export-btn" id="foRefreshWeekBtn" onclick="foundationRefreshCurrentWeek()" data-i18n="refreshWeek">刷新本周</button>
+      <button class="wr-export-btn" id="foRefreshMonthBtn" onclick="foundationRefreshCurrentMonth()" data-i18n="refreshMonth">刷新本月</button>
+      <button class="wr-export-btn" id="foReloadBtn" onclick="loadFoundationOps()" data-i18n="reloadStatus">重新读取状态</button>
+    </div>
+    <div class="fo-panel fo-backfill-panel fo-span-12">
+      <div class="fo-panel-title" data-i18n="historicalBackfill">历史 Backfill</div>
+      <div class="fo-backfill">
+        <label><span data-i18n="start">开始</span> <input type="date" id="foBackfillStart"></label>
+        <label><span data-i18n="end">结束</span> <input type="date" id="foBackfillEnd"></label>
+        <button class="wr-export-btn" id="foBackfillBtn" onclick="foundationBackfillRange()" data-i18n="submitBackfill">提交 Backfill</button>
+        <span class="settings-status" id="foBackfillStatus"></span>
+      </div>
+    </div>
+    <div class="fo-grid fo-span-12">
+      <div class="fo-panel">
+        <div class="fo-panel-title">Projection Completeness</div>
+        <div id="foCompleteness" data-i18n="loadingEllipsis">加载中…</div>
+      </div>
+      <div class="fo-panel">
+        <div class="fo-panel-title">Scheduled Cadence</div>
+        <div class="fo-runtime" id="foCadence" data-i18n="loadingEllipsis">加载中…</div>
+      </div>
+      <div class="fo-panel">
+        <div class="fo-panel-title">Runtime</div>
+        <div class="fo-runtime" id="foRuntime" data-i18n="loadingEllipsis">加载中…</div>
+      </div>
+      <div class="fo-panel">
+        <div class="fo-panel-title" data-i18n="latestFailed">最近失败</div>
+        <div class="fo-runtime" id="foLatestFailed" data-i18n="loadingEllipsis">加载中…</div>
+      </div>
+    </div>
+    <div class="fo-panel fo-refresh-jobs-panel fo-span-12">
+      <div class="fo-panel-title">Refresh Jobs</div>
+      <div id="foJobs" data-i18n="loadingEllipsis">加载中…</div>
+    </div>
+    </div>
+  </div>
+
+
+  <!-- ┌─ nova-RAG ── -->
+  <div id="page-rag-search" class="page">
+    <div class="page-header">
+      <div class="page-title">nova-RAG</div>
+      <div class="page-subtitle" id="ragSearchSubtitle" data-i18n="ragSubtitle">Open Nova v2 长期记忆</div>
+      <div class="page-badge">nova-RAG v2</div>
+    </div>
+    <div class="fo-toolbar">
+      <button class="wr-export-btn" id="ragPowerBtn" onclick="toggleNovaRagPower()" data-i18n="readStatus">读取状态…</button>
+      <button class="wr-export-btn" id="ragStartServerBtn" onclick="ragSearchStartServer()" data-i18n="startRagServer">启动 Server</button>
+      <button class="wr-export-btn secondary" id="ragStopServerBtn" onclick="ragSearchStopServer()" data-i18n="stopRagServer">停止 Server</button>
+      <button class="wr-export-btn" onclick="loadRagSearchPage()" data-i18n="refreshStatus">刷新状态</button>
+      <button class="wr-export-btn" id="ragProfileMigrateBtn" onclick="openRagProfileMigrationModal()" data-i18n="migrateRag">迁移RAG基座/模式</button>
+      <button class="wr-export-btn" id="ragExternalSkillBtn" onclick="openRagExternalSkillRegistration()" data-i18n="registerExternalSkill">注册外部 Agent Skill</button>
+      <button class="wr-export-btn" onclick="loadRagSearchCoverage()" data-i18n="coverageCheck">覆盖检查</button>
+      <button class="wr-export-btn" onclick="runRagProductionSync()" data-i18n="ragProductionSync">RAG Sync</button>
+      <button class="wr-export-btn secondary" onclick="openBackgroundTasksModal()" data-i18n="backgroundTasks">后台任务</button>
+    </div>
+    <div id="ragActionStatus" class="settings-note"></div>
+    <div id="ragSearchCoverage" class="settings-runtime-status" style="display:none;margin-bottom:12px" data-i18n="notReadYet">尚未读取</div>
+    <div id="ragSearchStatus" class="settings-runtime-status" style="margin-bottom:12px" data-i18n="loadingEllipsis">加载中…</div>
+    <div class="fo-panel">
+      <div class="fo-panel-title">Search</div>
+      <div class="rag-search-bar">
+        <input id="ragPageSearchQuery" placeholder="搜索 Open Nova 长期记忆" data-i18n-placeholder="ragSearchPlaceholder">
+        <input id="ragPageSearchTopK" type="number" min="1" max="20" value="8" title="Top K">
+        <button class="wr-export-btn" onclick="runRagPageSearch()" data-i18n="search">搜索</button>
+      </div>
+      <div class="rag-search-filters">
+        <input id="ragPageSearchProject" placeholder="project，可选" data-i18n-placeholder="projectOptional">
+        <input id="ragPageSearchSourceSets" placeholder="sourceSets，逗号分隔，可选" data-i18n-placeholder="sourceSetsOptional">
+        <input id="ragPageSearchLifecycle" placeholder="lifecycle，逗号分隔，可选" data-i18n-placeholder="lifecycleOptional">
+      </div>
+      <div id="ragPageSearchResults" class="settings-runtime-status rag-search-results" data-i18n="waitingSearch">等待搜索</div>
+    </div>
+    <div class="fo-panel">
+      <div class="fo-panel-title">Settings</div>
+      <div id="ragSearchSettings" class="settings-runtime-status" data-i18n="loadingEllipsis">加载中…</div>
+    </div>
+  </div>
+
+
+  <!-- ┌─ 月报总览（动态填充） ── -->
+  <div id="page-monthly-overview" class="page">
+    <div class="page-header" id="mr_header">
+      <div class="page-title">📊 <span data-i18n="monthlyOverviewTitle">月报总览</span></div>
+      <div class="page-subtitle" id="mr_sub" data-i18n="loadingEllipsis">加载中…</div>
+      <div class="wr-summary-quote" id="mr_summaryQuote" style="display:none"></div>
+      <button class="wr-export-btn" onclick="window.print()" title="导出 / 打印" data-i18n-title="exportPrintTitle">🖨️ <span data-i18n="exportPrint">导出</span></button>
+      <button class="wr-export-btn" id="mrRefreshAssetsBtn" onclick="refreshMonthlyAssets()" title="在后台重建资产投影" data-i18n="refreshAssets" data-i18n-title="refreshAssetsTitle">更新资产</button>
+    </div>
+    <div class="wr-loading" id="mr_loading"><div class="wr-spinner"></div><span data-i18n="loadingMonthly">正在读取月报快照…</span></div>
+    <div class="wr-refresh-notice" id="mr_refreshNotice" style="display:none;"></div>
+    <div id="mr_content" style="display:none;">
+      <div class="wr-section wr-narrative-section">
+        <div class="wr-section-header"><div class="wr-section-title"><span class="emoji">📝</span> <span data-i18n="monthlySummarySection">每月总结</span></div><button class="wr-narrative-btn" id="mrRefreshSummaryBtn" onclick="refreshMonthlySummary()" title="生成并保存本月总结快照" data-i18n="generateSummary" data-i18n-title="generateMonthlySummaryTitle">生成总结</button></div>
+        <div class="wr-card full-width wr-narrative-card" id="mr_periodSummary"></div>
+      </div>
+      <div class="wr-section"><div class="wr-section-header"><div class="wr-section-title"><span class="emoji">📈</span> <span data-i18n="monthlyOverview">月度概览</span></div></div><div class="wr-kpi-grid" id="mr_kpi"></div><div class="mr-pulse-grid mr-pulse-inline" id="mr_pulse"></div></div>
+      <div class="wr-section"><div class="wr-card-grid"><div class="wr-card full-width"><div class="wr-card-title"><span class="emoji">⏱️</span> <span data-i18n="timeInvestment">时间投入</span></div><div class="aa-heatmap-wrap" id="mr_work"></div></div></div></div>
+      <div class="wr-section"><div class="wr-section-header"><div class="wr-section-title"><span class="emoji">⚡</span> <span data-i18n="monthlyUsageTrend">月度使用趋势</span></div></div><div class="wr-card full-width"><div class="wr-chart-box mr-composite-chart"><canvas id="mr_trendChart"></canvas></div></div></div>
+      <div class="wr-section"><div class="wr-section-header"><div class="wr-section-title"><span class="emoji">🤖</span> <span data-i18n="modelRanking">模型消耗量排行</span></div></div><div class="wr-card full-width"><div class="wr-chart-box mr-model-chart"><canvas id="mr_modelChart"></canvas></div></div></div>
+      <div class="wr-section"><div class="wr-section-header"><div class="wr-section-title"><span class="emoji">👥</span> <span data-i18n="monthlyAgentWorkspaceRanking">Agent / Workspace 月度排行</span></div></div><div class="wr-card-grid mr-usage-grid">
+        <div class="wr-card"><div class="wr-card-title"><span class="emoji">⚡</span> <span data-i18n="tokenRank">Token 消耗排行</span></div><div id="mr_usageTokens"></div></div>
+        <div class="wr-card"><div class="wr-card-title"><span class="emoji">💬</span> <span data-i18n="messageActivity">消息活跃度</span></div><div id="mr_usageMessages"></div></div>
+        <div class="wr-card"><div class="wr-card-title"><span class="emoji">📅</span> <span data-i18n="activeDays">活跃天数</span></div><div id="mr_usageDays"></div></div>
+      </div><div class="mr-usage-note" id="mr_usageNote"></div></div>
+      <div class="wr-section"><div class="wr-card-grid">
+        <div class="wr-card"><div class="wr-card-title"><span class="emoji">📊</span> <span data-i18n="workloadComparison">工作强度</span></div><div id="mr_workload"></div></div>
+        <div class="wr-card"><div class="wr-card-title"><span class="emoji">⏰</span> <span data-i18n="scheduledJobs">定时任务</span></div><div id="mr_cron"></div></div>
+        <div class="wr-card"><div class="wr-card-title"><span class="emoji">🧠</span> <span data-i18n="knowledgeBase">知识库</span></div><div id="mr_knowledge"></div></div>
+      </div></div>
+      <div class="wr-section"><div class="wr-card-grid"><div class="wr-card full-width"><div class="wr-card-title"><span class="emoji">🏷️</span> <span data-i18n="highFrequencyTopics">高频主题</span></div><div class="wr-topic-tags" id="mr_topics"></div></div></div></div>
+      <div class="wr-section"><div class="wr-card-grid"><div class="wr-card full-width"><div class="wr-card-title"><span class="emoji">🎯</span> <span data-i18n="tasksOutcomes">任务与成果</span></div><div class="wr-summary-list" id="mr_summary"></div></div></div></div>
+      <div class="wr-section"><div class="wr-card-grid"><div class="wr-card full-width"><div class="wr-card-title"><span class="emoji">💡</span> <span data-i18n="lessons">教训与经验</span> <span id="mr_lessonCount" style="font-size:12px;color:var(--slate);font-weight:400;"></span></div><div class="wr-lesson-filter" id="mr_lessonFilter"></div><div class="wr-lessons-list" id="mr_lessons"></div></div></div></div>
+      <div class="wr-section" id="mr_summaryDetailsSection" style="display:none"><div class="wr-section-header"><div class="wr-section-title"><span class="emoji">📋</span> <span data-i18n="summaryDetails">总结详情</span></div></div><div class="wr-card full-width wr-summary-details" id="mr_summaryDetails"></div></div>
+    </div>
+  </div>
+
+<!-- ┌─ AI 资产总览 ── -->
+  <div id="page-static" class="page">
+    <div class="page-header">
+      <div class="page-title" data-i18n="aiAssetsTitle">AI 资产总览</div>
+      <div class="page-subtitle" data-i18n="aiAssetsSubtitle">全维度数据概览 · 自动采集</div>
+      <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+        <div class="page-badge">📊 AI Assets</div>
+        <button id="aiAssetsRefreshBtn" onclick="loadAiAssets()" style="background:var(--white);border:1px solid var(--border);color:var(--navy);font-size:12px;padding:4px 12px;border-radius:6px;cursor:pointer;transition:all 0.15s;display:inline-flex;align-items:center;gap:4px" onmouseover="this.style.borderColor='var(--purple-light)'" onmouseout="this.style.borderColor='var(--border)'">🔄 <span data-i18n="refresh">刷新</span></button>
+        <button id="aiAssetsSnapshotRefreshBtn" onclick="refreshAiAssetsSnapshot()" style="background:var(--white);border:1px solid var(--border);color:var(--navy);font-size:12px;padding:4px 12px;border-radius:6px;cursor:pointer;transition:all 0.15s;display:inline-flex;align-items:center;gap:4px" onmouseover="this.style.borderColor='var(--purple-light)'" onmouseout="this.style.borderColor='var(--border)'" data-i18n="backgroundUpdate">后台更新</button>
+        <span id="aiAssetsUpdateTime" style="font-size:11px;color:var(--slate)"></span>
+      </div>
+    </div>
+
+    <div id="aiAssetsLoading" style="display:flex;align-items:center;justify-content:center;gap:12px;padding:80px;color:var(--slate);font-size:14px">
+      <div class="wr-spinner"></div><span data-i18n="loadingAiAssets">正在加载 AI 资产数据…</span>
+    </div>
+
+    <div id="aiAssetsContent" style="display:none">
+      <!-- Section A: 顶部核心数字 -->
+      <div class="aa-kpi-grid" id="aaKpi"></div>
+
+      <!-- Section B: 工具消耗对比 -->
+      <div class="section">
+        <div class="section-title"><span class="section-title-num">01</span> <span data-i18n="toolComparison">工具消耗对比</span></div>
+        <div class="aa-tools-grid" id="aaTools"></div>
+      </div>
+
+      <!-- Section C: 30 天热力图 -->
+      <div class="section">
+        <div class="section-title"><span class="section-title-num">02</span> <span data-i18n="trend30d">30 天趋势</span></div>
+        <div id="aaHeatmapWrap" class="aa-heatmap-wrap aa-surface-card" style="padding:20px;overflow:visible"></div>
+      </div>
+
+      <!-- Section D: 工具 & 模型排行（两张柱形图） -->
+      <div class="aa-two-col">
+        <div class="section">
+          <div class="section-title"><span class="section-title-num">03</span> <span data-i18n="aiAssetsWorkspaceRanking">Agent / Workspace 消耗排行</span></div>
+          <div class="chart-card" style="padding:20px"><div class="wr-chart-box medium" style="height:320px"><canvas id="aaToolChart"></canvas></div></div>
+        </div>
+        <div class="section">
+          <div class="section-title"><span class="section-title-num">04</span> <span data-i18n="aiAssetsModelTokenRanking">模型 Token 消耗排行</span></div>
+          <div class="chart-card" style="padding:20px"><div class="wr-chart-box medium" style="height:320px"><canvas id="aaModelChart"></canvas></div></div>
+        </div>
+      </div>
+
+      <!-- Section E: Agent 列表 -->
+      <div class="section">
+        <div class="section-title"><span class="section-title-num">05</span> <span data-i18n="aiAssetsAgentList">Agent 列表</span></div>
+        <div class="aa-table-shell" style="overflow-x:auto"><table class="data-table" id="aaAgentTable"><thead><tr><th>Agent</th><th data-i18n="modelLabel">模型</th><th>Sessions</th><th data-i18n="messages">消息数</th><th data-i18n="lastActive">最后活跃</th><th>Host</th></tr></thead><tbody></tbody></table></div>
+      </div>
+
+      <!-- Section F: 资产积累 -->
+      <div class="section">
+        <div class="section-title"><span class="section-title-num">06</span> <span data-i18n="assetAccumulation">资产积累</span></div>
+        <div class="aa-two-col">
+          <div>
+            <div class="chart-card" style="padding:18px;margin-bottom:16px">
+              <div class="chart-card-title">📔 <span data-i18n="diaryStats">日记统计</span></div>
+              <div id="aaDiary"></div>
+            </div>
+            <div class="chart-card" style="padding:18px">
+              <div class="chart-card-title">⚡ Skills</div>
+              <div id="aaSkills"></div>
+            </div>
+          </div>
+          <div>
+            <div class="chart-card" style="padding:18px;margin-bottom:16px">
+              <div class="chart-card-title">🔍 nova-RAG / Embedding</div>
+              <div id="aaRag"></div>
+            </div>
+            <div class="chart-card" style="padding:18px">
+              <div class="chart-card-title">⏰ Cron Jobs</div>
+              <div id="aaCron"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section H: 基础设施 -->
+      <div class="section">
+        <div class="section-title"><span class="section-title-num">07</span> <span data-i18n="infrastructure">基础设施</span></div>
+        <div class="aa-devices-grid" id="aaDevices"></div>
+      </div>
+
+      <!-- Section I: 存储使用 -->
+      <div class="section">
+        <div class="section-title"><span class="section-title-num">08</span> <span data-i18n="storageUsage">存储使用</span></div>
+        <div class="chart-card" style="padding:20px" id="aaStorage"></div>
+      </div>
+
+      <!-- Section J: 任务总览（TODO: 待实现） -->
+      <div id="aaTaskOverview" class="section" style="display:none">
+        <div class="section-title"><span class="section-title-num">09</span> <span data-i18n="taskOverview">任务总览</span></div>
+        <div id="aaTaskOverviewContent"></div>
+      </div>
+
+      <!-- Section K: Agent 配置面板（三级展开） -->
+      <div class="section">
+        <div class="section-title"><span class="section-title-num">09</span> <span data-i18n="agentConfigPanel">Agent 配置面板</span></div>
+        <div id="aaAgentPanel"></div>
+      </div>
+
+      <!-- Section L: Skill 库 -->
+      <div class="section">
+        <div class="section-title"><span class="section-title-num">10</span> <span data-i18n="skillLibrary">Skill 库</span></div>
+        <div class="aa-composite-surface" id="aaSkillLib"></div>
+      </div>
+
+      <!-- Section M: 工具配置 -->
+      <div class="section">
+        <div class="section-title"><span class="section-title-num">11</span> <span data-i18n="toolConfig">工具配置</span></div>
+        <div class="aa-toolconfig-shell">
+          <div class="aa-toolconfig-toolbar">
+            <div class="aa-toolconfig-toolbar-title" data-i18n="runtimeRegistry">运行环境登记</div>
+            <button type="button" class="aa-detect-button" id="aaToolDetectBtn" data-i18n="rediscover">重新检测</button>
+          </div>
+          <div class="aa-toolconfig-summary" id="aaToolConfigSummary"></div>
+          <div class="aa-toolconfig-columns">
+            <span data-i18n="tool">工具</span>
+            <span data-i18n="runtimeInfo">运行信息</span>
+            <span data-i18n="path">路径</span>
+            <span data-i18n="detection">检测</span>
+          </div>
+          <div class="aa-toolconfig-list" id="aaToolConfigs"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Agent 文档编辑模态框 ── -->
+  <div id="aaDocModal" class="aa-modal-overlay" style="display:none" onclick="if(event.target===this)closeDocModal()">
+    <div class="aa-modal">
+      <div class="aa-modal-header">
+        <button type="button" id="aaModalBack" class="aa-modal-back" onclick="aaModalBack()" aria-label="返回" data-i18n-aria-label="back" style="display:none">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4.5 6.5 9l4.5 4.5"/><path d="M7 9h7"/></svg>
+        </button>
+        <div class="aa-modal-title-wrap">
+          <div class="aa-modal-title" id="aaDocModalTitle" data-i18n="documentFallback">文档</div>
+          <div class="aa-modal-subtitle" id="aaDocModalSubtitle"></div>
+        </div>
+        <button class="aa-modal-close" onclick="closeDocModal()" aria-label="关闭" data-i18n-aria-label="close">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><line x1="4.5" y1="4.5" x2="13.5" y2="13.5"/><line x1="13.5" y1="4.5" x2="4.5" y2="13.5"/></svg>
+        </button>
+      </div>
+      <div class="aa-modal-body" style="position:relative">
+        <div id="aaModalContent" style="display:none;padding:16px 24px;overflow-y:auto;max-height:65vh"></div>
+        <textarea id="aaDocTextarea" class="aa-doc-textarea" spellcheck="false"></textarea>
+      </div>
+      <div class="aa-modal-footer">
+        <button class="aa-btn aa-btn-cancel" onclick="closeDocModal()" data-i18n="cancel">取消</button>
+        <button class="aa-btn aa-btn-save" onclick="saveDoc()">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 2.5h8l2 2v9H3z"/><path d="M5 2.5v4h6"/><path d="M5 13.5v-4h6v4"/></svg>
+          <span data-i18n="save">保存</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+
+  <!-- ┌─ 日记通用模板（数据注入） ── -->
+  <div id="diary-pages" style="display:flex;flex-direction:column;flex:1;min-height:0">
+    <div id="page-day-0412" class="page">
+      <div class="page-header">
+        <div class="page-title">04-12 日记</div>
+        <div class="page-subtitle">2026年4月12日 · 星期日</div>
+      </div>
+      <div id="diary-content-0412" class="page-body" style="padding:20px;color:var(--gray)" data-i18n="diaryNavLoading">点击左侧栏日期加载</div>
+    </div>
+
+    <div id="page-day-0411" class="page">
+      <div class="page-header">
+        <div class="page-title">04-11 日记</div>
+        <div class="page-subtitle">2026年4月11日 · 星期六</div>
+      </div>
+      <div id="diary-content-0411" class="page-body" style="padding:20px;color:var(--gray)" data-i18n="diaryNavLoading">点击左侧栏日期加载</div>
+    </div>
+
+    <div id="page-day-0410" class="page">
+      <div class="page-header">
+        <div class="page-title">04-10 日记</div>
+        <div class="page-subtitle">2026年4月10日 · 星期五</div>
+      </div>
+      <div id="diary-content-0410" class="page-body" style="padding:20px;color:var(--gray)" data-i18n="diaryNavLoading">点击左侧栏日期加载</div>
+    </div>
+
+    <div id="page-day-0409" class="page">
+      <div class="page-header">
+        <div class="page-title">04-09 日记</div>
+        <div class="page-subtitle">2026年04月09日 · 星期四</div>
+        <div class="page-badge">📝 <span data-i18n="detailedDiary">详细日记</span></div>
+      </div>
+      <div id="diary-content-0409" class="page-body" style="padding:20px;color:var(--gray)" data-i18n="diaryNavLoading">点击左侧栏日期加载</div>
+    </div>
+
+    <div id="page-day-0408" class="page">
+      <div class="page-header">
+        <div class="page-title">04-08 日记</div>
+        <div class="page-subtitle">2026年04月08日 · 星期三</div>
+        <div class="page-badge">📝 <span data-i18n="detailedDiary">详细日记</span></div>
+      </div>
+      <div id="diary-content-0408" class="page-body" style="padding:20px;color:var(--gray)" data-i18n="diaryNavLoading">点击左侧栏日期加载</div>
+    </div>
+
+    <div id="page-day-0407" class="page">
+      <div class="page-header">
+        <div class="page-title">04-07 日记</div>
+        <div class="page-subtitle">2026年04月07日 · 星期二</div>
+        <div class="page-badge">📝 <span data-i18n="detailedDiary">详细日记</span></div>
+      </div>
+      <div id="diary-content-0407" class="page-body" style="padding:20px;color:var(--gray)" data-i18n="diaryNavLoading">点击左侧栏日期加载</div>
+    </div>
+
+    <div id="page-day-0406" class="page">
+      <div class="page-header">
+        <div class="page-title">04-06 日记</div>
+        <div class="page-subtitle">2026年04月06日 · 星期一</div>
+        <div class="page-badge">📝 <span data-i18n="detailedDiary">详细日记</span></div>
+      </div>
+      <div id="diary-content-0406" class="page-body" style="padding:20px;color:var(--gray)" data-i18n="diaryNavLoading">点击左侧栏日期加载</div>
+    </div>
+
+    <div id="page-day-0405" class="page">
+      <div class="page-header">
+        <div class="page-title">04-05 日记</div>
+        <div class="page-subtitle">2026年04月05日 · 星期日</div>
+        <div class="page-badge">📝 <span data-i18n="detailedDiary">详细日记</span></div>
+      </div>
+      <div id="diary-content-0405" class="page-body" style="padding:20px;color:var(--gray)" data-i18n="diaryNavLoading">点击左侧栏日期加载</div>
+    </div>
+
+    <div id="page-day-0404" class="page">
+      <div class="page-header">
+        <div class="page-title">04-04 日记</div>
+        <div class="page-subtitle">2026年04月04日 · 星期六</div>
+        <div class="page-badge">📝 <span data-i18n="detailedDiary">详细日记</span></div>
+      </div>
+      <div id="diary-content-0404" class="page-body" style="padding:20px;color:var(--gray)" data-i18n="diaryNavLoading">点击左侧栏日期加载</div>
+    </div>
+
+    <div id="page-day-0403" class="page">
+      <div class="page-header">
+        <div class="page-title">04-03 日记</div>
+        <div class="page-subtitle">2026年04月03日 · 星期五</div>
+        <div class="page-badge">📝 <span data-i18n="detailedDiary">详细日记</span></div>
+      </div>
+      <div id="diary-content-0403" class="page-body" style="padding:20px;color:var(--gray)" data-i18n="diaryNavLoading">点击左侧栏日期加载</div>
+    </div>
+
+
+</main>
+
+<!-- ═══════════════════ MODAL / SUBPAGE ═══════════════════ -->
+<div class="modal-overlay" id="modal">
+  <div class="modal-panel" id="modal-panel">
+    <div class="modal-header">
+      <button class="modal-back" onclick="modalBack()" data-i18n="modalBack">← 返回</button>
+      <div class="modal-title" id="modal-title"></div>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+
+  <div id="aaEditorOverlay" class="aa-editor-overlay" onclick="if(event.target===this)closeEditor()">
+    <div class="aa-editor-modal">
+      <div class="aa-editor-header">
+        <div class="aa-editor-title" id="aaEditorTitle">Editor</div>
+        <button class="modal-close" onclick="closeEditor()" aria-label="关闭" data-i18n-aria-label="close" style="color:#888; background:none; border:none; font-size:20px; cursor:pointer">✕</button>
+      </div>
+      <div class="aa-editor-body">
+        <textarea id="aaEditorTextarea" class="aa-editor-textarea" spellcheck="false"></textarea>
+      </div>
+      <div class="aa-editor-footer">
+        <button class="btn btn-cancel" onclick="closeEditor()" data-i18n="cancel" style="background:#3e3e42; color:white; border:none; padding:8px 16px; border-radius:6px; cursor:pointer">取消</button>
+        <button class="btn btn-save" onclick="saveFile()" style="background:var(--purple); color:white; border:none; padding:8px 20px; border-radius:6px; cursor:pointer; font-weight:600">💾 <span data-i18n="saveChanges">保存修改</span></button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/app.js?v=20260630-aiassets1"></script>
 </body>
 </html>
