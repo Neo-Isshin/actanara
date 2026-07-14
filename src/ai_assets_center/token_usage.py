@@ -9,6 +9,7 @@ SRC_DIR = Path(__file__).resolve().parents[1]
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+from data_foundation.session_files import is_openclaw_session_file
 from data_foundation.settings import external_tool_path
 
 
@@ -26,10 +27,7 @@ def is_session_file(fname):
     排除: *.jsonl.lock    — 文件锁
     排除: sessions.json   — session 索引
     """
-    return ('.jsonl' in fname and
-            '.checkpoint' not in fname and
-            not fname.endswith('.lock') and
-            fname != 'sessions.json')
+    return is_openclaw_session_file(fname)
 
 
 def parse_sessions(agents_dir, days=1):

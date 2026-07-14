@@ -209,7 +209,11 @@ test("static dashboard demo exposes the curated real Dashboard pages", async ({ 
   test.slow();
   await page.goto(dashboardDemoUrl);
 
-  await expect(page).toHaveTitle("Agent Dashboard — 周报 & 日记录");
+  await expect(page).toHaveTitle("Open Nova");
+  for (const profile of ["en", "zh"]) {
+    await page.evaluate(value => window.applyStaticDashboardText(value), profile);
+    await expect(page).toHaveTitle("Open Nova");
+  }
   await expect(page.locator("#page-overview")).toBeVisible();
   await expect(page.locator("#page-overview .page-title")).toHaveText("当日实时总览");
   await expect(page.locator("#agentTableContainer")).toContainText("活跃");
@@ -243,8 +247,56 @@ test("static dashboard demo exposes the curated real Dashboard pages", async ({ 
 
   await expect(page.locator('a[href="tasks.html"]').first()).toHaveAttribute("href", "tasks.html");
   await page.goto(new URL("tasks.html", dashboardDemoUrl).href);
-  await expect(page).toHaveTitle("任务看板 — Dashboard");
+  await expect(page).toHaveTitle("Open Nova — Nova Task");
+  for (const profile of ["en", "zh"]) {
+    await page.evaluate(value => {
+      taskLanguageProfile = value;
+      applyTaskText();
+    }, profile);
+    await expect(page).toHaveTitle("Open Nova — Nova Task");
+  }
   await expect(page.getByRole("heading", { name: "任务看板", exact: true })).toBeVisible();
+});
+
+test("static dashboard demo aggregates both SSE transports without conflating source health", async ({ page }) => {
+  await page.goto(dashboardDemoUrl);
+  const status = page.locator("#sseStatus");
+  await expect(status).toHaveText("🟢 已连接");
+
+  await page.evaluate(() => {
+    OPEN_NOVA_SSE_STREAM_STATES.clear();
+    updateSseStreamState("tokens", { transport: "connecting", retrySeconds: 0, sourceWarnings: [] });
+    updateSseStreamState("tasks", { transport: "connecting", retrySeconds: 0, sourceWarnings: [] });
+    updateSseStreamState("tokens", { transport: "connected" });
+  });
+  await expect(status).toHaveText("⏳ 连接中");
+
+  await page.evaluate(() => {
+    updateSseStreamState("tasks", { transport: "connected" });
+  });
+  await expect(status).toHaveText("🟢 已连接");
+
+  await page.evaluate(() => {
+    const sourceWarnings = sseSourceWarnings({
+      dashboardState: {
+        status: "degraded",
+        sourceErrors: [{ source: "token-clock", code: "scan-failed" }],
+      },
+    });
+    updateSseStreamState("tokens", { transport: "connected", sourceWarnings });
+  });
+  await expect(status).toHaveText("🟢 已连接");
+  await expect(status).toHaveAttribute("data-source-health", "degraded");
+  await expect(status).toHaveAttribute("aria-label", /数据源告警：token-clock: scan-failed/);
+
+  await page.evaluate(() => {
+    updateSseStreamState("tokens", {
+      transport: "reconnecting",
+      retrySeconds: 2,
+      sourceWarnings: [],
+    });
+  });
+  await expect(status).toHaveText("🔴 重连 2s");
 });
 
 test("static dashboard demo has no horizontal overflow", async ({ page }) => {

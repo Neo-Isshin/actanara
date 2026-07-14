@@ -123,7 +123,12 @@ function dashboardStateFailed(payload) {
 function dashboardStateSummary(payload) {
   const state = dashboardStateOf(payload);
   const errors = Array.isArray(state.sourceErrors) ? state.sourceErrors : [];
-  return errors.map(item => item && (item.code || item.source)).filter(Boolean).join(', ') || state.status;
+  return errors.map(item => {
+    if (!item || typeof item !== 'object') return '';
+    const source = String(item.source || '').trim();
+    const code = String(item.code || '').trim();
+    return source && code ? source + ': ' + code : code || source;
+  }).filter(Boolean).join(', ') || state.status;
 }
 
 function toggleSection(el) {
@@ -445,7 +450,7 @@ const DASHBOARD_TEXT = {
 
 const DASHBOARD_SHELL_TEXT = {
   zh: {
-    documentTitle: 'Agent Dashboard — 周报 & 日记录',
+    documentTitle: 'Open Nova',
     sseConnecting: '⏳ 连接中',
     navOverview: '总览',
     navTodayOverview: '当日实时总览',
@@ -564,7 +569,7 @@ const DASHBOARD_SHELL_TEXT = {
     modalBack: '← 返回',
   },
   en: {
-    documentTitle: 'Agent Dashboard — Reports & Daily Logs',
+    documentTitle: 'Open Nova',
     sseConnecting: '⏳ Connecting',
     navOverview: 'Overview',
     navTodayOverview: 'Today Live Overview',
@@ -2242,6 +2247,7 @@ function applyStaticDashboardText(profile) {
       el.setAttribute('aria-label', labels[key]);
     }
   });
+  renderSseConnectionStatus();
 }
 
 function rememberDashboardSettings(settings) {
@@ -11322,16 +11328,76 @@ function showAllTasks() {
 }
 
 
+const OPEN_NOVA_SSE_STREAM_STATES = new Map();
+
+function sseSourceWarnings(payload) {
+  const state = dashboardStateOf(payload);
+  const errors = Array.isArray(state.sourceErrors) ? state.sourceErrors : [];
+  const warnings = errors.map(item => {
+    if (!item || typeof item !== 'object') return '';
+    const source = String(item.source || '').trim();
+    const code = String(item.code || '').trim();
+    return source && code ? source + ': ' + code : code || source;
+  }).filter(Boolean);
+  if (!warnings.length && dashboardStateFailed(payload)) {
+    warnings.push(String(state.status || 'unavailable'));
+  }
+  return warnings;
+}
+
+function updateSseStreamState(label, patch) {
+  const key = String(label || 'stream');
+  const previous = OPEN_NOVA_SSE_STREAM_STATES.get(key) || {
+    transport: 'connecting',
+    retrySeconds: 0,
+    sourceWarnings: [],
+  };
+  OPEN_NOVA_SSE_STREAM_STATES.set(key, {...previous, ...(patch || {})});
+  renderSseConnectionStatus();
+}
+
+function renderSseConnectionStatus() {
+  const el = document.getElementById('sseStatus');
+  if (!el) return;
+
+  const states = Array.from(OPEN_NOVA_SSE_STREAM_STATES.values());
+  const pending = states.filter(state => state.transport !== 'connected');
+  const retrying = pending.find(state => state.transport === 'reconnecting');
+  if (!states.length || pending.length) {
+    if (retrying) {
+      el.textContent = taskBoardText().reconnecting(Number(retrying.retrySeconds || 1));
+      el.style.color = 'var(--ruby)';
+    } else {
+      el.textContent = dashboardShellText().sseConnecting;
+      el.style.color = 'var(--slate)';
+    }
+  } else {
+    el.textContent = taskBoardText().connected;
+    el.style.color = 'var(--success)';
+  }
+
+  const warnings = Array.from(new Set(states.reduce((all, state) => {
+    return all.concat(Array.isArray(state.sourceWarnings) ? state.sourceWarnings : []);
+  }, [])));
+  el.dataset.sourceHealth = warnings.length ? 'degraded' : 'ready';
+  const warningPrefix = dashboardLanguageProfile() === 'en' ? 'Data source warning: ' : '数据源告警：';
+  const accessibleText = warnings.length
+    ? el.textContent + '; ' + warningPrefix + warnings.join(', ')
+    : el.textContent;
+  el.title = accessibleText;
+  el.setAttribute('aria-label', accessibleText);
+}
+
 function connectSSE(url, onData, label) {
   let retryDelay = 1000;
   const maxDelay = 30000;
 
   function connect() {
+    updateSseStreamState(label, {transport: 'connecting', retrySeconds: 0});
     const es = new EventSource(url);
 
     es.onopen = () => {
-      document.getElementById('sseStatus').textContent = taskBoardText().connected;
-      document.getElementById('sseStatus').style.color = 'var(--success)';
+      updateSseStreamState(label, {transport: 'connected', retrySeconds: 0});
       retryDelay = 1000;
     };
 
@@ -11339,13 +11405,7 @@ function connectSSE(url, onData, label) {
       retryDelay = 1000;
       try {
         const data = JSON.parse(e.data);
-        if (dashboardStateFailed(data)) {
-          document.getElementById('sseStatus').textContent = '⚠ ' + dashboardStateSummary(data);
-          document.getElementById('sseStatus').style.color = 'var(--ruby)';
-        } else {
-          document.getElementById('sseStatus').textContent = taskBoardText().connected;
-          document.getElementById('sseStatus').style.color = 'var(--success)';
-        }
+        updateSseStreamState(label, {transport: 'connected', sourceWarnings: sseSourceWarnings(data)});
         onData(data);
       } catch (err) {
         console.error('SSE parse error:', err);
@@ -11354,8 +11414,10 @@ function connectSSE(url, onData, label) {
 
     es.onerror = () => {
       es.close();
-      document.getElementById('sseStatus').textContent = taskBoardText().reconnecting(Math.round(retryDelay / 1000));
-      document.getElementById('sseStatus').style.color = 'var(--ruby)';
+      updateSseStreamState(label, {
+        transport: 'reconnecting',
+        retrySeconds: Math.round(retryDelay / 1000),
+      });
       setTimeout(connect, retryDelay);
       retryDelay = Math.min(retryDelay * 2, maxDelay);
     };

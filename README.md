@@ -152,6 +152,8 @@ bootstrap="$(curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 --conn
 | `~/Desktop/Open Nova` | Desktop shortcut to the diary directory, created by default |
 | `~/Library/LaunchAgents/` | User-level macOS Dashboard, Scheduler, and optional RAG services |
 
+The default shell-profile update can be disabled with `--no-shell-path`, or redirected explicitly with `--shell-path-file /path/to/profile`.
+
 When `nova-RAG` is enabled and external agent runtimes are selected in the wizard, the installer can also register missing read-only retrieval skills. Existing skills are never overwritten implicitly.
 
 ### 2. Basic Verification

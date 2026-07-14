@@ -174,6 +174,25 @@ class UnifiedSourceCollectorTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
+            (sessions / "session.jsonl.codex-app-server.json").write_text(
+                "\n".join(
+                    json.dumps(row, ensure_ascii=False)
+                    for row in [
+                        {
+                            "type": "message",
+                            "timestamp": "2026-05-22T10:31:18Z",
+                            "message": {"role": "user", "content": "sidecar must stay private"},
+                        },
+                        {
+                            "type": "message",
+                            "timestamp": "2026-05-22T10:32:18Z",
+                            "message": {"role": "assistant", "content": "sidecar must not be archived"},
+                        },
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
 
             with patch.dict("os.environ", {"TARGET_TIMEZONE": "Asia/Hong_Kong"}, clear=False), patch.object(
                 collector, "external_tool_path", return_value=root / ".openclaw" / "agents"

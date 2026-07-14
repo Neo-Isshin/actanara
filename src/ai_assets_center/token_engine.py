@@ -14,6 +14,7 @@ import re
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
+from data_foundation.session_files import is_openclaw_session_file
 from data_foundation.settings import default_external_tool_path, external_tool_path
 from data_foundation.time import business_window
 from data_foundation.token_semantics import normalize_cached_input_detail
@@ -90,11 +91,8 @@ def get_hkt_window(target_date_str=None):
     except: return None, None
 
 def is_session_file(fname):
-    """权威过滤：排除轨迹和备份，防重复计数"""
-    if '.jsonl' not in fname: return False
-    exclude = ['.bak', '.trajectory.jsonl', '.checkpoint.', '.lock', '.tmp']
-    if any(x in fname for x in exclude): return False
-    return (fname.endswith('.jsonl') or '.jsonl.reset.' in fname or '.jsonl.deleted.' in fname)
+    """权威过滤：只纳入受支持的 OpenClaw session JSONL 文件。"""
+    return is_openclaw_session_file(fname)
 
 def scan_tokens(target_date_str=None):
     """

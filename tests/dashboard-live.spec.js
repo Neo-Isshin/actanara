@@ -226,6 +226,9 @@ test("real Dashboard release gate", async ({ browser, playwright }, testInfo) =>
         await localeOverlay(page, "zh-CN");
         await page.goto(`${target.origin}/dashboard`, { waitUntil: "domcontentloaded" });
         await waitForShell(page);
+        await expect(page).toHaveTitle("Open Nova");
+        await expect(page.locator("#sseStatus")).toHaveText("🟢 已连接", { timeout: 20_000 });
+        await expect(page.locator("#sseStatus")).toHaveAttribute("data-source-health", "ready");
         const routeStates = [];
         for (const [selector, pageId] of [
           ['aside.sidebar [data-page-id="page-overview"]', "page-overview"],
@@ -237,7 +240,12 @@ test("real Dashboard release gate", async ({ browser, playwright }, testInfo) =>
         await screenshot(page, "desktop-zh-canonical.png", screenshots);
         expect(routeStates.every(state => state.activeCount === 1 && state.ariaHidden === "false" && state.headingFocused && state.headingRole === "heading")).toBe(true);
         expect(noOverflow(overflow)).toBe(true);
-        return { routeCount: routeStates.length, overflow };
+        return {
+          routeCount: routeStates.length,
+          overflow,
+          title: await page.title(),
+          connectionStatus: await page.locator("#sseStatus").textContent(),
+        };
       },
     ));
 

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 from collections import defaultdict
 import config
+from data_foundation.session_files import is_openclaw_session_file
 from data_foundation.time import DEFAULT_BUSINESS_DAY_START_HOUR, business_date_for, resolve_timezone
 from data_foundation.settings import default_external_tool_settings, external_tool_path, resolve_external_tool_paths
 from data_foundation.token_semantics import (
@@ -81,8 +82,8 @@ def _collect_openclaw_session_files(base: Path) -> dict[str, Path]:
     """收集所有 OpenClaw session JSONL 文件，按 session ID 去重。
 
     规则：
-    - 文件名包含 'jsonl' 即纳入
-    - 排除: checkpoint, trajectory, lock, sessions.json
+    - 只纳入 .jsonl、.jsonl.reset.*、.jsonl.deleted.*
+    - 排除 metadata sidecar、checkpoint、trajectory、lock、sessions.json
     - 同一 session ID 有多个文件时，取 mtime 最新的
     - 返回 {session_id: file_path}
     """
@@ -97,11 +98,7 @@ def _collect_openclaw_session_files(base: Path) -> dict[str, Path]:
             continue
         for f in sess_dir.iterdir():
             fn = f.name
-            # Must contain 'jsonl'
-            if "jsonl" not in fn:
-                continue
-            # Exclusions
-            if "checkpoint" in fn or "trajectory" in fn or fn.endswith(".lock") or fn == "sessions.json":
+            if not is_openclaw_session_file(fn):
                 continue
             # Extract session ID (UUID before first .jsonl or .jsonl.)
             import re
@@ -416,20 +413,22 @@ def _scan_codex(today_str: str, current_hour: int) -> list[dict]:
                 try:
                     obj = json.loads(line)
                     valid_json_lines += 1
+                    if not isinstance(obj, dict):
+                        continue
+                    payload = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
                     if obj.get("type") == "session_meta":
-                        cwd = obj.get("payload", {}).get("cwd", "")
+                        cwd = payload.get("cwd", "")
                         if cwd:
                             group = _usage_group_for_source("codex", raw_path=f, cwd=cwd, fallback=group)
                         continue
                     if obj.get("type") == "turn_context":
-                        current_model = _codex_model_from_payload(obj.get("payload", {})) or current_model
+                        current_model = _codex_model_from_payload(payload) or current_model
                         continue
                     if obj.get("type") != "event_msg":
                         continue
-                    payload = obj.get("payload", {})
                     if payload.get("type") != "token_count":
                         continue
-                    info = payload.get("info", {})
+                    info = payload.get("info") if isinstance(payload.get("info"), dict) else {}
                     usage = info.get("last_token_usage")
                     if not usage:
                         continue

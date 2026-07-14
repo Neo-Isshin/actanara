@@ -194,10 +194,63 @@ class DashboardStaticContractTests(unittest.TestCase):
         self.assertIn(".tree-node-row:focus-within .node-actions", tasks)
         self.assertIn('role="dialog" aria-modal="true"', tasks)
 
-    def test_dashboard_title_and_ai_tool_coming_soon_card(self):
-        html = (ROOT / "src" / "dashboard" / "app" / "static" / "index.html").read_text(encoding="utf-8")
+    def test_dashboard_titles_are_canonical_across_runtime_and_static_demo(self):
+        surfaces = {
+            "runtime": ROOT / "src" / "dashboard" / "app" / "static",
+            "static-demo": ROOT / "docs" / "dashboard-demo",
+        }
+
+        for name, base in surfaces.items():
+            with self.subTest(surface=name):
+                html = (base / "index.html").read_text(encoding="utf-8")
+                script = (base / "js" / "app.js").read_text(encoding="utf-8")
+                tasks = (base / "tasks.html").read_text(encoding="utf-8")
+                dashboard_shell = script.split("const DASHBOARD_SHELL_TEXT =", 1)[1].split(
+                    "const FOUNDATION_TEXT =", 1
+                )[0]
+                task_text = tasks.split("const TASK_TEXT =", 1)[1].split("function taskText", 1)[0]
+
+                self.assertIn("<title>Open Nova</title>", html)
+                self.assertEqual(
+                    re.findall(r"documentTitle:\s*'([^']+)'", dashboard_shell),
+                    ["Open Nova", "Open Nova"],
+                )
+                self.assertIn("<title>Open Nova — Nova Task</title>", tasks)
+                self.assertEqual(
+                    re.findall(r"documentTitle:\s*'([^']+)'", task_text),
+                    ["Open Nova — Nova Task", "Open Nova — Nova Task"],
+                )
+                legacy_dashboard_brand = "Agent" + " Dashboard"
+                legacy_task_title = "任务看板 — " + "Dashboard"
+                self.assertNotIn(legacy_dashboard_brand, html + script + tasks)
+                self.assertNotIn(legacy_task_title, tasks)
+
+    def test_dashboard_sse_status_aggregates_transport_and_source_health(self):
+        scripts = {
+            "runtime": ROOT / "src" / "dashboard" / "app" / "static" / "js" / "app.js",
+            "static-demo": ROOT / "docs" / "dashboard-demo" / "js" / "app.js",
+        }
+
+        for name, path in scripts.items():
+            with self.subTest(surface=name):
+                script = path.read_text(encoding="utf-8")
+                status = script.split("const OPEN_NOVA_SSE_STREAM_STATES", 1)[1].split(
+                    "// ── Initialize SSE connections", 1
+                )[0]
+                connections = script.split("// ── Initialize SSE connections", 1)[1]
+
+                self.assertIn("const OPEN_NOVA_SSE_STREAM_STATES = new Map()", script)
+                self.assertIn("const pending = states.filter(state => state.transport !== 'connected')", status)
+                self.assertIn("if (!states.length || pending.length)", status)
+                self.assertIn("state.transport === 'reconnecting'", status)
+                self.assertIn("el.dataset.sourceHealth = warnings.length ? 'degraded' : 'ready'", status)
+                self.assertIn("transport: 'connected', sourceWarnings: sseSourceWarnings(data)", status)
+                self.assertIn("transport: 'reconnecting'", status)
+                self.assertIn("connectSSE('/events/tokens',", connections)
+                self.assertIn("connectSSE('/events/tasks',", connections)
+
+    def test_ai_tool_coming_soon_card(self):
         script = (ROOT / "src" / "dashboard" / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
-        self.assertIn("<title>Open Nova dashboard</title>", html)
         self.assertIn("更多 AI 工具支持 coming soon", script)
         self.assertIn("aa-tool-coming-soon", script)
 

@@ -18,7 +18,6 @@ class PublicSourceBoundaryTests(unittest.TestCase):
             "docs/llm-provider-operations.md",
             "docs/pipeline-language-parity-matrix.md",
             "docs/foundation-daily-qa-repair-execution-policy.md",
-            "docs/assets/dashboard",
             "advanced/pipeline/run_phase6_enablement_readiness.py",
             "advanced/pipeline/run_phase6_pipeline_output_observation.py",
             "advanced/pipeline/run_phase6_pipeline_smoke.py",
@@ -37,12 +36,29 @@ class PublicSourceBoundaryTests(unittest.TestCase):
         self.assertTrue(
             (ROOT / "tests" / "fixtures" / "onboarding" / "runtime-dry-run-contract.json").is_file()
         )
+        dashboard_assets = ROOT / "docs" / "assets" / "dashboard"
+        self.assertEqual(
+            {path.name for path in dashboard_assets.iterdir() if path.is_file()},
+            {
+                "dashboard-ai-assets-long.png",
+                "dashboard-ai-assets-overview.png",
+                "dashboard-home.png",
+                "dashboard-nova-rag.png",
+                "dashboard-nova-task.png",
+                "dashboard-weekly-full.png",
+                "dashboard-weekly-overview.png",
+            },
+        )
+        for path in dashboard_assets.iterdir():
+            if path.is_file():
+                with self.subTest(curated_dashboard_asset=path.name):
+                    self.assertTrue(path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
 
     def test_supported_advanced_runtime_wrappers_are_exact(self):
         actual = {
             path.relative_to(ROOT).as_posix()
             for path in (ROOT / "advanced").rglob("*")
-            if path.is_file()
+            if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc"
         }
         self.assertEqual(
             actual,

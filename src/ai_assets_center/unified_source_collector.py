@@ -17,6 +17,7 @@ import re
 from pathlib import Path
 from datetime import datetime
 from data_foundation.paths import load_paths
+from data_foundation.session_files import is_openclaw_session_file
 from data_foundation.settings import default_external_tool_path, external_tool_path
 from data_foundation.time import business_today, business_window, parse_timestamp, resolve_timezone
 
@@ -461,7 +462,7 @@ def collect_openclaw_agents(path, cfg, target_date, start_ts, end_ts):
         daily_unified = []
         seen_entries = set()
         for fpath in sorted(sessions_dir.glob(pattern)):
-            if not is_session_file(fpath.name):
+            if not is_openclaw_session_file(fpath.name):
                 continue
             entries = []
             try:

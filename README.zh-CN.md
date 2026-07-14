@@ -152,6 +152,8 @@ bootstrap="$(curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 --conn
 | `~/Desktop/Open Nova` | 默认创建指向日记目录的快捷链接 |
 | `~/Library/LaunchAgents/` | macOS 用户级 Dashboard、Scheduler 和可选 RAG 服务 |
 
+默认 Shell profile 写入可用 `--no-shell-path` 禁用，也可用 `--shell-path-file /path/to/profile` 显式指定目标文件。
+
 启用 `nova-RAG` 并在向导中选择外部 Agent Runtime 时，安装器还可以注册缺失的只读检索 Skill；已有 Skill 不会被隐式覆盖。
 
 ### 2. 基础验证
@@ -475,7 +477,7 @@ python -B -m tools.release.build_release \
 
 Copyright © 2026 Neo-Isshin.
 
-Open Nova 是自由软件，采用 <a href="LICENSE">GNU 通用公共许可证第 3 版或任何后续版本</a>，SPDX 标识为 `GPL-3.0-or-later`。
+Open Nova 是自由软件，采用 [GNU 通用公共许可证第 3 版或任何后续版本](LICENSE)，SPDX 标识为 `GPL-3.0-or-later`。
 
 ## 🙏 致谢
 

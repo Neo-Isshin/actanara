@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Iterable, Iterator
 
 from ..paths import RuntimePaths
+from ..session_files import is_openclaw_session_file
 from ..settings import default_external_tool_path, external_tool_path, resolve_external_tool_paths
 from ..time import parse_timestamp
 from ..token_semantics import normalize_cached_input_detail
@@ -88,11 +89,10 @@ class OpenClawAdapter(UsageAdapter):
     def discover_sources(self) -> Iterable[SourceArtifact]:
         if not self.root.exists():
             return ()
-        excluded = (".bak", ".trajectory.jsonl", ".checkpoint.", ".lock", ".tmp")
         return (
             SourceArtifact(self.tool_key, path, "session_jsonl")
             for path in self.root.glob("*/sessions/*.jsonl*")
-            if ".jsonl" in path.name and not any(part in path.name for part in excluded)
+            if is_openclaw_session_file(path.name)
         )
 
     def read_incremental(self, artifact: SourceArtifact, cursor: Cursor | None = None) -> Iterable[NormalizedEvent]:

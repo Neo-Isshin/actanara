@@ -7,6 +7,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Dict, Any
 from data_foundation.settings import default_external_tool_path, external_tool_path
+from data_foundation.session_files import is_openclaw_session_file
 from data_foundation.time import parse_timestamp, resolve_timezone
 from data_foundation.token_semantics import (
     authoritative_semantics,
@@ -35,10 +36,7 @@ def _is_session_file(fname: str) -> bool:
     排除: *.jsonl.lock    — 文件锁
     排除: sessions.json   — session 索引
     """
-    return ('.jsonl' in fname and
-            '.checkpoint' not in fname and
-            not fname.endswith('.lock') and
-            fname != 'sessions.json')
+    return is_openclaw_session_file(fname)
 
 
 def _agents_dir() -> Path:
