@@ -2,6 +2,45 @@
 
 All notable public changes to Open Nova are documented here.
 
+## [1.0.2] - 2026-07-14
+
+### Added
+
+- Add an exact, hash-verified Runtime dependency lock for every supported
+  CPython ABI and macOS architecture, distinct from the release-tooling lock.
+- Persist an immutable dependency manifest in every new venv generation and
+  derive update decisions from its normalized dependency fingerprint.
+- Add explicit `--source-only`, `--force-rebuild`, and `--offline` update
+  controls plus truthful human/JSON execution results.
+- Publish a version-independent `install.sh` asset with every stable Release so
+  the public one-liner always resolves through GitHub's latest stable channel.
+
+### Changed
+
+- Reuse the active venv without invoking pip or dependency networking when its
+  full dependency contract matches; otherwise build an isolated candidate venv
+  from a persistent, verified wheel cache before atomically switching pointers.
+- Preserve Settings-selected RAG profiles and marker-selected operational
+  profiles across updates, including compatibility with v1.0.1 update flags.
+- Treat the active source manifest as the Runtime product-version authority;
+  stale `open_nova-*.dist-info` in a reused venv is not refreshed in place.
+- Publish the real Dashboard static demo and refreshed bilingual product and
+  operations documentation.
+
+### Fixed
+
+- Keep Dashboard transport connectivity separate from source-health status,
+  restore canonical Open Nova titles, and harden session and token discovery.
+
+### Security and release integrity
+
+- Bind Settings bytes, active venv identity, and dependency-marker state into
+  the update transaction and revalidate them before any managed service stop.
+- Fail closed before service changes for unsafe profile evidence, unsupported
+  lock targets, incompatible source-only requests, and offline cache misses.
+- Preserve old source/venv generations for rollback and report incomplete
+  rollback state as unknown instead of claiming pointers were unchanged.
+
 ## [1.0.1] - 2026-07-13
 
 ### Fixed
@@ -52,5 +91,6 @@ managed background services executing an older concrete source directory.
 - Runtime secrets remain in the Runtime-local private secret store and are
   excluded from source and release artifacts.
 
+[1.0.2]: https://github.com/Neo-Isshin/open-nova/releases/tag/v1.0.2
 [1.0.1]: https://github.com/Neo-Isshin/open-nova/releases/tag/v1.0.1
 [1.0.0]: https://github.com/Neo-Isshin/open-nova/releases/tag/v1.0.0

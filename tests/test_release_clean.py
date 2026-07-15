@@ -59,6 +59,25 @@ def _pre_scan_runtime_source_manifest() -> dict[str, object]:
 
 
 class ReleaseCleanTests(unittest.TestCase):
+    def test_runtime_dependency_authority_and_lock_generator_are_release_clean(self):
+        relative_paths = (
+            "install/dependency_contract.py",
+            "install/runtime-dependencies.lock.json",
+            "tools/release/generate_runtime_lock.py",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for relative in relative_paths:
+                target = root / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes((ROOT / relative).read_bytes())
+
+            payload = repository_clean_deployment_check(root)
+
+        self.assertEqual(payload["status"], "passed")
+        self.assertEqual(payload["scannedFiles"], len(relative_paths))
+        self.assertEqual(payload["findings"], [])
+
     def test_clean_deployment_check_passes_secret_refs(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

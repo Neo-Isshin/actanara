@@ -3,6 +3,7 @@ import http.server
 import json
 import os
 import plistlib
+import re
 import signal
 import shutil
 import sqlite3
@@ -25,6 +26,7 @@ IMMUTABLE_TEST_COMMIT = "a" * 40
 
 from data_foundation.paths import initialize_home
 from data_foundation.settings import write_settings
+from install import dependency_contract as runtime_dependency_contract
 
 
 class InstallerV2Tests(unittest.TestCase):
@@ -210,16 +212,150 @@ esac
         (runtime / "app" / "source").symlink_to("releases/old-release")
         return release
 
+    def _locked_distribution_probe_payload(self) -> str:
+        lock_path = ROOT / "install" / "runtime-dependencies.lock.json"
+        pyproject_path = ROOT / "pyproject.toml"
+        dashboard = runtime_dependency_contract.load_contract_selection(
+            lock_path,
+            pyproject_path,
+            ("dashboard",),
+            python=sys.executable,
+        )
+        lock = json.loads(lock_path.read_text(encoding="utf-8"))
+        supported = lock["environments"][dashboard.environment_id]["supportedProfiles"]
+        selection = runtime_dependency_contract.load_contract_selection(
+            lock_path,
+            pyproject_path,
+            supported,
+            python=sys.executable,
+        )
+        return json.dumps(
+            {
+                "distributions": [
+                    {"name": item["name"], "version": item["version"]}
+                    for item in selection.distributions
+                ]
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+
+    def _write_trusted_runtime_venv(
+        self,
+        runtime: Path,
+        *,
+        profiles: tuple[str, ...] = ("dashboard",),
+        generation: str = "old-venv",
+    ) -> Path:
+        selection = runtime_dependency_contract.load_contract_selection(
+            ROOT / "install" / "runtime-dependencies.lock.json",
+            ROOT / "pyproject.toml",
+            profiles,
+            python=sys.executable,
+        )
+        venv = runtime / "app" / "venvs" / generation
+        python = venv / "bin" / "python"
+        python.parent.mkdir(parents=True, exist_ok=True)
+        live_payload = json.dumps(
+            {
+                "distributions": [
+                    {"name": item["name"], "version": item["version"]}
+                    for item in selection.distributions
+                ]
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        python.write_text(
+            "#!/bin/zsh\n"
+            "set -eu\n"
+            f"if [[ \"${{1:-}}\" == \"-I\" && \"${{2:-}}\" == \"-B\" && \"${{3:-}}\" == \"-c\" && \"${{4:-}}\" == *\"importlib.metadata\"* ]]; then\n"
+            f"  print -r -- {json.dumps(live_payload)}\n"
+            "fi\n"
+            "exit 0\n",
+            encoding="utf-8",
+        )
+        python.chmod(0o755)
+        marker = venv / runtime_dependency_contract.MARKER_NAME
+        marker.write_text(
+            json.dumps(selection.marker_payload(), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            + "\n",
+            encoding="utf-8",
+        )
+        marker.chmod(0o444)
+        pointer = runtime / ".venv"
+        pointer.parent.mkdir(parents=True, exist_ok=True)
+        pointer.symlink_to(Path("app") / "venvs" / generation)
+        settings = runtime / "config" / "settings.json"
+        settings.parent.mkdir(parents=True, exist_ok=True)
+        if not settings.exists():
+            rag_enabled = "rag-server" in profiles
+            embedding_mode = "local" if "rag-local" in profiles else "cloud"
+            settings.write_text(
+                json.dumps(
+                    {
+                        "features": {"rag": rag_enabled},
+                        "rag": {
+                            "enabled": rag_enabled,
+                            **(
+                                {"embedding": {"mode": embedding_mode}}
+                                if rag_enabled
+                                else {}
+                            ),
+                        },
+                    },
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            settings.chmod(0o600)
+        runtime_dependency_contract.verify_dependency_marker(venv, selection)
+        runtime_dependency_contract.validate_live_distributions(python, selection)
+        return venv
+
     def _write_fake_python(self, path: Path, log_path: Path) -> None:
+        locked_distributions = self._locked_distribution_probe_payload()
         path.write_text(
             f"""#!/bin/zsh
 set -eu
 print -r -- "$0 $*" >> "{log_path}"
-if [[ "${{1:-}}" == "-m" && "${{2:-}}" == "venv" ]]; then
+if [[ "${{1:-}}" == */dependency_contract.py ]]; then
+  case "${{2:-}}" in
+    runtime-profiles|cache-status|write-marker|verify-marker)
+      exec {sys.executable!r} "$@"
+      ;;
+    materialize-cache)
+      print -r -- '{{"schemaVersion":1,"status":"materialized"}}'
+      exit 0
+      ;;
+    install)
+      print -r -- '{{"schemaVersion":1,"status":"installed"}}'
+      exit 0
+      ;;
+  esac
+fi
+if [[ "${{1:-}}" == "-I" && "${{2:-}}" == "-B" && "${{3:-}}" == "-c" ]]; then
+  if [[ "${{4:-}}" == *"importlib.metadata"* ]]; then
+    print -r -- {json.dumps(locked_distributions)}
+    exit 0
+  fi
+  exec {sys.executable!r} "$@"
+elif [[ "${{1:-}}" == "-c" ]]; then
+  exec {sys.executable!r} "$@"
+elif [[ "${{1:-}}" == "-m" && "${{2:-}}" == "venv" ]]; then
   mkdir -p "$3/bin"
   cat > "$3/bin/python" <<'PYEOF'
 #!/usr/bin/env zsh
+set -eu
 print -r -- "$0 $*" >> "{log_path}"
+if [[ "${{1:-}}" == "-I" && "${{2:-}}" == "-B" && "${{3:-}}" == "-c" ]]; then
+  if [[ "${{4:-}}" == *"importlib.metadata"* ]]; then
+    print -r -- {json.dumps(locked_distributions)}
+    exit 0
+  fi
+  exec {sys.executable!r} "$@"
+fi
 exit 0
 PYEOF
   chmod +x "$3/bin/python"
@@ -329,6 +465,8 @@ if [[ "${{1:-}}" == "clone" ]]; then
   done
   mkdir -p "$target/install" "$target/.git" "$target/advanced/cli" "$target/advanced/dashboard" "$target/advanced/pipeline" "$target/src/dashboard/app/static" "$target/src/data_foundation/migrations"
   cp "{INSTALLER}" "$target/install/install.sh"
+  cp "{ROOT / 'install' / 'dependency_contract.py'}" "$target/install/dependency_contract.py"
+  cp "{ROOT / 'install' / 'runtime-dependencies.lock.json'}" "$target/install/runtime-dependencies.lock.json"
   cp "{ROOT / 'pyproject.toml'}" "$target/pyproject.toml"
   cp "{ROOT / 'MANIFEST.in'}" "$target/MANIFEST.in"
   cp "{ROOT / 'LICENSE'}" "$target/LICENSE"
@@ -339,6 +477,57 @@ if [[ "${{1:-}}" == "clone" ]]; then
 fi
 if [[ "${{1:-}}" == "-C" && "${{3:-}}" == "rev-parse" ]]; then
   print -r -- "{IMMUTABLE_TEST_COMMIT}"
+fi
+exit 0
+""",
+            encoding="utf-8",
+        )
+        path.chmod(0o755)
+
+    def _write_bootstrap_command_tripwire(self, path: Path, log_path: Path) -> None:
+        path.write_text(
+            f"""#!/usr/bin/env zsh
+set -eu
+print -r -- "$0 $*" >> "{log_path}"
+exit 97
+""",
+            encoding="utf-8",
+        )
+        path.chmod(0o755)
+
+    def _write_bootstrap_installer_probe(self, source_root: Path, log_path: Path) -> None:
+        installer = source_root / "install" / "install.sh"
+        installer.parent.mkdir(parents=True)
+        installer.write_text(
+            f"""#!/usr/bin/env zsh
+set -eu
+for argument in "$@"; do
+  print -r -- "$argument" >> "{log_path}"
+done
+""",
+            encoding="utf-8",
+        )
+        installer.chmod(0o755)
+
+    def _write_offline_cache_git(
+        self,
+        path: Path,
+        log_path: Path,
+        *,
+        source_url: str,
+        resolved_commit: str,
+    ) -> None:
+        path.write_text(
+            f"""#!/usr/bin/env zsh
+set -eu
+print -r -- "GIT_NO_LAZY_FETCH=${{GIT_NO_LAZY_FETCH:-unset}} GIT_ALLOW_PROTOCOL_SET=${{+GIT_ALLOW_PROTOCOL}} GIT_ALLOW_PROTOCOL_VALUE=<${{GIT_ALLOW_PROTOCOL-}}> GIT_TERMINAL_PROMPT=${{GIT_TERMINAL_PROMPT:-unset}} :: $0 $*" >> "{log_path}"
+if [[ " $* " == *" remote get-url origin "* ]]; then
+  print -r -- "{source_url}"
+  exit 0
+fi
+if [[ " $* " == *" rev-parse --verify "* ]]; then
+  print -r -- "{resolved_commit}"
+  exit 0
 fi
 exit 0
 """,
@@ -527,7 +716,7 @@ exit 1
             "~/.open-nova/bin/open-nova",
             "--upgrade",
             "https://github.com/Neo-Isshin/open-nova",
-            "https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.1/install/bootstrap.sh",
+            "https://github.com/Neo-Isshin/open-nova/releases/latest/download/install.sh",
         ):
             with self.subTest(token=token):
                 self.assertIn(token, runbook)
@@ -614,6 +803,7 @@ exit 1
             launch_agents.mkdir(parents=True)
             runtime.mkdir(parents=True)
             self._write_prior_runtime_source(runtime)
+            self._write_trusted_runtime_venv(runtime)
             source.mkdir()
             (source / "pyproject.toml").write_text(
                 '[project]\nname = "audit-fixture"\nversion = "0"\n',
@@ -694,11 +884,13 @@ exit 1
             state_dir.mkdir()
             runtime.mkdir(parents=True)
             self._write_prior_runtime_source(runtime)
+            self._write_trusted_runtime_venv(runtime)
             health_port = self._start_health_server()
-            (runtime / "config").mkdir()
             (runtime / "config" / "settings.json").write_text(
                 json.dumps(
                     {
+                        "features": {"rag": False},
+                        "rag": {"enabled": False},
                         "dashboard": {
                             "host": "127.0.0.1",
                             "port": health_port,
@@ -709,12 +901,6 @@ exit 1
                 + "\n",
                 encoding="utf-8",
             )
-            managed_venv = runtime / "app" / "venvs" / "old-venv"
-            (managed_venv / "bin").mkdir(parents=True)
-            (runtime / ".venv").symlink_to("app/venvs/old-venv")
-            existing_python = runtime / ".venv" / "bin" / "python"
-            existing_python.write_text("#!/bin/zsh\nexit 0\n", encoding="utf-8")
-            existing_python.chmod(0o755)
             calls = root / "launchctl-calls.log"
             fake_launchctl = root / "launchctl"
             self._write_stateful_fake_launchctl(fake_launchctl)
@@ -741,6 +927,8 @@ exit 1
                     "--source-only",
                     "--runtime",
                     str(runtime),
+                    "--python",
+                    sys.executable,
                     "--yes",
                     "--no-scheduler",
                     "--no-dashboard-server",
@@ -816,12 +1004,20 @@ exit 1
                 legacy_python.parent.mkdir(parents=True, exist_ok=True)
                 legacy_python.write_text("#!/bin/zsh\nexit 0\n", encoding="utf-8")
                 legacy_python.chmod(0o755)
+                settings = runtime / "config" / "settings.json"
+                settings.parent.mkdir(parents=True, exist_ok=True)
+                settings.write_text(
+                    '{"features":{"rag":false},"rag":{"enabled":false}}\n',
+                    encoding="utf-8",
+                )
+                settings.chmod(0o600)
                 protected = {
                     path: hashlib.sha256(path.read_bytes()).hexdigest()
                     for path in (
                         old_source / "pyproject.toml",
                         old_source / ".open-nova-runtime-source.json",
                         legacy_python,
+                        settings,
                     )
                 }
                 source_raw_target = os.readlink(runtime / "app" / "source")
@@ -840,6 +1036,9 @@ exit 1
                         str(runtime),
                         "--source-root",
                         str(ROOT),
+                        "--python",
+                        sys.executable,
+                        "--result-json",
                         "--yes",
                         "--no-scheduler",
                         "--no-dashboard-server",
@@ -863,8 +1062,25 @@ exit 1
                 )
 
                 output = result.stdout + result.stderr
-                self.assertNotEqual(result.returncode, 0, output)
-                self.assertIn("relative managed Runtime venv pointer", output)
+                envelope_line = next(
+                    line
+                    for line in output.splitlines()
+                    if line.startswith("OPEN_NOVA_UPDATE_RESULT_JSON=")
+                )
+                envelope = json.loads(envelope_line.split("=", 1)[1])
+                self.assertEqual(result.returncode, 2, output)
+                self.assertIn(
+                    "Runtime dependency profile could not be read safely",
+                    output,
+                )
+                self.assertEqual(envelope["status"], "failed")
+                self.assertEqual(envelope["updateMode"], "not-evaluated")
+                self.assertEqual(envelope["reason"], "runtime-dependency-profile-untrusted")
+                self.assertEqual(envelope["stage"], "dependency-profile")
+                self.assertFalse(envelope["dependenciesInstalled"])
+                self.assertFalse(envelope["reusesRuntimeVenv"])
+                self.assertFalse(envelope["sourceUpdated"])
+                self.assertFalse(envelope["servicesStopped"])
                 self.assertEqual((runtime / "app" / "source").resolve(), old_source.resolve())
                 self.assertEqual(os.readlink(runtime / "app" / "source"), source_raw_target)
                 if expected_venv_raw is None:
@@ -879,14 +1095,8 @@ exit 1
                     protected,
                 )
                 journals = list((runtime / "app" / "update-transactions").glob("*/journal.json"))
-                self.assertEqual(len(journals), 1, journals)
-                state = json.loads(journals[0].read_text(encoding="utf-8"))
-                self.assertEqual(state["status"], "rolled-back")
-                self.assertFalse(state["serviceStopInitiated"])
+                self.assertEqual(journals, [])
                 self.assertFalse((runtime / "app" / ".update-transaction.lock").exists())
-                for artifact in state["candidateArtifacts"]:
-                    self.assertFalse(artifact["created"], artifact)
-                    self.assertFalse(Path(artifact["path"]).exists(), artifact)
                 launchctl_calls = calls.read_text(encoding="utf-8").splitlines() if calls.exists() else []
                 self.assertFalse(
                     any(call.startswith(("bootout ", "bootstrap ", "kickstart ")) for call in launchctl_calls),
@@ -896,6 +1106,7 @@ exit 1
     def test_source_update_post_stop_failure_matrix_restores_prior_state(self):
         cases = (
             ("services-stopped", "return"),
+            ("services-stopped", "conflict"),
             ("source-promoted", "return"),
             ("services-restored", "return"),
             ("candidate-verified", "return"),
@@ -927,7 +1138,6 @@ exit 1
                     state_dir,
                 ):
                     path.mkdir(parents=True, exist_ok=True)
-                (runtime / ".venv").symlink_to("app/venvs/old-venv")
                 (old_release / "pyproject.toml").write_text('[project]\nname="old"\nversion="0"\n', encoding="utf-8")
                 (old_release / ".open-nova-runtime-source.json").write_text('{"old": true}\n', encoding="utf-8")
                 shutil.copytree(
@@ -935,9 +1145,7 @@ exit 1
                     old_release / "src" / "data_foundation" / "migrations",
                 )
                 (app / "source").symlink_to("releases/old-release")
-                existing_python = runtime / ".venv" / "bin" / "python"
-                existing_python.write_text("#!/bin/zsh\nexit 0\n", encoding="utf-8")
-                existing_python.chmod(0o755)
+                self._write_trusted_runtime_venv(runtime)
                 settings = runtime / "config" / "settings.json"
                 runtime_manifest = runtime / "config" / "runtime.json"
                 database = runtime / "data" / "nova_data.sqlite3"
@@ -945,6 +1153,8 @@ exit 1
                 settings.write_text(
                     json.dumps(
                         {
+                            "features": {"rag": False},
+                            "rag": {"enabled": False},
                             "dashboard": {
                                 "host": "127.0.0.1",
                                 "port": health_port,
@@ -1022,6 +1232,20 @@ exit 1
                         "NOVA_INSTALL_TEST_MODE": "1",
                         "NOVA_INSTALL_TEST_HOOK": str(hook),
                     }
+                elif failure_kind == "conflict":
+                    hook = root / "update-hook"
+                    hook.write_text(
+                        "#!/bin/zsh\n"
+                        f'if [[ "$1" == "{phase}" ]]; then '
+                        f'print -r -- \'{{"concurrent":"operator-change"}}\' > "{settings}"; '
+                        "exit 97; fi\n",
+                        encoding="utf-8",
+                    )
+                    hook.chmod(0o755)
+                    fault_env = {
+                        "NOVA_INSTALL_TEST_MODE": "1",
+                        "NOVA_INSTALL_TEST_HOOK": str(hook),
+                    }
 
                 command = [
                     "zsh",
@@ -1031,6 +1255,9 @@ exit 1
                     str(runtime),
                     "--source-root",
                     str(ROOT),
+                    "--python",
+                    sys.executable,
+                    "--result-json",
                     "--yes",
                     "--no-scheduler",
                     "--no-dashboard-server",
@@ -1058,6 +1285,56 @@ exit 1
                 self.assertNotIn("source-only sync complete", result.stdout + result.stderr)
                 journals = list((app / "update-transactions").glob("*/journal.json"))
                 self.assertEqual(len(journals), 1)
+                if failure_kind == "conflict":
+                    self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+                    envelope_lines = [
+                        line
+                        for line in result.stdout.splitlines()
+                        if line.startswith("OPEN_NOVA_UPDATE_RESULT_JSON=")
+                    ]
+                    self.assertEqual(len(envelope_lines), 1, result.stdout + result.stderr)
+                    envelope = json.loads(envelope_lines[0].split("=", 1)[1])
+                    self.assertEqual(envelope["status"], "failed")
+                    self.assertEqual(envelope["updateMode"], "reuse-existing-venv")
+                    self.assertFalse(envelope["dependenciesInstalled"])
+                    self.assertTrue(envelope["reusesRuntimeVenv"])
+                    self.assertIsNone(envelope["sourceUpdated"])
+                    self.assertFalse(envelope["cacheUsed"])
+                    self.assertTrue(envelope["servicesStopped"])
+                    self.assertIsNone(envelope["managedServiceDefinitionsNormalized"])
+                    self.assertFalse(envelope["rollbackComplete"])
+                    self.assertFalse(envelope["stateCertain"])
+                    self.assertEqual(envelope["reason"], "update-rollback-incomplete")
+                    self.assertEqual(envelope["stage"], "rollback-incomplete")
+                    self.assertEqual(os.readlink(app / "source"), "releases/old-release")
+                    self.assertEqual(
+                        json.loads(settings.read_text(encoding="utf-8")),
+                        {"concurrent": "operator-change"},
+                    )
+                    journal = json.loads(journals[0].read_text(encoding="utf-8"))
+                    self.assertEqual(journal["status"], "rollback-failed")
+                    self.assertIn("file-concurrent-change:settings", journal["rollbackErrors"])
+                    self.assertIn(
+                        "services:not-restored-after-pointer-or-control-state-conflict",
+                        journal["rollbackErrors"],
+                    )
+                    self.assertTrue((app / ".update-transaction.lock").exists())
+                    final_state = {
+                        path.name: path.read_text(encoding="utf-8").strip()
+                        for path in state_dir.iterdir()
+                        if path.is_file()
+                    }
+                    self.assertEqual(final_state, {})
+                    launchctl_calls = (
+                        calls.read_text(encoding="utf-8").splitlines()
+                        if calls.exists()
+                        else []
+                    )
+                    self.assertFalse(
+                        any(call.startswith(("bootstrap ", "kickstart ")) for call in launchctl_calls),
+                        launchctl_calls,
+                    )
+                    continue
                 if failure_kind == "kill":
                     self.assertEqual(result.returncode, -signal.SIGKILL, result.stdout + result.stderr)
                     self.assertEqual(hook_reached.read_text(encoding="utf-8").strip(), phase)
@@ -1121,6 +1398,24 @@ exit 1
 
                 self.assertTrue((app / "source").is_symlink())
                 self.assertEqual(os.readlink(app / "source"), "releases/old-release")
+                envelope_lines = [
+                    line
+                    for line in result.stdout.splitlines()
+                    if line.startswith("OPEN_NOVA_UPDATE_RESULT_JSON=")
+                ]
+                self.assertEqual(len(envelope_lines), 1, result.stdout + result.stderr)
+                envelope = json.loads(envelope_lines[0].split("=", 1)[1])
+                self.assertEqual(envelope["status"], "failed")
+                self.assertEqual(envelope["updateMode"], "reuse-existing-venv")
+                self.assertFalse(envelope["dependenciesInstalled"])
+                self.assertTrue(envelope["reusesRuntimeVenv"])
+                self.assertFalse(envelope["sourceUpdated"])
+                self.assertFalse(envelope["cacheUsed"])
+                self.assertTrue(envelope["servicesStopped"])
+                self.assertEqual(envelope["reason"], "update-failed-rolled-back")
+                self.assertEqual(envelope["stage"], "rollback-complete")
+                self.assertTrue(envelope["rollbackComplete"])
+                self.assertTrue(envelope["stateCertain"])
                 self.assertEqual(
                     {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in protected},
                     before_hashes,
@@ -1149,8 +1444,11 @@ exit 1
             codex_skills = root / "codex-skills"
             paths = initialize_home(runtime, legacy_diary_root=root / "Diary")
             self._write_prior_runtime_source(runtime)
+            self._write_trusted_runtime_venv(runtime, profiles=("dashboard", "rag-server"))
             write_settings(
                 {
+                    "features": {"rag": True},
+                    "rag": {"enabled": True, "embedding": {"mode": "cloud"}},
                     "externalTools": {
                         "codex": {"skillsRoot": str(codex_skills)},
                         "installerSelectedTools": [{"key": "codex", "name": "Codex", "path": str(root / "codex")}],
@@ -1173,6 +1471,8 @@ exit 1
                     str(ROOT),
                     "--runtime",
                     str(runtime),
+                    "--python",
+                    sys.executable,
                     "--yes",
                     "--enable-rag",
                     "--rag-embedding-mode",
@@ -1226,14 +1526,29 @@ exit 1
         self.assertIn('--kind venv)', script)
         self.assertNotIn('UPDATE_STAGED_VENV="${candidate_root}/${UPDATE_TRANSACTION_ID}"', script)
         self.assertIn('run_update_candidate_cmd candidate-venv-create', script)
-        self.assertIn('run_update_candidate_cmd candidate-pip-upgrade', script)
-        self.assertIn('run_update_candidate_cmd candidate-pip-install', script)
+        self.assertIn('run_update_candidate_cmd candidate-locked-dependency-install', script)
+        self.assertIn('run_update_candidate_cmd candidate-dependency-manifest-write', script)
+        self.assertIn('run_update_candidate_cmd candidate-dependency-manifest-verify', script)
+        self.assertIn('install_candidate_locked_dependencies "${STAGED_RELEASE_TARGET}" "${UPDATE_STAGED_VENV}"', script)
+        self.assertIn('--venv-python "${venv_root}/bin/python"', script)
+        self.assertNotIn('"${VENV_PY}" -m pip install', script)
         self.assertIn('run-candidate-command', script)
         self.assertIn('record_update_candidate venv "${UPDATE_STAGED_VENV}"', script)
         self.assertNotIn('rm -rf "${VENV_DIR}"', script)
         self.assertNotIn('rm -rf "${RUNTIME_HOME}"', script)
         self.assertNotIn('rm -rf "${RUNTIME_HOME}/data"', script)
         self.assertIn("legacy Python LaunchAgents may receive cache-suppression environment metadata", script)
+        self.assertIn('"${DEPENDENCY_CONTRACT_HELPER}" runtime-profiles', script)
+        self.assertIn('DEPENDENCY_PROFILE_SOURCE="runtime-settings+active-marker"', script)
+        self.assertIn('--expected-settings-sha256 "${DEPENDENCY_PROFILE_SETTINGS_SHA256}"', script)
+        self.assertIn('--expected-active-venv-target "${DEPENDENCY_PROFILE_ACTIVE_VENV_TARGET}"', script)
+        self.assertIn('--expected-active-marker-status "${DEPENDENCY_PROFILE_MARKER_STATUS}"', script)
+        self.assertIn("Upgrade dependency selection never requests a Settings rewrite", script)
+        self.assertIn("UPDATE_ROLLBACK_COMPLETE=0", script)
+        self.assertIn("UPDATE_STATE_CERTAIN=0", script)
+        self.assertIn("UPDATE_SOURCE_UPDATED=-1", script)
+        self.assertIn("UPDATE_PLISTS_NORMALIZED=-1", script)
+        self.assertIn('local source_updated="null"', script)
 
     def test_install_summary_dashboard_url_uses_runtime_settings_when_available(self):
         script = INSTALLER.read_text(encoding="utf-8")
@@ -1298,15 +1613,33 @@ exit 1
         self.assertNotIn("run_optional_json_cmd", doctor)
         self.assertNotIn("onboarding runtime-status", doctor)
 
-    def test_installer_verifies_runtime_dependencies_after_pip_install(self):
+    def test_installer_verifies_runtime_dependencies_after_locked_install(self):
         script = INSTALLER.read_text(encoding="utf-8")
+        fresh_flow = script.split('prepare_fresh_dependency_cache "${SOURCE_ROOT}"', 1)[1]
+        locked_install = fresh_flow.index("install_fresh_locked_dependencies")
+        dependency_gate = fresh_flow.index("run_runtime_dependency_gate")
+        promotion = fresh_flow.index("promote_fresh_runtime_artifacts")
+        locked_helper = script.split("install_fresh_locked_dependencies() {", 1)[1].split(
+            "run_update_candidate_cmd() {", 1
+        )[0]
+        update_cache_helper = script.split("materialize_update_dependency_cache() {", 1)[1].split(
+            "install_candidate_locked_dependencies() {", 1
+        )[0]
+        fresh_cache_helper = script.split("prepare_fresh_dependency_cache() {", 1)[1].split(
+            "install_fresh_locked_dependencies() {", 1
+        )[0]
 
-        pip_install = script.index('run_cmd "${VENV_PY}" -m pip install "${INSTALL_SPEC}"')
-        dependency_gate = script.rindex("run_runtime_dependency_gate")
-        cli_shim = script.rindex("create_cli_shim")
-
-        self.assertGreater(dependency_gate, pip_install)
-        self.assertLess(dependency_gate, cli_shim)
+        self.assertLess(locked_install, dependency_gate)
+        self.assertLess(dependency_gate, promotion)
+        self.assertLess(locked_helper.index("dependency_contract.py\" install"), locked_helper.index("write-marker"))
+        self.assertLess(locked_helper.index("write-marker"), locked_helper.index("verify-marker"))
+        self.assertIn('dependency_contract.py" materialize-cache', update_cache_helper)
+        self.assertIn('if [[ "$OFFLINE" == "1" ]]; then\n    command+=(--offline)', update_cache_helper)
+        self.assertIn('dependency_contract.py" materialize-cache', fresh_cache_helper)
+        self.assertIn(
+            'if [[ "$OFFLINE" == "1" ]]; then\n    materialize_command+=(--offline)',
+            fresh_cache_helper,
+        )
         self.assertIn("Verifying runtime Dashboard dependency gate", script)
         self.assertIn('("fastapi", "fastapi>=0.110,<1", "Dashboard API")', script)
         self.assertIn('("uvicorn", "uvicorn>=0.29,<1", "Dashboard server")', script)
@@ -1316,8 +1649,8 @@ exit 1
         self.assertIn('("torch", "torch>=2,<3", "nova-RAG local embeddings")', script)
         self.assertIn('source_root / "src" / "dashboard" / "app" / "static" / "index.html"', script)
         self.assertIn('importlib.import_module("app.main")', script)
-        self.assertIn("Installing missing runtime dependencies detected by dependency gate", script)
-        self.assertIn('run_cmd "${VENV_PY}" -m pip install "${missing_packages[@]}"', script)
+        self.assertIn("dependency remediation is forbidden outside the locked candidate build", script)
+        self.assertNotIn('run_cmd "${VENV_PY}" -m pip install "${missing_packages[@]}"', script)
 
     def test_enabled_cloud_rag_installs_base_server_dependency_extra(self):
         script = INSTALLER.read_text(encoding="utf-8")
@@ -1711,10 +2044,17 @@ exit 1
 
         self.assertEqual(script.count("/usr/bin/env -i"), 2)
         self.assertEqual(script.count("/usr/bin/env\n      -i"), 2)
-        self.assertEqual(
-            script.count("/usr/bin/env PYTHONDONTWRITEBYTECODE=1"),
-            2,
-        )
+        candidate = script.split("run_update_candidate_cmd() {", 1)[1].split(
+            "prepare_update_validation_runtime() {", 1
+        )[0]
+        doctor = script.split("run_update_candidate_doctor() {", 1)[1].split(
+            "clean_staged_candidate_build_artifacts() {", 1
+        )[0]
+        for block in (candidate, doctor):
+            self.assertIn("/usr/bin/env -i", block)
+            self.assertIn('PIP_CONFIG_FILE=/dev/null', block)
+            self.assertIn('PYTHONNOUSERSITE=1', block)
+            self.assertIn('PYTHONDONTWRITEBYTECODE=1', block)
         self.assertNotIn("-- env -i", script)
         self.assertNotRegex(script, r"(?m)^\s+env -i(?:\s|\\)")
 
@@ -1732,6 +2072,10 @@ exit 1
             home = Path(tmp) / "Home"
             runtime = home / ".open-nova"
             home.mkdir()
+            self._write_prior_runtime_source(runtime)
+            self._write_trusted_runtime_venv(runtime)
+            source_target_before = os.readlink(runtime / "app" / "source")
+            venv_target_before = os.readlink(runtime / ".venv")
             env = {
                 **os.environ,
                 "HOME": str(home),
@@ -1748,6 +2092,9 @@ exit 1
                     str(runtime),
                     "--source-root",
                     str(ROOT),
+                    "--python",
+                    sys.executable,
+                    "--result-json",
                 ],
                 cwd=ROOT,
                 env=env,
@@ -1755,11 +2102,13 @@ exit 1
                 capture_output=True,
                 check=False,
             )
+            source_target_after = os.readlink(runtime / "app" / "source")
+            venv_target_after = os.readlink(runtime / ".venv")
 
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("Staging source snapshot", output)
+        self.assertNotIn("Staging source snapshot", output)
         self.assertNotIn("copy source snapshot", output)
         self.assertNotIn(".open-nova-runtime-source.json", output)
         self.assertNotIn("source-only dry-run complete", output)
@@ -1768,7 +2117,407 @@ exit 1
         self.assertNotIn("onboarding runtime-apply", output)
         self.assertNotIn("apply runtime bootstrap", output.lower())
         self.assertNotIn("Creating Desktop diary shortcut", output)
-        self.assertFalse(runtime.exists())
+        self.assertEqual(source_target_after, source_target_before)
+        self.assertEqual(venv_target_after, venv_target_before)
+        envelope_line = next(
+            line
+            for line in output.splitlines()
+            if line.startswith("OPEN_NOVA_UPDATE_RESULT_JSON=")
+        )
+        envelope = json.loads(envelope_line.split("=", 1)[1])
+        self.assertEqual(envelope["updateMode"], "reuse-existing-venv")
+        self.assertTrue(envelope["reusesRuntimeVenv"])
+        self.assertFalse(envelope["plannedDependenciesInstall"])
+        self.assertFalse(envelope["dependenciesInstalled"])
+        self.assertFalse(envelope["sourceUpdated"])
+        self.assertFalse(envelope["servicesStopped"])
+
+    def test_upgrade_inherits_rag_dependency_profile_without_rewriting_settings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "Home"
+            runtime = home / ".open-nova"
+            home.mkdir()
+            self._write_prior_runtime_source(runtime)
+            self._write_trusted_runtime_venv(
+                runtime,
+                profiles=("dashboard", "rag-server", "rag-local"),
+            )
+            settings = runtime / "config" / "settings.json"
+            settings.parent.mkdir(parents=True, exist_ok=True)
+            settings.write_text(
+                json.dumps(
+                    {
+                        "features": {"rag": True},
+                        "rag": {
+                            "enabled": True,
+                            "embedding": {
+                                "mode": "local",
+                                "model": "operator-custom-local-model",
+                                "dimension": 777,
+                            },
+                        },
+                    },
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            settings.chmod(0o600)
+            settings_before = settings.read_bytes()
+            venv_target_before = os.readlink(runtime / ".venv")
+
+            result = subprocess.run(
+                [
+                    "zsh",
+                    str(INSTALLER),
+                    "--dry-run",
+                    "--upgrade",
+                    "--runtime",
+                    str(runtime),
+                    "--source-root",
+                    str(ROOT),
+                    "--python",
+                    sys.executable,
+                    "--result-json",
+                    "--yes",
+                    # v1.0.1 forwards these matching preservation flags.  The
+                    # candidate installer must accept them without treating
+                    # them as a request to rewrite detailed Settings.
+                    "--enable-rag",
+                    "--rag-embedding-mode",
+                    "local",
+                    "--no-scheduler",
+                    "--no-dashboard-server",
+                ],
+                cwd=ROOT,
+                env={
+                    **os.environ,
+                    "HOME": str(home),
+                    "NOVA_INSTALL_PLATFORM": "Darwin",
+                    "NOVA_LOCATION_FILE": str(root / "location.json"),
+                },
+                text=True,
+                capture_output=True,
+                timeout=60,
+                check=False,
+            )
+            settings_after = settings.read_bytes()
+            venv_target_after = os.readlink(runtime / ".venv")
+
+        output = result.stdout + result.stderr
+        envelope_line = next(
+            line
+            for line in result.stdout.splitlines()
+            if line.startswith("OPEN_NOVA_UPDATE_RESULT_JSON=")
+        )
+        envelope = json.loads(envelope_line.split("=", 1)[1])
+        self.assertEqual(result.returncode, 0, output)
+        self.assertEqual(envelope["updateMode"], "reuse-existing-venv")
+        self.assertTrue(envelope["reusesRuntimeVenv"])
+        self.assertFalse(envelope["plannedDependenciesInstall"])
+        self.assertEqual(settings_after, settings_before)
+        self.assertEqual(venv_target_after, venv_target_before)
+        self.assertNotIn("operator-custom-local-model", output)
+
+    def test_upgrade_blocks_untrusted_runtime_profile_before_transaction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "Home"
+            runtime = home / ".open-nova"
+            home.mkdir()
+            old_source = self._write_prior_runtime_source(runtime)
+            old_venv = self._write_trusted_runtime_venv(runtime)
+            settings = runtime / "config" / "settings.json"
+            settings.parent.mkdir(parents=True, exist_ok=True)
+            settings.write_text(
+                json.dumps(
+                    {
+                        "features": {"rag": True},
+                        "rag": {"enabled": False},
+                    },
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            settings.chmod(0o600)
+            protected = {
+                path: hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in (
+                    settings,
+                    old_source / ".open-nova-runtime-source.json",
+                    old_venv / runtime_dependency_contract.MARKER_NAME,
+                )
+            }
+            source_target_before = os.readlink(runtime / "app" / "source")
+            venv_target_before = os.readlink(runtime / ".venv")
+
+            result = subprocess.run(
+                [
+                    "zsh",
+                    str(INSTALLER),
+                    "--upgrade",
+                    "--runtime",
+                    str(runtime),
+                    "--source-root",
+                    str(ROOT),
+                    "--python",
+                    sys.executable,
+                    "--result-json",
+                    "--yes",
+                    "--no-scheduler",
+                    "--no-dashboard-server",
+                ],
+                cwd=ROOT,
+                env={
+                    **os.environ,
+                    "HOME": str(home),
+                    "NOVA_INSTALL_PLATFORM": "Darwin",
+                    "NOVA_LOCATION_FILE": str(root / "location.json"),
+                },
+                text=True,
+                capture_output=True,
+                timeout=60,
+                check=False,
+            )
+
+            output = result.stdout + result.stderr
+            envelope_line = next(
+                line
+                for line in result.stdout.splitlines()
+                if line.startswith("OPEN_NOVA_UPDATE_RESULT_JSON=")
+            )
+            envelope = json.loads(envelope_line.split("=", 1)[1])
+            self.assertEqual(result.returncode, 2, output)
+            self.assertEqual(envelope["reason"], "runtime-dependency-profile-untrusted")
+            self.assertEqual(envelope["stage"], "dependency-profile")
+            self.assertFalse(envelope["dependenciesInstalled"])
+            self.assertFalse(envelope["sourceUpdated"])
+            self.assertFalse(envelope["servicesStopped"])
+            self.assertEqual(os.readlink(runtime / "app" / "source"), source_target_before)
+            self.assertEqual(os.readlink(runtime / ".venv"), venv_target_before)
+            self.assertEqual(
+                {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in protected},
+                protected,
+            )
+            self.assertFalse((runtime / "app" / "update-transactions").exists())
+            self.assertFalse((runtime / "app" / ".update-transaction.lock").exists())
+
+    def test_upgrade_inherits_dev_test_from_trusted_active_marker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "Home"
+            runtime = home / ".open-nova"
+            home.mkdir()
+            self._write_prior_runtime_source(runtime)
+            old_venv = self._write_trusted_runtime_venv(
+                runtime,
+                profiles=("dashboard", "dev-test"),
+            )
+            marker_before = (
+                old_venv / runtime_dependency_contract.MARKER_NAME
+            ).read_bytes()
+            venv_target_before = os.readlink(runtime / ".venv")
+
+            result = subprocess.run(
+                [
+                    "zsh",
+                    str(INSTALLER),
+                    "--dry-run",
+                    "--upgrade",
+                    "--runtime",
+                    str(runtime),
+                    "--source-root",
+                    str(ROOT),
+                    "--python",
+                    sys.executable,
+                    "--result-json",
+                    "--yes",
+                    "--no-scheduler",
+                    "--no-dashboard-server",
+                ],
+                cwd=ROOT,
+                env={
+                    **os.environ,
+                    "HOME": str(home),
+                    "NOVA_INSTALL_PLATFORM": "Darwin",
+                    "NOVA_LOCATION_FILE": str(root / "location.json"),
+                },
+                text=True,
+                capture_output=True,
+                timeout=60,
+                check=False,
+            )
+
+            output = result.stdout + result.stderr
+            envelope_line = next(
+                line
+                for line in result.stdout.splitlines()
+                if line.startswith("OPEN_NOVA_UPDATE_RESULT_JSON=")
+            )
+            envelope = json.loads(envelope_line.split("=", 1)[1])
+            self.assertEqual(result.returncode, 0, output)
+            self.assertEqual(envelope["updateMode"], "reuse-existing-venv")
+            self.assertTrue(envelope["reusesRuntimeVenv"])
+            self.assertFalse(envelope["plannedDependenciesInstall"])
+            self.assertEqual(os.readlink(runtime / ".venv"), venv_target_before)
+            self.assertEqual(
+                (old_venv / runtime_dependency_contract.MARKER_NAME).read_bytes(),
+                marker_before,
+            )
+
+    def test_upgrade_rejects_legacy_rag_profile_flags_that_conflict_with_settings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "Home"
+            runtime = home / ".open-nova"
+            home.mkdir()
+            self._write_prior_runtime_source(runtime)
+            self._write_trusted_runtime_venv(
+                runtime,
+                profiles=("dashboard", "rag-server", "rag-local"),
+            )
+            source_before = os.readlink(runtime / "app" / "source")
+            venv_before = os.readlink(runtime / ".venv")
+
+            result = subprocess.run(
+                [
+                    "zsh",
+                    str(INSTALLER),
+                    "--upgrade",
+                    "--runtime",
+                    str(runtime),
+                    "--source-root",
+                    str(ROOT),
+                    "--python",
+                    sys.executable,
+                    "--result-json",
+                    "--yes",
+                    "--enable-rag",
+                    "--rag-embedding-mode",
+                    "cloud",
+                    "--no-scheduler",
+                    "--no-dashboard-server",
+                ],
+                cwd=ROOT,
+                env={
+                    **os.environ,
+                    "HOME": str(home),
+                    "NOVA_INSTALL_PLATFORM": "Darwin",
+                    "NOVA_LOCATION_FILE": str(root / "location.json"),
+                },
+                text=True,
+                capture_output=True,
+                timeout=60,
+                check=False,
+            )
+
+            envelope_line = next(
+                line
+                for line in result.stdout.splitlines()
+                if line.startswith("OPEN_NOVA_UPDATE_RESULT_JSON=")
+            )
+            envelope = json.loads(envelope_line.split("=", 1)[1])
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            self.assertEqual(envelope["reason"], "runtime-dependency-profile-untrusted")
+            self.assertEqual(envelope["stage"], "dependency-profile")
+            self.assertFalse(envelope["servicesStopped"])
+            self.assertEqual(os.readlink(runtime / "app" / "source"), source_before)
+            self.assertEqual(os.readlink(runtime / ".venv"), venv_before)
+            self.assertFalse((runtime / "app" / "update-transactions").exists())
+
+    def test_offline_force_rebuild_cache_miss_emits_failure_before_transaction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "Home"
+            runtime = home / ".open-nova"
+            home.mkdir()
+            prior_source = self._write_prior_runtime_source(runtime)
+            prior_venv = self._write_trusted_runtime_venv(runtime)
+            source_target_before = os.readlink(runtime / "app" / "source")
+            venv_target_before = os.readlink(runtime / ".venv")
+            protected = {
+                path: hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in (
+                    prior_source / ".open-nova-runtime-source.json",
+                    prior_venv / runtime_dependency_contract.MARKER_NAME,
+                    prior_venv / "bin" / "python",
+                )
+            }
+            launchctl = root / "launchctl"
+            launchctl_calls = root / "launchctl-calls.log"
+            launchctl_state = root / "launchctl-state"
+            launchctl_state.mkdir()
+            self._write_stateful_fake_launchctl(launchctl)
+
+            result = subprocess.run(
+                [
+                    "zsh",
+                    str(INSTALLER),
+                    "--upgrade",
+                    "--force-rebuild",
+                    "--offline",
+                    "--runtime",
+                    str(runtime),
+                    "--source-root",
+                    str(ROOT),
+                    "--python",
+                    sys.executable,
+                    "--result-json",
+                    "--yes",
+                    "--no-scheduler",
+                    "--no-dashboard-server",
+                ],
+                cwd=ROOT,
+                env={
+                    **os.environ,
+                    "HOME": str(home),
+                    "NOVA_INSTALL_PLATFORM": "Darwin",
+                    "NOVA_INSTALL_LAUNCHCTL": str(launchctl),
+                    "NOVA_TEST_LAUNCHCTL_CALLS": str(launchctl_calls),
+                    "NOVA_TEST_LAUNCHCTL_STATE": str(launchctl_state),
+                    "NOVA_LOCATION_FILE": str(root / "location.json"),
+                },
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            output = result.stdout + result.stderr
+            envelope_line = next(
+                line
+                for line in output.splitlines()
+                if line.startswith("OPEN_NOVA_UPDATE_RESULT_JSON=")
+            )
+            envelope = json.loads(envelope_line.split("=", 1)[1])
+            calls = (
+                launchctl_calls.read_text(encoding="utf-8").splitlines()
+                if launchctl_calls.exists()
+                else []
+            )
+
+            self.assertEqual(result.returncode, 3, output)
+            self.assertEqual(envelope["status"], "failed")
+            self.assertEqual(envelope["updateMode"], "rebuild-candidate-venv")
+            self.assertEqual(envelope["reason"], "offline-cache-miss")
+            self.assertEqual(envelope["stage"], "dependency-plan")
+            self.assertFalse(envelope["plannedDependenciesInstall"])
+            self.assertFalse(envelope["dependenciesInstalled"])
+            self.assertFalse(envelope["reusesRuntimeVenv"])
+            self.assertFalse(envelope["sourceUpdated"])
+            self.assertFalse(envelope["cacheUsed"])
+            self.assertFalse(envelope["servicesStopped"])
+            self.assertEqual(os.readlink(runtime / "app" / "source"), source_target_before)
+            self.assertEqual(os.readlink(runtime / ".venv"), venv_target_before)
+            self.assertEqual(
+                {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in protected},
+                protected,
+            )
+            self.assertFalse((runtime / "app" / "update-transactions").exists())
+            self.assertFalse((runtime / "app" / "dependency-cache").exists())
+            self.assertFalse((runtime / "app" / ".update-transaction.lock").exists())
+            self.assertFalse(any(call.startswith(("bootout ", "bootstrap ", "kickstart ")) for call in calls), calls)
 
     def test_installer_persists_distinct_nova_task_feature_flag(self):
         script = INSTALLER.read_text(encoding="utf-8")
@@ -1974,7 +2723,6 @@ exit 1
         self.assertIn("Preparing runtime directories", output)
         self.assertIn("Staging source snapshot", output)
         self.assertIn("Creating Python environment", output)
-        self.assertIn("Installing runtime dependencies", output)
         self.assertIn("Verifying runtime dependency gate", output)
         self.assertIn("安装摘要", output)
         self.assertIn(f"runtime source {runtime.resolve()}/app/source", output)
@@ -2137,6 +2885,19 @@ exit 1
             home = Path(tmp) / "Home"
             runtime = home / ".open-nova"
             home.mkdir()
+            old_source = self._write_prior_runtime_source(runtime)
+            old_venv = self._write_trusted_runtime_venv(runtime)
+            (old_venv / runtime_dependency_contract.MARKER_NAME).unlink()
+            source_target_before = os.readlink(runtime / "app" / "source")
+            venv_target_before = os.readlink(runtime / ".venv")
+            protected = {
+                path: hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in (
+                    old_source / ".open-nova-runtime-source.json",
+                    old_venv / "bin" / "python",
+                    runtime / "config" / "settings.json",
+                )
+            }
             result = subprocess.run(
                 [
                     "zsh",
@@ -2147,6 +2908,9 @@ exit 1
                     str(runtime),
                     "--source-root",
                     str(ROOT),
+                    "--python",
+                    sys.executable,
+                    "--result-json",
                     "--no-scheduler",
                     "--no-dashboard-server",
                 ],
@@ -2156,6 +2920,12 @@ exit 1
                 capture_output=True,
                 check=False,
             )
+            source_target_after = os.readlink(runtime / "app" / "source")
+            venv_target_after = os.readlink(runtime / ".venv")
+            protected_after = {
+                path: hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in protected
+            }
 
         output = result.stdout + result.stderr
 
@@ -2163,9 +2933,22 @@ exit 1
         self.assertIn("Open Nova installer v2 upgrade dry-run complete", output)
         self.assertNotIn("mode: upgrade", output)
         self.assertNotIn("dry-run only", output)
-        self.assertIn("Creating Python environment", output)
+        self.assertNotIn("Creating Python environment", output)
         self.assertIn("Creating open-nova CLI shim", output)
-        self.assertFalse(runtime.exists())
+        self.assertEqual(source_target_after, source_target_before)
+        self.assertEqual(venv_target_after, venv_target_before)
+        self.assertEqual(protected_after, protected)
+        envelope_line = next(
+            line
+            for line in output.splitlines()
+            if line.startswith("OPEN_NOVA_UPDATE_RESULT_JSON=")
+        )
+        envelope = json.loads(envelope_line.split("=", 1)[1])
+        self.assertEqual(envelope["updateMode"], "rebuild-candidate-venv")
+        self.assertTrue(envelope["plannedDependenciesInstall"])
+        self.assertFalse(envelope["dependenciesInstalled"])
+        self.assertFalse(envelope["sourceUpdated"])
+        self.assertFalse(envelope["servicesStopped"])
 
     def test_upgrade_requires_existing_runtime_for_real_apply(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2972,6 +3755,7 @@ exit 1
             venv_raw_target = os.readlink(venv_pointer)
             source_resolved = source_pointer.resolve()
             venv_resolved = venv_pointer.resolve()
+            dependency_marker = runtime_dependency_contract.read_dependency_marker(venv_resolved)
             dashboard_launcher._require_runtime_pointers(runtime.resolve())
             rag_launcher._require_runtime_pointers(runtime.resolve())
 
@@ -2988,8 +3772,13 @@ exit 1
         self.assertEqual(venv_resolved.parent.name, "venvs")
         self.assertEqual(source_resolved.name, venv_resolved.name)
         self.assertIn("-m venv", log)
-        self.assertIn("-m pip install", log)
-        self.assertIn(f"{deployed}[dashboard]", log)
+        self.assertNotIn("-m pip install", log)
+        self.assertIn("dependency_contract.py cache-status", log)
+        self.assertIn("dependency_contract.py materialize-cache", log)
+        self.assertIn("dependency_contract.py install", log)
+        self.assertIn("dependency_contract.py write-marker", log)
+        self.assertIn("dependency_contract.py verify-marker", log)
+        self.assertEqual(dependency_marker["profiles"], ["dashboard"])
         self.assertIn("onboarding runtime-apply", log)
         self.assertIn("onboarding runtime-status", log)
         self.assertIn("doctor --installer", log)
@@ -3055,7 +3844,7 @@ exit 1
         self.assertNotIn(secret_value, log)
         self.assertNotIn(secret_value, installer_log)
 
-    def test_dependency_gate_installs_missing_mapped_packages_once(self):
+    def test_dependency_gate_missing_package_fails_closed_without_remediation(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             home = root / "Home"
@@ -3097,11 +3886,12 @@ exit 1
 
         output = result.stdout + result.stderr
 
-        self.assertEqual(result.returncode, 0, output)
+        self.assertEqual(result.returncode, 1, output)
         self.assertNotIn("Installing missing runtime dependencies detected by dependency gate: fastapi>=0.110,<1", output)
         self.assertNotIn("dependency gate ok: fake remediation passed", output)
-        self.assertIn("-m pip install fastapi>=0.110,<1", log)
-        self.assertTrue(marker_exists)
+        self.assertIn("dependency remediation is forbidden outside the locked candidate build", output)
+        self.assertNotIn("-m pip install fastapi>=0.110,<1", log)
+        self.assertFalse(marker_exists)
 
     def test_bootstrap_dry_run_uses_local_source_root_and_forwards_installer_options(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -3140,6 +3930,432 @@ exit 1
         self.assertNotIn("Scheduler registration skipped by --no-scheduler", output)
         self.assertNotIn("SSE server disabled", output)
         self.assertFalse(runtime.exists())
+
+    def test_bootstrap_offline_local_source_never_uses_network_and_forwards_flag_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "Home"
+            source = root / "source"
+            bin_dir = root / "bin"
+            git_log = root / "git.log"
+            curl_log = root / "curl.log"
+            installer_log = root / "installer-args.log"
+            fake_git = bin_dir / "git"
+            fake_curl = bin_dir / "curl"
+            home.mkdir()
+            bin_dir.mkdir()
+            self._write_bootstrap_command_tripwire(fake_git, git_log)
+            self._write_bootstrap_command_tripwire(fake_curl, curl_log)
+            self._write_bootstrap_installer_probe(source, installer_log)
+            env = self._fresh_bootstrap_env(home)
+            env["NOVA_INSTALL_CURL"] = str(fake_curl)
+
+            result = subprocess.run(
+                [
+                    "zsh",
+                    str(BOOTSTRAP),
+                    "--offline",
+                    "--source-root",
+                    str(source),
+                    "--git",
+                    str(fake_git),
+                    "--",
+                    "--offline",
+                    "--yes",
+                ],
+                cwd=root,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            installer_args = installer_log.read_text(encoding="utf-8").splitlines()
+
+        output = result.stdout + result.stderr
+        self.assertEqual(result.returncode, 0, output)
+        self.assertFalse(git_log.exists(), output)
+        self.assertFalse(curl_log.exists(), output)
+        self.assertEqual(installer_args.count("--offline"), 1)
+        self.assertEqual(installer_args[0], "--source-root")
+        self.assertEqual(Path(installer_args[1]).resolve(), source.resolve())
+        self.assertIn("--yes", installer_args)
+
+    def test_bootstrap_offline_flag_forwarding_uses_exact_array_elements(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "Home"
+            source = root / "source"
+            installer_log = root / "installer-args.log"
+            home.mkdir()
+            self._write_bootstrap_installer_probe(source, installer_log)
+
+            result = subprocess.run(
+                [
+                    "zsh",
+                    str(BOOTSTRAP),
+                    "--offline",
+                    "--source-root",
+                    str(source),
+                    "--",
+                    "--llm-model",
+                    "model name containing --offline as data",
+                    "--yes",
+                ],
+                cwd=root,
+                env=self._fresh_bootstrap_env(home),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            installer_args = installer_log.read_text(encoding="utf-8").splitlines()
+
+        output = result.stdout + result.stderr
+        self.assertEqual(result.returncode, 0, output)
+        self.assertEqual(installer_args.count("--offline"), 1)
+        self.assertIn("model name containing --offline as data", installer_args)
+
+    def test_bootstrap_offline_remote_without_ref_fails_before_cache_or_network(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "Home"
+            cache = root / "Cache"
+            bin_dir = root / "bin"
+            git_log = root / "git.log"
+            curl_log = root / "curl.log"
+            fake_git = bin_dir / "git"
+            fake_curl = bin_dir / "curl"
+            home.mkdir()
+            bin_dir.mkdir()
+            self._write_bootstrap_command_tripwire(fake_git, git_log)
+            self._write_bootstrap_command_tripwire(fake_curl, curl_log)
+            env = self._fresh_bootstrap_env(home)
+            env["NOVA_INSTALL_CURL"] = str(fake_curl)
+
+            result = subprocess.run(
+                [
+                    "zsh",
+                    str(BOOTSTRAP),
+                    "--offline",
+                    "--source-url",
+                    "https://github.com/Neo-Isshin/open-nova.git",
+                    "--cache-root",
+                    str(cache),
+                    "--git",
+                    str(fake_git),
+                    "--",
+                    "--runtime",
+                    str(home / ".open-nova"),
+                ],
+                cwd=root,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        output = result.stdout + result.stderr
+        self.assertEqual(result.returncode, 2, output)
+        self.assertIn("Offline source acquisition requires --source-root or an explicit full --ref", output)
+        self.assertFalse(cache.exists())
+        self.assertFalse(git_log.exists(), output)
+        self.assertFalse(curl_log.exists(), output)
+
+    def test_bootstrap_offline_remote_cache_miss_fails_without_network_or_writes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "Home"
+            cache = root / "Cache"
+            bin_dir = root / "bin"
+            git_log = root / "git.log"
+            curl_log = root / "curl.log"
+            fake_git = bin_dir / "git"
+            fake_curl = bin_dir / "curl"
+            home.mkdir()
+            bin_dir.mkdir()
+            self._write_bootstrap_command_tripwire(fake_git, git_log)
+            self._write_bootstrap_command_tripwire(fake_curl, curl_log)
+            env = self._fresh_bootstrap_env(home)
+            env["NOVA_INSTALL_CURL"] = str(fake_curl)
+
+            result = subprocess.run(
+                [
+                    "zsh",
+                    str(BOOTSTRAP),
+                    "--offline",
+                    "--source-url",
+                    "https://github.com/Neo-Isshin/open-nova.git",
+                    "--ref",
+                    IMMUTABLE_TEST_COMMIT,
+                    "--cache-root",
+                    str(cache),
+                    "--git",
+                    str(fake_git),
+                    "--",
+                    "--runtime",
+                    str(home / ".open-nova"),
+                ],
+                cwd=root,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        output = result.stdout + result.stderr
+        self.assertEqual(result.returncode, 2, output)
+        self.assertIn(f"Offline source cache is missing: {(cache / 'source').resolve()}", output)
+        self.assertFalse(cache.exists())
+        self.assertFalse(git_log.exists(), output)
+        self.assertFalse(curl_log.exists(), output)
+
+    def test_bootstrap_offline_cached_ref_verifies_object_without_network_operations(self):
+        source_url = "https://example.invalid/open-nova.git"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "Home"
+            cache = root / "Cache"
+            source = cache / "source"
+            bin_dir = root / "bin"
+            git_log = root / "git.log"
+            curl_log = root / "curl.log"
+            installer_log = root / "installer-args.log"
+            fake_git = bin_dir / "git"
+            fake_curl = bin_dir / "curl"
+            home.mkdir()
+            bin_dir.mkdir()
+            (source / ".git").mkdir(parents=True)
+            self._write_bootstrap_installer_probe(source, installer_log)
+            self._write_offline_cache_git(
+                fake_git,
+                git_log,
+                source_url=source_url,
+                resolved_commit=IMMUTABLE_TEST_COMMIT,
+            )
+            self._write_bootstrap_command_tripwire(fake_curl, curl_log)
+            env = self._fresh_bootstrap_env(home)
+            env["NOVA_INSTALL_CURL"] = str(fake_curl)
+
+            result = subprocess.run(
+                [
+                    "zsh",
+                    str(BOOTSTRAP),
+                    "--offline",
+                    "--source-url",
+                    source_url,
+                    "--ref",
+                    IMMUTABLE_TEST_COMMIT,
+                    "--cache-root",
+                    str(cache),
+                    "--git",
+                    str(fake_git),
+                    "--",
+                    "--yes",
+                ],
+                cwd=root,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            git_calls = git_log.read_text(encoding="utf-8").splitlines()
+            installer_args = installer_log.read_text(encoding="utf-8").splitlines()
+
+        output = result.stdout + result.stderr
+        self.assertEqual(result.returncode, 0, output)
+        self.assertIn("without fetch", output)
+        self.assertFalse(curl_log.exists(), output)
+        self.assertFalse(
+            any(re.search(r"(^|\s)(fetch|clone|ls-remote)(\s|$)", call) for call in git_calls),
+            git_calls,
+        )
+        self.assertTrue(
+            any(
+                f"rev-parse --verify {IMMUTABLE_TEST_COMMIT}^{{commit}}" in call
+                for call in git_calls
+            ),
+            git_calls,
+        )
+        self.assertTrue(any("remote get-url origin" in call for call in git_calls), git_calls)
+        self.assertTrue(any(" archive --format=tar " in call for call in git_calls), git_calls)
+        self.assertTrue(
+            all(
+                "GIT_NO_LAZY_FETCH=1" in call
+                and "GIT_ALLOW_PROTOCOL_SET=1" in call
+                and "GIT_ALLOW_PROTOCOL_VALUE=<>" in call
+                and "GIT_TERMINAL_PROMPT=0" in call
+                for call in git_calls
+            ),
+            git_calls,
+        )
+        self.assertEqual(installer_args.count("--offline"), 1)
+
+    def test_bootstrap_offline_partial_clone_missing_blob_blocks_lazy_fetch_before_checkout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "Home"
+            origin_work = root / "origin-work"
+            origin_bare = root / "origin.git"
+            cache = root / "Cache"
+            source = cache / "source"
+            tripwire_marker = root / "lazy-fetch-invoked"
+            tripwire = root / "promisor-tripwire.sh"
+            home.mkdir()
+            origin_work.mkdir()
+
+            def git(*arguments: str, cwd: Path = root) -> subprocess.CompletedProcess[str]:
+                return subprocess.run(
+                    ["git", *arguments],
+                    cwd=cwd,
+                    text=True,
+                    capture_output=True,
+                    check=True,
+                )
+
+            git("init", "--quiet", cwd=origin_work)
+            git("config", "user.name", "Open Nova Test", cwd=origin_work)
+            git("config", "user.email", "open-nova-test@example.invalid", cwd=origin_work)
+            payloads = {
+                "pyproject.toml": "[project]\nname='offline-fixture'\nversion='1.0.0'\n",
+                "MANIFEST.in": "include LICENSE\n",
+                "LICENSE": "fixture\n",
+                "config.py": "# fixture\n",
+                "install/install.sh": "#!/bin/zsh\nexit 0\n",
+                "advanced/placeholder.txt": "advanced\n",
+                "src/placeholder.txt": "src\n",
+            }
+            for relative, content in payloads.items():
+                path = origin_work / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content, encoding="utf-8")
+            (origin_work / "install" / "install.sh").chmod(0o755)
+            git("add", ".", cwd=origin_work)
+            git("commit", "--quiet", "-m", "offline partial clone fixture", cwd=origin_work)
+            commit = git("rev-parse", "HEAD", cwd=origin_work).stdout.strip()
+            git("clone", "--quiet", "--bare", str(origin_work), str(origin_bare))
+            git("config", "uploadpack.allowFilter", "true", cwd=origin_bare)
+            git("config", "uploadpack.allowAnySHA1InWant", "true", cwd=origin_bare)
+            git(
+                "-c",
+                "protocol.file.allow=always",
+                "clone",
+                "--quiet",
+                "--filter=blob:none",
+                "--sparse",
+                "--no-checkout",
+                origin_bare.as_uri(),
+                str(source),
+            )
+            missing_probe_env = {**os.environ, "GIT_NO_LAZY_FETCH": "1", "GIT_ALLOW_PROTOCOL": ""}
+            missing_probe = subprocess.run(
+                ["git", "-C", str(source), "cat-file", "-e", f"{commit}:install/install.sh"],
+                env=missing_probe_env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(missing_probe.returncode, 0, "fixture must omit the installer blob")
+
+            tripwire.write_text(
+                "#!/bin/sh\n"
+                f"touch {str(tripwire_marker)!r}\n"
+                "exit 97\n",
+                encoding="utf-8",
+            )
+            tripwire.chmod(0o755)
+            source_url = f"ext::{tripwire} %S"
+            git("remote", "set-url", "origin", source_url, cwd=source)
+            git("config", "protocol.ext.allow", "always", cwd=source)
+            config_before = (source / ".git" / "config").read_bytes()
+
+            result = subprocess.run(
+                [
+                    "zsh",
+                    str(BOOTSTRAP),
+                    "--offline",
+                    "--source-url",
+                    source_url,
+                    "--ref",
+                    commit,
+                    "--cache-root",
+                    str(cache),
+                    "--",
+                    "--runtime",
+                    str(home / ".open-nova"),
+                ],
+                cwd=root,
+                env=self._fresh_bootstrap_env(home),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            output = result.stdout + result.stderr
+            self.assertEqual(result.returncode, 2, output)
+            self.assertIn("Offline source cache is incomplete", output)
+            self.assertFalse(tripwire_marker.exists(), output)
+            self.assertEqual((source / ".git" / "config").read_bytes(), config_before)
+            self.assertFalse((source / "install" / "install.sh").exists())
+
+    def test_bootstrap_offline_cached_ref_rejects_mismatched_resolved_object(self):
+        source_url = "https://example.invalid/open-nova.git"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "Home"
+            cache = root / "Cache"
+            source = cache / "source"
+            bin_dir = root / "bin"
+            git_log = root / "git.log"
+            curl_log = root / "curl.log"
+            installer_log = root / "installer-args.log"
+            fake_git = bin_dir / "git"
+            fake_curl = bin_dir / "curl"
+            home.mkdir()
+            bin_dir.mkdir()
+            (source / ".git").mkdir(parents=True)
+            self._write_bootstrap_installer_probe(source, installer_log)
+            self._write_offline_cache_git(
+                fake_git,
+                git_log,
+                source_url=source_url,
+                resolved_commit="b" * 40,
+            )
+            self._write_bootstrap_command_tripwire(fake_curl, curl_log)
+            env = self._fresh_bootstrap_env(home)
+            env["NOVA_INSTALL_CURL"] = str(fake_curl)
+
+            result = subprocess.run(
+                [
+                    "zsh",
+                    str(BOOTSTRAP),
+                    "--offline",
+                    "--source-url",
+                    source_url,
+                    "--ref",
+                    IMMUTABLE_TEST_COMMIT,
+                    "--cache-root",
+                    str(cache),
+                    "--git",
+                    str(fake_git),
+                    "--",
+                    "--yes",
+                ],
+                cwd=root,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            git_calls = git_log.read_text(encoding="utf-8").splitlines()
+
+        output = result.stdout + result.stderr
+        self.assertEqual(result.returncode, 2, output)
+        self.assertIn("Resolved source object is not the required commit", output)
+        self.assertFalse(installer_log.exists())
+        self.assertFalse(curl_log.exists(), output)
+        self.assertFalse(
+            any(re.search(r"(^|\s)(fetch|clone|ls-remote)(\s|$)", call) for call in git_calls),
+            git_calls,
+        )
 
     def test_bootstrap_dry_run_source_url_prints_clone_without_network(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -3381,7 +4597,11 @@ exit 1
         self.assertIn(f"checkout --detach {IMMUTABLE_TEST_COMMIT}", log)
         self.assertIn(f"reset --hard {IMMUTABLE_TEST_COMMIT}", log)
         self.assertIn("-m venv", log)
-        self.assertIn("-m pip install", log)
+        self.assertNotIn("-m pip install", log)
+        self.assertIn("dependency_contract.py materialize-cache", log)
+        self.assertIn("dependency_contract.py install", log)
+        self.assertIn("dependency_contract.py write-marker", log)
+        self.assertIn("dependency_contract.py verify-marker", log)
         self.assertIn("onboarding runtime-apply", log)
         self.assertNotIn("--scheduler-register-apply", log)
         self.assertIn("# >>> open-nova installer PATH >>>", profile_text)

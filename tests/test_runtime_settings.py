@@ -1750,6 +1750,11 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertIn("residualRisks", payload["settingsAudit"])
         self.assertIn("active-env-overrides", {bucket["id"] for bucket in payload["settingsAudit"]["residualRisks"]["buckets"]})
         self.assertEqual(payload["runtimeSource"]["status"], "missing")
+        self.assertEqual(
+            payload["runtimeSource"]["productVersionAuthority"],
+            "active-runtime-source-manifest",
+        )
+        self.assertIsNone(payload["runtimeSource"]["sourceVersion"])
         self.assertIn("runtime-source-provenance", {check["id"] for check in payload["checks"]})
         self.assertEqual(payload["resourceProfile"]["dashboard"]["expectedResidentProcesses"], 1)
         self.assertIn("rag", payload["resourceProfile"])
@@ -1901,6 +1906,47 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertEqual(check["status"], "ok")
         by_id = {item["id"]: item for item in payload["checks"]}
         self.assertEqual(by_id["runtime-source-launchagent-alignment"]["status"], "ok")
+
+    def test_nova_settings_status_uses_source_manifest_version_when_dist_info_is_stale(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            project_root = root / "runtime-source"
+            project_root.mkdir()
+            manifest = _v2_runtime_source_manifest(
+                {"kind": "unavailable", "issue": "outside-login-home"}
+            )
+            manifest["pyprojectVersion"] = "1.0.2"
+            (project_root / ".open-nova-runtime-source.json").write_text(
+                json.dumps(manifest),
+                encoding="utf-8",
+            )
+            stale_dist_info = (
+                paths.home
+                / ".venv"
+                / "lib"
+                / "python3.12"
+                / "site-packages"
+                / "open_nova-1.0.1.dist-info"
+            )
+            stale_dist_info.mkdir(parents=True)
+            (stale_dist_info / "METADATA").write_text(
+                "Metadata-Version: 2.1\nName: open-nova\nVersion: 1.0.1\n",
+                encoding="utf-8",
+            )
+            write_settings({"dashboard": {"projectRoot": str(project_root)}}, paths)
+
+            payload = nova_settings_status(paths)
+            text = format_nova_settings_status(payload)
+
+        runtime_source = payload["runtimeSource"]
+        self.assertEqual(runtime_source["productVersionAuthority"], "active-runtime-source-manifest")
+        self.assertEqual(runtime_source["sourceVersion"], "1.0.2")
+        self.assertEqual(runtime_source["manifest"]["pyprojectVersion"], "1.0.2")
+        self.assertNotIn("distributionVersion", runtime_source)
+        self.assertNotIn("metadataMayLag", runtime_source)
+        self.assertIn("version=1.0.2", text)
+        self.assertIn("versionAuthority=active-runtime-source-manifest", text)
 
     def test_nova_settings_status_reads_v2_locator_without_echoing_private_source_path(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -15,8 +15,8 @@
 
 <p align="center">
   <a href="https://neo-isshin.github.io/open-nova/"><img src="https://img.shields.io/badge/Website-GitHub%20Pages-2563EB" alt="Website"></a>
-  <a href="https://github.com/Neo-Isshin/open-nova/releases/tag/v1.0.1"><img src="https://img.shields.io/badge/Release-v1.0.1-0EA5E9" alt="Release v1.0.1"></a>
-  <a href="#quick-start"><img src="https://img.shields.io/badge/Install-pinned%20v1.0.1-0284C7" alt="Pinned v1.0.1 install command"></a>
+  <a href="https://github.com/Neo-Isshin/open-nova/releases/latest"><img src="https://img.shields.io/github/v/release/Neo-Isshin/open-nova?display_name=tag&amp;sort=semver" alt="最新稳定 Release"></a>
+  <a href="#quick-start"><img src="https://img.shields.io/badge/Install-稳定版一行安装-0284C7" alt="稳定版一行安装命令"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0--or--later-16A34A" alt="License"></a>
   <a href="https://discord.gg/JvJHngZWz"><img src="https://img.shields.io/badge/Discord-加入-5865F2" alt="Discord"></a>
 </p>
@@ -97,17 +97,17 @@ nova-RAG（可选）→ 外部 Runtime 只读检索
 <a id="support"></a>
 ## 💻 支持范围与前置要求
 
-Open Nova v1.0.x 的托管安装优先面向本地 macOS 用户环境：
+Open Nova 的托管安装优先面向本地 macOS 用户环境：
 
 - 🍎 **macOS 是一等支持目标**：引导式安装、Dashboard 服务和托管调度默认使用用户级 `LaunchAgent`。
 - 🛠️ **基础工具**：安装前需确认 `zsh`、`git` 和 `curl` 可用，无需 `sudo`。
 - 🐍 **Python**：运行需要 Python `>=3.11`。受支持的 Apple Silicon 与 Intel Mac 如果缺少兼容 Python，安装器会自动下载并校验托管 Python。
 - 🌐 **网络和磁盘**：安装期间需要访问 GitHub、Python 包索引及你选择的模型服务。启用本地 `nova-RAG` 时，首次运行可能下载 `torch`、`sentence-transformers` 和模型权重。
-- 🐧 **Linux 与 Windows**：不是 v1.0.x 一行安装和托管服务的一等支持目标；高级用户可从源码手动运行部分组件。
+- 🐧 **Linux 与 Windows**：不是稳定通道一行安装和托管服务的一等支持目标；高级用户可从源码手动运行部分组件。
 
 ### 当前支持的 Agent Runtime
 
-| Runtime | v1.0.x 定位 |
+| Runtime | 当前定位 |
 | :--- | :--- |
 | 🦞 **OpenClaw** | 受支持的外部工具路径族 |
 | ✳️ **Claude Code** | 受支持的外部工具路径族 |
@@ -115,7 +115,7 @@ Open Nova v1.0.x 的托管安装优先面向本地 macOS 用户环境：
 | ✨ **Gemini CLI** | 受支持的外部工具路径族 |
 | ⚕️ **Hermes** | 受支持的外部工具路径族 |
 
-实际可采集内容取决于本机是否存在兼容日志、会话或用量数据，以及对应路径是否已在设置中启用。更多 Runtime 与跨平台能力属于后续版本范围，不应从 v1.0.x README 推断为已支持能力。
+实际可采集内容取决于本机是否存在兼容日志、会话或用量数据，以及对应路径是否已在设置中启用。更多 Runtime 与跨平台能力属于后续版本范围，不应从当前 README 推断为已支持能力。
 
 <a id="quick-start"></a>
 ## 🎥 快速开始
@@ -123,16 +123,16 @@ Open Nova v1.0.x 的托管安装优先面向本地 macOS 用户环境：
 > [!TIP]
 > **一行部署，然后静等繁荣。**
 
-### 1. 安装 v1.0.1
+### 1. 安装最新稳定版
 
-下面的 one-liner 同时固定 `v1.0.1` bootstrap 与实际安装源码提交，不追踪 `main` 或未来的 `latest` Release：
+下面这条简短 one-liner 会安装 GitHub 上最新的稳定 Release，绝不追踪 `main`、`HEAD`、draft 或 prerelease：
 
 ```bash
-bootstrap="$(curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 10 --max-time 30 'https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.1/install/bootstrap.sh')" && [ -n "$bootstrap" ] && NOVA_INSTALL_SOURCE_URL='https://github.com/Neo-Isshin/open-nova.git' NOVA_INSTALL_REF='82bbdbd83e35724441c7005dfc0b555d413fcf93' zsh -c "$bootstrap"
+curl -fsSL https://github.com/Neo-Isshin/open-nova/releases/latest/download/install.sh | zsh
 ```
 
 > [!NOTE]
-> 这里采用“严格固定 v1.0.1”：显式 commit 会跳过 bootstrap 对未来 `latest` Release 和 `WITHDRAWN` 标记的动态检查，从而固定 Open Nova 源码内容，不随 `latest` 漂移。第三方依赖仍按发布配置在安装时解析，因此这里不承诺整个依赖环境逐字节可复现。这项取舍不会改动已发布的 v1.0.1 tag 或 Release。
+> GitHub 会将这个 URL 解析到最新稳定 Release 附带的 `install.sh` asset。launcher 会拒绝 draft、prerelease 或明确标记为 `WITHDRAWN` 的 Release，将选中的 tag peel 为完整 commit，再安装该 detached commit，永远不会跟随 `main`。
 
 > [!IMPORTANT]
 > 这条命令仅用于全新安装。如果 bootstrap 发现已有 Open Nova Runtime、活动 Runtime 指针或托管 LaunchAgent，会在写入源码缓存前安全终止。已有安装应先运行 `open-nova update` 或 `open-nova update --dry-run` 检查计划，再用 `open-nova update --apply` 执行更新。
@@ -202,7 +202,7 @@ open-nova doctor --rag
 
 </details>
 
-当前 v1.0.1 面向 macOS 本地 Runtime；完整的安装前检查、首次配置、历史回填、日常 Pipeline、Dashboard / Nova-Task / nova-RAG 运维、更新与故障排查，请参阅<a href="docs/local-operations-runbook.zh-CN.md">中文本地操作 Runbook</a>。
+Open Nova 面向 macOS 本地 Runtime；完整的安装前检查、首次配置、历史回填、日常 Pipeline、Dashboard / Nova-Task / nova-RAG 运维、更新与故障排查，请参阅<a href="docs/local-operations-runbook.zh-CN.md">中文本地操作 Runbook</a>。
 
 <a id="dashboard"></a>
 ## 📊 Dashboard、截图与交互 Demo
@@ -219,7 +219,7 @@ Dashboard 是 Open Nova 的主要操作界面，包括：
 
 ### 🖼️ 真实 Dashboard 截图
 
-以下图片来自 Open Nova 的真实 Dashboard 开发与运行界面，沿用项目本身的设计、布局、排版和组件，不是重新绘制的演示页，也不是官网发布页的营销示意图。截图中的 **nova-RAG v2** 指 RAG 子系统的索引与检索代际，不是 Open Nova v2 产品版本；当前产品版本仍为 `v1.0.1`。
+以下图片来自 Open Nova 的真实 Dashboard 开发与运行界面，沿用项目本身的设计、布局、排版和组件，不是重新绘制的演示页，也不是官网发布页的营销示意图。截图中的 **nova-RAG v2** 指 RAG 子系统的索引与检索代际，不是 Open Nova 产品版本；当前稳定产品版本以 GitHub Releases 为准。
 
 <details>
 <summary><strong>展开 Dashboard 首页真实截图</strong></summary>
@@ -338,10 +338,13 @@ open-nova update --apply
 ```
 
 - `open-nova update` 仅显示更新计划。
-- `--dry-run` 运行 bootstrap 和安装器的无变更预演；冷缓存时主要展示源码获取计划，不等于完整候选版本 E2E 验证。
+- `--dry-run` 运行无变更预演；候选源码可用时会真实说明复用 venv 还是按锁重建，远端源码冷缓存时仍可能只展示源码获取计划。
 - `--apply` 才会执行实际的受保护更新事务。
+- 依赖 fingerprint 一致时会复用 active venv，且不运行 pip；否则从精确、带 hash 的 Runtime lock 构建独立 candidate venv。运维可用 `--source-only` 强制只复用、用 `--force-rebuild` 强制重建，或用 `--offline` 禁止源码与依赖网络访问。
 
-Open Nova v1.0.1 尚未提供产品级一键卸载器。请不要仅删除 `~/.open-nova`；这会遗留 LaunchAgent、CLI shim、Runtime 指针、Shell `PATH` 区块、桌面链接和安装缓存。
+> 只有上述工作流被纳入正式发布的稳定 Release 后，稳定通道 one-liner 才会安装它；该入口绝不安装尚未发布的 `main` 代码。
+
+Open Nova 当前尚未提供产品级一键卸载器。请不要仅删除 `~/.open-nova`；这会遗留 LaunchAgent、CLI shim、Runtime 指针、Shell `PATH` 区块、桌面链接和安装缓存。
 
 <a id="nova-task"></a>
 ## 📋 Nova-Task：真实工作图谱
@@ -434,16 +437,17 @@ npm run test:release-page
 
 `npm run test:dashboard-live` 是显式 opt-in 且可能修改 Runtime 的真实 Dashboard Gate，只应对已播种的一次性 Runtime 运行。
 
-复现 v1.0.1 发布构件：
+复现当前 checkout 的发布构件：
 
 ```bash
 python -B -m pip install -r requirements-release.txt
+PROJECT_VERSION="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
 SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)" \
 python -B -m tools.release.build_release \
   --source-root . \
   --output-dir ../open-nova-release-artifacts \
   --expected-commit "$(git rev-parse HEAD)" \
-  --expected-version 1.0.1
+  --expected-version "$PROJECT_VERSION"
 ```
 
 发布构建器只接受干净、已提交的 Git 工作树，并把输出写到仓库外。制品包括公开源码与 Runtime payload manifest、归一化 Runtime 归档、wheel、sdist、provenance 和 `SHA256SUMS`。
@@ -466,7 +470,7 @@ python -B -m tools.release.build_release \
 
 ### 发布、安全与项目历史
 
-- ✅ <a href="docs/v1-release-assurance.md">v1.0.1 发布保证</a>
+- ✅ <a href="docs/v1-release-assurance.md">发布保证归档</a>
 - 🧹 <a href="docs/production-clean-inventory.md">发布清理清单</a>
 - 🧾 <a href="CHANGELOG.md">更新日志</a>
 - 🔐 <a href="SECURITY.md">安全策略</a>

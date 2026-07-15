@@ -104,6 +104,7 @@ DIARY_METRICS_APPROVAL_CONFIRMATION = "APPROVE OPEN NOVA DIARY METRICS MISMATCH"
 DEFAULT_UPDATE_SOURCE_URL = "https://github.com/Neo-Isshin/open-nova.git"
 UPDATE_FULL_COMMIT_RE = re.compile(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})\Z")
 LATEST_STABLE_RELEASE_POLICY = "resolve latest stable Release and pin the resolved commit"
+UPDATE_RESULT_PREFIX = "OPEN_NOVA_UPDATE_RESULT_JSON="
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -216,6 +217,22 @@ def _parser() -> argparse.ArgumentParser:
         help="Use an existing local source checkout instead of fetching; cannot be combined with --ref.",
     )
     update.add_argument("--cache-root", help="Installer source cache root. Defaults to ~/.cache/open-nova/installer.")
+    update_dependency_mode = update.add_mutually_exclusive_group()
+    update_dependency_mode.add_argument(
+        "--source-only",
+        action="store_true",
+        help="Require reuse of the active Runtime venv; fail closed when its dependency contract is incompatible.",
+    )
+    update_dependency_mode.add_argument(
+        "--force-rebuild",
+        action="store_true",
+        help="Force a new candidate Runtime venv even when the active dependency contract is reusable.",
+    )
+    update.add_argument(
+        "--offline",
+        action="store_true",
+        help="Forbid update network access; source resolution and dependency rebuilds must use trusted local caches.",
+    )
     update.set_defaults(handler=_update_run)
 
     search = subcommands.add_parser("search", help="Search nova-RAG memory through the external read-only facade.")
@@ -802,15 +819,26 @@ def _update_run(args: argparse.Namespace) -> int:
         "ref": args.ref,
         "sourceSelection": source_selection,
         "command": command,
+        "updateMode": "not-evaluated",
+        "dependenciesInstalled": False,
+        "reusesRuntimeVenv": None,
+        "sourceUpdated": False,
+        "cacheUsed": False,
+        "servicesStopped": False,
+        "plannedDependenciesInstall": None,
+        "rollbackComplete": None,
+        "stateCertain": None,
+        "resultAvailable": False,
+        "stage": "plan",
         "mutationPolicy": {
             "settingsMutated": False,
-            "dependenciesInstalled": bool(args.apply),
-            "sourceUpdated": bool(args.apply),
+            "dependenciesInstalled": False,
+            "sourceUpdated": False,
             "managedServicesStoppedBeforePortSelection": False,
-            "managedServicesStoppedAfterPreflight": bool(args.apply),
+            "managedServicesStoppedAfterPreflight": False,
             "schedulerChanged": False,
-            "managedServiceDefinitionsMayNormalize": bool(args.apply),
-            "reusesRuntimeVenv": False,
+            "managedServiceDefinitionsMayNormalize": None,
+            "reusesRuntimeVenv": None,
             "preservesSettingsAndUserData": True,
         },
     }
@@ -824,17 +852,30 @@ def _update_run(args: argparse.Namespace) -> int:
             sys.stdout.write("Command preview: " + _shell_join(command) + "\n")
         return 0
 
+    if not args.json:
+        sys.stdout.write("Running Open Nova update: " + _shell_join(command) + "\n")
+    result = subprocess.run(command, text=True, capture_output=True, check=False)
+    stdout = getattr(result, "stdout", "") or ""
+    stderr = getattr(result, "stderr", "") or ""
+    envelope = _update_result_envelope(stdout)
+    _apply_update_execution_result(payload, envelope, result.returncode)
+    payload["stdout"] = stdout
+    payload["stderr"] = stderr
+
     if args.json:
-        result = subprocess.run(command, text=True, capture_output=True, check=False)
-        payload["status"] = "completed" if result.returncode == 0 else "failed"
-        payload["returncode"] = result.returncode
-        payload["stdout"] = result.stdout
-        payload["stderr"] = result.stderr
         sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
         return result.returncode
 
-    sys.stdout.write("Running Open Nova update: " + _shell_join(command) + "\n")
-    result = subprocess.run(command, text=True, check=False)
+    visible_stdout = _update_output_without_result_envelopes(stdout)
+    if visible_stdout:
+        sys.stdout.write(visible_stdout)
+        if not visible_stdout.endswith("\n"):
+            sys.stdout.write("\n")
+    if stderr:
+        sys.stderr.write(stderr)
+        if not stderr.endswith("\n"):
+            sys.stderr.write("\n")
+    _write_update_human_result(payload, result.returncode)
     return result.returncode
 
 
@@ -845,6 +886,8 @@ def _update_bootstrap_command(args: argparse.Namespace, runtime_home: Path) -> l
     command = [zsh, str(bootstrap)]
     if args.dry_run:
         command.append("--dry-run")
+    if args.offline:
+        command.append("--offline")
     if args.source_root:
         command.extend(["--source-root", str(Path(args.source_root).expanduser())])
     else:
@@ -854,9 +897,197 @@ def _update_bootstrap_command(args: argparse.Namespace, runtime_home: Path) -> l
     if args.cache_root:
         command.extend(["--cache-root", str(Path(args.cache_root).expanduser())])
     command.append("--")
-    command.extend(["--upgrade", "--runtime", str(runtime_home), "--yes"])
+    if args.source_only:
+        command.append("--source-only")
+    else:
+        command.append("--upgrade")
+    if args.force_rebuild:
+        command.append("--force-rebuild")
+    if args.offline:
+        command.append("--offline")
+    command.extend(["--result-json", "--runtime", str(runtime_home), "--yes"])
     command.extend(_update_preserved_installer_args(runtime_home))
     return command
+
+
+def _update_result_envelope(stdout: str) -> dict | None:
+    """Return the final fixed-prefix installer result object, if it is valid."""
+    marker_lines = [line for line in str(stdout or "").splitlines() if line.startswith(UPDATE_RESULT_PREFIX)]
+    if not marker_lines:
+        return None
+    encoded = marker_lines[-1][len(UPDATE_RESULT_PREFIX) :]
+    try:
+        decoded = json.loads(encoded)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    fields = {
+        "schemaVersion",
+        "status",
+        "updateMode",
+        "dependenciesInstalled",
+        "reusesRuntimeVenv",
+        "sourceUpdated",
+        "reason",
+        "cacheUsed",
+        "servicesStopped",
+        "plannedDependenciesInstall",
+        "managedServiceDefinitionsNormalized",
+        "rollbackComplete",
+        "stateCertain",
+        "stage",
+    }
+    if (
+        not isinstance(decoded, dict)
+        or set(decoded) != fields
+        or type(decoded.get("schemaVersion")) is not int
+        or decoded.get("schemaVersion") != 1
+        or decoded.get("status") not in {"completed", "failed"}
+        or any(
+            not isinstance(decoded.get(field), str) or not decoded[field].strip()
+            for field in ("updateMode", "reason", "stage")
+        )
+        or any(
+            type(decoded.get(field)) is not bool
+            for field in (
+                "dependenciesInstalled",
+                "reusesRuntimeVenv",
+                "cacheUsed",
+                "servicesStopped",
+                "plannedDependenciesInstall",
+                "stateCertain",
+            )
+        )
+        or any(
+            value is not None and type(value) is not bool
+            for value in (
+                decoded.get("sourceUpdated"),
+                decoded.get("managedServiceDefinitionsNormalized"),
+                decoded.get("rollbackComplete"),
+            )
+        )
+    ):
+        return None
+    return decoded
+
+
+def _update_result_bool(envelope: dict, field: str) -> bool | None:
+    value = envelope.get(field)
+    return value if isinstance(value, bool) else None
+
+
+def _update_result_text(envelope: dict, field: str) -> str | None:
+    value = envelope.get(field)
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def _apply_update_execution_result(payload: dict, envelope: dict | None, returncode: int) -> None:
+    payload["status"] = "completed" if returncode == 0 else "failed"
+    payload["returncode"] = returncode
+    if envelope is None:
+        payload.update(
+            {
+                "updateMode": "unknown",
+                "dependenciesInstalled": None,
+                "reusesRuntimeVenv": None,
+                "sourceUpdated": None,
+                "cacheUsed": None,
+                "servicesStopped": None,
+                "plannedDependenciesInstall": None,
+                "rollbackComplete": None,
+                "stateCertain": None,
+                "resultAvailable": False,
+                "stage": "bootstrap" if returncode else "bootstrap-completed-without-result",
+                "reason": (
+                    f"bootstrap failed with exit status {returncode} without a valid installer result envelope"
+                    if returncode
+                    else "bootstrap completed without a valid installer result envelope"
+                ),
+            }
+        )
+        payload["mutationPolicy"].update(
+            {
+                "dependenciesInstalled": None,
+                "sourceUpdated": None,
+                "managedServicesStoppedAfterPreflight": None,
+                "managedServiceDefinitionsMayNormalize": None,
+                "reusesRuntimeVenv": None,
+            }
+        )
+        return
+
+    update_mode = _update_result_text(envelope, "updateMode") or "unknown"
+    dependencies_installed = _update_result_bool(envelope, "dependenciesInstalled")
+    reuses_runtime_venv = _update_result_bool(envelope, "reusesRuntimeVenv")
+    source_updated = _update_result_bool(envelope, "sourceUpdated")
+    cache_used = _update_result_bool(envelope, "cacheUsed")
+    services_stopped = _update_result_bool(envelope, "servicesStopped")
+    planned_dependencies_install = _update_result_bool(envelope, "plannedDependenciesInstall")
+    rollback_complete = _update_result_bool(envelope, "rollbackComplete")
+    state_certain = _update_result_bool(envelope, "stateCertain")
+    reason = _update_result_text(envelope, "reason")
+    stage = _update_result_text(envelope, "stage") or ("complete" if returncode == 0 else "installer")
+    payload.update(
+        {
+            "updateMode": update_mode,
+            "dependenciesInstalled": dependencies_installed,
+            "reusesRuntimeVenv": reuses_runtime_venv,
+            "sourceUpdated": source_updated,
+            "reason": reason,
+            "cacheUsed": cache_used,
+            "servicesStopped": services_stopped,
+            "plannedDependenciesInstall": planned_dependencies_install,
+            "rollbackComplete": rollback_complete,
+            "stateCertain": state_certain,
+            "resultAvailable": True,
+            "stage": stage,
+        }
+    )
+    payload["mutationPolicy"].update(
+        {
+            "dependenciesInstalled": dependencies_installed,
+            "sourceUpdated": source_updated,
+            "managedServicesStoppedAfterPreflight": services_stopped,
+            "managedServiceDefinitionsMayNormalize": _update_result_bool(
+                envelope, "managedServiceDefinitionsNormalized"
+            ),
+            "reusesRuntimeVenv": reuses_runtime_venv,
+        }
+    )
+
+
+def _update_output_without_result_envelopes(stdout: str) -> str:
+    return "".join(
+        line
+        for line in str(stdout or "").splitlines(keepends=True)
+        if not line.startswith(UPDATE_RESULT_PREFIX)
+    )
+
+
+def _format_update_result_value(value) -> str:
+    if value is True:
+        return "yes"
+    if value is False:
+        return "no"
+    if value is None:
+        return "unknown"
+    return str(value)
+
+
+def _write_update_human_result(payload: dict, returncode: int) -> None:
+    target = sys.stdout if returncode == 0 else sys.stderr
+    target.write(
+        f"Open Nova update {payload['status']} at {payload['stage']}: "
+        f"mode={payload['updateMode']}, "
+        f"dependencies installed={_format_update_result_value(payload['dependenciesInstalled'])}, "
+        f"Runtime venv reused={_format_update_result_value(payload['reusesRuntimeVenv'])}, "
+        f"source updated={_format_update_result_value(payload['sourceUpdated'])}, "
+        f"cache used={_format_update_result_value(payload['cacheUsed'])}, "
+        f"services stopped={_format_update_result_value(payload['servicesStopped'])}\n"
+    )
+    if payload.get("stateCertain") is False:
+        target.write("Final pointer/service normalization state is uncertain; inspect the preserved transaction journal.\n")
+    if payload.get("reason"):
+        target.write(f"Reason: {payload['reason']}\n")
 
 
 def _update_bootstrap_path(args: argparse.Namespace, runtime_home: Path) -> Path:
@@ -920,22 +1151,45 @@ def _update_preserved_installer_args(runtime_home: Path) -> list[str]:
             redact_secrets=False,
             persist_defaults=False,
         )
-    except Exception:
-        return []
-    preserved: list[str] = []
-    rag = settings.get("rag") if isinstance(settings.get("rag"), dict) else {}
-    features = settings.get("features") if isinstance(settings.get("features"), dict) else {}
-    if rag.get("enabled") or features.get("rag"):
-        preserved.append("--enable-rag")
-        embedding = rag.get("embedding") if isinstance(rag.get("embedding"), dict) else {}
+    except Exception as exc:
+        raise ValueError(
+            "Runtime Settings could not be read; the active dependency profile cannot be preserved safely"
+        ) from exc
+    if not isinstance(settings, dict):
+        raise ValueError(
+            "Runtime Settings are invalid; the active dependency profile cannot be preserved safely"
+        )
+    raw_rag = settings.get("rag", {})
+    raw_features = settings.get("features", {})
+    if not isinstance(raw_rag, dict) or not isinstance(raw_features, dict):
+        raise ValueError(
+            "Runtime Settings contain an invalid RAG profile; update is blocked before service changes"
+        )
+    rag_enabled = raw_rag.get("enabled", False)
+    feature_enabled = raw_features.get("rag", False)
+    if type(rag_enabled) is not bool or type(feature_enabled) is not bool:
+        raise ValueError(
+            "Runtime Settings contain an ambiguous RAG profile; update is blocked before service changes"
+        )
+    if rag_enabled != feature_enabled:
+        raise ValueError(
+            "Runtime Settings contain conflicting RAG dependency profile flags"
+        )
+    if rag_enabled:
+        embedding = raw_rag.get("embedding")
+        if not isinstance(embedding, dict):
+            raise ValueError(
+                "Runtime Settings do not identify the active RAG embedding dependency profile"
+            )
         mode = str(embedding.get("mode") or "").strip()
-        if mode in {"local", "cloud"}:
-            preserved.extend(["--rag-embedding-mode", mode])
-        external_tools = settings.get("externalTools") if isinstance(settings.get("externalTools"), dict) else {}
-        skill_registration = external_tools.get("installerV2SkillRegistration")
-        if isinstance(skill_registration, dict) and skill_registration.get("supportedNow") is True:
-            preserved.append("--register-rag-skills")
-    return preserved
+        if mode not in {"local", "cloud"}:
+            raise ValueError(
+                "Runtime Settings do not identify a supported RAG embedding dependency profile"
+            )
+    # The installer inherits this profile independently from Runtime Settings.
+    # Passing RAG flags here would turn preservation into an explicit Settings
+    # rewrite and could replace a custom provider/model with installer defaults.
+    return []
 
 
 def _shell_join(command: list[str]) -> str:

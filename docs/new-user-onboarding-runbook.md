@@ -1,4 +1,4 @@
-# Open Nova v1.0.1 Installation Guide
+# Open Nova Installation Guide
 
 This guide covers a new installation, the first health checks, and supported
 updates. GitHub Releases in
@@ -18,19 +18,19 @@ the active virtual environment, Settings, SQLite data, logs, generated assets,
 and rollback state below that Runtime. The installer records the active Runtime
 in `~/.config/open-nova/location.json`.
 
-## Immutable one-line install
+## Stable one-line install
 
-Run the versioned v1.0.1 bootstrap:
+Run the version-independent stable-channel installer:
 
 ```bash
-zsh -c "$(curl -fsSL 'https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.1/install/bootstrap.sh')"
+curl -fsSL https://github.com/Neo-Isshin/open-nova/releases/latest/download/install.sh | zsh
 ```
 
-The URL is pinned to the immutable `v1.0.1` tag. The bootstrap resolves the
-latest stable, non-draft, non-prerelease GitHub Release, peels its tag to a full
-commit, clones that exact commit into a detached source cache, and invokes the
-installer. It rejects a Release whose title is explicitly marked WITHDRAWN and
-never tracks `main`, `HEAD`, or a symbolic remote ref.
+GitHub resolves `install.sh` from the latest stable Release. The launcher
+rejects draft, prerelease, or explicitly WITHDRAWN releases, peels the selected
+tag to a full commit, clones that exact commit into a detached source cache,
+and invokes the installer. It never tracks `main`, `HEAD`, or a symbolic remote
+ref.
 
 The hosted bootstrap is fresh-install-only. It fails before cloning when it
 detects an existing Open Nova Runtime or managed service. Use `open-nova update`
@@ -50,9 +50,14 @@ To install from the current checkout:
 zsh install/bootstrap.sh
 ```
 
-The dependency authority is `pyproject.toml`. The ordinary installation
-includes Base-Pipeline, Dashboard, and Nova-Task. nova-RAG is optional. Developer
-test dependencies are opt-in and are never part of the Runtime payload.
+`pyproject.toml` is the direct dependency/profile contract, while
+`install/runtime-dependencies.lock.json` is the exact Runtime resolution
+authority for every supported Python ABI and macOS architecture. Fresh installs
+and candidate-venv rebuilds use the same wheel-only, SHA-256-verified lock.
+`requirements-release.txt` locks release build tooling only and is not a
+Runtime dependency lock. The ordinary installation includes Base-Pipeline,
+Dashboard, and Nova-Task. nova-RAG is optional. Developer test dependencies are
+opt-in and are never part of the default production profile.
 
 Useful non-interactive controls include:
 
@@ -152,11 +157,34 @@ mode:
 zsh install/install.sh --upgrade --runtime /path/to/runtime --source-root "$PWD"
 ```
 
-An update creates a new immutable release directory and venv, validates them,
-then switches active pointers atomically. Settings, SQLite, logs, generated user
-data, service configuration, and rollback metadata remain Runtime-owned and are
-preserved. If activation or health verification fails, the transaction restores
-the previous active source and venv.
+The updater computes a dependency fingerprint before stopping services. When
+the active immutable dependency marker, Python ABI/platform identity, enabled
+profiles, direct contract, locked transitive closure, and live distributions all
+match, it creates only a new immutable source generation and reuses the existing
+venv generation without invoking pip. When that evidence is missing, untrusted,
+or different, it builds a separate candidate venv from the locked wheelhouse and
+switches source and venv pointers only after validation. The active venv is never
+modified in place. Unsafe or ambiguous profile evidence fails closed before
+service changes rather than guessing a dependency selection.
+
+Operational controls are:
+
+```bash
+open-nova update --dry-run
+open-nova update --apply --offline
+open-nova update --apply --source-only
+open-nova update --apply --force-rebuild
+```
+
+`--source-only` fails closed unless reuse is proven. `--force-rebuild` always
+creates a candidate venv. Offline rebuilds require a complete trusted cache at
+`<runtime>/app/dependency-cache/v1` and fail before service stop when it is
+missing or altered. Settings, SQLite, logs, generated user data, service
+configuration, and rollback metadata remain Runtime-owned and are preserved.
+If activation or health verification fails, the transaction restores the
+previous active source, venv, and service state. Product version reporting comes
+from the active source manifest; stale `open_nova-*.dist-info` in a reused venv
+is not authoritative and is not refreshed in place.
 
 ## Backup and recovery
 

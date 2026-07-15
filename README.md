@@ -15,8 +15,8 @@
 
 <p align="center">
   <a href="https://neo-isshin.github.io/open-nova/"><img src="https://img.shields.io/badge/Website-GitHub%20Pages-2563EB" alt="Website"></a>
-  <a href="https://github.com/Neo-Isshin/open-nova/releases/tag/v1.0.1"><img src="https://img.shields.io/badge/Release-v1.0.1-0EA5E9" alt="Release v1.0.1"></a>
-  <a href="#quick-start"><img src="https://img.shields.io/badge/Install-pinned%20v1.0.1-0284C7" alt="Pinned v1.0.1 install command"></a>
+  <a href="https://github.com/Neo-Isshin/open-nova/releases/latest"><img src="https://img.shields.io/github/v/release/Neo-Isshin/open-nova?display_name=tag&amp;sort=semver" alt="Latest stable Release"></a>
+  <a href="#quick-start"><img src="https://img.shields.io/badge/Install-stable%20one--liner-0284C7" alt="Stable one-line install command"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0--or--later-16A34A" alt="License"></a>
   <a href="https://discord.gg/JvJHngZWz"><img src="https://img.shields.io/badge/Discord-Join-5865F2" alt="Discord"></a>
 </p>
@@ -97,17 +97,17 @@ Together, the local fact layer, Pipeline, task system, Dashboard, and optional r
 <a id="support"></a>
 ## 💻 Support and Prerequisites
 
-The hosted Open Nova v1.0.x installation path is designed first for local macOS user environments:
+The hosted Open Nova installation path is designed first for local macOS user environments:
 
 - 🍎 **macOS is the first-class target:** Guided installation, Dashboard services, and managed scheduling use user-level `LaunchAgent` services by default.
 - 🛠️ **Base tools:** Verify that `zsh`, `git`, and `curl` are available before installation. `sudo` is not required.
 - 🐍 **Python:** Python `>=3.11` is required. On supported Apple Silicon and Intel Macs, the installer downloads and verifies a managed Python when no compatible version is available.
 - 🌐 **Network and storage:** Installation needs access to GitHub, the Python package index, and your selected model services. The first local `nova-RAG` run may download `torch`, `sentence-transformers`, and model weights.
-- 🐧 **Linux and Windows:** They are not first-class targets for the v1.0.x one-liner or managed services. Advanced users can run some components manually from source.
+- 🐧 **Linux and Windows:** They are not first-class targets for the stable-channel one-liner or managed services. Advanced users can run some components manually from source.
 
 ### Currently Supported Agent Runtimes
 
-| Runtime | v1.0.x status |
+| Runtime | Current status |
 | :--- | :--- |
 | 🦞 **OpenClaw** | Supported external-tool path family |
 | ✳️ **Claude Code** | Supported external-tool path family |
@@ -115,7 +115,7 @@ The hosted Open Nova v1.0.x installation path is designed first for local macOS 
 | ✨ **Gemini CLI** | Supported external-tool path family |
 | ⚕️ **Hermes** | Supported external-tool path family |
 
-The available data depends on whether compatible logs, sessions, or usage records exist locally and whether their paths are enabled in Settings. Additional runtimes and broader cross-platform support belong to future releases and should not be inferred as v1.0.x capabilities.
+The available data depends on whether compatible logs, sessions, or usage records exist locally and whether their paths are enabled in Settings. Additional runtimes and broader cross-platform support belong to future releases and should not be inferred as current capabilities.
 
 <a id="quick-start"></a>
 ## 🎥 Quick Start
@@ -123,16 +123,16 @@ The available data depends on whether compatible logs, sessions, or usage record
 > [!TIP]
 > **Deploy with one command, then let prosperity follow.**
 
-### 1. Install v1.0.1
+### 1. Install the Latest Stable Release
 
-The following one-liner pins both the `v1.0.1` bootstrap and the exact source commit used for installation. It does not track `main` or a future `latest` Release:
+This short one-liner installs the latest stable GitHub Release. It never tracks `main`, `HEAD`, a draft, or a prerelease:
 
 ```bash
-bootstrap="$(curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 10 --max-time 30 'https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.1/install/bootstrap.sh')" && [ -n "$bootstrap" ] && NOVA_INSTALL_SOURCE_URL='https://github.com/Neo-Isshin/open-nova.git' NOVA_INSTALL_REF='82bbdbd83e35724441c7005dfc0b555d413fcf93' zsh -c "$bootstrap"
+curl -fsSL https://github.com/Neo-Isshin/open-nova/releases/latest/download/install.sh | zsh
 ```
 
 > [!NOTE]
-> This README deliberately uses a strictly pinned v1.0.1 installation. Supplying the explicit commit bypasses the bootstrap's future dynamic checks for the `latest` Release and its `WITHDRAWN` marker, thereby keeping the Open Nova source fixed instead of allowing it to drift with `latest`. Third-party dependencies are still resolved at install time according to the release configuration, so this does not promise byte-for-byte reproducibility of the entire dependency environment. This choice does not modify the published v1.0.1 tag or Release.
+> GitHub resolves this URL to the `install.sh` asset attached to the latest stable Release. The launcher rejects draft, prerelease, or explicitly `WITHDRAWN` releases, peels the selected tag to a full commit, and installs that detached commit without ever following `main`.
 
 > [!IMPORTANT]
 > This command is for a fresh installation only. If the bootstrap detects an existing Open Nova runtime, an active runtime pointer, or a managed LaunchAgent, it stops safely before writing to the source cache. For an existing installation, run `open-nova update` or `open-nova update --dry-run` to review the plan, then use `open-nova update --apply` to perform the update.
@@ -202,7 +202,7 @@ The installation summary displays the actual Dashboard URL. The default is `http
 
 </details>
 
-Open Nova v1.0.1 targets a local macOS runtime. For complete pre-install checks, first-run setup, historical backfill, daily Pipeline, Dashboard / Nova-Task / nova-RAG operations, updates, and troubleshooting, see the [Local Operations Runbook](docs/local-operations-runbook.md).
+Open Nova targets a local macOS runtime. For complete pre-install checks, first-run setup, historical backfill, daily Pipeline, Dashboard / Nova-Task / nova-RAG operations, updates, and troubleshooting, see the [Local Operations Runbook](docs/local-operations-runbook.md).
 
 <a id="dashboard"></a>
 ## 📊 Dashboard, Screenshots, and Interactive Demo
@@ -219,7 +219,7 @@ The Dashboard is Open Nova's primary operating surface. It includes:
 
 ### 🖼️ Real Dashboard Screenshots
 
-The images below come from the real Open Nova Dashboard during development and operation. They preserve the project's own design, layout, typography, and components; they are neither redrawn mockups nor marketing illustrations from the release website. **nova-RAG v2** in a screenshot refers to the index and retrieval generation of the RAG subsystem, not an Open Nova v2 product release. The current product version remains `v1.0.1`.
+The images below come from the real Open Nova Dashboard during development and operation. They preserve the project's own design, layout, typography, and components; they are neither redrawn mockups nor marketing illustrations from the release website. **nova-RAG v2** in a screenshot refers to the index and retrieval generation of the RAG subsystem, not an Open Nova product version. GitHub Releases is the authority for the current stable product version.
 
 <details>
 <summary><strong>Expand the real Dashboard home screenshot</strong></summary>
@@ -336,10 +336,13 @@ open-nova update --apply
 ```
 
 - `open-nova update` only displays the update plan.
-- `--dry-run` runs a no-change bootstrap and installer preview. With a cold cache, it mainly shows the source-acquisition plan and is not a complete candidate-version E2E validation.
+- `--dry-run` runs a no-change preview and reports venv reuse versus locked rebuild when the candidate source is available. A cold remote source cache can still limit the preview to source acquisition.
 - Only `--apply` executes the protected update transaction.
+- Matching dependency fingerprints reuse the active venv with zero pip work; otherwise Open Nova builds a separate candidate venv from its exact hash-verified Runtime lock. Operators can require `--source-only`, require `--force-rebuild`, or prohibit source/dependency network access with `--offline`.
 
-Open Nova v1.0.1 does not yet include a product-level one-command uninstaller. Do not remove only `~/.open-nova`; doing so leaves LaunchAgents, the CLI shim, runtime pointer, shell `PATH` block, desktop shortcut, and installation cache behind.
+> The stable-channel one-liner installs this workflow only after it is included in a published stable Release; it never installs unreleased `main` code.
+
+Open Nova does not yet include a product-level one-command uninstaller. Do not remove only `~/.open-nova`; doing so leaves LaunchAgents, the CLI shim, runtime pointer, shell `PATH` block, desktop shortcut, and installation cache behind.
 
 <a id="nova-task"></a>
 ## 📋 Nova-Task: A Graph of Real Work
@@ -432,16 +435,17 @@ npm run test:release-page
 
 `npm run test:dashboard-live` is an explicit opt-in gate against a real Dashboard and may mutate the runtime. Run it only against a seeded, disposable runtime.
 
-Reproduce v1.0.1 release artifacts:
+Reproduce release artifacts for the current checkout:
 
 ```bash
 python -B -m pip install -r requirements-release.txt
+PROJECT_VERSION="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
 SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)" \
 python -B -m tools.release.build_release \
   --source-root . \
   --output-dir ../open-nova-release-artifacts \
   --expected-commit "$(git rev-parse HEAD)" \
-  --expected-version 1.0.1
+  --expected-version "$PROJECT_VERSION"
 ```
 
 The release builder accepts only a clean, committed Git worktree and writes output outside the repository. Artifacts include public-source and runtime-payload manifests, a normalized runtime archive, wheel, sdist, provenance, and `SHA256SUMS`.
@@ -465,7 +469,7 @@ The release builder accepts only a clean, committed Git worktree and writes outp
 
 ### Release, Security, and Project History
 
-- ✅ [v1.0.1 Release Assurance](docs/v1-release-assurance.md)
+- ✅ [Release Assurance Archive](docs/v1-release-assurance.md)
 - 🧹 [Production Cleanup Inventory](docs/production-clean-inventory.md)
 - 🧾 [Changelog](CHANGELOG.md)
 - 🔐 [Security Policy](SECURITY.md)

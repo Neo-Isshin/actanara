@@ -53,6 +53,7 @@ def _git(root: Path, *arguments: str) -> str:
 def _init_repository(root: Path, *, version: str = "7.8.9") -> str:
     (root / "src" / "sample").mkdir(parents=True)
     (root / "install").mkdir()
+    (root / "tools" / "release").mkdir(parents=True)
     (root / "pyproject.toml").write_text(
         "[build-system]\n"
         'requires = ["setuptools==83.0.0", "wheel==0.47.0"]\n'
@@ -70,6 +71,27 @@ def _init_repository(root: Path, *, version: str = "7.8.9") -> str:
     script = root / "install" / "install.sh"
     script.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     script.chmod(0o755)
+    bootstrap = root / "install" / "bootstrap.sh"
+    bootstrap.write_text(
+        "#!/usr/bin/env zsh\n"
+        "if true; then\n"
+        "resolve_latest_stable_commit() { return 0; }\n"
+        "fi\n",
+        encoding="utf-8",
+    )
+    bootstrap.chmod(0o755)
+    (root / "install" / "dependency_contract.py").write_text(
+        'PRODUCT = "open-nova"\n',
+        encoding="utf-8",
+    )
+    (root / "install" / "runtime-dependencies.lock.json").write_text(
+        '{"product":"open-nova","schemaVersion":1}\n',
+        encoding="utf-8",
+    )
+    (root / "tools" / "release" / "generate_runtime_lock.py").write_text(
+        'raise SystemExit("release-maintainer-only")\n',
+        encoding="utf-8",
+    )
     _git(root, "init", "-q")
     _git(root, "config", "user.name", "Release Fixture")
     _git(root, "config", "user.email", "release-fixture@example.invalid")
@@ -271,6 +293,8 @@ class ReleaseArtifactBuilderTests(unittest.TestCase):
             "src/llm_provider_test.py",
             "advanced/runtime_contract.py",
             "install/environment_reference.py",
+            "install/dependency_contract.py",
+            "install/runtime-dependencies.lock.json",
         )
         for relative in allowed:
             with self.subTest(allowed=relative):
@@ -292,6 +316,9 @@ class ReleaseArtifactBuilderTests(unittest.TestCase):
             with self.subTest(blocked=relative):
                 self.assertIsNotNone(release_builder._payload_path_violation(relative))
         self.assertFalse(release_builder.is_runtime_payload_path("tools/release/build_release.py"))
+        self.assertFalse(
+            release_builder.is_runtime_payload_path("tools/release/generate_runtime_lock.py")
+        )
         self.assertFalse(release_builder.is_runtime_payload_path("tests/test_release_artifact_builder.py"))
         self.assertFalse(release_builder.is_runtime_payload_path("requirements-release.txt"))
         self.assertIsNotNone(
@@ -470,6 +497,31 @@ class ReleaseArtifactBuilderTests(unittest.TestCase):
             write_packages(b"\xff\xfe/" + b"Users/private-operator/private/binary\x00")
             release_builder.validate_python_package_privacy(wheel, sdist)
 
+    def test_runtime_dependency_authority_is_package_privacy_safe(self):
+        repository = Path(__file__).resolve().parents[1]
+        runtime_dependency_files = (
+            "install/dependency_contract.py",
+            "install/runtime-dependencies.lock.json",
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            wheel = root / "open_nova-7.8.9-py3-none-any.whl"
+            sdist = root / "open_nova-7.8.9.tar.gz"
+            with zipfile.ZipFile(wheel, "w") as archive:
+                for relative in runtime_dependency_files:
+                    archive.writestr(relative, (repository / relative).read_bytes())
+            with sdist.open("wb") as raw:
+                with gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=1783900800) as zipped:
+                    with tarfile.open(fileobj=zipped, mode="w") as archive:
+                        for relative in runtime_dependency_files:
+                            payload = (repository / relative).read_bytes()
+                            info = tarfile.TarInfo(f"open_nova-7.8.9/{relative}")
+                            info.size = len(payload)
+                            archive.addfile(info, io.BytesIO(payload))
+
+            release_builder.validate_python_package_contents(wheel, sdist)
+            release_builder.validate_python_package_privacy(wheel, sdist)
+
     def test_wheel_and_sdist_normalization_removes_input_order_and_timestamp_variance(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -551,12 +603,24 @@ class ReleaseArtifactBuilderTests(unittest.TestCase):
             first_files = {path.name: path.read_bytes() for path in outputs[0].iterdir()}
             second_files = {path.name: path.read_bytes() for path in outputs[1].iterdir()}
             self.assertEqual(first_files, second_files)
+            self.assertIn("install.sh", result["outputFiles"])
             serialized = b"".join(first_files.values())
             self.assertNotIn(os.fsencode(source), serialized)
             self.assertIn(b"open-nova-7.8.9-runtime.tar.gz", first_files["SHA256SUMS"])
+            self.assertIn(b"install.sh", first_files["SHA256SUMS"])
+            self.assertEqual(
+                first_files["install.sh"],
+                (source / "install" / "bootstrap.sh").read_bytes(),
+            )
+            self.assertEqual(int((outputs[0] / "install.sh").stat().st_mtime), 1783900800)
+            self.assertEqual((outputs[0] / "install.sh").stat().st_mode & 0o777, 0o755)
             self.assertNotIn(b"SHA256SUMS  SHA256SUMS", first_files["SHA256SUMS"])
             provenance = json.loads(first_files["release-provenance.json"])
             self.assertEqual(provenance["toolchain"], LOCKED_TOOLCHAIN)
+            self.assertIn(
+                "install.sh",
+                {artifact["name"] for artifact in provenance["artifacts"]},
+            )
             self.assertTrue(
                 provenance["sourceFileSetIncludingIgnored"]["verifiedUnchangedAfterBuild"]
             )
@@ -567,6 +631,99 @@ class ReleaseArtifactBuilderTests(unittest.TestCase):
             self.assertEqual((source / ".git" / "index").read_bytes(), index_before)
             self.assertEqual(ignored.read_bytes(), ignored_before)
             self.assertEqual(_git(source, "status", "--porcelain=v1"), "")
+            source_manifest = first_files["public-source-manifest.tsv"].decode("utf-8")
+            runtime_manifest = first_files["runtime-payload-manifest.tsv"].decode("utf-8")
+            for relative in (
+                "install/dependency_contract.py",
+                "install/runtime-dependencies.lock.json",
+            ):
+                self.assertIn(f"{relative}\t", source_manifest)
+                self.assertIn(f"{relative}\t", runtime_manifest)
+            generator = "tools/release/generate_runtime_lock.py"
+            self.assertIn(f"{generator}\t", source_manifest)
+            self.assertNotIn(f"{generator}\t", runtime_manifest)
+            runtime_archive = outputs[0] / "open-nova-7.8.9-runtime.tar.gz"
+            with tarfile.open(runtime_archive, "r:gz") as archive:
+                runtime_members = {member.name for member in archive.getmembers()}
+                archived_bootstrap = archive.extractfile(
+                    "open-nova-7.8.9/install/bootstrap.sh"
+                ).read()
+            self.assertEqual(first_files["install.sh"], archived_bootstrap)
+            self.assertIn(
+                "open-nova-7.8.9/install/dependency_contract.py",
+                runtime_members,
+            )
+            self.assertIn(
+                "open-nova-7.8.9/install/runtime-dependencies.lock.json",
+                runtime_members,
+            )
+            self.assertNotIn(
+                "open-nova-7.8.9/tools/release/generate_runtime_lock.py",
+                runtime_members,
+            )
+
+    def test_stable_install_asset_fails_closed_for_missing_mode_or_frozen_byte_changes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source_root = root / "source"
+            source_root.mkdir()
+            _init_repository(source_root)
+            source = release_builder.inspect_frozen_git_source(source_root)
+
+            missing = release_builder.FrozenSource(
+                root=source.root,
+                commit=source.commit,
+                version=source.version,
+                entries=tuple(
+                    entry
+                    for entry in source.entries
+                    if entry.path != release_builder.STABLE_INSTALL_SOURCE
+                ),
+            )
+            with self.assertRaisesRegex(release_builder.ReleaseBuildError, "missing"):
+                release_builder.build_stable_install_asset(
+                    missing,
+                    root / "missing-output",
+                    source_date_epoch=1783900800,
+                )
+
+            bootstrap_entry = next(
+                entry
+                for entry in source.entries
+                if entry.path == release_builder.STABLE_INSTALL_SOURCE
+            )
+            wrong_mode = release_builder.FrozenSource(
+                root=source.root,
+                commit=source.commit,
+                version=source.version,
+                entries=tuple(
+                    release_builder.SourceEntry(
+                        path=entry.path,
+                        mode="100644" if entry is bootstrap_entry else entry.mode,
+                        size=entry.size,
+                        sha256=entry.sha256,
+                        symlink_broken=entry.symlink_broken,
+                    )
+                    for entry in source.entries
+                ),
+            )
+            with self.assertRaisesRegex(release_builder.ReleaseBuildError, "executable"):
+                release_builder.build_stable_install_asset(
+                    wrong_mode,
+                    root / "mode-output",
+                    source_date_epoch=1783900800,
+                )
+
+            (source.root / release_builder.STABLE_INSTALL_SOURCE).write_text(
+                "#!/usr/bin/env zsh\nchanged\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(release_builder.ReleaseBuildError, "changed after freeze"):
+                release_builder.build_stable_install_asset(
+                    source,
+                    root / "changed-output",
+                    source_date_epoch=1783900800,
+                )
 
     def test_source_date_epoch_is_explicit_and_validated(self):
         with mock.patch.dict(os.environ, {}, clear=True):

@@ -78,6 +78,33 @@ RAG_LANGUAGE_PROFILE="zh"
 DRY_RUN=0
 UPGRADE=0
 SOURCE_ONLY=0
+FORCE_REBUILD=0
+OFFLINE=0
+RESULT_JSON=0
+UPDATE_RESULT_EMITTED=0
+UPDATE_RESULT_STAGE="initializing"
+UPDATE_MODE="not-evaluated"
+UPDATE_REASON="dependency-plan-not-evaluated"
+UPDATE_REUSES_VENV=0
+UPDATE_DEPENDENCIES_INSTALLED=0
+UPDATE_SOURCE_UPDATED=0
+UPDATE_CACHE_USED=0
+UPDATE_SERVICES_STOPPED=0
+UPDATE_PLISTS_NORMALIZED=0
+UPDATE_PLANNED_DEPENDENCIES_INSTALL=0
+UPDATE_NOOP=0
+UPDATE_ROLLBACK_COMPLETE=-1
+UPDATE_STATE_CERTAIN=1
+UPDATE_DEPENDENCY_FINGERPRINT=""
+UPDATE_DEPENDENCY_PYTHON=""
+UPDATE_PYTHON_SELECTION_REASON=""
+DEPENDENCY_PLAN_CACHE_HIT=0
+DEPENDENCY_PLAN_FAIL_BEFORE_STOP=0
+DEPENDENCY_PROFILE_SOURCE="installer-arguments"
+DEPENDENCY_PROFILE_SETTINGS_SHA256=""
+DEPENDENCY_PROFILE_ACTIVE_VENV_TARGET=""
+DEPENDENCY_PROFILE_MARKER_STATUS=""
+DEPENDENCY_PROFILE_MARKER_SHA256=""
 WIZARD_MODE="${NOVA_INSTALL_WIZARD:-auto}"
 YES=0
 WIZARD_CONFIRMED=0
@@ -109,6 +136,9 @@ NO_DASHBOARD_SERVER_SET=0
 DASHBOARD_PORT_SET=0
 DASHBOARD_HOST_SET=0
 RAG_SET=0
+RAG_ENABLE_SET=0
+RAG_DETAIL_SET=0
+DEV_TEST_SET=0
 EMBEDDING_SERVER_SET=0
 LLM_SET=0
 RAG_EMBEDDING_MODE_SET=0
@@ -132,6 +162,7 @@ UPDATE_PRIOR_SOURCE_KIND="missing"
 UPDATE_PRIOR_SOURCE_TARGET=""
 UPDATE_PRIOR_SOURCE_BACKUP=""
 UPDATE_STAGED_VENV=""
+FRESH_STAGED_VENV=""
 UPDATE_PRIOR_VENV_BACKUP=""
 UPDATE_MUTABLE_STATE_CAPTURED=0
 UPDATE_ROLLBACK_RUNNING=0
@@ -140,6 +171,8 @@ UPDATE_TEST_MODE="${INSTALL_TEST_MODE}"
 UPDATE_TEST_FAIL_PHASE="${NOVA_INSTALL_TEST_FAIL_PHASE:-}"
 UPDATE_TEST_HOOK="${NOVA_INSTALL_TEST_HOOK:-}"
 UPDATE_TRANSACTION_HELPER="${SCRIPT_DIR}/update_transaction.py"
+DEPENDENCY_CONTRACT_HELPER="${SCRIPT_DIR}/dependency_contract.py"
+RUNTIME_DEPENDENCY_LOCK="${SOURCE_ROOT}/install/runtime-dependencies.lock.json"
 
 usage() {
   cat <<'EOF'
@@ -191,7 +224,10 @@ Options:
   --language LOCALE           Install-time language profile: zh-CN or en-US. Default: zh-CN.
   --dry-run                   Print the plan without writing files or running commands.
   --upgrade                   Upgrade an existing runtime while preserving settings and secrets.
-  --source-only               Only deploy/repair the runtime source snapshot.
+  --source-only               Require source-only deployment with a compatible active Runtime venv.
+  --force-rebuild             Force a new candidate Runtime venv during an upgrade.
+  --offline                   Forbid source/dependency network access; require trusted caches.
+  --result-json               Emit one final OPEN_NOVA_UPDATE_RESULT_JSON result envelope.
   --wizard                    Force interactive guided setup.
   --no-wizard                 Disable interactive guided setup.
   --yes                       Skip final interactive confirmation.
@@ -219,6 +255,38 @@ log() {
   if [[ "${NOVA_INSTALL_VERBOSE:-0}" == "1" ]]; then
     print -r -- "==> $*"
   fi
+}
+
+emit_update_result() {
+  local rc="${1:-0}"
+  if [[ "$RESULT_JSON" != "1" || "$UPGRADE" != "1" || "$UPDATE_RESULT_EMITTED" == "1" ]]; then
+    return 0
+  fi
+  local dependencies_installed="false"
+  local reuses_runtime_venv="false"
+  local source_updated="null"
+  local cache_used="false"
+  local services_stopped="false"
+  local planned_dependencies_install="false"
+  local plists_normalized="null"
+  local rollback_complete="null"
+  local state_certain="false"
+  if [[ "$UPDATE_DEPENDENCIES_INSTALLED" == "1" ]]; then dependencies_installed="true"; fi
+  if [[ "$UPDATE_REUSES_VENV" == "1" ]]; then reuses_runtime_venv="true"; fi
+  if [[ "$UPDATE_SOURCE_UPDATED" == "1" ]]; then source_updated="true"; fi
+  if [[ "$UPDATE_SOURCE_UPDATED" == "0" ]]; then source_updated="false"; fi
+  if [[ "$UPDATE_CACHE_USED" == "1" ]]; then cache_used="true"; fi
+  if [[ "$UPDATE_SERVICES_STOPPED" == "1" ]]; then services_stopped="true"; fi
+  if [[ "$UPDATE_PLANNED_DEPENDENCIES_INSTALL" == "1" ]]; then planned_dependencies_install="true"; fi
+  if [[ "$UPDATE_PLISTS_NORMALIZED" == "1" ]]; then plists_normalized="true"; fi
+  if [[ "$UPDATE_PLISTS_NORMALIZED" == "0" ]]; then plists_normalized="false"; fi
+  if [[ "$UPDATE_ROLLBACK_COMPLETE" == "1" ]]; then rollback_complete="true"; fi
+  if [[ "$UPDATE_ROLLBACK_COMPLETE" == "0" ]]; then rollback_complete="false"; fi
+  if [[ "$UPDATE_STATE_CERTAIN" == "1" ]]; then state_certain="true"; fi
+  local result_status="failed"
+  if [[ "$rc" == "0" ]]; then result_status="completed"; fi
+  UPDATE_RESULT_EMITTED=1
+  print -r -- "OPEN_NOVA_UPDATE_RESULT_JSON={\"schemaVersion\":1,\"status\":\"${result_status}\",\"updateMode\":\"${UPDATE_MODE}\",\"dependenciesInstalled\":${dependencies_installed},\"reusesRuntimeVenv\":${reuses_runtime_venv},\"sourceUpdated\":${source_updated},\"reason\":\"${UPDATE_REASON}\",\"cacheUsed\":${cache_used},\"servicesStopped\":${services_stopped},\"plannedDependenciesInstall\":${planned_dependencies_install},\"managedServiceDefinitionsNormalized\":${plists_normalized},\"rollbackComplete\":${rollback_complete},\"stateCertain\":${state_certain},\"stage\":\"${UPDATE_RESULT_STAGE}\"}"
 }
 
 warn() {
@@ -2587,6 +2655,129 @@ deploy_runtime_source() {
   promote_staged_runtime_source
 }
 
+staged_source_matches_active() {
+  if [[ -z "$STAGED_RELEASE_TARGET" ]]; then
+    return 1
+  fi
+  PYTHONDONTWRITEBYTECODE=1 "${PYTHON_BIN}" - "${RUNTIME_HOME}" "${STAGED_RELEASE_TARGET}" <<'PY'
+import hashlib
+import json
+import os
+import re
+import sys
+from pathlib import Path
+
+runtime = Path(os.path.abspath(sys.argv[1]))
+candidate = Path(os.path.abspath(sys.argv[2]))
+pointer = runtime / "app" / "source"
+store = runtime / "app" / "releases"
+
+
+def fail():
+    raise SystemExit(1)
+
+
+try:
+    if not pointer.is_symlink() or store.is_symlink() or not store.is_dir():
+        fail()
+    raw_target = Path(os.readlink(pointer))
+    if (
+        raw_target.is_absolute()
+        or len(raw_target.parts) != 2
+        or raw_target.parts[0] != "releases"
+        or any(part in {"", ".", ".."} for part in raw_target.parts)
+    ):
+        fail()
+    active = pointer.parent / raw_target
+    if active.is_symlink() or not active.is_dir() or active.parent != store:
+        fail()
+    if active.resolve(strict=True).parent != store.resolve(strict=True):
+        fail()
+    if candidate.is_symlink() or not candidate.is_dir() or candidate.parent != store:
+        fail()
+except (IndexError, OSError, RuntimeError):
+    fail()
+
+
+def manifest_and_verified_payload(root: Path):
+    manifest_path = root / ".open-nova-runtime-source.json"
+    if manifest_path.is_symlink() or not manifest_path.is_file():
+        fail()
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        fail()
+    if (
+        not isinstance(manifest, dict)
+        or manifest.get("schemaVersion") != 2
+        or manifest.get("product") != "open-nova"
+        or manifest.get("deploymentMode") != "release-symlink"
+    ):
+        fail()
+    payload = manifest.get("payload")
+    if not isinstance(payload, dict) or set(payload) != {"fileCount", "files", "sha256"}:
+        fail()
+    records = payload.get("files")
+    if not isinstance(records, list) or type(payload.get("fileCount")) is not int:
+        fail()
+    expected = {}
+    aggregate = hashlib.sha256()
+    for record in records:
+        if not isinstance(record, dict) or set(record) != {"path", "sha256", "size"}:
+            fail()
+        relative_text = record.get("path")
+        digest = record.get("sha256")
+        size = record.get("size")
+        if (
+            not isinstance(relative_text, str)
+            or not relative_text
+            or not re.fullmatch(r"[0-9a-f]{64}", str(digest or ""))
+            or type(size) is not int
+            or size < 0
+        ):
+            fail()
+        relative = Path(relative_text)
+        if relative.is_absolute() or any(part in {"", ".", ".."} for part in relative.parts):
+            fail()
+        path = root / relative
+        if path.is_symlink() or not path.is_file():
+            fail()
+        content = path.read_bytes()
+        actual = hashlib.sha256(content).hexdigest()
+        if len(content) != size or actual != digest or relative.as_posix() in expected:
+            fail()
+        normalized = relative.as_posix()
+        expected[normalized] = (actual, size)
+        aggregate.update(normalized.encode("utf-8"))
+        aggregate.update(b"\0")
+        aggregate.update(actual.encode("ascii"))
+        aggregate.update(b"\n")
+    actual_paths = {
+        path.relative_to(root).as_posix()
+        for path in root.rglob("*")
+        if path != manifest_path and path.name != ".open-nova-update-owner" and path.is_file()
+    }
+    if (
+        any(path.is_symlink() for path in root.rglob("*"))
+        or actual_paths != set(expected)
+        or payload["fileCount"] != len(expected)
+        or aggregate.hexdigest() != payload["sha256"]
+    ):
+        fail()
+    return manifest, payload
+
+
+active_manifest, active_payload = manifest_and_verified_payload(active)
+candidate_manifest, candidate_payload = manifest_and_verified_payload(candidate)
+if (
+    active_payload != candidate_payload
+    or active_manifest.get("pyprojectVersion") != candidate_manifest.get("pyprojectVersion")
+    or active_manifest.get("databaseCompatibility") != candidate_manifest.get("databaseCompatibility")
+):
+    fail()
+PY
+}
+
 create_fresh_runtime_venv() {
   local generation="${STAGED_RELEASE_ID:-<release-id>}"
   local venv_store="${RUNTIME_HOME}/app/venvs"
@@ -2605,6 +2796,7 @@ create_fresh_runtime_venv() {
   fi
   run_cmd mkdir -p "${venv_store}"
   run_cmd "${PYTHON_BIN}" -m venv "${venv_target}"
+  FRESH_STAGED_VENV="${venv_target}"
   if [[ "$DRY_RUN" == "1" ]]; then
     return 0
   fi
@@ -2612,14 +2804,49 @@ create_fresh_runtime_venv() {
     print -r -- "runtime venv generation failed validation before pointer promotion" >&2
     return 1
   fi
-  if ! promote_fresh_runtime_pointer \
-    "${venv_target}" \
-    "${VENV_DIR}" \
-    "app/venvs"
-  then
-    print -r -- "runtime venv pointer promotion failed; the staged generation was preserved for operator inspection" >&2
+  VENV_DIR="${venv_target}"
+  VENV_PY="${venv_target}/bin/python"
+}
+
+promote_fresh_runtime_artifacts() {
+  if [[ "$DRY_RUN" == "1" ]]; then
+    return 0
+  fi
+  if [[ -z "$STAGED_RELEASE_TARGET" || -z "$FRESH_STAGED_VENV" ]]; then
+    print -r -- "fresh Runtime promotion requires validated source and venv candidates" >&2
     return 1
   fi
+  local stable_venv="${RUNTIME_HOME}/.venv"
+  promote_staged_runtime_source
+  if ! promote_fresh_runtime_pointer \
+    "${FRESH_STAGED_VENV}" \
+    "${stable_venv}" \
+    "app/venvs"
+  then
+    PYTHONDONTWRITEBYTECODE=1 "${PYTHON_BIN}" - \
+      "${DEPLOY_SOURCE_ROOT}" "${STAGED_RELEASE_TARGET}" <<'PY'
+import os
+import sys
+from pathlib import Path
+
+pointer = Path(os.path.abspath(sys.argv[1]))
+candidate = Path(os.path.abspath(sys.argv[2]))
+try:
+    if pointer.is_symlink() and pointer.resolve(strict=True) == candidate.resolve(strict=True):
+        pointer.unlink()
+        descriptor = os.open(pointer.parent, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+except (OSError, RuntimeError):
+    raise SystemExit(1)
+PY
+    print -r -- "runtime venv pointer promotion failed; the newly created source pointer was removed and both candidates were preserved for operator inspection" >&2
+    return 1
+  fi
+  VENV_DIR="${stable_venv}"
+  VENV_PY="${stable_venv}/bin/python"
 }
 
 format_selected_external_tools() {
@@ -3159,6 +3386,8 @@ run_installer_preflight() {
   local required_files=(
     "LICENSE"
     "pyproject.toml"
+    "install/dependency_contract.py"
+    "install/runtime-dependencies.lock.json"
     "advanced/cli/open_nova.py"
     "advanced/dashboard/dashboard_launch_agent.py"
     "advanced/dashboard/rag_server_launch_agent.py"
@@ -3479,7 +3708,6 @@ run_runtime_dependency_gate() {
   if [[ "$UPDATE_TRANSACTION_ACTIVE" == "1" && -n "$UPDATE_TRANSACTION_DIR" ]]; then
     missing_file="${UPDATE_TRANSACTION_DIR}/candidate-dependency-gate-missing.txt"
   fi
-  local missing_packages=()
   mkdir -p "${missing_file:h}"
   log_file="$(installer_log_file)"
   mkdir -p "${log_file:h}"
@@ -3490,33 +3718,7 @@ run_runtime_dependency_gate() {
     progress_ok "$label"
     return 0
   fi
-  if [[ ! -s "${missing_file}" ]]; then
-    progress_fail "${label} failed; see ${log_file}"
-    return 1
-  fi
-  while IFS= read -r package_spec; do
-    if [[ -n "${package_spec}" ]]; then
-      missing_packages+=("${package_spec}")
-    fi
-  done < "${missing_file}"
-  if (( ${#missing_packages[@]} == 0 )); then
-    progress_fail "${label} failed; see ${log_file}"
-    return 1
-  fi
-  log "Installing missing runtime dependencies detected by dependency gate: ${missing_packages[*]}"
-  progress_fail "${label} found missing packages; installing remediation"
-  if [[ "$UPDATE_TRANSACTION_ACTIVE" == "1" && "$SOURCE_ONLY" != "1" ]]; then
-    run_update_candidate_cmd candidate-dependency-remediation \
-      "${VENV_PY}" -m pip install "${missing_packages[@]}"
-  else
-    run_cmd "${VENV_PY}" -m pip install "${missing_packages[@]}"
-  fi
-  progress_start "$label"
-  if run_runtime_dependency_check "${missing_file}" >> "$log_file" 2>&1; then
-    progress_ok "$label"
-    return 0
-  fi
-  progress_fail "${label} failed after remediation; see ${log_file}"
+  progress_fail "${label} failed; dependency remediation is forbidden outside the locked candidate build; see ${log_file}"
   return 1
 }
 
@@ -3631,6 +3833,463 @@ update_transaction_command() {
   "${PYTHON_BIN}" "${UPDATE_TRANSACTION_HELPER}" "$@"
 }
 
+dependency_profile_args() {
+  local profile=""
+  for profile in "${INSTALL_EXTRAS[@]}"; do
+    print -r -- "--profile"
+    print -r -- "$profile"
+  done
+}
+
+inherit_upgrade_dependency_profiles() {
+  if [[ "$UPGRADE" != "1" ]]; then
+    return 0
+  fi
+  if [[ "$RAG_DETAIL_SET" == "1" ]]; then
+    print -r -- "upgrade cannot change detailed RAG configuration; update Runtime Settings separately" >&2
+    return 2
+  fi
+  local profile_json=""
+  local parsed=""
+  profile_json="$(PYTHONDONTWRITEBYTECODE=1 "${PYTHON_BIN}" \
+    "${DEPENDENCY_CONTRACT_HELPER}" runtime-profiles \
+    --runtime "${RUNTIME_HOME}")" || return $?
+  parsed="$(print -rn -- "$profile_json" | "${PYTHON_BIN}" -c '
+import json
+import sys
+
+value = json.load(sys.stdin)
+if (
+    not isinstance(value, dict)
+    or value.get("schemaVersion") != 1
+    or value.get("status") != "ok"
+    or set(value) != {"schemaVersion", "status", "profiles", "rag", "evidence"}
+):
+    raise SystemExit(2)
+profiles = value.get("profiles")
+rag = value.get("rag")
+evidence = value.get("evidence")
+if (
+    not isinstance(profiles, list)
+    or not isinstance(rag, dict)
+    or set(rag) != {"enabled", "embeddingMode"}
+    or not isinstance(evidence, dict)
+    or set(evidence) != {
+        "settingsSha256", "activeVenvTarget",
+        "activeMarkerStatus", "activeMarkerSha256",
+    }
+):
+    raise SystemExit(2)
+enabled = rag.get("enabled")
+mode = rag.get("embeddingMode")
+expected = ["dashboard"]
+if enabled is True:
+    if mode not in {"local", "cloud"}:
+        raise SystemExit(2)
+    expected.append("rag-server")
+    if mode == "local":
+        expected.append("rag-local")
+elif enabled is False:
+    if mode is not None:
+        raise SystemExit(2)
+else:
+    raise SystemExit(2)
+dev_test = "dev-test" in profiles
+if dev_test:
+    expected.append("dev-test")
+if profiles != sorted(expected):
+    raise SystemExit(2)
+settings_sha = evidence.get("settingsSha256")
+venv_target = evidence.get("activeVenvTarget")
+marker_status = evidence.get("activeMarkerStatus")
+marker_sha = evidence.get("activeMarkerSha256")
+if not isinstance(settings_sha, str) or not __import__("re").fullmatch(r"[0-9a-f]{64}", settings_sha):
+    raise SystemExit(2)
+if (
+    not isinstance(venv_target, str)
+    or not __import__("os").path.isabs(venv_target)
+    or any(character in venv_target for character in "\0\r\n\t")
+):
+    raise SystemExit(2)
+if marker_status == "missing":
+    if marker_sha is not None:
+        raise SystemExit(2)
+    marker_sha_text = "none"
+elif marker_status == "trusted":
+    if not isinstance(marker_sha, str) or not __import__("re").fullmatch(r"[0-9a-f]{64}", marker_sha):
+        raise SystemExit(2)
+    marker_sha_text = marker_sha
+else:
+    raise SystemExit(2)
+print("\t".join((
+    "1" if enabled else "0",
+    mode or "none",
+    "1" if dev_test else "0",
+    settings_sha,
+    venv_target,
+    marker_status,
+    marker_sha_text,
+)))
+')" || return 2
+  local fields=("${(@ps:\t:)parsed}")
+  if [[ "${#fields[@]}" != "7" ]]; then
+    return 2
+  fi
+  local inherited_enabled="${fields[1]}"
+  local inherited_mode="${fields[2]}"
+  local inherited_dev_test="${fields[3]}"
+  if [[ "$inherited_mode" == "none" ]]; then
+    inherited_mode=""
+  fi
+  if [[ "$RAG_ENABLE_SET" == "1" && "$inherited_enabled" != "$ENABLE_RAG" ]]; then
+    print -r -- "upgrade RAG enablement arguments conflict with Runtime Settings" >&2
+    return 2
+  fi
+  if [[ "$RAG_EMBEDDING_MODE_SET" == "1" && \
+    ( "$inherited_enabled" != "1" || "$inherited_mode" != "$RAG_EMBEDDING_MODE" ) ]]; then
+    print -r -- "upgrade RAG embedding mode argument conflicts with Runtime Settings" >&2
+    return 2
+  fi
+  case "${inherited_enabled}|${inherited_mode}" in
+    "0|")
+      ENABLE_RAG=0
+      ;;
+    "1|local"|"1|cloud")
+      ENABLE_RAG=1
+      RAG_EMBEDDING_MODE="${inherited_mode}"
+      ;;
+    *)
+      return 2
+      ;;
+  esac
+  if [[ "$DEV_TEST_SET" != "1" ]]; then
+    ENABLE_DEV_TEST="$inherited_dev_test"
+  fi
+  DEPENDENCY_PROFILE_SETTINGS_SHA256="${fields[4]}"
+  DEPENDENCY_PROFILE_ACTIVE_VENV_TARGET="${fields[5]}"
+  DEPENDENCY_PROFILE_MARKER_STATUS="${fields[6]}"
+  if [[ "${fields[7]}" == "none" ]]; then
+    DEPENDENCY_PROFILE_MARKER_SHA256=""
+  else
+    DEPENDENCY_PROFILE_MARKER_SHA256="${fields[7]}"
+  fi
+  # Upgrade dependency selection never requests a Settings rewrite.  This is
+  # also compatible with v1.0.1, whose CLI forwards matching RAG profile flags.
+  RAG_SET=0
+  RAG_ENABLE_SET=0
+  RAG_EMBEDDING_MODE_SET=0
+  DEPENDENCY_PROFILE_SOURCE="runtime-settings+active-marker"
+}
+
+parse_dependency_plan() {
+  local payload="$1"
+  print -rn -- "$payload" | "${PYTHON_BIN}" -c '
+import json
+import os
+import re
+import sys
+
+try:
+    value = json.load(sys.stdin)
+except (json.JSONDecodeError, UnicodeDecodeError):
+    raise SystemExit(2)
+required = {
+    "schemaVersion", "status", "updateMode", "reason",
+    "dependencyFingerprint", "reusesRuntimeVenv",
+    "plannedDependenciesInstalled", "offline", "cacheUsed",
+    "cache", "failBeforeServiceStop", "selectedPython",
+    "pythonSelectionReason",
+}
+if not isinstance(value, dict) or not required.issubset(value):
+    raise SystemExit(2)
+mode = value["updateMode"]
+reason = value["reason"]
+fingerprint = value["dependencyFingerprint"]
+selected_python = value["selectedPython"]
+selection_reason = value["pythonSelectionReason"]
+if mode not in {"reuse-existing-venv", "rebuild-candidate-venv"}:
+    raise SystemExit(2)
+if not isinstance(reason, str) or not re.fullmatch(r"[a-z0-9-]+", reason):
+    raise SystemExit(2)
+if not isinstance(fingerprint, str) or not re.fullmatch(r"[0-9a-f]{64}", fingerprint):
+    raise SystemExit(2)
+if (
+    not isinstance(selected_python, str)
+    or not os.path.isabs(selected_python)
+    or any(character in selected_python for character in "\0\r\n\t")
+):
+    raise SystemExit(2)
+if not isinstance(selection_reason, str) or not re.fullmatch(r"[a-z0-9-]+", selection_reason):
+    raise SystemExit(2)
+boolean_fields = (
+    "reusesRuntimeVenv", "plannedDependenciesInstalled", "cacheUsed",
+    "failBeforeServiceStop",
+)
+if any(type(value[field]) is not bool for field in boolean_fields):
+    raise SystemExit(2)
+print("\t".join((
+    mode,
+    reason,
+    fingerprint,
+    "1" if value["reusesRuntimeVenv"] else "0",
+    "1" if value["plannedDependenciesInstalled"] else "0",
+    "1" if value["cacheUsed"] else "0",
+    "1" if value["failBeforeServiceStop"] else "0",
+    selected_python,
+    selection_reason,
+)))
+'
+}
+
+parse_dependency_error() {
+  local payload="$1"
+  print -rn -- "$payload" | "${PYTHON_BIN}" -c '
+import json
+import re
+import sys
+
+try:
+    value = json.load(sys.stdin)
+except (json.JSONDecodeError, UnicodeDecodeError):
+    raise SystemExit(2)
+if not isinstance(value, dict) or set(value) != {"schemaVersion", "status", "error"}:
+    raise SystemExit(2)
+error = value.get("error")
+if (
+    value.get("schemaVersion") != 1
+    or value.get("status") != "error"
+    or not isinstance(error, dict)
+    or set(error) != {"code", "message"}
+):
+    raise SystemExit(2)
+code = error.get("code")
+message = error.get("message")
+if not isinstance(code, str) or not re.fullmatch(r"[a-z0-9-]+", code):
+    raise SystemExit(2)
+if not isinstance(message, str) or not message or any(character in message for character in "\0\r\n\t"):
+    raise SystemExit(2)
+print(code)
+'
+}
+
+run_dependency_update_plan() {
+  local candidate_source="$1"
+  local mode="auto"
+  local plan_json=""
+  local plan_rc=0
+  local parsed=""
+  local profiles=()
+  profiles=("${(@f)$(dependency_profile_args)}")
+  if [[ "$SOURCE_ONLY" == "1" ]]; then
+    mode="explicit-source-only"
+  elif [[ "$FORCE_REBUILD" == "1" ]]; then
+    mode="force-rebuild"
+  fi
+  local command=(
+    "${PYTHON_BIN}" "${candidate_source}/install/dependency_contract.py" plan
+    --lock "${candidate_source}/install/runtime-dependencies.lock.json"
+    --pyproject "${candidate_source}/pyproject.toml"
+    "${profiles[@]}"
+    --runtime "${RUNTIME_HOME}"
+    --cache-root "${RUNTIME_HOME}/app/dependency-cache/v1"
+    --mode "$mode"
+  )
+  if [[ "$PYTHON_SET" == "1" ]]; then
+    command+=(--python "${PYTHON_BIN}")
+  fi
+  if [[ "$OFFLINE" == "1" ]]; then
+    command+=(--offline)
+  fi
+  UPDATE_RESULT_STAGE="dependency-plan"
+  if plan_json="$(PYTHONDONTWRITEBYTECODE=1 "${command[@]}" 2>&1)"; then
+    plan_rc=0
+  else
+    plan_rc=$?
+  fi
+  if [[ -n "$plan_json" ]]; then
+    local parse_rc=0
+    if parsed="$(parse_dependency_plan "$plan_json")"; then
+      parse_rc=0
+    else
+      parse_rc=$?
+    fi
+    if [[ "$parse_rc" != "0" ]]; then
+      local error_code=""
+      if [[ "$plan_rc" != "0" ]] && error_code="$(parse_dependency_error "$plan_json")"; then
+        if [[ "$SOURCE_ONLY" == "1" ]]; then
+          UPDATE_MODE="reuse-existing-venv"
+        else
+          UPDATE_MODE="rebuild-candidate-venv"
+        fi
+        UPDATE_REASON="$error_code"
+        UPDATE_REUSES_VENV=0
+        UPDATE_PLANNED_DEPENDENCIES_INSTALL=0
+        DEPENDENCY_PLAN_CACHE_HIT=0
+        DEPENDENCY_PLAN_FAIL_BEFORE_STOP=1
+        print -r -- "runtime dependency plan blocked before service stop: ${error_code}" >&2
+        return "$plan_rc"
+      fi
+      UPDATE_MODE="rebuild-candidate-venv"
+      UPDATE_REASON="dependency-plan-output-invalid"
+      return 70
+    fi
+    local fields=("${(@ps:\t:)parsed}")
+    if [[ "${#fields[@]}" != "9" ]]; then
+      UPDATE_MODE="rebuild-candidate-venv"
+      UPDATE_REASON="dependency-plan-output-invalid"
+      return 70
+    fi
+    UPDATE_MODE="${fields[1]}"
+    UPDATE_REASON="${fields[2]}"
+    UPDATE_DEPENDENCY_FINGERPRINT="${fields[3]}"
+    UPDATE_REUSES_VENV="${fields[4]}"
+    UPDATE_PLANNED_DEPENDENCIES_INSTALL="${fields[5]}"
+    DEPENDENCY_PLAN_CACHE_HIT="${fields[6]}"
+    DEPENDENCY_PLAN_FAIL_BEFORE_STOP="${fields[7]}"
+    UPDATE_DEPENDENCY_PYTHON="${fields[8]}"
+    UPDATE_PYTHON_SELECTION_REASON="${fields[9]}"
+  else
+    UPDATE_MODE="rebuild-candidate-venv"
+    UPDATE_REASON="dependency-contract-invalid-or-unsupported"
+  fi
+  if [[ "$plan_rc" != "0" ]]; then
+    return "$plan_rc"
+  fi
+  if [[ "$UPDATE_MODE" == "reuse-existing-venv" ]]; then
+    UPDATE_REUSES_VENV=1
+    UPDATE_PLANNED_DEPENDENCIES_INSTALL=0
+  else
+    UPDATE_REUSES_VENV=0
+    UPDATE_PLANNED_DEPENDENCIES_INSTALL=1
+  fi
+  return 0
+}
+
+materialize_update_dependency_cache() {
+  if [[ "$UPDATE_MODE" != "rebuild-candidate-venv" || "$DRY_RUN" == "1" ]]; then
+    return 0
+  fi
+  local source_root="$1"
+  local profiles=()
+  profiles=("${(@f)$(dependency_profile_args)}")
+  local command=(
+    "${PYTHON_BIN}" "${source_root}/install/dependency_contract.py" materialize-cache
+    --lock "${source_root}/install/runtime-dependencies.lock.json"
+    --pyproject "${source_root}/pyproject.toml"
+    "${profiles[@]}"
+    --python "${UPDATE_DEPENDENCY_PYTHON}"
+    --cache-root "${RUNTIME_HOME}/app/dependency-cache/v1"
+  )
+  if [[ "$OFFLINE" == "1" ]]; then
+    command+=(--offline)
+  fi
+  UPDATE_RESULT_STAGE="dependency-cache"
+  run_cmd "${command[@]}"
+}
+
+install_candidate_locked_dependencies() {
+  local source_root="$1"
+  local venv_root="$2"
+  local profiles=()
+  profiles=("${(@f)$(dependency_profile_args)}")
+  UPDATE_RESULT_STAGE="candidate-dependencies"
+  run_update_candidate_cmd candidate-locked-dependency-install \
+    "${PYTHON_BIN}" "${source_root}/install/dependency_contract.py" install \
+    --lock "${source_root}/install/runtime-dependencies.lock.json" \
+    --pyproject "${source_root}/pyproject.toml" \
+    "${profiles[@]}" \
+    --cache-root "${RUNTIME_HOME}/app/dependency-cache/v1" \
+    --venv-python "${venv_root}/bin/python"
+  UPDATE_DEPENDENCIES_INSTALLED=1
+  UPDATE_CACHE_USED=1
+  run_update_candidate_cmd candidate-dependency-manifest-write \
+    "${PYTHON_BIN}" "${source_root}/install/dependency_contract.py" write-marker \
+    --lock "${source_root}/install/runtime-dependencies.lock.json" \
+    --pyproject "${source_root}/pyproject.toml" \
+    "${profiles[@]}" \
+    --python "${venv_root}/bin/python" \
+    --venv "${venv_root}"
+  run_update_candidate_cmd candidate-dependency-manifest-verify \
+    "${PYTHON_BIN}" "${source_root}/install/dependency_contract.py" verify-marker \
+    --lock "${source_root}/install/runtime-dependencies.lock.json" \
+    --pyproject "${source_root}/pyproject.toml" \
+    "${profiles[@]}" \
+    --python "${venv_root}/bin/python" \
+    --venv "${venv_root}"
+}
+
+prepare_fresh_dependency_cache() {
+  local source_root="$1"
+  local profiles=()
+  profiles=("${(@f)$(dependency_profile_args)}")
+  local status_json=""
+  status_json="$(PYTHONDONTWRITEBYTECODE=1 "${PYTHON_BIN}" \
+    "${source_root}/install/dependency_contract.py" cache-status \
+    --lock "${source_root}/install/runtime-dependencies.lock.json" \
+    --pyproject "${source_root}/pyproject.toml" \
+    "${profiles[@]}" \
+    --python "${PYTHON_BIN}" \
+    --cache-root "${RUNTIME_HOME}/app/dependency-cache/v1")"
+  local cache_status=""
+  cache_status="$(print -rn -- "$status_json" | "${PYTHON_BIN}" -c '
+import json
+import sys
+value = json.load(sys.stdin)
+status = value.get("status") if isinstance(value, dict) else None
+if status not in {"hit", "miss"}:
+    raise SystemExit(2)
+print(status)
+')" || {
+    print -r -- "runtime dependency cache status returned an invalid result" >&2
+    return 70
+  }
+  if [[ "$OFFLINE" == "1" && "$cache_status" != "hit" ]]; then
+    print -r -- "offline fresh install requires a complete trusted runtime dependency wheelhouse" >&2
+    return 3
+  fi
+  if [[ "$DRY_RUN" == "1" ]]; then
+    log "fresh dependency cache plan: ${cache_status}"
+    return 0
+  fi
+  local materialize_command=(
+    "${PYTHON_BIN}" "${source_root}/install/dependency_contract.py" materialize-cache
+    --lock "${source_root}/install/runtime-dependencies.lock.json"
+    --pyproject "${source_root}/pyproject.toml"
+    "${profiles[@]}"
+    --python "${PYTHON_BIN}"
+    --cache-root "${RUNTIME_HOME}/app/dependency-cache/v1"
+  )
+  if [[ "$OFFLINE" == "1" ]]; then
+    materialize_command+=(--offline)
+  fi
+  run_cmd "${materialize_command[@]}"
+}
+
+install_fresh_locked_dependencies() {
+  local source_root="$1"
+  local venv_root="$2"
+  local profiles=()
+  profiles=("${(@f)$(dependency_profile_args)}")
+  run_cmd "${PYTHON_BIN}" "${source_root}/install/dependency_contract.py" install \
+    --lock "${source_root}/install/runtime-dependencies.lock.json" \
+    --pyproject "${source_root}/pyproject.toml" \
+    "${profiles[@]}" \
+    --cache-root "${RUNTIME_HOME}/app/dependency-cache/v1" \
+    --venv-python "${venv_root}/bin/python"
+  run_cmd "${PYTHON_BIN}" "${source_root}/install/dependency_contract.py" write-marker \
+    --lock "${source_root}/install/runtime-dependencies.lock.json" \
+    --pyproject "${source_root}/pyproject.toml" \
+    "${profiles[@]}" \
+    --python "${venv_root}/bin/python" \
+    --venv "${venv_root}"
+  run_cmd "${PYTHON_BIN}" "${source_root}/install/dependency_contract.py" verify-marker \
+    --lock "${source_root}/install/runtime-dependencies.lock.json" \
+    --pyproject "${source_root}/pyproject.toml" \
+    "${profiles[@]}" \
+    --python "${venv_root}/bin/python" \
+    --venv "${venv_root}"
+}
+
 run_update_candidate_cmd() {
   local phase="$1"
   shift
@@ -3686,12 +4345,27 @@ update_exit_handler() {
     rollback_rc=$?
     set -e
     if [[ "$rollback_rc" -ne 0 ]]; then
+      UPDATE_REASON="update-rollback-incomplete"
+      UPDATE_RESULT_STAGE="rollback-incomplete"
+      UPDATE_ROLLBACK_COMPLETE=0
+      UPDATE_STATE_CERTAIN=0
+      UPDATE_SOURCE_UPDATED=-1
+      UPDATE_PLISTS_NORMALIZED=-1
       print -r -- "Open Nova update rollback was incomplete; inspect the preserved transaction journal: ${UPDATE_TRANSACTION_JOURNAL}" >&2
       original_rc=70
     else
+      UPDATE_SOURCE_UPDATED=0
+      UPDATE_PLISTS_NORMALIZED=0
+      UPDATE_ROLLBACK_COMPLETE=1
+      UPDATE_REASON="update-failed-rolled-back"
+      UPDATE_RESULT_STAGE="rollback-complete"
       print -r -- "Open Nova update failed; the prior source, venv, protected control files, and service state were restored. Live SQLite databases passed integrity checks and were not rewound." >&2
     fi
   fi
+  # zsh does not reliably invoke the outer EXIT trap when this handler exits
+  # from inside ZERR/signal processing. Emit here so every recoverable
+  # post-begin failure has the same truthful machine-readable result contract.
+  emit_update_result "$original_rc"
   exit "$original_rc"
 }
 
@@ -3699,8 +4373,10 @@ begin_update_transaction() {
   local uid="0"
   local launchctl_path="/usr/bin/true"
   local mode="upgrade"
+  local begin_rc=0
+  local marker_evidence_args=()
   UPDATE_TRANSACTION_ID="$(date +%Y%m%dT%H%M%S)-$$-${RANDOM}"
-  if [[ "$SOURCE_ONLY" == "1" ]]; then
+  if [[ "$UPDATE_REUSES_VENV" == "1" ]]; then
     mode="source-only"
   fi
   if [[ "$PLATFORM" == "Darwin" ]]; then
@@ -3716,18 +4392,37 @@ begin_update_transaction() {
       return 1
     fi
   fi
+  if [[ -n "$DEPENDENCY_PROFILE_MARKER_SHA256" ]]; then
+    marker_evidence_args=(
+      --expected-active-marker-sha256 "$DEPENDENCY_PROFILE_MARKER_SHA256"
+    )
+  fi
   update_transaction_command recover --runtime "${RUNTIME_HOME}"
+  set +e
   UPDATE_TRANSACTION_JOURNAL="$(update_transaction_command begin \
     --runtime "${RUNTIME_HOME}" \
     --home "${HOME}" \
     --source-pointer "${DEPLOY_SOURCE_ROOT}" \
     --venv-pointer "${VENV_DIR}" \
+    --expected-settings-sha256 "${DEPENDENCY_PROFILE_SETTINGS_SHA256}" \
+    --expected-active-venv-target "${DEPENDENCY_PROFILE_ACTIVE_VENV_TARGET}" \
+    --expected-active-marker-status "${DEPENDENCY_PROFILE_MARKER_STATUS}" \
+    "${marker_evidence_args[@]}" \
     --mode "${mode}" \
     --tx-id "${UPDATE_TRANSACTION_ID}" \
     --owner-pid "$$" \
     --platform "${PLATFORM}" \
     --launchctl "${launchctl_path}" \
     --uid "${uid}")"
+  begin_rc=$?
+  set -e
+  if [[ "$begin_rc" != "0" || -z "$UPDATE_TRANSACTION_JOURNAL" ]]; then
+    if [[ "$begin_rc" == "0" ]]; then
+      begin_rc=70
+    fi
+    UPDATE_TRANSACTION_JOURNAL=""
+    return "$begin_rc"
+  fi
   UPDATE_TRANSACTION_DIR="${UPDATE_TRANSACTION_JOURNAL:h}"
   UPDATE_VALIDATION_RUNTIME="${UPDATE_TRANSACTION_DIR}/candidate-runtime"
   UPDATE_TRANSACTION_ACTIVE=1
@@ -3755,18 +4450,12 @@ stage_update_candidate_venv() {
     print -r -- "transaction venv reservation returned an unexpected path" >&2
     return 1
   fi
-  if [[ "${#INSTALL_EXTRAS[@]}" -gt 0 ]]; then
-    candidate_spec="${candidate_spec}[${(j:,:)INSTALL_EXTRAS}]"
-  fi
   run_update_candidate_cmd candidate-venv-create \
-    "${PYTHON_BIN}" -m venv "${UPDATE_STAGED_VENV}"
+    "${UPDATE_DEPENDENCY_PYTHON}" -m venv "${UPDATE_STAGED_VENV}"
   VENV_DIR="${UPDATE_STAGED_VENV}"
   VENV_PY="${UPDATE_STAGED_VENV}/bin/python"
   DEPLOY_SOURCE_ROOT="${STAGED_RELEASE_TARGET}"
-  run_update_candidate_cmd candidate-pip-upgrade \
-    /usr/bin/env PYTHONDONTWRITEBYTECODE=1 "${VENV_PY}" -m pip install --upgrade pip
-  run_update_candidate_cmd candidate-pip-install \
-    /usr/bin/env PYTHONDONTWRITEBYTECODE=1 "${VENV_PY}" -m pip install "${candidate_spec}"
+  install_candidate_locked_dependencies "${STAGED_RELEASE_TARGET}" "${UPDATE_STAGED_VENV}"
   run_runtime_dependency_gate
   DEPLOY_SOURCE_ROOT="${active_source}"
   VENV_DIR="${active_venv_dir}"
@@ -3892,21 +4581,89 @@ commit_update_transaction() {
   UPDATE_TRANSACTION_ACTIVE=0
 }
 
+record_service_normalization_result() {
+  local changed=""
+  changed="$(PYTHONDONTWRITEBYTECODE=1 "${PYTHON_BIN}" - "${UPDATE_TRANSACTION_JOURNAL}" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+path = Path(os.path.abspath(sys.argv[1]))
+if path.is_symlink() or not path.is_file():
+    raise SystemExit(2)
+try:
+    state = json.loads(path.read_text(encoding="utf-8"))
+except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+    raise SystemExit(2)
+services = state.get("services") if isinstance(state, dict) else None
+if not isinstance(services, list) or state.get("servicePlistNormalizationComplete") is not True:
+    raise SystemExit(2)
+print("1" if any(
+    isinstance(service, dict) and service.get("plistNormalizationRequired") is True
+    for service in services
+) else "0")
+PY
+)" || return 1
+  if [[ "$changed" != "0" && "$changed" != "1" ]]; then
+    return 1
+  fi
+  UPDATE_PLISTS_NORMALIZED="$changed"
+}
+
+record_services_stopped_result() {
+  local stopped=""
+  stopped="$(PYTHONDONTWRITEBYTECODE=1 "${PYTHON_BIN}" - "${UPDATE_TRANSACTION_JOURNAL}" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+path = Path(os.path.abspath(sys.argv[1]))
+if path.is_symlink() or not path.is_file():
+    raise SystemExit(2)
+try:
+    state = json.loads(path.read_text(encoding="utf-8"))
+except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+    raise SystemExit(2)
+services = state.get("services") if isinstance(state, dict) else None
+if not isinstance(services, list) or state.get("status") != "stopped":
+    raise SystemExit(2)
+print("1" if any(
+    isinstance(service, dict) and service.get("stoppedByTransaction") is True
+    for service in services
+) else "0")
+PY
+)" || return 1
+  if [[ "$stopped" != "0" && "$stopped" != "1" ]]; then
+    return 1
+  fi
+  UPDATE_SERVICES_STOPPED="$stopped"
+}
+
 run_guarded_update_transaction() {
   if [[ "$DRY_RUN" == "1" ]]; then
-    stage_runtime_source
-    if [[ "$SOURCE_ONLY" != "1" ]]; then
-      run_cmd "${PYTHON_BIN}" -m venv "${RUNTIME_HOME}/app/venvs/<candidate-id>"
-      run_cmd "${RUNTIME_HOME}/app/venvs/<candidate-id>/bin/python" -m pip install "${STAGED_RELEASE_TARGET:-${DEPLOY_SOURCE_ROOT}}"
-      run_runtime_dependency_gate
-    fi
+    UPDATE_CACHE_USED="${DEPENDENCY_PLAN_CACHE_HIT}"
+    UPDATE_RESULT_STAGE="plan"
     return 0
   fi
   if [[ -n "$LLM_API_KEY_VALUE" ]]; then
     print -r -- "credential rotation is not part of an atomic upgrade; update the model key after the upgrade succeeds" >&2
     return 2
   fi
-  begin_update_transaction
+  if ! materialize_update_dependency_cache "${SOURCE_ROOT}"; then
+    UPDATE_REASON="dependency-cache-materialization-failed"
+    UPDATE_RESULT_STAGE="dependency-cache"
+    return 1
+  fi
+  local expected_mode="${UPDATE_MODE}"
+  local expected_fingerprint="${UPDATE_DEPENDENCY_FINGERPRINT}"
+  local expected_python="${UPDATE_DEPENDENCY_PYTHON}"
+  UPDATE_RESULT_STAGE="transaction-begin"
+  if ! begin_update_transaction; then
+    UPDATE_REASON="update-transaction-begin-failed"
+    return 1
+  fi
   # ZERR and signal traps are scoped to this outer transaction driver. This
   # avoids changing normal installer control flow while still covering every
   # non-zero post-begin phase under zsh ERR_EXIT semantics.
@@ -3920,7 +4677,26 @@ run_guarded_update_transaction() {
   record_update_candidate source "${STAGED_RELEASE_TARGET}"
   update_transaction_command verify-migration-compatibility --state "${UPDATE_TRANSACTION_JOURNAL}"
   maybe_fail_update_phase migration-compatibility-verified
-  if [[ "$SOURCE_ONLY" == "1" ]]; then
+  run_dependency_update_plan "${STAGED_RELEASE_TARGET}"
+  if [[ \
+    "$UPDATE_MODE" != "$expected_mode" \
+    || "$UPDATE_DEPENDENCY_FINGERPRINT" != "$expected_fingerprint" \
+    || "$UPDATE_DEPENDENCY_PYTHON" != "$expected_python" \
+  ]]; then
+    UPDATE_REASON="staged-dependency-contract-changed-after-plan"
+    return 1
+  fi
+  if [[ "$UPDATE_REUSES_VENV" == "1" ]] && staged_source_matches_active; then
+    update_transaction_command rollback --state "${UPDATE_TRANSACTION_JOURNAL}"
+    UPDATE_TRANSACTION_ACTIVE=0
+    UPDATE_COMMITTED=1
+    UPDATE_NOOP=1
+    UPDATE_MODE="no-op"
+    UPDATE_REASON="source-and-dependency-contract-unchanged"
+    UPDATE_RESULT_STAGE="complete"
+    return 0
+  fi
+  if [[ "$UPDATE_REUSES_VENV" == "1" ]]; then
     run_source_only_candidate_gate
   else
     stage_update_candidate_venv
@@ -3930,12 +4706,15 @@ run_guarded_update_transaction() {
   maybe_fail_update_phase source-staged
   maybe_fail_update_phase payload-scanned
   update_transaction_command stop --state "${UPDATE_TRANSACTION_JOURNAL}"
+  record_services_stopped_result
   maybe_fail_update_phase services-stopped
   capture_update_mutable_state
   update_transaction_command normalize-service-plists --state "${UPDATE_TRANSACTION_JOURNAL}"
+  record_service_normalization_result
   update_transaction_command promote --state "${UPDATE_TRANSACTION_JOURNAL}"
+  UPDATE_SOURCE_UPDATED=1
   maybe_fail_update_phase source-promoted
-  if [[ "$SOURCE_ONLY" != "1" ]]; then
+  if [[ "$UPDATE_REUSES_VENV" != "1" ]]; then
     maybe_fail_update_phase venv-promoted
   fi
   update_transaction_command restore-services --state "${UPDATE_TRANSACTION_JOURNAL}"
@@ -3948,6 +4727,7 @@ run_guarded_update_transaction() {
   update_transaction_command verify --state "${UPDATE_TRANSACTION_JOURNAL}"
   maybe_fail_update_phase candidate-verified
   commit_update_transaction
+  UPDATE_RESULT_STAGE="complete"
 }
 
 print_useful_commands() {
@@ -4336,6 +5116,7 @@ while [[ $# -gt 0 ]]; do
     --enable-rag)
       ENABLE_RAG=1
       RAG_SET=1
+      RAG_ENABLE_SET=1
       shift
       ;;
     --register-rag-skills)
@@ -4344,6 +5125,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --enable-dev-test)
       ENABLE_DEV_TEST=1
+      DEV_TEST_SET=1
       shift
       ;;
     --rag-embedding-mode)
@@ -4358,6 +5140,8 @@ while [[ $# -gt 0 ]]; do
       ENABLE_RAG=1
       RAG_EMBEDDING_MODE="local"
       RAG_SET=1
+      RAG_ENABLE_SET=1
+      RAG_DETAIL_SET=1
       RAG_EMBEDDING_MODE_SET=1
       shift 2
       ;;
@@ -4366,6 +5150,8 @@ while [[ $# -gt 0 ]]; do
       ENABLE_RAG=1
       RAG_EMBEDDING_MODE="local"
       RAG_SET=1
+      RAG_ENABLE_SET=1
+      RAG_DETAIL_SET=1
       RAG_EMBEDDING_MODE_SET=1
       shift 2
       ;;
@@ -4374,6 +5160,8 @@ while [[ $# -gt 0 ]]; do
       RAG_EMBEDDING_MODE="local"
       DEPLOY_EMBEDDING_SERVER=1
       RAG_SET=1
+      RAG_ENABLE_SET=1
+      RAG_DETAIL_SET=1
       RAG_EMBEDDING_MODE_SET=1
       EMBEDDING_SERVER_SET=1
       shift
@@ -4381,6 +5169,7 @@ while [[ $# -gt 0 ]]; do
     --no-deploy-embedding-server)
       DEPLOY_EMBEDDING_SERVER=0
       EMBEDDING_SERVER_SET=1
+      RAG_DETAIL_SET=1
       shift
       ;;
     --llm-provider)
@@ -4409,6 +5198,8 @@ while [[ $# -gt 0 ]]; do
       ENABLE_RAG=1
       RAG_EMBEDDING_MODE="cloud"
       RAG_SET=1
+      RAG_ENABLE_SET=1
+      RAG_DETAIL_SET=1
       RAG_EMBEDDING_MODE_SET=1
       shift 2
       ;;
@@ -4417,6 +5208,8 @@ while [[ $# -gt 0 ]]; do
       ENABLE_RAG=1
       RAG_EMBEDDING_MODE="cloud"
       RAG_SET=1
+      RAG_ENABLE_SET=1
+      RAG_DETAIL_SET=1
       RAG_EMBEDDING_MODE_SET=1
       shift 2
       ;;
@@ -4425,6 +5218,8 @@ while [[ $# -gt 0 ]]; do
       ENABLE_RAG=1
       RAG_EMBEDDING_MODE="cloud"
       RAG_SET=1
+      RAG_ENABLE_SET=1
+      RAG_DETAIL_SET=1
       RAG_EMBEDDING_MODE_SET=1
       shift 2
       ;;
@@ -4433,6 +5228,8 @@ while [[ $# -gt 0 ]]; do
       ENABLE_RAG=1
       RAG_EMBEDDING_MODE="cloud"
       RAG_SET=1
+      RAG_ENABLE_SET=1
+      RAG_DETAIL_SET=1
       RAG_EMBEDDING_MODE_SET=1
       shift 2
       ;;
@@ -4441,6 +5238,8 @@ while [[ $# -gt 0 ]]; do
       ENABLE_RAG=1
       RAG_EMBEDDING_MODE="cloud"
       RAG_SET=1
+      RAG_ENABLE_SET=1
+      RAG_DETAIL_SET=1
       RAG_EMBEDDING_MODE_SET=1
       shift 2
       ;;
@@ -4465,6 +5264,18 @@ while [[ $# -gt 0 ]]; do
       SOURCE_ONLY=1
       UPGRADE=1
       WIZARD_MODE=0
+      shift
+      ;;
+    --force-rebuild)
+      FORCE_REBUILD=1
+      shift
+      ;;
+    --offline)
+      OFFLINE=1
+      shift
+      ;;
+    --result-json)
+      RESULT_JSON=1
       shift
       ;;
     --wizard)
@@ -4492,11 +5303,30 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+trap 'emit_update_result $?' EXIT
+
+if [[ "$SOURCE_ONLY" == "1" && "$FORCE_REBUILD" == "1" ]]; then
+  UPDATE_RESULT_STAGE="argument-validation"
+  UPDATE_REASON="source-only-and-force-rebuild-are-mutually-exclusive"
+  print -r -- "--source-only and --force-rebuild are mutually exclusive" >&2
+  exit 2
+fi
+if [[ "$FORCE_REBUILD" == "1" && "$UPGRADE" != "1" ]]; then
+  UPDATE_RESULT_STAGE="argument-validation"
+  UPDATE_REASON="force-rebuild-requires-upgrade"
+  print -r -- "--force-rebuild requires --upgrade" >&2
+  exit 2
+fi
+if [[ "$OFFLINE" == "1" ]]; then
+  PYTHON_AUTO_INSTALL=0
+fi
+
 SOURCE_ROOT="${SOURCE_ROOT:A}"
 if [[ ! -f "${SOURCE_ROOT}/pyproject.toml" ]]; then
   print -r -- "pyproject.toml not found under source root: ${SOURCE_ROOT}" >&2
   exit 2
 fi
+RUNTIME_DEPENDENCY_LOCK="${SOURCE_ROOT}/install/runtime-dependencies.lock.json"
 RUNTIME_HOME="${RUNTIME_HOME:A}"
 require_fresh_runtime_empty || exit 2
 resolve_python_bin || true
@@ -4529,6 +5359,15 @@ LOCATION_FILE="${NOVA_LOCATION_FILE:-$HOME/.config/open-nova/location.json}"
 if [[ "$UPGRADE" == "1" && ! -d "$RUNTIME_HOME" && "$DRY_RUN" != "1" ]]; then
   print -r -- "--upgrade requires an existing runtime: ${RUNTIME_HOME}" >&2
   exit 2
+fi
+if [[ "$UPGRADE" == "1" ]]; then
+  UPDATE_RESULT_STAGE="dependency-profile"
+  if ! inherit_upgrade_dependency_profiles; then
+    UPDATE_REASON="runtime-dependency-profile-untrusted"
+    print -r -- "Runtime dependency profile could not be read safely; update blocked before service changes" >&2
+    emit_update_result 2
+    exit 2
+  fi
 fi
 select_dashboard_port
 INSTALL_SPEC="${DEPLOY_SOURCE_ROOT}"
@@ -4606,6 +5445,18 @@ fi
 
 run_installer_preflight
 
+if [[ "$UPGRADE" == "1" ]]; then
+  dependency_plan_rc=0
+  if run_dependency_update_plan "${SOURCE_ROOT}"; then
+    dependency_plan_rc=0
+  else
+    dependency_plan_rc=$?
+    emit_update_result "$dependency_plan_rc"
+    exit "$dependency_plan_rc"
+  fi
+  log "dependency update plan: mode=${UPDATE_MODE}; reason=${UPDATE_REASON}; python=${UPDATE_PYTHON_SELECTION_REASON}"
+fi
+
 if [[ "$DRY_RUN" == "1" ]]; then
   log "dry-run only; no files will be written and no commands will be executed"
 elif wizard_enabled && [[ "$YES" != "1" && "$WIZARD_CONFIRMED" != "1" ]]; then
@@ -4622,7 +5473,17 @@ fi
 
 if [[ "$UPGRADE" == "1" ]]; then
   run_guarded_update_transaction
+  if [[ "$UPDATE_NOOP" == "1" ]]; then
+    log "Open Nova update is a no-op; source payload and dependency contract are already active"
+    exit 0
+  fi
+  UPDATE_RESULT_STAGE="cli-shim"
   create_cli_shim
+  if [[ "$DRY_RUN" == "1" ]]; then
+    UPDATE_RESULT_STAGE="plan"
+  else
+    UPDATE_RESULT_STAGE="complete"
+  fi
   if [[ "$SOURCE_ONLY" == "1" ]]; then
     if [[ "$DRY_RUN" == "1" ]]; then
       log "source-only dry-run complete; no source pointer, settings, dependencies, LaunchAgents, or RAG manifests were changed"
@@ -4647,14 +5508,18 @@ if [[ "$UPGRADE" == "1" ]]; then
   exit 0
 fi
 
+prepare_fresh_dependency_cache "${SOURCE_ROOT}"
 run_cmd mkdir -p "${RUNTIME_HOME}"
 run_cmd mkdir -p "${DIARY_OUTPUT_DIR}" "${REPORTS_OUTPUT_DIR}" "${SNAPSHOTS_OUTPUT_DIR}" "${ARCHIVES_OUTPUT_DIR}"
 create_desktop_diary_link
-deploy_runtime_source
+stage_runtime_source
 create_fresh_runtime_venv
-run_cmd "${VENV_PY}" -m pip install --upgrade pip
-run_cmd "${VENV_PY}" -m pip install "${INSTALL_SPEC}"
+stable_source_root="${DEPLOY_SOURCE_ROOT}"
+DEPLOY_SOURCE_ROOT="${STAGED_RELEASE_TARGET:-${SOURCE_ROOT}}"
+install_fresh_locked_dependencies "${DEPLOY_SOURCE_ROOT}" "${FRESH_STAGED_VENV:-${VENV_DIR}}"
 run_runtime_dependency_gate
+DEPLOY_SOURCE_ROOT="${stable_source_root}"
+promote_fresh_runtime_artifacts
 create_cli_shim
 ensure_cli_on_shell_path
 

@@ -35,6 +35,8 @@ AGGREGATE_ALGORITHM = (
 )
 PAYLOAD_ROOT_FILES = frozenset({"LICENSE", "MANIFEST.in", "config.py", "pyproject.toml"})
 PAYLOAD_DIRECTORIES = frozenset({"advanced", "install", "src"})
+STABLE_INSTALL_SOURCE = "install/bootstrap.sh"
+STABLE_INSTALL_ASSET = "install.sh"
 ALLOWED_GIT_MODES = frozenset({"100644", "100755", "120000"})
 VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[A-Za-z0-9._+-]*)?$")
 FULL_COMMIT_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
@@ -932,6 +934,36 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def build_stable_install_asset(
+    source: FrozenSource,
+    output_directory: Path,
+    *,
+    source_date_epoch: int,
+) -> Path:
+    """Publish the audited hosted bootstrap under a version-neutral asset name."""
+
+    matches = [item for item in source.entries if item.path == STABLE_INSTALL_SOURCE]
+    if len(matches) != 1:
+        raise ReleaseBuildError(f"release source is missing {STABLE_INSTALL_SOURCE}")
+    entry = matches[0]
+    if entry.mode != "100755" or entry.symlink_broken:
+        raise ReleaseBuildError("stable install bootstrap must be a regular executable file")
+    payload = _verify_entry(source.root, entry)
+    if not payload.startswith(b"#!/usr/bin/env zsh\n") or b"\0" in payload:
+        raise ReleaseBuildError("stable install bootstrap has an invalid executable format")
+    if (
+        b"if true; then\n" not in payload
+        or not payload.endswith(b"fi\n")
+        or b"resolve_latest_stable_commit" not in payload
+    ):
+        raise ReleaseBuildError("stable install bootstrap is missing its hosted-stream safety contract")
+    target = output_directory / STABLE_INSTALL_ASSET
+    target.write_bytes(payload)
+    target.chmod(0o755)
+    os.utime(target, (source_date_epoch, source_date_epoch))
+    return target
+
+
 def _source_date_epoch(value: str | None) -> int:
     raw = value if value is not None else os.environ.get("SOURCE_DATE_EPOCH")
     if raw is None:
@@ -1033,8 +1065,21 @@ def build_release(
         source_date_epoch=source_date_epoch,
         python=python,
     )
+    stable_install_asset = build_stable_install_asset(
+        source,
+        output,
+        source_date_epoch=source_date_epoch,
+    )
 
-    artifact_paths = [source_manifest, payload_manifest, summary_path, runtime_archive, wheel, sdist]
+    artifact_paths = [
+        source_manifest,
+        payload_manifest,
+        summary_path,
+        runtime_archive,
+        wheel,
+        sdist,
+        stable_install_asset,
+    ]
     provenance_path = output / "release-provenance.json"
     provenance = {
         "schemaVersion": SCHEMA_VERSION,

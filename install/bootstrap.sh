@@ -1,4 +1,7 @@
 #!/usr/bin/env zsh
+# Keep the hosted bootstrap inside one compound command. If a streamed download
+# is truncated, zsh cannot parse the closing `fi` and executes no prefix.
+if true; then
 set -euo pipefail
 
 BOOTSTRAP_DIR="${0:A:h}"
@@ -13,6 +16,7 @@ CURL_BIN="${NOVA_INSTALL_CURL:-curl}"
 PLUTIL_BIN="${NOVA_INSTALL_PLUTIL:-/usr/bin/plutil}"
 ZSH_BIN="${NOVA_INSTALL_ZSH:-${ZSH_VERSION:+/bin/zsh}}"
 DRY_RUN=0
+OFFLINE=0
 INSTALL_ARGS=()
 CACHE_SOURCE=0
 SPARSE_PATHS=(
@@ -23,6 +27,15 @@ SPARSE_PATHS=(
   "/install"
   "/advanced"
   "/src"
+)
+OFFLINE_SOURCE_PATHS=(
+  "pyproject.toml"
+  "MANIFEST.in"
+  "LICENSE"
+  "config.py"
+  "install"
+  "advanced"
+  "src"
 )
 
 usage() {
@@ -40,6 +53,7 @@ Bootstrap options:
                           With the default remote, omitting --ref selects the latest stable release.
   --cache-root PATH        Source acquisition cache root. Default: ~/.cache/open-nova/installer
   --git PATH              Git binary. Default: git
+  --offline               Forbid source network access and require a local source or a cached explicit commit.
   --dry-run               Print source acquisition and installer plan without writes.
   -h, --help              Show this help.
 
@@ -58,14 +72,73 @@ run_cmd() {
   fi
 }
 
+git_exec() {
+  if [[ "$OFFLINE" == "1" ]]; then
+    # A cached partial clone may otherwise fetch a missing promisor object from
+    # inside checkout/archive even though bootstrap never invokes `git fetch`.
+    # Git >=2.45 honors the no-lazy-fetch request; the empty protocol allowlist
+    # is an independent older-Git-compatible transport barrier. Hooks and
+    # user/system Git configuration are also excluded.
+    GIT_NO_LAZY_FETCH=1 \
+    GIT_ALLOW_PROTOCOL= \
+    GIT_TERMINAL_PROMPT=0 \
+    GIT_CONFIG_NOSYSTEM=1 \
+    GIT_CONFIG_GLOBAL=/dev/null \
+      "${GIT_BIN}" \
+        -c protocol.allow=never \
+        -c core.hooksPath=/dev/null \
+        "$@"
+    return $?
+  fi
+  "${GIT_BIN}" "$@"
+}
+
+run_git_cmd() {
+  print -r -- "+ ${GIT_BIN} $*"
+  if [[ "$DRY_RUN" != "1" ]]; then
+    git_exec "$@"
+  fi
+}
+
 configure_sparse_checkout() {
   local root="$1"
   if [[ "$CACHE_SOURCE" != "1" ]]; then
     return 0
   fi
   log "Configuring installer source sparse checkout"
-  run_cmd "${GIT_BIN}" -C "${root}" sparse-checkout init --no-cone
-  run_cmd "${GIT_BIN}" -C "${root}" sparse-checkout set "${SPARSE_PATHS[@]}"
+  run_git_cmd -C "${root}" sparse-checkout init --no-cone
+  run_git_cmd -C "${root}" sparse-checkout set "${SPARSE_PATHS[@]}"
+}
+
+installer_arg_present() {
+  local expected="$1"
+  local argument=""
+  for argument in "${INSTALL_ARGS[@]}"; do
+    if [[ "$argument" == "$expected" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+verify_offline_source_cache() {
+  local root="$1"
+  local ref="$2"
+  local resolved_object=""
+  resolved_object="$(git_exec -C "${root}" rev-parse --verify "${ref}^{commit}" 2>/dev/null || true)"
+  resolved_object="${resolved_object:l}"
+  if [[ "$resolved_object" != "$ref" ]]; then
+    print -r -- "Resolved source object is not the required commit ${ref}; refusing mutable HEAD fallback." >&2
+    return 2
+  fi
+  # `git archive` forces every tree/blob needed by the installer sparse payload
+  # to be read before sparse-checkout, checkout, reset, or installer execution.
+  # git_exec forbids both lazy fetch and every transport, so a partial-cache
+  # miss fails closed here without a permitted source-network transport.
+  if ! git_exec -C "${root}" archive --format=tar "${ref}" -- "${OFFLINE_SOURCE_PATHS[@]}" > /dev/null; then
+    print -r -- "Offline source cache is incomplete for commit ${ref}; reconnect and refresh this installer cache before retrying offline." >&2
+    return 2
+  fi
 }
 
 require_value() {
@@ -528,6 +601,10 @@ while [[ $# -gt 0 ]]; do
       INSTALL_ARGS+=("--dry-run")
       shift
       ;;
+    --offline)
+      OFFLINE=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -545,6 +622,10 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ "$OFFLINE" == "1" ]] && ! installer_arg_present "--offline"; then
+  INSTALL_ARGS+=("--offline")
+fi
 
 if [[ -z "$SOURCE_ROOT" && -z "$SOURCE_URL" ]]; then
   checkout_candidate="${BOOTSTRAP_DIR:h}"
@@ -573,6 +654,10 @@ if [[ -z "$SOURCE_ROOT" ]]; then
     exit 2
   fi
   if [[ -z "$SOURCE_REF" ]]; then
+    if [[ "$OFFLINE" == "1" ]]; then
+      print -r -- "Offline source acquisition requires --source-root or an explicit full --ref already present in the installer cache." >&2
+      exit 2
+    fi
     if [[ "$SOURCE_URL" != "$DEFAULT_SOURCE_URL" ]]; then
       print -r -- "A custom --source-url requires an explicit full 40/64-hex --ref commit; refusing mutable HEAD." >&2
       exit 2
@@ -588,18 +673,28 @@ if [[ -z "$SOURCE_ROOT" ]]; then
   SOURCE_ROOT="${cache_root}/source"
   CACHE_SOURCE=1
   if [[ -d "${SOURCE_ROOT}/.git" ]]; then
-    existing_source_url="$("${GIT_BIN}" -C "${SOURCE_ROOT}" remote get-url origin 2>/dev/null || true)"
+    existing_source_url="$(git_exec -C "${SOURCE_ROOT}" remote get-url origin 2>/dev/null || true)"
     if [[ "$existing_source_url" != "$SOURCE_URL" ]]; then
       print -r -- "Installer cache origin does not match requested source URL; choose a different --cache-root." >&2
       exit 2
     fi
     log "Updating existing source checkout: ${SOURCE_ROOT}"
-    configure_sparse_checkout "${SOURCE_ROOT}"
-    run_cmd "${GIT_BIN}" -C "${SOURCE_ROOT}" fetch --all --tags --force
+    if [[ "$OFFLINE" != "1" ]]; then
+      configure_sparse_checkout "${SOURCE_ROOT}"
+      run_git_cmd -C "${SOURCE_ROOT}" fetch --all --tags --force
+    else
+      verify_offline_source_cache "${SOURCE_ROOT}" "${SOURCE_REF}" || exit $?
+      configure_sparse_checkout "${SOURCE_ROOT}"
+      log "Offline mode: using the existing installer-owned source cache without fetch"
+    fi
   else
+    if [[ "$OFFLINE" == "1" ]]; then
+      print -r -- "Offline source cache is missing: ${SOURCE_ROOT}" >&2
+      exit 2
+    fi
     log "Cloning source: ${SOURCE_URL}"
     run_cmd mkdir -p "${cache_root}"
-    run_cmd "${GIT_BIN}" clone --filter=blob:none --sparse --no-checkout "${SOURCE_URL}" "${SOURCE_ROOT}"
+    run_git_cmd clone --filter=blob:none --sparse --no-checkout "${SOURCE_URL}" "${SOURCE_ROOT}"
     configure_sparse_checkout "${SOURCE_ROOT}"
   fi
 fi
@@ -609,7 +704,7 @@ SELECTED_REF=""
 if [[ "$CACHE_SOURCE" == "1" ]]; then
   SELECTED_REF="$SOURCE_REF"
   if [[ "$DRY_RUN" != "1" ]]; then
-    resolved_object="$("${GIT_BIN}" -C "${SOURCE_ROOT}" rev-parse --verify "${SOURCE_REF}^{commit}" 2>/dev/null || true)"
+    resolved_object="$(git_exec -C "${SOURCE_ROOT}" rev-parse --verify "${SOURCE_REF}^{commit}" 2>/dev/null || true)"
     resolved_object="${resolved_object:l}"
     if [[ "$resolved_object" != "$SOURCE_REF" ]]; then
       print -r -- "Resolved source object is not the required commit ${SOURCE_REF}; refusing mutable HEAD fallback." >&2
@@ -617,15 +712,15 @@ if [[ "$CACHE_SOURCE" == "1" ]]; then
     fi
   fi
   log "Selecting immutable source commit: ${SOURCE_REF}"
-  run_cmd "${GIT_BIN}" -C "${SOURCE_ROOT}" checkout --detach "${SOURCE_REF}"
+  run_git_cmd -C "${SOURCE_ROOT}" checkout --detach "${SOURCE_REF}"
 fi
 
 if [[ "$CACHE_SOURCE" == "1" ]]; then
   selected_ref="$SELECTED_REF"
   log "Resetting installer-owned source checkout to ${selected_ref}"
-  run_cmd "${GIT_BIN}" -C "${SOURCE_ROOT}" reset --hard "${selected_ref}"
+  run_git_cmd -C "${SOURCE_ROOT}" reset --hard "${selected_ref}"
   log "Cleaning ignored artifacts from installer-owned source checkout"
-  run_cmd "${GIT_BIN}" -C "${SOURCE_ROOT}" clean -fdX
+  run_git_cmd -C "${SOURCE_ROOT}" clean -fdX
 fi
 
 if [[ "$DRY_RUN" == "1" && ! -f "${SOURCE_ROOT}/install/install.sh" ]]; then
@@ -653,4 +748,5 @@ if [[ "$DRY_RUN" == "1" ]]; then
   fi
 else
   "$ZSH_BIN" "${SOURCE_ROOT}/install/install.sh" --source-root "${SOURCE_ROOT}" "${INSTALL_ARGS[@]}"
+fi
 fi

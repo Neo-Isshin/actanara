@@ -22,6 +22,27 @@ def _load_cli_module():
     return module
 
 
+def _update_result_line(**overrides):
+    payload = {
+        "schemaVersion": 1,
+        "status": "completed",
+        "updateMode": "reuse-existing-venv",
+        "dependenciesInstalled": False,
+        "reusesRuntimeVenv": True,
+        "sourceUpdated": True,
+        "reason": "dependency fingerprint matched",
+        "cacheUsed": False,
+        "servicesStopped": True,
+        "plannedDependenciesInstall": False,
+        "managedServiceDefinitionsNormalized": None,
+        "rollbackComplete": None,
+        "stateCertain": True,
+        "stage": "complete",
+    }
+    payload.update(overrides)
+    return "OPEN_NOVA_UPDATE_RESULT_JSON=" + json.dumps(payload, sort_keys=True) + "\n"
+
+
 @dataclass(frozen=True)
 class _FakePipelineResult:
     business_date: str
@@ -452,6 +473,7 @@ class OpenNovaCliTests(unittest.TestCase):
         )
         self.assertTrue(payload["sourceSelection"]["commitPinnedByBootstrap"])
         self.assertIn("--upgrade", payload["command"])
+        self.assertIn("--result-json", payload["command"])
         self.assertIn("/tmp/open-nova", payload["command"])
         self.assertNotIn("--ref", payload["command"])
         self.assertFalse(payload["mutationPolicy"]["managedServicesStoppedBeforePortSelection"])
@@ -459,8 +481,15 @@ class OpenNovaCliTests(unittest.TestCase):
         self.assertFalse(payload["mutationPolicy"]["settingsMutated"])
         self.assertFalse(payload["mutationPolicy"]["schedulerChanged"])
         self.assertFalse(payload["mutationPolicy"]["managedServiceDefinitionsMayNormalize"])
-        self.assertFalse(payload["mutationPolicy"]["reusesRuntimeVenv"])
+        self.assertIsNone(payload["mutationPolicy"]["reusesRuntimeVenv"])
         self.assertTrue(payload["mutationPolicy"]["preservesSettingsAndUserData"])
+        self.assertEqual(payload["updateMode"], "not-evaluated")
+        self.assertFalse(payload["dependenciesInstalled"])
+        self.assertFalse(payload["sourceUpdated"])
+        self.assertFalse(payload["servicesStopped"])
+        self.assertIsNone(payload["plannedDependenciesInstall"])
+        self.assertFalse(payload["resultAvailable"])
+        self.assertEqual(payload["stage"], "plan")
         run.assert_not_called()
 
     def test_update_help_describes_latest_stable_release_commit_pinning(self):
@@ -477,7 +506,24 @@ class OpenNovaCliTests(unittest.TestCase):
 
     def test_update_dry_run_invokes_bootstrap_without_mutation(self):
         cli = _load_cli_module()
-        completed = type("Completed", (), {"returncode": 0, "stdout": "dry\n", "stderr": ""})()
+        completed = type(
+            "Completed",
+            (),
+            {
+                "returncode": 0,
+                "stdout": "dry\n"
+                + _update_result_line(
+                    updateMode="rebuild-candidate-venv",
+                    reusesRuntimeVenv=False,
+                    sourceUpdated=False,
+                    reason="active dependency manifest missing",
+                    servicesStopped=False,
+                    plannedDependenciesInstall=True,
+                    stage="preflight",
+                ),
+                "stderr": "",
+            },
+        )()
         with (
             patch.object(cli, "load_paths", return_value=type("Paths", (), {"home": Path("/tmp/open-nova")})()),
             patch.object(cli, "read_settings", return_value={}),
@@ -498,16 +544,28 @@ class OpenNovaCliTests(unittest.TestCase):
         self.assertFalse(payload["mutationPolicy"]["sourceUpdated"])
         self.assertFalse(payload["mutationPolicy"]["settingsMutated"])
         self.assertFalse(payload["mutationPolicy"]["schedulerChanged"])
-        self.assertFalse(payload["mutationPolicy"]["managedServiceDefinitionsMayNormalize"])
+        self.assertIsNone(payload["mutationPolicy"]["managedServiceDefinitionsMayNormalize"])
         self.assertFalse(payload["mutationPolicy"]["reusesRuntimeVenv"])
+        self.assertEqual(payload["updateMode"], "rebuild-candidate-venv")
+        self.assertFalse(payload["dependenciesInstalled"])
+        self.assertFalse(payload["sourceUpdated"])
+        self.assertFalse(payload["servicesStopped"])
+        self.assertTrue(payload["plannedDependenciesInstall"])
+        self.assertEqual(payload["reason"], "active dependency manifest missing")
+        self.assertTrue(payload["resultAvailable"])
+        self.assertEqual(payload["stage"], "preflight")
 
-    def test_update_apply_json_reports_atomic_full_upgrade_mutation_policy(self):
+    def test_update_apply_json_reports_actual_installer_reuse_result(self):
         cli = _load_cli_module()
         candidate_paths = type("Paths", (), {"home": Path("/tmp/open-nova-candidate")})()
         completed = type(
             "Completed",
             (),
-            {"returncode": 0, "stdout": "upgrade complete\n", "stderr": ""},
+            {
+                "returncode": 0,
+                "stdout": "upgrade complete\n" + _update_result_line(),
+                "stderr": "",
+            },
         )()
         with tempfile.TemporaryDirectory() as tmp:
             source_root = Path(tmp) / "source"
@@ -536,19 +594,207 @@ class OpenNovaCliTests(unittest.TestCase):
         payload = json.loads(output.getvalue())
         policy = payload["mutationPolicy"]
         self.assertEqual(code, 0)
-        self.assertTrue(policy["dependenciesInstalled"])
+        self.assertFalse(policy["dependenciesInstalled"])
         self.assertTrue(policy["sourceUpdated"])
         self.assertTrue(policy["managedServicesStoppedAfterPreflight"])
-        self.assertTrue(policy["managedServiceDefinitionsMayNormalize"])
+        self.assertIsNone(policy["managedServiceDefinitionsMayNormalize"])
         self.assertFalse(policy["settingsMutated"])
         self.assertFalse(policy["schedulerChanged"])
-        self.assertFalse(policy["reusesRuntimeVenv"])
+        self.assertTrue(policy["reusesRuntimeVenv"])
         self.assertTrue(policy["preservesSettingsAndUserData"])
+        self.assertEqual(payload["updateMode"], "reuse-existing-venv")
+        self.assertFalse(payload["dependenciesInstalled"])
+        self.assertTrue(payload["reusesRuntimeVenv"])
+        self.assertTrue(payload["sourceUpdated"])
+        self.assertFalse(payload["cacheUsed"])
+        self.assertTrue(payload["servicesStopped"])
+        self.assertFalse(payload["plannedDependenciesInstall"])
+        self.assertEqual(payload["reason"], "dependency fingerprint matched")
 
-    def test_update_apply_invokes_source_root_bootstrap_with_preserved_rag_args(self):
+    def test_update_bootstrap_command_forwards_source_only_and_offline_to_both_layers(self):
+        cli = _load_cli_module()
+        with patch.object(cli.shutil, "which", return_value="/bin/zsh"), patch.object(
+            cli, "read_settings", return_value={}
+        ):
+            args = cli._parser().parse_args(
+                ["update", "--dry-run", "--source-only", "--offline", "--source-root", str(ROOT)]
+            )
+            command = cli._update_bootstrap_command(args, Path("/tmp/open-nova"))
+
+        separator = command.index("--")
+        self.assertIn("--offline", command[:separator])
+        self.assertIn("--offline", command[separator + 1 :])
+        self.assertEqual(command.count("--offline"), 2)
+        self.assertIn("--source-only", command[separator + 1 :])
+        self.assertNotIn("--upgrade", command[separator + 1 :])
+        self.assertIn("--result-json", command[separator + 1 :])
+
+    def test_update_bootstrap_command_forwards_force_rebuild_with_upgrade(self):
+        cli = _load_cli_module()
+        with patch.object(cli.shutil, "which", return_value="/bin/zsh"), patch.object(
+            cli, "read_settings", return_value={}
+        ):
+            args = cli._parser().parse_args(["update", "--force-rebuild", "--source-root", str(ROOT)])
+            command = cli._update_bootstrap_command(args, Path("/tmp/open-nova"))
+
+        installer_args = command[command.index("--") + 1 :]
+        self.assertIn("--upgrade", installer_args)
+        self.assertIn("--force-rebuild", installer_args)
+        self.assertIn("--result-json", installer_args)
+        self.assertNotIn("--source-only", installer_args)
+
+    def test_update_source_only_and_force_rebuild_are_mutually_exclusive(self):
+        cli = _load_cli_module()
+        with redirect_stderr(io.StringIO()) as error, self.assertRaises(SystemExit) as raised:
+            cli.main(["update", "--source-only", "--force-rebuild"])
+
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn("not allowed with argument", error.getvalue())
+
+    def test_update_json_uses_last_fixed_prefix_result_envelope(self):
+        cli = _load_cli_module()
+        completed = type(
+            "Completed",
+            (),
+            {
+                "returncode": 0,
+                "stdout": _update_result_line(
+                    updateMode="rebuild-candidate-venv",
+                    dependenciesInstalled=True,
+                    reusesRuntimeVenv=False,
+                )
+                + "installer progress\n"
+                + _update_result_line(),
+                "stderr": "",
+            },
+        )()
+        with (
+            patch.object(cli, "load_paths", return_value=type("Paths", (), {"home": Path("/tmp/open-nova")})()),
+            patch.object(cli, "read_settings", return_value={}),
+            patch.object(cli.subprocess, "run", return_value=completed),
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            code = cli.main(["update", "--apply", "--json"])
+
+        payload = json.loads(output.getvalue())
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["updateMode"], "reuse-existing-venv")
+        self.assertFalse(payload["dependenciesInstalled"])
+        self.assertTrue(payload["reusesRuntimeVenv"])
+
+    def test_update_bootstrap_failure_without_envelope_reports_unknown_actuals_and_stage(self):
+        cli = _load_cli_module()
+        completed = type(
+            "Completed",
+            (),
+            {"returncode": 19, "stdout": "bootstrap progress\n", "stderr": "cache miss\n"},
+        )()
+        with (
+            patch.object(cli, "load_paths", return_value=type("Paths", (), {"home": Path("/tmp/open-nova")})()),
+            patch.object(cli, "read_settings", return_value={}),
+            patch.object(cli.subprocess, "run", return_value=completed),
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            code = cli.main(["update", "--apply", "--json"])
+
+        payload = json.loads(output.getvalue())
+        self.assertEqual(code, 19)
+        self.assertEqual(payload["status"], "failed")
+        self.assertEqual(payload["stage"], "bootstrap")
+        self.assertEqual(payload["updateMode"], "unknown")
+        self.assertIsNone(payload["dependenciesInstalled"])
+        self.assertIsNone(payload["reusesRuntimeVenv"])
+        self.assertIsNone(payload["sourceUpdated"])
+        self.assertIsNone(payload["cacheUsed"])
+        self.assertIsNone(payload["servicesStopped"])
+        self.assertFalse(payload["resultAvailable"])
+        self.assertIn("exit status 19", payload["reason"])
+
+    def test_update_json_preserves_uncertain_state_from_incomplete_rollback(self):
+        cli = _load_cli_module()
+        completed = type(
+            "Completed",
+            (),
+            {
+                "returncode": 70,
+                "stdout": "rollback warning\n"
+                + _update_result_line(
+                    status="failed",
+                    sourceUpdated=None,
+                    reason="update-rollback-incomplete",
+                    managedServiceDefinitionsNormalized=None,
+                    rollbackComplete=False,
+                    stateCertain=False,
+                    stage="rollback-incomplete",
+                ),
+                "stderr": "inspect preserved journal\n",
+            },
+        )()
+        with (
+            patch.object(cli, "load_paths", return_value=type("Paths", (), {"home": Path("/tmp/open-nova")})()),
+            patch.object(cli, "read_settings", return_value={}),
+            patch.object(cli.subprocess, "run", return_value=completed),
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            code = cli.main(["update", "--apply", "--json"])
+
+        payload = json.loads(output.getvalue())
+        self.assertEqual(code, 70)
+        self.assertTrue(payload["resultAvailable"])
+        self.assertIsNone(payload["sourceUpdated"])
+        self.assertFalse(payload["rollbackComplete"])
+        self.assertFalse(payload["stateCertain"])
+        self.assertEqual(payload["stage"], "rollback-incomplete")
+        self.assertEqual(payload["reason"], "update-rollback-incomplete")
+        self.assertIsNone(payload["mutationPolicy"]["sourceUpdated"])
+        self.assertIsNone(
+            payload["mutationPolicy"]["managedServiceDefinitionsMayNormalize"]
+        )
+
+    def test_update_human_warns_when_incomplete_rollback_leaves_state_uncertain(self):
+        cli = _load_cli_module()
+        completed = type(
+            "Completed",
+            (),
+            {
+                "returncode": 70,
+                "stdout": "installer progress\n"
+                + _update_result_line(
+                    status="failed",
+                    sourceUpdated=None,
+                    reason="update-rollback-incomplete",
+                    managedServiceDefinitionsNormalized=None,
+                    rollbackComplete=False,
+                    stateCertain=False,
+                    stage="rollback-incomplete",
+                ),
+                "stderr": "inspect preserved journal\n",
+            },
+        )()
+        with (
+            patch.object(cli, "load_paths", return_value=type("Paths", (), {"home": Path("/tmp/open-nova")})()),
+            patch.object(cli, "read_settings", return_value={}),
+            patch.object(cli.subprocess, "run", return_value=completed),
+            redirect_stdout(io.StringIO()) as output,
+            redirect_stderr(io.StringIO()) as error,
+        ):
+            code = cli.main(["update", "--apply"])
+
+        self.assertEqual(code, 70)
+        self.assertIn("installer progress", output.getvalue())
+        self.assertNotIn("OPEN_NOVA_UPDATE_RESULT_JSON=", output.getvalue())
+        self.assertIn("source updated=unknown", error.getvalue())
+        self.assertIn("Final pointer/service normalization state is uncertain", error.getvalue())
+        self.assertIn("Reason: update-rollback-incomplete", error.getvalue())
+
+    def test_update_apply_validates_rag_profile_without_configuration_flags(self):
         cli = _load_cli_module()
         candidate_paths = type("Paths", (), {"home": Path("/tmp/open-nova-candidate")})()
-        completed = type("Completed", (), {"returncode": 0})()
+        completed = type(
+            "Completed",
+            (),
+            {"returncode": 0, "stdout": "installer progress\n" + _update_result_line(), "stderr": ""},
+        )()
         with tempfile.TemporaryDirectory() as tmp:
             source_root = Path(tmp) / "source checkout"
             bootstrap = source_root / "install" / "bootstrap.sh"
@@ -560,6 +806,7 @@ class OpenNovaCliTests(unittest.TestCase):
                     cli,
                     "read_settings",
                     return_value={
+                        "features": {"rag": True},
                         "rag": {"enabled": True, "embedding": {"mode": "local"}},
                         "externalTools": {"installerV2SkillRegistration": {"supportedNow": True}},
                     },
@@ -591,11 +838,73 @@ class OpenNovaCliTests(unittest.TestCase):
         self.assertIn("--upgrade", command)
         self.assertIn("--yes", command)
         self.assertIn("/tmp/open-nova-candidate", command)
-        self.assertIn("--enable-rag", command)
-        self.assertIn("--rag-embedding-mode", command)
-        self.assertIn("local", command)
-        self.assertIn("--register-rag-skills", command)
-        self.assertIn("Running Open Nova update:", output.getvalue())
+        self.assertNotIn("--enable-rag", command)
+        self.assertNotIn("--rag-embedding-mode", command)
+        self.assertNotIn("--register-rag-skills", command)
+        human_output = output.getvalue()
+        self.assertIn("Running Open Nova update:", human_output)
+        self.assertIn("installer progress", human_output)
+        self.assertIn("mode=reuse-existing-venv", human_output)
+        self.assertIn("dependencies installed=no", human_output)
+        self.assertIn("Runtime venv reused=yes", human_output)
+        self.assertIn("source updated=yes", human_output)
+        self.assertNotIn("OPEN_NOVA_UPDATE_RESULT_JSON=", human_output)
+
+    def test_update_fails_closed_when_runtime_dependency_profile_cannot_be_read(self):
+        cli = _load_cli_module()
+        candidate_paths = type("Paths", (), {"home": Path("/tmp/open-nova-candidate")})()
+        with (
+            patch.object(cli, "_paths_from_args", return_value=candidate_paths),
+            patch.object(cli, "read_settings", side_effect=OSError("synthetic unreadable settings")),
+            patch.object(cli.subprocess, "run") as run,
+            redirect_stderr(io.StringIO()) as error,
+        ):
+            code = cli.main(
+                [
+                    "update",
+                    "--apply",
+                    "--runtime",
+                    "/tmp/open-nova-candidate",
+                    "--source-root",
+                    str(ROOT),
+                ]
+            )
+
+        self.assertEqual(code, 2)
+        run.assert_not_called()
+        self.assertIn("active dependency profile cannot be preserved safely", error.getvalue())
+        self.assertNotIn("synthetic unreadable settings", error.getvalue())
+
+    def test_update_fails_closed_for_ambiguous_rag_dependency_profile(self):
+        cli = _load_cli_module()
+        candidate_paths = type("Paths", (), {"home": Path("/tmp/open-nova-candidate")})()
+        with (
+            patch.object(cli, "_paths_from_args", return_value=candidate_paths),
+            patch.object(
+                cli,
+                "read_settings",
+                return_value={
+                    "features": {"rag": True},
+                    "rag": {"enabled": True, "embedding": {"mode": "unknown"}},
+                },
+            ),
+            patch.object(cli.subprocess, "run") as run,
+            redirect_stderr(io.StringIO()) as error,
+        ):
+            code = cli.main(
+                [
+                    "update",
+                    "--dry-run",
+                    "--runtime",
+                    "/tmp/open-nova-candidate",
+                    "--source-root",
+                    str(ROOT),
+                ]
+            )
+
+        self.assertEqual(code, 2)
+        run.assert_not_called()
+        self.assertIn("supported RAG embedding dependency profile", error.getvalue())
 
     def test_update_rejects_source_root_with_ref_before_bootstrap(self):
         cli = _load_cli_module()

@@ -26,6 +26,78 @@ UPDATE_HELPER = ROOT / "install" / "update_transaction.py"
 class InstallerFullUpgradeTests(unittest.TestCase):
     maxDiff = None
 
+    def _fixture_dependency_marker(self) -> dict[str, object]:
+        python_major_minor = f"{sys.version_info.major}.{sys.version_info.minor}"
+        environment_id = f"fixture-cpython{sys.version_info.major}{sys.version_info.minor}-arm64"
+        lock_environment = {
+            "implementation": "cpython",
+            "pythonMajorMinor": python_major_minor,
+            "abi": f"cpython-{sys.version_info.major}{sys.version_info.minor}-darwin",
+            "platformFamily": "macos",
+            "architecture": "arm64",
+            "minimumMacOS": "14.0",
+        }
+        direct_dependencies = [
+            {
+                "profile": "dashboard",
+                "requirements": [
+                    "croniter<7,>=2",
+                    "fastapi<1,>=0.110",
+                    "pyyaml<7,>=6",
+                    "uvicorn<1,>=0.29",
+                ],
+            }
+        ]
+        distributions = [
+            {
+                "name": "fixture-runtime-dependency",
+                "version": "1.0",
+                "hashes": ["sha256:" + "a" * 64],
+            }
+        ]
+        lock_sha256 = "b" * 64
+        fingerprint_payload = {
+            "schemaVersion": 1,
+            "algorithm": "open-nova-runtime-dependencies-v1",
+            "runtimeEnvironment": {
+                key: lock_environment[key]
+                for key in (
+                    "implementation",
+                    "pythonMajorMinor",
+                    "abi",
+                    "platformFamily",
+                    "architecture",
+                )
+            }
+            | {"environmentId": environment_id},
+            "lockEnvironment": lock_environment,
+            "profiles": ["dashboard"],
+            "directDependencies": direct_dependencies,
+            "runtimeLockSha256": lock_sha256,
+            "resolvedDistributions": distributions,
+        }
+        dependency_fingerprint = hashlib.sha256(
+            json.dumps(
+                fingerprint_payload,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8")
+        ).hexdigest()
+        return {
+            "schemaVersion": 1,
+            "product": "open-nova",
+            "fingerprintAlgorithm": "open-nova-runtime-dependencies-v1",
+            "dependencyFingerprint": dependency_fingerprint,
+            "lockSha256": lock_sha256,
+            "environmentId": environment_id,
+            "lockEnvironment": lock_environment,
+            "profiles": ["dashboard"],
+            "directDependencies": direct_dependencies,
+            "distributions": distributions,
+        }
+
     def _tree_digest(self, root: Path) -> str:
         digest = hashlib.sha256()
         for path in sorted(root.rglob("*")):
@@ -71,9 +143,11 @@ class InstallerFullUpgradeTests(unittest.TestCase):
         return server, thread, int(server.server_address[1])
 
     def _write_fake_python(self, path: Path, log_path: Path) -> None:
+        dependency_marker = self._fixture_dependency_marker()
         candidate_program = textwrap.dedent(
             f"""\
             #!{sys.executable}
+            import hashlib
             import json
             import os
             import signal
@@ -198,6 +272,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
         wrapper_program = textwrap.dedent(
             f"""\
             #!{sys.executable}
+            import hashlib
             import json
             import os
             import signal
@@ -209,6 +284,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
             LOG_PATH = Path({str(log_path)!r})
             FAULT_CONFIG_PATH = Path({str(log_path.with_name("fake-python-fault.json"))!r})
             CANDIDATE_PROGRAM = {candidate_program!r}
+            DEPENDENCY_MARKER = {dependency_marker!r}
 
 
             def fixture_value(name, default=None):
@@ -278,6 +354,148 @@ class InstallerFullUpgradeTests(unittest.TestCase):
 
 
             args = sys.argv[1:]
+
+
+            def option(name, default=None):
+                try:
+                    index = args.index(name)
+                except ValueError:
+                    return default
+                if index + 1 >= len(args):
+                    raise SystemExit(64)
+                return args[index + 1]
+
+
+            def selected_profiles():
+                profiles = [
+                    args[index + 1]
+                    for index, value in enumerate(args[:-1])
+                    if value == "--profile"
+                ]
+                if profiles != DEPENDENCY_MARKER["profiles"]:
+                    raise SystemExit(65)
+                return profiles
+
+
+            def print_json(value):
+                print(json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+
+
+            if len(args) >= 2 and Path(args[0]).name == "dependency_contract.py":
+                command = args[1]
+                if command == "runtime-profiles":
+                    record("contract", "runtime-profiles")
+                    runtime = Path(option("--runtime"))
+                    settings_path = runtime / "config" / "settings.json"
+                    active_venv = (runtime / ".venv").resolve()
+                    active_marker = active_venv / ".open-nova-dependencies.json"
+                    marker_status = "trusted" if active_marker.exists() else "missing"
+                    print_json(dict(
+                        schemaVersion=1,
+                        status="ok",
+                        profiles=["dashboard"],
+                        rag=dict(enabled=False, embeddingMode=None),
+                        evidence=dict(
+                            settingsSha256=hashlib.sha256(settings_path.read_bytes()).hexdigest(),
+                            activeVenvTarget=str(active_venv),
+                            activeMarkerStatus=marker_status,
+                            activeMarkerSha256=(
+                                hashlib.sha256(active_marker.read_bytes()).hexdigest()
+                                if marker_status == "trusted"
+                                else None
+                            ),
+                        ),
+                    ))
+                    raise SystemExit(0)
+                selected_profiles()
+                fingerprint = DEPENDENCY_MARKER["dependencyFingerprint"]
+                if command == "plan":
+                    selected_python = option("--python")
+                    if not selected_python or not Path(selected_python).is_absolute():
+                        raise SystemExit(66)
+                    record("contract", "dependency-plan")
+                    print_json(dict(
+                        schemaVersion=1,
+                        status="ready",
+                        updateMode="rebuild-candidate-venv",
+                        reason="legacy-runtime-no-dependency-marker",
+                        dependencyFingerprint=fingerprint,
+                        reusesRuntimeVenv=False,
+                        plannedDependenciesInstalled=True,
+                        offline="--offline" in args,
+                        cacheUsed=False,
+                        cache=dict(status="miss", usable=False),
+                        failBeforeServiceStop=False,
+                        selectedPython=selected_python,
+                        pythonSelectionReason="explicit-python",
+                    ))
+                    raise SystemExit(0)
+                if command == "materialize-cache":
+                    record("contract", "dependency-cache-materialize")
+                    print_json(dict(
+                        status="hit",
+                        usable=True,
+                        materialized=True,
+                        cacheUsed=False,
+                        dependencyFingerprint=fingerprint,
+                    ))
+                    raise SystemExit(0)
+                if command == "install":
+                    record("candidate", "locked-install")
+                    record("candidate", "pip")
+                    maybe_fault("pip")
+                    print_json(dict(
+                        status="installed",
+                        dependencyFingerprint=fingerprint,
+                        dependenciesInstalled=True,
+                        cacheUsed=True,
+                        verifiedDistributions=len(DEPENDENCY_MARKER["distributions"]),
+                    ))
+                    raise SystemExit(0)
+                if command == "write-marker":
+                    venv = option("--venv")
+                    if not venv:
+                        raise SystemExit(67)
+                    record("candidate", "dependency-marker-write")
+                    marker_path = Path(venv) / ".open-nova-dependencies.json"
+                    marker_path.write_text(
+                        json.dumps(
+                            DEPENDENCY_MARKER,
+                            ensure_ascii=False,
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        ) + "\\n",
+                        encoding="utf-8",
+                    )
+                    marker_path.chmod(0o444)
+                    result = dict(DEPENDENCY_MARKER)
+                    result.update(status="written", path=str(marker_path))
+                    print_json(result)
+                    raise SystemExit(0)
+                if command == "verify-marker":
+                    venv = option("--venv")
+                    if not venv:
+                        raise SystemExit(68)
+                    record("candidate", "dependency-marker-verify")
+                    marker_path = Path(venv) / ".open-nova-dependencies.json"
+                    try:
+                        payload = json.loads(marker_path.read_text(encoding="utf-8"))
+                    except (OSError, json.JSONDecodeError):
+                        raise SystemExit(69)
+                    if payload != DEPENDENCY_MARKER or marker_path.stat().st_mode & 0o777 != 0o444:
+                        raise SystemExit(70)
+                    print_json(dict(schemaVersion=1, status="valid", marker=payload))
+                    raise SystemExit(0)
+                if command == "cache-status":
+                    record("contract", "dependency-cache-status")
+                    print_json(dict(
+                        status="hit",
+                        usable=True,
+                        dependencyFingerprint=fingerprint,
+                    ))
+                    raise SystemExit(0)
+                raise SystemExit(64)
+
             if args[:2] == ["-m", "venv"] and len(args) == 3:
                 record("builder", "venv-build")
                 maybe_fault("venv-build")
@@ -485,6 +703,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
         settings.write_text(
             json.dumps(
                 {
+                    "features": {"rag": False},
                     "dashboard": {
                         "host": "127.0.0.1",
                         "port": 49151,
@@ -493,6 +712,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                         "watchdogLabel": labels["watchdog"],
                     },
                     "rag": {
+                        "enabled": False,
                         "server": {
                             "host": "127.0.0.1",
                             "port": 49152,
@@ -809,6 +1029,14 @@ class InstallerFullUpgradeTests(unittest.TestCase):
         self.assertEqual(os.readlink(venv), f"app/venvs/{venv.resolve().name}")
         self.assertEqual(source.resolve().name, venv.resolve().name)
         self.assertTrue((venv / "bin" / "python").is_file())
+        dependency_marker_path = venv / ".open-nova-dependencies.json"
+        self.assertTrue(dependency_marker_path.is_file())
+        self.assertFalse(dependency_marker_path.is_symlink())
+        self.assertEqual(dependency_marker_path.stat().st_mode & 0o777, 0o444)
+        self.assertEqual(
+            json.loads(dependency_marker_path.read_text(encoding="utf-8")),
+            self._fixture_dependency_marker(),
+        )
         self.assertEqual(self._service_state(fixture), fixture["initial_state"])
         self._assert_protected_after_success(fixture)
         self.assertFalse((app / ".update-transaction.lock").exists())
@@ -846,6 +1074,10 @@ class InstallerFullUpgradeTests(unittest.TestCase):
             self.assertTrue(artifact["markerRemoved"], artifact)
             self.assertFalse(artifact["cleaned"], artifact)
             self.assertEqual(Path(artifact["path"]).resolve(), active_path, artifact)
+        self.assertEqual(
+            committed_state["venv"]["dependencyMarkerSha256"],
+            hashlib.sha256(dependency_marker_path.read_bytes()).hexdigest(),
+        )
 
         records = [
             json.loads(line)
@@ -853,13 +1085,25 @@ class InstallerFullUpgradeTests(unittest.TestCase):
         ]
         phases = [record["phase"] for record in records]
         self.assertIn("venv-build", phases)
+        self.assertIn("dependency-plan", phases)
+        self.assertIn("dependency-cache-materialize", phases)
+        self.assertIn("locked-install", phases)
         self.assertIn("pip", phases)
+        self.assertIn("dependency-marker-write", phases)
+        self.assertIn("dependency-marker-verify", phases)
         self.assertIn("dependency", phases)
         self.assertIn("doctor", phases)
 
         live_runtime = runtime.resolve()
         transaction_root = (app / "update-transactions").resolve()
-        isolated_phases = {"venv-build", "pip", "dependency"}
+        isolated_phases = {
+            "venv-build",
+            "locked-install",
+            "pip",
+            "dependency-marker-write",
+            "dependency-marker-verify",
+            "dependency",
+        }
         isolated_records = [record for record in records if record["phase"] in isolated_phases]
         self.assertEqual({record["phase"] for record in isolated_records}, isolated_phases)
         for record in isolated_records:

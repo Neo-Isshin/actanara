@@ -171,6 +171,27 @@ exit 0
         self.assertIn(f'DEFAULT_LATEST_RELEASE_API="{DEFAULT_LATEST_RELEASE_API}"', script)
         self.assertNotIn("git" + "ea", script.lower())
 
+    def test_hosted_stream_is_one_compound_command_and_truncation_executes_nothing(self) -> None:
+        script = BOOTSTRAP.read_text(encoding="utf-8")
+        self.assertTrue(script.startswith("#!/usr/bin/env zsh\n"))
+        self.assertIn("if true; then\nset -euo pipefail", script)
+        self.assertTrue(script.endswith("\nfi\n"))
+
+        truncated = script[:-3]
+        result = subprocess.run(
+            ["zsh", "-c", truncated, "open-nova-truncated-bootstrap"],
+            cwd=self.root,
+            env=self._environment(),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertNotEqual(result.returncode, 0, self._output(result))
+        self.assertFalse(self.cache.exists())
+        self.assertFalse(self.git_log.exists())
+        self.assertFalse(self.install_log.exists())
+
     def test_default_remote_resolves_annotated_stable_tag_to_peeled_commit(self) -> None:
         result = self._run(*self._remote_arguments())
         output = self._output(result)

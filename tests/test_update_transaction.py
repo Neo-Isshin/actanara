@@ -57,6 +57,88 @@ class UpdateTransactionTests(unittest.TestCase):
             digest.update(b"\n")
         return digest.hexdigest()
 
+    def _dependency_marker_payload(self) -> dict[str, object]:
+        environment = {
+            "implementation": "cpython",
+            "pythonMajorMinor": "3.12",
+            "abi": "cpython-312",
+            "platformFamily": "linux",
+            "architecture": "x86_64",
+            "minimumMacOS": None,
+        }
+        # environmentId is the stable lock selection key, not a mechanical
+        # concatenation of the environment identity fields.
+        environment_id = "linux-cpython312-x86-64"
+        profiles = ["runtime"]
+        direct_dependencies = [
+            {"profile": "runtime", "requirements": ["fastapi==0.116.1"]}
+        ]
+        distributions = [
+            {
+                "name": "fastapi",
+                "version": "0.116.1",
+                "hashes": ["sha256:" + "b" * 64],
+            }
+        ]
+        lock_sha256 = "a" * 64
+        fingerprint_payload = {
+            "schemaVersion": 1,
+            "algorithm": "open-nova-runtime-dependencies-v1",
+            "runtimeEnvironment": {
+                "implementation": environment["implementation"],
+                "pythonMajorMinor": environment["pythonMajorMinor"],
+                "abi": environment["abi"],
+                "platformFamily": environment["platformFamily"],
+                "architecture": environment["architecture"],
+                "environmentId": environment_id,
+            },
+            "lockEnvironment": environment,
+            "profiles": profiles,
+            "directDependencies": direct_dependencies,
+            "runtimeLockSha256": lock_sha256,
+            "resolvedDistributions": distributions,
+        }
+        fingerprint = hashlib.sha256(
+            json.dumps(
+                fingerprint_payload,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8")
+        ).hexdigest()
+        return {
+            "schemaVersion": 1,
+            "product": "open-nova",
+            "fingerprintAlgorithm": "open-nova-runtime-dependencies-v1",
+            "dependencyFingerprint": fingerprint,
+            "lockSha256": lock_sha256,
+            "environmentId": environment_id,
+            "lockEnvironment": environment,
+            "profiles": profiles,
+            "directDependencies": direct_dependencies,
+            "distributions": distributions,
+        }
+
+    def _write_dependency_marker(
+        self,
+        venv: Path,
+        *,
+        payload: dict[str, object] | None = None,
+        raw: bytes | None = None,
+        mode: int = 0o444,
+    ) -> Path:
+        marker = venv / ".open-nova-dependencies.json"
+        marker.unlink(missing_ok=True)
+        if raw is None:
+            raw = (
+                json.dumps(payload or self._dependency_marker_payload(), sort_keys=True)
+                + "\n"
+            ).encode("utf-8")
+        marker.write_bytes(raw)
+        marker.chmod(mode)
+        return marker
+
     def _write_prior_migrations(
         self,
         source: Path,
@@ -236,6 +318,8 @@ class UpdateTransactionTests(unittest.TestCase):
         )
         (old_venv / "bin" / "python").write_text("old-venv\n", encoding="utf-8")
         (candidate_venv / "bin" / "python").write_text("candidate-venv\n", encoding="utf-8")
+        self._write_dependency_marker(old_venv)
+        self._write_dependency_marker(candidate_venv)
         (runtime / "config" / "settings.json").write_text('{"dashboard":{"port":42173}}\n', encoding="utf-8")
         (runtime / "config" / "runtime.json").write_text('{"runtime":"old"}\n', encoding="utf-8")
         database = runtime / "data" / "nova_data.sqlite3"
@@ -434,7 +518,18 @@ class UpdateTransactionTests(unittest.TestCase):
         launchctl: str = "/usr/bin/true",
         uid: int = 0,
         materialize_candidates: bool = True,
+        mode: str = "upgrade",
     ) -> Path:
+        settings_sha256 = hashlib.sha256(fixture["settings"].read_bytes()).hexdigest()
+        active_venv_target = (fixture["runtime"] / ".venv").resolve()
+        active_marker = active_venv_target / ".open-nova-dependencies.json"
+        marker_status = "trusted" if active_marker.exists() or active_marker.is_symlink() else "missing"
+        marker_args: list[str] = []
+        if marker_status == "trusted" and active_marker.is_file() and not active_marker.is_symlink():
+            marker_args = [
+                "--expected-active-marker-sha256",
+                hashlib.sha256(active_marker.read_bytes()).hexdigest(),
+            ]
         result = self._run(
             "begin",
             "--runtime",
@@ -445,8 +540,15 @@ class UpdateTransactionTests(unittest.TestCase):
             str(fixture["runtime"] / "app" / "source"),
             "--venv-pointer",
             str(fixture["runtime"] / ".venv"),
+            "--expected-settings-sha256",
+            settings_sha256,
+            "--expected-active-venv-target",
+            str(active_venv_target),
+            "--expected-active-marker-status",
+            marker_status,
+            *marker_args,
             "--mode",
-            "upgrade",
+            mode,
             "--tx-id",
             "fixture-tx",
             "--owner-pid",
@@ -479,19 +581,20 @@ class UpdateTransactionTests(unittest.TestCase):
                 str(journal),
             ).stdout.strip()
         )
-        venv_template = fixture["candidate_venv"]
-        venv_candidate = Path(
-            self._run(
-                "reserve-artifact",
-                "--state",
-                str(journal),
-                "--kind",
-                "venv",
-            ).stdout.strip()
-        )
-        shutil.copytree(venv_template, venv_candidate, dirs_exist_ok=True, symlinks=True)
         fixture["candidate_source"] = source_candidate
-        fixture["candidate_venv"] = venv_candidate
+        if mode == "upgrade":
+            venv_template = fixture["candidate_venv"]
+            venv_candidate = Path(
+                self._run(
+                    "reserve-artifact",
+                    "--state",
+                    str(journal),
+                    "--kind",
+                    "venv",
+                ).stdout.strip()
+            )
+            shutil.copytree(venv_template, venv_candidate, dirs_exist_ok=True, symlinks=True)
+            fixture["candidate_venv"] = venv_candidate
         return journal
 
     def _mark_transaction_owner_dead(self, journal: Path) -> None:
@@ -600,6 +703,61 @@ class UpdateTransactionTests(unittest.TestCase):
             self.assertFalse(
                 (fixture["runtime"] / "app" / ".update-transaction.lock").exists()
             )
+
+    def test_begin_rejects_stale_dependency_profile_settings_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            settings_sha256 = hashlib.sha256(fixture["settings"].read_bytes()).hexdigest()
+            active_venv = (fixture["runtime"] / ".venv").resolve()
+            marker = active_venv / ".open-nova-dependencies.json"
+            marker_sha256 = hashlib.sha256(marker.read_bytes()).hexdigest()
+            fixture["settings"].write_text(
+                '{"dashboard":{"port":42173},"features":{"rag":true}}\n',
+                encoding="utf-8",
+            )
+
+            result = self._run(
+                "begin",
+                "--runtime",
+                str(fixture["runtime"]),
+                "--home",
+                str(fixture["home"]),
+                "--source-pointer",
+                str(fixture["runtime"] / "app" / "source"),
+                "--venv-pointer",
+                str(fixture["runtime"] / ".venv"),
+                "--expected-settings-sha256",
+                settings_sha256,
+                "--expected-active-venv-target",
+                str(active_venv),
+                "--expected-active-marker-status",
+                "trusted",
+                "--expected-active-marker-sha256",
+                marker_sha256,
+                "--mode",
+                "upgrade",
+                "--tx-id",
+                "fixture-tx",
+                "--owner-pid",
+                str(os.getpid()),
+                "--platform",
+                "Linux",
+                "--launchctl",
+                "/usr/bin/true",
+                "--uid",
+                "0",
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("Settings changed after dependency profile selection", result.stderr)
+            self.assertFalse(
+                (fixture["runtime"] / "app" / ".update-transaction.lock").exists()
+            )
+            self.assertFalse(
+                (fixture["runtime"] / "app" / "update-transactions" / "fixture-tx").exists()
+            )
+            self.assertEqual(os.readlink(fixture["runtime"] / "app" / "source"), "releases/old")
 
     def test_begin_rejects_owner_pid_that_is_not_its_ancestor(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -3423,6 +3581,399 @@ print -r -- "$reserved"
                 json.loads(journal.read_text(encoding="utf-8"))["status"],
                 "rolled-back",
             )
+
+    def test_venv_dependency_marker_sha_is_bound_when_candidate_is_recorded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            journal = self._begin(fixture, owner_pid=os.getpid())
+
+            self._run(
+                "record-candidate",
+                "--state",
+                str(journal),
+                "--kind",
+                "venv",
+                "--candidate",
+                str(fixture["candidate_venv"]),
+            )
+
+            marker = fixture["candidate_venv"] / ".open-nova-dependencies.json"
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertEqual(
+                state["venv"]["dependencyMarkerSha256"],
+                hashlib.sha256(marker.read_bytes()).hexdigest(),
+            )
+            self.assertEqual(marker.stat(follow_symlinks=False).st_nlink, 1)
+            self.assertEqual(marker.stat(follow_symlinks=False).st_uid, os.getuid())
+            self.assertEqual(marker.stat(follow_symlinks=False).st_mode & 0o777, 0o444)
+            self._run("rollback", "--state", str(journal))
+
+    def test_venv_dependency_marker_missing_is_rejected_before_recording(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            marker = fixture["candidate_venv"] / ".open-nova-dependencies.json"
+            marker.unlink()
+
+            result = self._run(
+                "record-candidate",
+                "--state",
+                str(journal),
+                "--kind",
+                "venv",
+                "--candidate",
+                str(fixture["candidate_venv"]),
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("dependency marker is missing", result.stderr)
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertEqual(state["status"], "prepared")
+            self.assertNotIn("dependencyMarkerSha256", state["venv"])
+            self.assertTrue(
+                (fixture["candidate_venv"] / ".open-nova-update-owner").is_file()
+            )
+            self.assertFalse(state["serviceStopInitiated"])
+            self._run("rollback", "--state", str(journal))
+
+    def test_venv_dependency_marker_symlink_is_rejected_without_touching_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._fixture(root)
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            marker = fixture["candidate_venv"] / ".open-nova-dependencies.json"
+            marker.unlink()
+            external = root / "operator-marker.json"
+            external.write_text("operator-owned\n", encoding="utf-8")
+            external.chmod(0o444)
+            marker.symlink_to(external)
+
+            result = self._run(
+                "record-candidate",
+                "--state",
+                str(journal),
+                "--kind",
+                "venv",
+                "--candidate",
+                str(fixture["candidate_venv"]),
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("regular non-symlink", result.stderr)
+            self.assertTrue(marker.is_symlink())
+            self.assertEqual(external.read_text(encoding="utf-8"), "operator-owned\n")
+            self.assertFalse(
+                json.loads(journal.read_text(encoding="utf-8"))["serviceStopInitiated"]
+            )
+            self._run("rollback", "--state", str(journal))
+            self.assertEqual(external.read_text(encoding="utf-8"), "operator-owned\n")
+
+    def test_venv_dependency_marker_requires_exact_0444_mode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            marker = fixture["candidate_venv"] / ".open-nova-dependencies.json"
+            marker.chmod(0o644)
+
+            result = self._run(
+                "record-candidate",
+                "--state",
+                str(journal),
+                "--kind",
+                "venv",
+                "--candidate",
+                str(fixture["candidate_venv"]),
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("immutable 0444 permissions", result.stderr)
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertEqual(state["status"], "prepared")
+            self.assertFalse(state["serviceStopInitiated"])
+            self._run("rollback", "--state", str(journal))
+
+    def test_venv_dependency_marker_rejects_duplicate_keys_and_nan(self):
+        payload = self._dependency_marker_payload()
+        valid_text = json.dumps(payload, sort_keys=True)
+        cases = {
+            "duplicate-key": (
+                "{\"schemaVersion\":1," + valid_text[1:]
+            ).encode("utf-8"),
+            "nan": json.dumps(
+                {**payload, "schemaVersion": float("nan")},
+                sort_keys=True,
+            ).encode("utf-8"),
+        }
+        for name, raw in cases.items():
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                fixture = self._fixture(Path(tmp))
+                journal = self._begin(fixture, owner_pid=os.getpid())
+                self._write_dependency_marker(fixture["candidate_venv"], raw=raw)
+
+                result = self._run(
+                    "record-candidate",
+                    "--state",
+                    str(journal),
+                    "--kind",
+                    "venv",
+                    "--candidate",
+                    str(fixture["candidate_venv"]),
+                    check=False,
+                )
+
+                self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+                self.assertIn("not strict JSON", result.stderr)
+                self.assertFalse(
+                    json.loads(journal.read_text(encoding="utf-8"))["serviceStopInitiated"]
+                )
+                self._run("rollback", "--state", str(journal))
+
+    def test_venv_dependency_marker_schema_is_revalidated_before_service_stop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            self._record_and_verify_source_candidate(fixture, journal)
+            payload = self._dependency_marker_payload()
+            payload.pop("distributions")
+            marker = self._write_dependency_marker(
+                fixture["candidate_venv"],
+                payload=payload,
+            )
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            state["venv"]["dependencyMarkerSha256"] = hashlib.sha256(
+                marker.read_bytes()
+            ).hexdigest()
+            journal.write_text(json.dumps(state, sort_keys=True) + "\n", encoding="utf-8")
+
+            result = self._run("stop", "--state", str(journal), check=False)
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("invalid exact schema", result.stderr)
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertEqual(state["status"], "candidate-staged")
+            self.assertFalse(state["serviceStopInitiated"])
+            self.assertEqual(os.readlink(fixture["runtime"] / "app" / "source"), "releases/old")
+            self._run("rollback", "--state", str(journal))
+
+    def test_venv_dependency_marker_hash_is_revalidated_at_every_forward_gate(self):
+        for gate in ("stop", "promote", "verify", "commit"):
+            with self.subTest(gate=gate), tempfile.TemporaryDirectory() as tmp:
+                fixture = self._fixture(Path(tmp))
+                journal = self._begin(fixture, owner_pid=os.getpid())
+                if gate == "stop":
+                    self._record_and_verify_source_candidate(fixture, journal)
+                elif gate == "promote":
+                    self._prepare_stopped_candidate(fixture, journal)
+                    self._run("normalize-service-plists", "--state", str(journal))
+                else:
+                    self._prepare_and_promote(fixture, journal)
+                    self._run("restore-services", "--state", str(journal))
+                    if gate == "commit":
+                        self._run("verify", "--state", str(journal))
+
+                marker = fixture["candidate_venv"] / ".open-nova-dependencies.json"
+                original = marker.read_bytes()
+                self._write_dependency_marker(
+                    fixture["candidate_venv"],
+                    raw=original + b" ",
+                )
+
+                result = self._run(gate, "--state", str(journal), check=False)
+
+                self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+                self.assertIn("marker bytes changed after recording", result.stderr)
+                state = json.loads(journal.read_text(encoding="utf-8"))
+                if gate == "stop":
+                    self.assertFalse(state["serviceStopInitiated"])
+                if gate == "promote":
+                    self.assertEqual(
+                        os.readlink(fixture["runtime"] / "app" / "source"),
+                        "releases/old",
+                    )
+                self.assertNotEqual(state["status"], "committed")
+                self._run("rollback", "--state", str(journal))
+
+    def test_source_only_transaction_does_not_require_candidate_venv_marker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            journal = self._begin(
+                fixture,
+                owner_pid=os.getpid(),
+                mode="source-only",
+            )
+            self._run(
+                "record-candidate",
+                "--state",
+                str(journal),
+                "--kind",
+                "source",
+                "--candidate",
+                str(fixture["candidate_source"]),
+            )
+            self._run("verify-migration-compatibility", "--state", str(journal))
+
+            self._run("stop", "--state", str(journal))
+
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertEqual(state["status"], "stopped")
+            binding = state["venv"]["activeReuseBinding"]
+            active_marker = fixture["runtime"] / ".venv" / ".open-nova-dependencies.json"
+            self.assertEqual(
+                binding["dependencyMarkerSha256"],
+                hashlib.sha256(active_marker.read_bytes()).hexdigest(),
+            )
+            self.assertEqual(
+                (binding["targetDevice"], binding["targetInode"]),
+                (
+                    (fixture["runtime"] / ".venv").stat().st_dev,
+                    (fixture["runtime"] / ".venv").stat().st_ino,
+                ),
+            )
+            self.assertNotIn("dependencyMarkerSha256", state["venv"])
+            self.assertTrue((fixture["runtime"] / ".venv").is_dir())
+            self.assertFalse((fixture["runtime"] / ".venv").is_symlink())
+            self._run("rollback", "--state", str(journal))
+
+    def test_source_only_active_marker_race_is_rejected_before_service_stop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            journal = self._begin(
+                fixture,
+                owner_pid=os.getpid(),
+                mode="source-only",
+            )
+            self._run(
+                "record-candidate",
+                "--state",
+                str(journal),
+                "--kind",
+                "source",
+                "--candidate",
+                str(fixture["candidate_source"]),
+            )
+            self._run("verify-migration-compatibility", "--state", str(journal))
+            active_venv = fixture["runtime"] / ".venv"
+            marker = active_venv / ".open-nova-dependencies.json"
+            original = marker.read_bytes()
+            self._write_dependency_marker(active_venv, raw=original + b" ")
+
+            result = self._run("stop", "--state", str(journal), check=False)
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("active reused venv dependency marker bytes changed", result.stderr)
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertEqual(state["status"], "candidate-staged")
+            self.assertFalse(state["serviceStopInitiated"])
+            self._write_dependency_marker(active_venv, raw=original)
+            self._run("rollback", "--state", str(journal))
+
+    def test_source_only_active_venv_pointer_race_is_rejected_before_service_stop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            runtime = fixture["runtime"]
+            active_pointer = runtime / ".venv"
+            original_generation = runtime / "app" / "venvs" / "old-generation"
+            original_generation.parent.mkdir(parents=True, exist_ok=True)
+            active_pointer.rename(original_generation)
+            active_pointer.symlink_to("app/venvs/old-generation")
+            journal = self._begin(
+                fixture,
+                owner_pid=os.getpid(),
+                mode="source-only",
+            )
+            self._run(
+                "record-candidate",
+                "--state",
+                str(journal),
+                "--kind",
+                "source",
+                "--candidate",
+                str(fixture["candidate_source"]),
+            )
+            self._run("verify-migration-compatibility", "--state", str(journal))
+            raced_generation = runtime / "app" / "venvs" / "raced-generation"
+            shutil.copytree(original_generation, raced_generation)
+            self.assertEqual(
+                hashlib.sha256(
+                    (original_generation / ".open-nova-dependencies.json").read_bytes()
+                ).hexdigest(),
+                hashlib.sha256(
+                    (raced_generation / ".open-nova-dependencies.json").read_bytes()
+                ).hexdigest(),
+            )
+            active_pointer.unlink()
+            active_pointer.symlink_to("app/venvs/raced-generation")
+
+            result = self._run("stop", "--state", str(journal), check=False)
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("pointer, target, or Python identity changed", result.stderr)
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertEqual(state["status"], "candidate-staged")
+            self.assertFalse(state["serviceStopInitiated"])
+            active_pointer.unlink()
+            active_pointer.symlink_to("app/venvs/old-generation")
+            self._run("rollback", "--state", str(journal))
+
+    def test_rebuild_profile_settings_race_is_rejected_before_service_stop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            self._record_and_verify_source_candidate(fixture, journal)
+            original = fixture["settings"].read_bytes()
+            fixture["settings"].write_bytes(original + b" ")
+
+            result = self._run("stop", "--state", str(journal), check=False)
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("critical update control state changed concurrently: settings", result.stderr)
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertEqual(state["status"], "candidate-staged")
+            self.assertFalse(state["serviceStopInitiated"])
+            fixture["settings"].write_bytes(original)
+            self._run("rollback", "--state", str(journal))
+
+    def test_rebuild_profile_marker_race_is_rejected_before_service_stop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            self._record_and_verify_source_candidate(fixture, journal)
+            marker = fixture["runtime"] / ".venv" / ".open-nova-dependencies.json"
+            original = marker.read_bytes()
+            self._write_dependency_marker(fixture["runtime"] / ".venv", raw=original + b" ")
+
+            result = self._run("stop", "--state", str(journal), check=False)
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("dependency profile evidence changed", result.stderr)
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertEqual(state["status"], "candidate-staged")
+            self.assertFalse(state["serviceStopInitiated"])
+            self._write_dependency_marker(fixture["runtime"] / ".venv", raw=original)
+            self._run("rollback", "--state", str(journal))
+
+    def test_legacy_missing_marker_appearance_is_rejected_before_service_stop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            active_venv = fixture["runtime"] / ".venv"
+            marker = active_venv / ".open-nova-dependencies.json"
+            marker.unlink()
+            journal = self._begin(fixture, owner_pid=os.getpid())
+            self._record_and_verify_source_candidate(fixture, journal)
+            self._write_dependency_marker(active_venv)
+
+            result = self._run("stop", "--state", str(journal), check=False)
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("dependency profile evidence changed", result.stderr)
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertEqual(state["status"], "candidate-staged")
+            self.assertFalse(state["serviceStopInitiated"])
+            marker.unlink()
+            self._run("rollback", "--state", str(journal))
 
     def test_payload_tamper_is_rejected_before_promotion(self):
         with tempfile.TemporaryDirectory() as tmp:

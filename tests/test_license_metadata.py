@@ -17,7 +17,7 @@ class LicenseMetadataTests(unittest.TestCase):
     def test_pep639_metadata_declares_gpl_v3_or_later(self):
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
-        self.assertEqual(metadata["project"]["version"], "1.0.1")
+        self.assertEqual(metadata["project"]["version"], "1.0.2")
         self.assertEqual(metadata["project"]["readme"], "README.md")
         self.assertEqual(
             metadata["project"]["authors"],
@@ -50,10 +50,10 @@ class LicenseMetadataTests(unittest.TestCase):
                 self.assertIn("GPL-3.0-or-later", content)
                 self.assertIn("](LICENSE)", content)
 
-    def test_public_entrypoints_are_versioned_and_github_canonical(self):
-        immutable_bootstrap = (
-            "https://raw.githubusercontent.com/Neo-Isshin/open-nova/"
-            "v1.0.1/install/bootstrap.sh"
+    def test_public_entrypoints_use_the_version_independent_stable_channel(self):
+        stable_install_command = (
+            "curl -fsSL https://github.com/Neo-Isshin/open-nova/"
+            "releases/latest/download/install.sh | zsh"
         )
         for name in (
             "README.md",
@@ -65,7 +65,8 @@ class LicenseMetadataTests(unittest.TestCase):
         ):
             with self.subTest(name=name):
                 content = (ROOT / name).read_text(encoding="utf-8")
-                self.assertIn(immutable_bootstrap, content)
+                self.assertIn(stable_install_command, content)
+                self.assertNotIn("raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.1", content)
                 self.assertNotIn("git" + "ea", content.lower())
 
 

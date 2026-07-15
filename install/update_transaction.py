@@ -104,6 +104,37 @@ RUNTIME_SOURCE_FINAL_FIELDS = {
     "payload",
     "cleanScan",
 }
+DEPENDENCY_MARKER_NAME = ".open-nova-dependencies.json"
+DEPENDENCY_MARKER_MAX_BYTES = 16 * 1024 * 1024
+DEPENDENCY_MARKER_FIELDS = {
+    "schemaVersion",
+    "product",
+    "fingerprintAlgorithm",
+    "dependencyFingerprint",
+    "lockSha256",
+    "environmentId",
+    "lockEnvironment",
+    "profiles",
+    "directDependencies",
+    "distributions",
+}
+DEPENDENCY_MARKER_ENVIRONMENT_FIELDS = {
+    "implementation",
+    "pythonMajorMinor",
+    "abi",
+    "platformFamily",
+    "architecture",
+    "minimumMacOS",
+}
+DEPENDENCY_MARKER_DIRECT_FIELDS = {"profile", "requirements"}
+DEPENDENCY_MARKER_DISTRIBUTION_FIELDS = {"name", "version", "hashes"}
+DEPENDENCY_FINGERPRINT_ALGORITHM = "open-nova-runtime-dependencies-v1"
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+DEPENDENCY_SAFE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
+DEPENDENCY_VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.!+_-]{0,127}$")
+DEPENDENCY_PYTHON_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+$")
+DEPENDENCY_MACOS_VERSION_RE = re.compile(r"^[0-9]+(?:\.[0-9]+){0,2}$")
+DEPENDENCY_DISTRIBUTION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 
 class TransactionError(RuntimeError):
@@ -563,6 +594,300 @@ def _sha256(path: Path) -> str:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def _dependency_marker_exact_fields(
+    value: Any,
+    expected: set[str],
+    *,
+    label: str,
+) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != expected:
+        raise TransactionError(f"staged venv dependency marker {label} has an invalid exact schema")
+    return value
+
+
+def _dependency_marker_reject_constant(value: str) -> None:
+    raise ValueError(f"invalid JSON constant: {value}")
+
+
+def _dependency_marker_unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def _dependency_marker_canonical_json(value: Any) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def _dependency_marker_canonical_distribution(value: Any) -> str:
+    if not isinstance(value, str) or not DEPENDENCY_DISTRIBUTION_RE.fullmatch(value):
+        raise TransactionError("staged venv dependency marker distribution name is invalid")
+    return re.sub(r"[-_.]+", "-", value).lower()
+
+
+def _dependency_marker_normalize_requirement(value: Any) -> str:
+    if (
+        not isinstance(value, str)
+        or not value.strip()
+        or "\0" in value
+        or "\n" in value
+        or "\r" in value
+    ):
+        raise TransactionError("staged venv dependency marker requirement is invalid")
+    raw = value.strip()
+    if any(token in raw for token in (";", "@", "[", "]")):
+        raise TransactionError("staged venv dependency marker requirement is invalid")
+    match = re.fullmatch(r"([A-Za-z0-9][A-Za-z0-9._-]*)(.*)", raw)
+    if match is None:
+        raise TransactionError("staged venv dependency marker requirement is invalid")
+    name = _dependency_marker_canonical_distribution(match.group(1))
+    specifier = re.sub(r"\s+", "", match.group(2))
+    if not specifier:
+        return name
+    parts = specifier.split(",")
+    if any(
+        not part or not re.fullmatch(r"(?:===|==|!=|~=|<=|>=|<|>)[^,]+", part)
+        for part in parts
+    ):
+        raise TransactionError("staged venv dependency marker requirement is invalid")
+    normalized = name + ",".join(sorted(parts))
+    if len(normalized) > 1024:
+        raise TransactionError("staged venv dependency marker requirement is invalid")
+    return normalized
+
+
+def _dependency_marker_file_bytes(path: Path) -> bytes:
+    try:
+        inspected = path.lstat()
+    except FileNotFoundError as exc:
+        raise TransactionError("staged venv dependency marker is missing") from exc
+    except OSError as exc:
+        raise TransactionError("staged venv dependency marker cannot be inspected") from exc
+    if stat.S_ISLNK(inspected.st_mode) or not stat.S_ISREG(inspected.st_mode):
+        raise TransactionError("staged venv dependency marker must be a regular non-symlink file")
+    if inspected.st_nlink != 1:
+        raise TransactionError("staged venv dependency marker must not be hard linked")
+    if inspected.st_uid != os.getuid():
+        raise TransactionError("staged venv dependency marker is not owned by the current user")
+    if stat.S_IMODE(inspected.st_mode) != 0o444:
+        raise TransactionError("staged venv dependency marker must have immutable 0444 permissions")
+    if inspected.st_size <= 0 or inspected.st_size > DEPENDENCY_MARKER_MAX_BYTES:
+        raise TransactionError("staged venv dependency marker is empty or exceeds the size limit")
+
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise TransactionError("staged venv dependency marker cannot be read safely") from exc
+    try:
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or opened.st_nlink != 1
+            or opened.st_uid != os.getuid()
+            or stat.S_IMODE(opened.st_mode) != 0o444
+            or opened.st_size <= 0
+            or opened.st_size > DEPENDENCY_MARKER_MAX_BYTES
+            or opened.st_dev != inspected.st_dev
+            or opened.st_ino != inspected.st_ino
+        ):
+            raise TransactionError("staged venv dependency marker changed while being opened")
+        raw = bytearray()
+        while len(raw) <= DEPENDENCY_MARKER_MAX_BYTES:
+            block = os.read(descriptor, min(1024 * 1024, DEPENDENCY_MARKER_MAX_BYTES + 1 - len(raw)))
+            if not block:
+                break
+            raw.extend(block)
+        finished = os.fstat(descriptor)
+        if (
+            len(raw) != opened.st_size
+            or len(raw) > DEPENDENCY_MARKER_MAX_BYTES
+            or finished.st_dev != opened.st_dev
+            or finished.st_ino != opened.st_ino
+            or finished.st_size != opened.st_size
+            or finished.st_mtime_ns != opened.st_mtime_ns
+            or finished.st_ctime_ns != opened.st_ctime_ns
+            or finished.st_nlink != 1
+            or finished.st_uid != os.getuid()
+            or stat.S_IMODE(finished.st_mode) != 0o444
+        ):
+            raise TransactionError("staged venv dependency marker changed while being read")
+        return bytes(raw)
+    finally:
+        os.close(descriptor)
+
+
+def _validate_dependency_marker_payload(value: Any) -> dict[str, Any]:
+    marker = _dependency_marker_exact_fields(
+        value,
+        DEPENDENCY_MARKER_FIELDS,
+        label="root",
+    )
+    if (
+        type(marker["schemaVersion"]) is not int
+        or marker["schemaVersion"] != 1
+        or marker["product"] != "open-nova"
+        or marker["fingerprintAlgorithm"] != DEPENDENCY_FINGERPRINT_ALGORITHM
+    ):
+        raise TransactionError("staged venv dependency marker version/product is unsupported")
+    for key in ("dependencyFingerprint", "lockSha256"):
+        if not isinstance(marker[key], str) or not SHA256_RE.fullmatch(marker[key]):
+            raise TransactionError(f"staged venv dependency marker field is invalid: {key}")
+    environment_id = marker["environmentId"]
+    if not isinstance(environment_id, str) or not DEPENDENCY_SAFE_ID_RE.fullmatch(environment_id):
+        raise TransactionError("staged venv dependency marker environmentId is invalid")
+
+    environment = _dependency_marker_exact_fields(
+        marker["lockEnvironment"],
+        DEPENDENCY_MARKER_ENVIRONMENT_FIELDS,
+        label="lockEnvironment",
+    )
+    for key in ("implementation", "abi", "platformFamily", "architecture"):
+        if not isinstance(environment[key], str) or not DEPENDENCY_SAFE_ID_RE.fullmatch(environment[key]):
+            raise TransactionError(f"staged venv dependency marker environment field is invalid: {key}")
+    if (
+        not isinstance(environment["pythonMajorMinor"], str)
+        or not DEPENDENCY_PYTHON_VERSION_RE.fullmatch(environment["pythonMajorMinor"])
+        or environment["platformFamily"] not in {"macos", "linux", "windows"}
+    ):
+        raise TransactionError("staged venv dependency marker Python/platform identity is invalid")
+    minimum_macos = environment["minimumMacOS"]
+    if environment["platformFamily"] == "macos":
+        if not isinstance(minimum_macos, str) or not DEPENDENCY_MACOS_VERSION_RE.fullmatch(minimum_macos):
+            raise TransactionError("staged venv dependency marker minimumMacOS is invalid")
+    elif minimum_macos is not None:
+        raise TransactionError("staged venv dependency marker minimumMacOS must be null off macOS")
+    profiles = marker["profiles"]
+    if (
+        not isinstance(profiles, list)
+        or not profiles
+        or any(
+            not isinstance(profile, str) or not DEPENDENCY_SAFE_ID_RE.fullmatch(profile)
+            for profile in profiles
+        )
+        or profiles != sorted(set(profiles))
+    ):
+        raise TransactionError("staged venv dependency marker profiles are invalid")
+
+    direct_dependencies = marker["directDependencies"]
+    if not isinstance(direct_dependencies, list):
+        raise TransactionError("staged venv dependency marker directDependencies are invalid")
+    direct_profiles: list[str] = []
+    for item in direct_dependencies:
+        record = _dependency_marker_exact_fields(
+            item,
+            DEPENDENCY_MARKER_DIRECT_FIELDS,
+            label="direct dependency record",
+        )
+        profile = record["profile"]
+        if not isinstance(profile, str) or profile not in profiles or profile in direct_profiles:
+            raise TransactionError("staged venv dependency marker direct dependency profile is invalid")
+        requirements = record["requirements"]
+        if (
+            not isinstance(requirements, list)
+            or any(not isinstance(item, str) for item in requirements)
+            or requirements != sorted(set(requirements))
+            or any(_dependency_marker_normalize_requirement(item) != item for item in requirements)
+        ):
+            raise TransactionError("staged venv dependency marker requirements are invalid")
+        direct_profiles.append(profile)
+    if direct_profiles != profiles:
+        raise TransactionError("staged venv dependency marker does not cover every selected profile")
+
+    distributions = marker["distributions"]
+    if not isinstance(distributions, list):
+        raise TransactionError("staged venv dependency marker distributions are invalid")
+    distribution_names: list[str] = []
+    for item in distributions:
+        record = _dependency_marker_exact_fields(
+            item,
+            DEPENDENCY_MARKER_DISTRIBUTION_FIELDS,
+            label="distribution record",
+        )
+        name = _dependency_marker_canonical_distribution(record["name"])
+        if name != record["name"] or name in distribution_names:
+            raise TransactionError("staged venv dependency marker distribution name is invalid")
+        if not isinstance(record["version"], str) or not DEPENDENCY_VERSION_RE.fullmatch(record["version"]):
+            raise TransactionError("staged venv dependency marker distribution version is invalid")
+        hashes = record["hashes"]
+        if (
+            not isinstance(hashes, list)
+            or not hashes
+            or any(not isinstance(item_hash, str) for item_hash in hashes)
+            or hashes != sorted(set(hashes))
+            or any(
+                not re.fullmatch(r"sha256:[0-9a-f]{64}", item_hash)
+                for item_hash in hashes
+            )
+        ):
+            raise TransactionError("staged venv dependency marker distribution hashes are invalid")
+        distribution_names.append(name)
+    if distribution_names != sorted(distribution_names):
+        raise TransactionError("staged venv dependency marker distributions are not sorted")
+
+    fingerprint_payload = {
+        "schemaVersion": 1,
+        "algorithm": DEPENDENCY_FINGERPRINT_ALGORITHM,
+        "runtimeEnvironment": {
+            key: environment[key]
+            for key in (
+                "implementation",
+                "pythonMajorMinor",
+                "abi",
+                "platformFamily",
+                "architecture",
+            )
+        }
+        | {"environmentId": environment_id},
+        "lockEnvironment": dict(environment),
+        "profiles": list(profiles),
+        "directDependencies": [dict(item) for item in direct_dependencies],
+        "runtimeLockSha256": marker["lockSha256"],
+        "resolvedDistributions": [dict(item) for item in distributions],
+    }
+    computed_fingerprint = hashlib.sha256(
+        _dependency_marker_canonical_json(fingerprint_payload)
+    ).hexdigest()
+    if marker["dependencyFingerprint"] != computed_fingerprint:
+        raise TransactionError("staged venv dependency marker fingerprint does not match its content")
+    return marker
+
+
+def _validate_dependency_marker(
+    venv: Path,
+    *,
+    expected_sha256: str | None = None,
+) -> str:
+    raw = _dependency_marker_file_bytes(venv / DEPENDENCY_MARKER_NAME)
+    try:
+        payload = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_dependency_marker_unique_object,
+            parse_constant=_dependency_marker_reject_constant,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError, RecursionError) as exc:
+        raise TransactionError("staged venv dependency marker is not strict JSON") from exc
+    _validate_dependency_marker_payload(payload)
+    actual_sha256 = hashlib.sha256(raw).hexdigest()
+    if expected_sha256 is not None:
+        if not isinstance(expected_sha256, str) or not SHA256_RE.fullmatch(expected_sha256):
+            raise TransactionError("recorded venv candidate has no valid dependency marker hash binding")
+        if actual_sha256 != expected_sha256:
+            raise TransactionError("staged venv dependency marker bytes changed after recording")
+    return actual_sha256
 
 
 def _migration_set_sha256(records: Iterable[dict[str, str]]) -> str:
@@ -1115,6 +1440,140 @@ def _pointer_state(path: Path) -> dict[str, Any]:
     return result
 
 
+def _active_dependency_profile_binding(pointer: Path) -> dict[str, Any]:
+    """Bind the active venv identity and optional immutable marker.
+
+    A legacy Runtime legitimately has no marker.  That absence is itself
+    bound so a concurrent marker/pointer change cannot alter profile evidence
+    between dependency planning and the final pre-stop gate.
+    """
+
+    pointer = _lexical_absolute(pointer)
+    try:
+        pointer_metadata = pointer.lstat()
+    except OSError as exc:
+        raise TransactionError("active reused venv pointer is unavailable") from exc
+    if stat.S_ISLNK(pointer_metadata.st_mode):
+        pointer_kind = "symlink"
+        try:
+            pointer_raw_target = os.readlink(pointer)
+        except OSError as exc:
+            raise TransactionError("active reused venv pointer cannot be inspected") from exc
+    elif stat.S_ISDIR(pointer_metadata.st_mode):
+        pointer_kind = "directory"
+        pointer_raw_target = None
+    else:
+        raise TransactionError("active reused venv pointer is not a directory or symlink")
+    try:
+        target = pointer.resolve(strict=True)
+        target_metadata = target.stat(follow_symlinks=False)
+    except OSError as exc:
+        raise TransactionError("active reused venv target is unavailable") from exc
+    if target.is_symlink() or not stat.S_ISDIR(target_metadata.st_mode):
+        raise TransactionError("active reused venv target is not a regular directory")
+
+    python = target / "bin" / "python"
+    try:
+        python_metadata = python.stat()
+    except OSError as exc:
+        raise TransactionError("active reused venv Python is unavailable") from exc
+    if not stat.S_ISREG(python_metadata.st_mode):
+        raise TransactionError("active reused venv Python is not a regular file")
+    marker = target / DEPENDENCY_MARKER_NAME
+    if marker.exists() or marker.is_symlink():
+        marker_status = "trusted"
+        marker_sha256: str | None = _validate_dependency_marker(target)
+    else:
+        marker_status = "missing"
+        marker_sha256 = None
+
+    try:
+        final_pointer_metadata = pointer.lstat()
+        final_target_metadata = target.stat(follow_symlinks=False)
+        final_python_metadata = python.stat()
+        final_raw_target = os.readlink(pointer) if pointer_kind == "symlink" else None
+    except OSError as exc:
+        raise TransactionError("active reused venv identity changed while being bound") from exc
+    if (
+        final_pointer_metadata.st_dev != pointer_metadata.st_dev
+        or final_pointer_metadata.st_ino != pointer_metadata.st_ino
+        or final_target_metadata.st_dev != target_metadata.st_dev
+        or final_target_metadata.st_ino != target_metadata.st_ino
+        or final_python_metadata.st_dev != python_metadata.st_dev
+        or final_python_metadata.st_ino != python_metadata.st_ino
+        or final_raw_target != pointer_raw_target
+    ):
+        raise TransactionError("active reused venv identity changed while being bound")
+    return {
+        "pointerKind": pointer_kind,
+        "pointerRawTarget": pointer_raw_target,
+        "pointerDevice": pointer_metadata.st_dev,
+        "pointerInode": pointer_metadata.st_ino,
+        "targetPath": str(target),
+        "targetDevice": target_metadata.st_dev,
+        "targetInode": target_metadata.st_ino,
+        "pythonDevice": python_metadata.st_dev,
+        "pythonInode": python_metadata.st_ino,
+        "markerStatus": marker_status,
+        "dependencyMarkerSha256": marker_sha256,
+    }
+
+
+def _active_venv_reuse_binding(pointer: Path) -> dict[str, Any]:
+    binding = _active_dependency_profile_binding(pointer)
+    if binding["markerStatus"] != "trusted":
+        raise TransactionError("active reused venv dependency marker is missing")
+    binding.pop("markerStatus")
+    return binding
+
+
+def _verify_dependency_profile_binding(state: dict[str, Any]) -> None:
+    if state.get("mode") == "source-only":
+        # Source-only transactions already revalidate the stronger active
+        # reuse binding (pointer, target, Python, and marker) at every gate.
+        return
+    expected = state.get("dependencyProfileBinding")
+    if expected is None:
+        # Backward-compatible helper-only transactions created by older tests
+        # and recovery tooling do not carry installer profile evidence.
+        return
+    if not isinstance(expected, dict):
+        raise TransactionError("dependency profile evidence binding is invalid")
+    pointer = state.get("venv") if isinstance(state.get("venv"), dict) else {}
+    current = _active_dependency_profile_binding(Path(str(pointer.get("path") or "")))
+    if current != expected:
+        raise TransactionError(
+            "active dependency profile evidence changed after transaction begin"
+        )
+
+
+def _verify_active_venv_reuse_binding(state: dict[str, Any]) -> None:
+    pointer = state.get("venv") if isinstance(state.get("venv"), dict) else {}
+    expected = pointer.get("activeReuseBinding")
+    expected_fields = {
+        "pointerKind",
+        "pointerRawTarget",
+        "pointerDevice",
+        "pointerInode",
+        "targetPath",
+        "targetDevice",
+        "targetInode",
+        "pythonDevice",
+        "pythonInode",
+        "dependencyMarkerSha256",
+    }
+    if not isinstance(expected, dict) or set(expected) != expected_fields:
+        raise TransactionError("active reused venv has no complete begin-time identity binding")
+    try:
+        current = _active_venv_reuse_binding(Path(str(pointer.get("path") or "")))
+    except TransactionError as exc:
+        raise TransactionError(f"active reused venv failed identity revalidation: {exc}") from exc
+    if current["dependencyMarkerSha256"] != expected["dependencyMarkerSha256"]:
+        raise TransactionError("active reused venv dependency marker bytes changed after begin")
+    if current != expected:
+        raise TransactionError("active reused venv pointer, target, or Python identity changed after begin")
+
+
 def _candidate_artifact_state(kind: str, path: Path) -> dict[str, Any]:
     return {
         "kind": kind,
@@ -1249,6 +1708,7 @@ def _verify_recorded_candidate_artifacts(state: dict[str, Any]) -> None:
         raise TransactionError("recorded source candidate no longer matches its owned artifact")
     _validate_source_payload(state["source"])
     if state.get("mode") != "upgrade":
+        _verify_active_venv_reuse_binding(state)
         return
     venv_record = _candidate_artifact_record(state, "venv")
     venv = _verify_artifact_ownership(venv_record, require_marker=False)
@@ -1257,6 +1717,10 @@ def _verify_recorded_candidate_artifacts(state: dict[str, Any]) -> None:
     python = venv / "bin" / "python"
     if not python.is_file():
         raise TransactionError("staged venv Python is missing or unreadable")
+    marker_sha256 = state["venv"].get("dependencyMarkerSha256")
+    if not isinstance(marker_sha256, str) or not SHA256_RE.fullmatch(marker_sha256):
+        raise TransactionError("recorded venv candidate has no valid dependency marker hash binding")
+    _validate_dependency_marker(venv, expected_sha256=marker_sha256)
 
 
 def _service_kind(label: str) -> str:
@@ -2514,6 +2978,9 @@ def _verify_critical_control_state(state: dict[str, Any]) -> None:
             or not _file_matches_snapshot(matches[0])
         ):
             raise TransactionError(f"critical update control state changed concurrently: {key}")
+    venv_state = state.get("venv") if isinstance(state.get("venv"), dict) else {}
+    if not venv_state.get("promotionStarted"):
+        _verify_dependency_profile_binding(state)
     runtime = Path(state["runtime"])
     by_path = {str(item.get("path") or ""): item for item in records}
     for service in state.get("services") or []:
@@ -3221,6 +3688,34 @@ def begin(args: argparse.Namespace) -> int:
         raise TransactionError("update Runtime or HOME is unavailable") from exc
     if not SAFE_TX_ID_RE.fullmatch(args.tx_id) or args.tx_id in {".", ".."}:
         raise TransactionError("update transaction id contains unsafe characters")
+    profile_evidence_values = (
+        args.expected_settings_sha256,
+        args.expected_active_venv_target,
+        args.expected_active_marker_status,
+        args.expected_active_marker_sha256,
+    )
+    profile_evidence_requested = any(value is not None for value in profile_evidence_values)
+    if profile_evidence_requested:
+        if (
+            not isinstance(args.expected_settings_sha256, str)
+            or not SHA256_RE.fullmatch(args.expected_settings_sha256)
+            or not isinstance(args.expected_active_venv_target, str)
+            or not Path(args.expected_active_venv_target).is_absolute()
+            or any(
+                character in args.expected_active_venv_target
+                for character in "\0\r\n\t"
+            )
+            or args.expected_active_marker_status not in {"missing", "trusted"}
+        ):
+            raise TransactionError("dependency profile evidence arguments are invalid")
+        if args.expected_active_marker_status == "trusted":
+            if (
+                not isinstance(args.expected_active_marker_sha256, str)
+                or not SHA256_RE.fullmatch(args.expected_active_marker_sha256)
+            ):
+                raise TransactionError("trusted dependency profile marker hash is invalid")
+        elif args.expected_active_marker_sha256 is not None:
+            raise TransactionError("missing dependency profile marker cannot have a hash")
     owner_process_identity = _process_identity(args.owner_pid)
     if not _is_descendant_of_owner(args.owner_pid, owner_process_identity):
         raise TransactionError(
@@ -3304,6 +3799,8 @@ def begin(args: argparse.Namespace) -> int:
                 "ragPort": None,
                 "ragHealthPath": None,
             },
+            "dependencyProfileBinding": None,
+            "dependencyProfileEvidence": None,
             "serviceStopInitiated": False,
             "rollbackErrors": [],
             "activeCommandPid": None,
@@ -3349,9 +3846,45 @@ def begin(args: argparse.Namespace) -> int:
         # for a later promotion or recovery decision.
         state["source"] = _pointer_state(source_pointer)
         state["venv"] = _pointer_state(venv_pointer)
+        if profile_evidence_requested:
+            profile_binding = _active_dependency_profile_binding(venv_pointer)
+            if (
+                profile_binding.get("targetPath")
+                != str(Path(args.expected_active_venv_target).resolve(strict=False))
+                or profile_binding.get("markerStatus")
+                != args.expected_active_marker_status
+                or profile_binding.get("dependencyMarkerSha256")
+                != args.expected_active_marker_sha256
+            ):
+                raise TransactionError(
+                    "active dependency profile evidence changed before transaction begin"
+                )
+            state["dependencyProfileBinding"] = profile_binding
+        if args.mode == "source-only":
+            state["venv"]["activeReuseBinding"] = _active_venv_reuse_binding(
+                venv_pointer
+            )
         state["status"] = "preparing"
         _snapshot_path(state_path, state, "settings", runtime / "config" / "settings.json")
         _snapshot_path(state_path, state, "runtime-manifest", runtime / "config" / "runtime.json")
+        if profile_evidence_requested:
+            settings_records = [
+                item for item in state["files"] if item.get("key") == "settings"
+            ]
+            if (
+                len(settings_records) != 1
+                or settings_records[0].get("kind") != "file"
+                or settings_records[0].get("sha256") != args.expected_settings_sha256
+            ):
+                raise TransactionError(
+                    "Runtime Settings changed after dependency profile selection"
+                )
+            state["dependencyProfileEvidence"] = {
+                "settingsSha256": args.expected_settings_sha256,
+                "activeVenvTarget": args.expected_active_venv_target,
+                "activeMarkerStatus": args.expected_active_marker_status,
+                "activeMarkerSha256": args.expected_active_marker_sha256,
+            }
         _save_state(state_path, state, event="control-state-captured")
         services: list[dict[str, Any]] = []
         settings_summary: dict[str, Any] = {
@@ -3656,6 +4189,7 @@ def record_candidate(args: argparse.Namespace) -> int:
         python = candidate / "bin" / "python"
         if not python.is_file():
             raise TransactionError("staged venv candidate has no Python executable")
+        pointer["dependencyMarkerSha256"] = _validate_dependency_marker(candidate)
         marker = candidate / ARTIFACT_MARKER_NAME
         if not artifact.get("markerRemoved"):
             artifact["markerRemoved"] = True
@@ -4453,6 +4987,13 @@ def build_parser() -> argparse.ArgumentParser:
     begin_parser.add_argument("--home", required=True)
     begin_parser.add_argument("--source-pointer", required=True)
     begin_parser.add_argument("--venv-pointer", required=True)
+    begin_parser.add_argument("--expected-settings-sha256")
+    begin_parser.add_argument("--expected-active-venv-target")
+    begin_parser.add_argument(
+        "--expected-active-marker-status",
+        choices=("missing", "trusted"),
+    )
+    begin_parser.add_argument("--expected-active-marker-sha256")
     begin_parser.add_argument("--mode", choices=("upgrade", "source-only"), required=True)
     begin_parser.add_argument("--tx-id", required=True)
     begin_parser.add_argument("--owner-pid", type=int, required=True)

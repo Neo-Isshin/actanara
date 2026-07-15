@@ -78,9 +78,20 @@ class PublicSourceBoundaryTests(unittest.TestCase):
     def test_tests_are_public_source_but_pruned_from_install_payload(self):
         manifest = (ROOT / "MANIFEST.in").read_text(encoding="utf-8")
         installer = (ROOT / "install" / "install.sh").read_text(encoding="utf-8")
+        runtime_dependency_files = (
+            "install/dependency_contract.py",
+            "install/runtime-dependencies.lock.json",
+        )
+        lock_generator = "tools/release/generate_runtime_lock.py"
 
         self.assertTrue((ROOT / "tests" / "run_isolated_release_suite.py").is_file())
         self.assertTrue((ROOT / "tools" / "release" / "build_release.py").is_file())
+        for relative in runtime_dependency_files:
+            with self.subTest(runtime_dependency_file=relative):
+                self.assertTrue((ROOT / relative).is_file())
+                self.assertIn(f'"{relative}"', installer)
+        self.assertTrue((ROOT / lock_generator).is_file())
+        self.assertNotIn(f'"{lock_generator}"', installer)
         self.assertIn("prune tests", manifest.splitlines())
         self.assertIn("prune tools", manifest.splitlines())
         self.assertNotIn("graft tests", manifest.splitlines())

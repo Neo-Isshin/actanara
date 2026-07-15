@@ -8,7 +8,7 @@
 **English** · [简体中文](local-operations-runbook.zh-CN.md) · [Back to the English README](../README.md)
 
 Status: Public operator guide<br>
-Scope: Open Nova `v1.0.1` · Local macOS runtime
+Scope: Open Nova · Local macOS runtime
 
 ## 1. Purpose
 
@@ -19,12 +19,12 @@ In this guide, an **agent runtime** means an AI tool environment with its own se
 ## 2. Version and Release Boundaries
 
 - GitHub is the only public release and installation source. Private development archives are not part of the public installation path.
-- The published `v1.0.1` tag and Release remain immutable.
-- The fresh-install command in this guide pins both the `v1.0.1` bootstrap and the exact full source commit for Open Nova.
+- Published tags, Releases, and artifacts remain immutable.
+- The fresh-install command selects only GitHub's latest stable Release, whose tag is resolved to an exact full source commit.
 - `v1.0.0` has been withdrawn and remains available for audit only. It should not be installed or recommended.
 
 > [!IMPORTANT]
-> Pinning the source commit prevents the Open Nova source from drifting with a future `latest` Release. Third-party dependencies are still resolved at install time according to the release configuration, so this does not make the entire Python dependency environment byte-for-byte reproducible.
+> Each stable Release carries the exact Runtime dependency lock for supported Python ABIs and macOS architectures. The installer never resolves application source from `main`, `HEAD`, or a symbolic branch.
 
 ## 3. Pre-install Checks
 
@@ -48,21 +48,23 @@ python3 --version 2>/dev/null || true
 
 The installer detects supported agent-runtime paths and asks the operator which tools to connect during the guided setup.
 
-## 4. Fresh Installation of v1.0.1
+## 4. Fresh Installation of the Latest Stable Release
 
-Use this strictly pinned command:
+Use the public stable-channel one-liner:
 
 ```bash
-bootstrap="$(curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 10 --max-time 30 'https://raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.1/install/bootstrap.sh')" && [ -n "$bootstrap" ] && NOVA_INSTALL_SOURCE_URL='https://github.com/Neo-Isshin/open-nova.git' NOVA_INSTALL_REF='82bbdbd83e35724441c7005dfc0b555d413fcf93' zsh -c "$bootstrap"
+curl -fsSL https://github.com/Neo-Isshin/open-nova/releases/latest/download/install.sh | zsh
 ```
 
-This command has two immutable anchors:
+The command keeps source selection safe while hiding release plumbing from the user:
 
-1. The bootstrap comes from the immutable `v1.0.1` tag;
-2. The Open Nova source is pinned to the full commit `82bbdbd83e35724441c7005dfc0b555d413fcf93`.
+1. GitHub resolves `install.sh` from the latest stable Release;
+2. The launcher rejects draft, prerelease, and explicitly `WITHDRAWN` releases;
+3. It peels the selected tag to a full commit;
+4. It installs that detached commit and never follows `main`, `HEAD`, or a symbolic branch.
 
 > [!NOTE]
-> Supplying an explicit commit bypasses the bootstrap's future dynamic checks for the `latest` Release and its `WITHDRAWN` marker. This is the deliberate tradeoff required to keep source content fixed. If the project later withdraws this version, follow GitHub security advisories and the Release status.
+> Every stable Release publishes the same asset name, so this command advances only when a new stable Release is formally published.
 
 > [!WARNING]
 > This command is for a fresh installation only. If the bootstrap detects an existing Open Nova runtime, an active runtime pointer, or a managed LaunchAgent, it stops before writing to the installation source cache. For an existing installation, run `open-nova update` or `open-nova update --dry-run` to review the plan, then use `open-nova update --apply` to perform the update.
@@ -292,8 +294,28 @@ open-nova update --apply
 ```
 
 - With no arguments, the command displays only the plan;
-- `--dry-run` runs a bootstrap and installer preview, but with a cold cache it mainly shows the source-acquisition plan and is not a complete end-to-end validation of the candidate version;
+- `--dry-run` runs a bootstrap and installer preview and reports whether the active venv can be reused or a locked candidate rebuild is required; a cold remote source cache can still limit the preview to source acquisition;
 - Only `--apply` performs the real update transaction.
+
+The stable-channel installer and updater use the same dependency contract and
+exact Runtime lock. Unreleased `main` code is never selected by this channel.
+
+The default apply mode reuses the active venv only when its immutable dependency
+marker, environment identity, selected profiles, exact Runtime lock, and live
+distributions all match. This path changes the source pointer without running
+pip. Otherwise the updater creates and validates a new venv from the persistent
+hash-verified wheelhouse before atomically switching pointers. It never installs
+into the active venv. A legacy Runtime with no marker takes the rebuild path;
+malformed or unsafe profile evidence fails closed before service changes.
+
+```bash
+open-nova update --apply --offline       # no source or dependency network
+open-nova update --apply --source-only   # require venv reuse or fail closed
+open-nova update --apply --force-rebuild # require a new locked candidate venv
+```
+
+An offline rebuild fails before service stop when the trusted cache under
+`~/.open-nova/app/dependency-cache/v1` is incomplete or altered.
 
 Select an immutable full commit:
 
@@ -345,7 +367,7 @@ When filing an Issue, include commands, necessary output, log paths, the runtime
 
 ## 16. Uninstallation Boundary
 
-Open Nova `v1.0.1` does not include a product-level one-command uninstaller. Do not remove only `~/.open-nova`, because this can leave behind:
+Open Nova does not currently include a product-level one-command uninstaller. Do not remove only `~/.open-nova`, because this can leave behind:
 
 - macOS LaunchAgents;
 - The `~/.local/bin/open-nova` CLI shim;

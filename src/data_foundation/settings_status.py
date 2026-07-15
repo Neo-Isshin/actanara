@@ -41,6 +41,7 @@ except ImportError:  # pragma: no cover - status should degrade without RAG impo
 
 
 DOCTOR_PROFILES = ("all", "installer", "pipeline", "scheduler", "rag")
+PRODUCT_VERSION_AUTHORITY = "active-runtime-source-manifest"
 RUNTIME_SOURCE_FINAL_FIELDS = {
     "schemaVersion",
     "product",
@@ -205,6 +206,8 @@ def format_nova_settings_status(payload: dict[str, Any]) -> str:
             "Runtime source: "
             f"{runtime_source.get('status', 'unknown')} "
             f"manifest={'present' if runtime_source.get('manifestExists') else 'missing'} "
+            f"version={runtime_source.get('sourceVersion') or 'unknown'} "
+            f"versionAuthority={runtime_source.get('productVersionAuthority', 'unknown')} "
             f"locator={((runtime_source.get('sourceLocator') or {}).get('kind') or 'unknown')}"
         ),
         (
@@ -1122,6 +1125,8 @@ def _runtime_source_provenance(paths: RuntimePaths, dashboard: dict[str, Any], s
     payload: dict[str, Any] = {
         "status": "missing",
         "manifestExists": manifest_path.exists(),
+        "productVersionAuthority": PRODUCT_VERSION_AUTHORITY,
+        "sourceVersion": None,
         "freshness": "unknown",
         "sourceLocator": {"kind": "missing", "available": False, "issue": "manifest-missing"},
         "stale": None,
