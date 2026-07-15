@@ -2,6 +2,16 @@
 
 All notable public changes to Open Nova are documented here.
 
+## Unreleased
+
+### Fixed
+
+- Validate only the selected installer payload blobs when an offline update
+  reuses a sparse partial-clone cache, without requiring unrelated public-source
+  blobs or permitting a lazy fetch.
+- Reject an offline update plan unless it names a local source checkout or an
+  explicit full commit already present in the installer source cache.
+
 ## [1.0.2] - 2026-07-14
 
 ### Added

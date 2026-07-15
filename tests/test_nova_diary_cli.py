@@ -503,6 +503,12 @@ class OpenNovaCliTests(unittest.TestCase):
         self.assertIn("pins its full commit", text)
         self.assertIn("full 40- or 64-character", text)
         self.assertIn("hexadecimal object ID", text)
+        normalized = " ".join(text.split())
+        self.assertIn(
+            "Requires --source-root PATH or a full --ref already present in the installer source cache",
+            normalized,
+        )
+        self.assertIn("trusted dependency cache", normalized)
 
     def test_update_dry_run_invokes_bootstrap_without_mutation(self):
         cli = _load_cli_module()
@@ -927,6 +933,19 @@ class OpenNovaCliTests(unittest.TestCase):
         run.assert_not_called()
         self.assertIn("Open Nova update blocked", error.getvalue())
         self.assertIn("--source-root cannot be combined with --ref", error.getvalue())
+
+    def test_update_offline_requires_local_source_or_cached_full_ref_before_bootstrap(self):
+        cli = _load_cli_module()
+        for mode in ([], ["--dry-run"], ["--apply"]):
+            with self.subTest(mode=mode), patch.object(cli.subprocess, "run") as run, redirect_stderr(
+                io.StringIO()
+            ) as error:
+                code = cli.main(["update", *mode, "--offline", "--json"])
+
+            self.assertEqual(code, 2)
+            run.assert_not_called()
+            self.assertIn("Open Nova update blocked", error.getvalue())
+            self.assertIn("--offline requires --source-root PATH or an explicit full commit", error.getvalue())
 
     def test_update_remote_ref_requires_full_hex_commit(self):
         cli = _load_cli_module()

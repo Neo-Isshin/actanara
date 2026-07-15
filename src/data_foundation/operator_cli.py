@@ -231,7 +231,10 @@ def _parser() -> argparse.ArgumentParser:
     update.add_argument(
         "--offline",
         action="store_true",
-        help="Forbid update network access; source resolution and dependency rebuilds must use trusted local caches.",
+        help=(
+            "Forbid update network access. Requires --source-root PATH or a full --ref already "
+            "present in the installer source cache; a locked rebuild also requires the trusted dependency cache."
+        ),
     )
     update.set_defaults(handler=_update_run)
 
@@ -1111,6 +1114,11 @@ def _update_bootstrap_path(args: argparse.Namespace, runtime_home: Path) -> Path
 def _validate_update_source_selection(args: argparse.Namespace) -> None:
     if args.source_root and args.ref:
         raise ValueError("--source-root cannot be combined with --ref")
+    if args.offline and not args.source_root and not args.ref:
+        raise ValueError(
+            "--offline requires --source-root PATH or an explicit full commit via --ref "
+            "already present in the installer source cache"
+        )
     if not args.source_root and not args.ref and str(args.source_url or "") != DEFAULT_UPDATE_SOURCE_URL:
         raise ValueError("a custom --source-url requires an explicit full commit via --ref")
     if args.ref and not UPDATE_FULL_COMMIT_RE.fullmatch(str(args.ref)):

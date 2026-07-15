@@ -340,7 +340,7 @@ open-nova update --apply
 - `open-nova update` 仅显示更新计划。
 - `--dry-run` 运行无变更预演；候选源码可用时会真实说明复用 venv 还是按锁重建，远端源码冷缓存时仍可能只展示源码获取计划。
 - `--apply` 才会执行实际的受保护更新事务。
-- 依赖 fingerprint 一致时会复用 active venv，且不运行 pip；否则从精确、带 hash 的 Runtime lock 构建独立 candidate venv。运维可用 `--source-only` 强制只复用、用 `--force-rebuild` 强制重建，或用 `--offline` 禁止源码与依赖网络访问。
+- 依赖 fingerprint 一致时会复用 active venv，且不运行 pip；否则从精确、带 hash 的 Runtime lock 构建独立 candidate venv。运维可用 `--source-only` 强制只复用、用 `--force-rebuild` 强制重建，或用 `--offline` 禁止源码与依赖网络访问。离线选择源码时必须同时提供 `--source-root PATH`，或提供已存在于 installer source cache 中的完整 `--ref`。
 
 > 只有上述工作流被纳入正式发布的稳定 Release 后，稳定通道 one-liner 才会安装它；该入口绝不安装尚未发布的 `main` 代码。
 

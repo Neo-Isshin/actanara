@@ -309,12 +309,15 @@ into the active venv. A legacy Runtime with no marker takes the rebuild path;
 malformed or unsafe profile evidence fails closed before service changes.
 
 ```bash
-open-nova update --apply --offline       # no source or dependency network
-open-nova update --apply --source-only   # require venv reuse or fail closed
-open-nova update --apply --force-rebuild # require a new locked candidate venv
+open-nova update --apply --offline --ref <full-commit-sha>        # cached remote commit
+open-nova update --apply --offline --source-root /path/to/source  # local checkout
+open-nova update --apply --source-only                            # require venv reuse or fail closed
+open-nova update --apply --force-rebuild                          # require a new locked candidate venv
 ```
 
-An offline rebuild fails before service stop when the trusted cache under
+Offline remote selection requires a full commit already present under the
+installer `--cache-root`; offline mode never resolves `latest`. An offline
+rebuild also fails before service stop when the trusted cache under
 `~/.open-nova/app/dependency-cache/v1` is incomplete or altered.
 
 Select an immutable full commit:

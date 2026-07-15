@@ -529,6 +529,10 @@ if [[ " $* " == *" rev-parse --verify "* ]]; then
   print -r -- "{resolved_commit}"
   exit 0
 fi
+if [[ " $* " == *" ls-tree -r -z --full-tree "* ]]; then
+  printf '100755 blob 1111111111111111111111111111111111111111\tinstall/install.sh\\0'
+  exit 0
+fi
 exit 0
 """,
             encoding="utf-8",
@@ -728,6 +732,26 @@ exit 1
         ):
             with self.subTest(private_process_term=private_process_term):
                 self.assertNotIn(private_process_term, runbook)
+
+    def test_offline_update_docs_require_explicit_cached_source_selection(self):
+        documents = [
+            (ROOT / "docs" / "local-operations-runbook.md").read_text(encoding="utf-8"),
+            (ROOT / "docs" / "local-operations-runbook.zh-CN.md").read_text(encoding="utf-8"),
+            (ROOT / "docs" / "new-user-onboarding-runbook.md").read_text(encoding="utf-8"),
+        ]
+        unsafe_example = re.compile(r"^open-nova update --apply --offline(?:\s+#.*)?$", re.MULTILINE)
+        for content in documents:
+            with self.subTest():
+                self.assertIsNone(unsafe_example.search(content))
+                self.assertIn("--offline --ref <full-commit-sha>", content)
+                self.assertIn("--offline --source-root /path/to/source", content)
+
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        readme_zh = (ROOT / "README.zh-CN.md").read_text(encoding="utf-8")
+        for content in (readme, readme_zh):
+            with self.subTest(readme=True):
+                self.assertIn("--source-root PATH", content)
+                self.assertIn("--ref", content)
 
     def test_readmes_document_shell_path_controls(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -4176,7 +4200,12 @@ exit 1
             git_calls,
         )
         self.assertTrue(any("remote get-url origin" in call for call in git_calls), git_calls)
-        self.assertTrue(any(" archive --format=tar " in call for call in git_calls), git_calls)
+        self.assertTrue(any(" ls-tree -r -z --full-tree " in call for call in git_calls), git_calls)
+        self.assertTrue(any(" cat-file -e " in call for call in git_calls), git_calls)
+        self.assertTrue(
+            any(" cat-file blob 1111111111111111111111111111111111111111" in call for call in git_calls),
+            git_calls,
+        )
         self.assertTrue(
             all(
                 "GIT_NO_LAZY_FETCH=1" in call
@@ -4295,6 +4324,152 @@ exit 1
             self.assertFalse(tripwire_marker.exists(), output)
             self.assertEqual((source / ".git" / "config").read_bytes(), config_before)
             self.assertFalse((source / "install" / "install.sh").exists())
+
+    def test_bootstrap_offline_partial_clone_accepts_complete_sparse_payload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "Home"
+            origin_work = root / "origin-work"
+            origin_bare = root / "origin.git"
+            cache = root / "Cache"
+            source = cache / "source"
+            installer_log = root / "installer.log"
+            tripwire_marker = root / "lazy-fetch-invoked"
+            tripwire = root / "promisor-tripwire.sh"
+            home.mkdir()
+            origin_work.mkdir()
+
+            def git(*arguments: str, cwd: Path = root) -> subprocess.CompletedProcess[str]:
+                return subprocess.run(
+                    ["git", *arguments],
+                    cwd=cwd,
+                    text=True,
+                    capture_output=True,
+                    check=True,
+                )
+
+            git("init", "--quiet", cwd=origin_work)
+            git("config", "user.name", "Open Nova Test", cwd=origin_work)
+            git("config", "user.email", "open-nova-test@example.invalid", cwd=origin_work)
+            payloads = {
+                "pyproject.toml": "[project]\nname='offline-fixture'\nversion='1.0.0'\n",
+                "MANIFEST.in": "include LICENSE\n",
+                "LICENSE": "fixture\n",
+                "config.py": "# fixture\n",
+                "install/install.sh": (
+                    "#!/bin/zsh\n"
+                    "set -eu\n"
+                    "print -r -- \"$@\" > \"${NOVA_TEST_INSTALLER_LOG:?}\"\n"
+                ),
+                "advanced/placeholder.txt": "advanced\n",
+                "src/placeholder.txt": "src\n",
+                "docs/unneeded.txt": "public-only blob must remain absent\n",
+            }
+            for relative, content in payloads.items():
+                path = origin_work / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content, encoding="utf-8")
+            (origin_work / "install" / "install.sh").chmod(0o755)
+            git("add", ".", cwd=origin_work)
+            git("commit", "--quiet", "-m", "offline sparse success fixture", cwd=origin_work)
+            commit = git("rev-parse", "HEAD", cwd=origin_work).stdout.strip()
+            git("clone", "--quiet", "--bare", str(origin_work), str(origin_bare))
+            git("config", "uploadpack.allowFilter", "true", cwd=origin_bare)
+            git("config", "uploadpack.allowAnySHA1InWant", "true", cwd=origin_bare)
+            git(
+                "-c",
+                "protocol.file.allow=always",
+                "clone",
+                "--quiet",
+                "--filter=blob:none",
+                "--sparse",
+                "--no-checkout",
+                origin_bare.as_uri(),
+                str(source),
+            )
+            git("sparse-checkout", "init", "--no-cone", cwd=source)
+            git(
+                "sparse-checkout",
+                "set",
+                "/pyproject.toml",
+                "/MANIFEST.in",
+                "/LICENSE",
+                "/config.py",
+                "/install",
+                "/advanced",
+                "/src",
+                cwd=source,
+            )
+            git("checkout", "--detach", commit, cwd=source)
+
+            no_fetch_env = {**os.environ, "GIT_NO_LAZY_FETCH": "1", "GIT_ALLOW_PROTOCOL": ""}
+            required_probe = subprocess.run(
+                ["git", "-C", str(source), "cat-file", "-e", f"{commit}:install/install.sh"],
+                env=no_fetch_env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            unneeded_probe = subprocess.run(
+                ["git", "-C", str(source), "cat-file", "-e", f"{commit}:docs/unneeded.txt"],
+                env=no_fetch_env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(required_probe.returncode, 0, required_probe.stderr)
+            self.assertNotEqual(unneeded_probe.returncode, 0, "fixture must omit public-only blob")
+
+            tripwire.write_text(
+                "#!/bin/sh\n"
+                f"touch {str(tripwire_marker)!r}\n"
+                "exit 97\n",
+                encoding="utf-8",
+            )
+            tripwire.chmod(0o755)
+            source_url = f"ext::{tripwire} %S"
+            git("remote", "set-url", "origin", source_url, cwd=source)
+            git("config", "protocol.ext.allow", "always", cwd=source)
+            env = self._fresh_bootstrap_env(home)
+            env["NOVA_TEST_INSTALLER_LOG"] = str(installer_log)
+
+            result = subprocess.run(
+                [
+                    "zsh",
+                    str(BOOTSTRAP),
+                    "--offline",
+                    "--source-url",
+                    source_url,
+                    "--ref",
+                    commit,
+                    "--cache-root",
+                    str(cache),
+                    "--",
+                    "--runtime",
+                    str(home / ".open-nova"),
+                ],
+                cwd=root,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            output = result.stdout + result.stderr
+            self.assertEqual(result.returncode, 0, output)
+            self.assertIn("without fetch", output)
+            self.assertFalse(tripwire_marker.exists(), output)
+            self.assertIn("--offline", installer_log.read_text(encoding="utf-8"))
+            self.assertEqual(git("rev-parse", "HEAD", cwd=source).stdout.strip(), commit)
+            still_unneeded = subprocess.run(
+                ["git", "-C", str(source), "cat-file", "-e", f"{commit}:docs/unneeded.txt"],
+                env=no_fetch_env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(still_unneeded.returncode, 0, output)
+            self.assertFalse(tripwire_marker.exists(), output)
 
     def test_bootstrap_offline_cached_ref_rejects_mismatched_resolved_object(self):
         source_url = "https://example.invalid/open-nova.git"

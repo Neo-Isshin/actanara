@@ -75,7 +75,8 @@ run_cmd() {
 git_exec() {
   if [[ "$OFFLINE" == "1" ]]; then
     # A cached partial clone may otherwise fetch a missing promisor object from
-    # inside checkout/archive even though bootstrap never invokes `git fetch`.
+    # inside object inspection or checkout even though bootstrap never invokes
+    # `git fetch`.
     # Git >=2.45 honors the no-lazy-fetch request; the empty protocol allowlist
     # is an independent older-Git-compatible transport barrier. Hooks and
     # user/system Git configuration are also excluded.
@@ -131,11 +132,66 @@ verify_offline_source_cache() {
     print -r -- "Resolved source object is not the required commit ${ref}; refusing mutable HEAD fallback." >&2
     return 2
   fi
-  # `git archive` forces every tree/blob needed by the installer sparse payload
-  # to be read before sparse-checkout, checkout, reset, or installer execution.
-  # git_exec forbids both lazy fetch and every transport, so a partial-cache
-  # miss fails closed here without a permitted source-network transport.
-  if ! git_exec -C "${root}" archive --format=tar "${ref}" -- "${OFFLINE_SOURCE_PATHS[@]}" > /dev/null; then
+
+  # `git archive` is intentionally not used here: on a promisor/partial clone,
+  # Git may demand unrelated public-source blobs even when every object in the
+  # installer sparse payload is already cached. Inspect only the selected tree
+  # entries and then prove that each referenced blob is locally readable.
+  # git_exec forbids lazy fetch and every transport for every probe.
+  local required_path=""
+  for required_path in "${OFFLINE_SOURCE_PATHS[@]}"; do
+    if ! git_exec -C "${root}" cat-file -e "${ref}:${required_path}" 2>/dev/null; then
+      print -r -- "Offline source cache is incomplete for commit ${ref}; reconnect and refresh this installer cache before retrying offline." >&2
+      return 2
+    fi
+  done
+
+  local inventory_file=""
+  inventory_file="$(mktemp "${TMPDIR:-/tmp}/open-nova-offline-cache.XXXXXXXX")" || {
+    print -r -- "Unable to create a private offline source inventory." >&2
+    return 2
+  }
+  if ! git_exec -C "${root}" ls-tree -r -z --full-tree "${ref}" -- "${OFFLINE_SOURCE_PATHS[@]}" > "${inventory_file}"; then
+    rm -f "${inventory_file}"
+    print -r -- "Offline source cache is incomplete for commit ${ref}; reconnect and refresh this installer cache before retrying offline." >&2
+    return 2
+  fi
+
+  local row=""
+  local metadata=""
+  local file_mode=""
+  local remainder=""
+  local object_type=""
+  local object_id=""
+  local object_count=0
+  local inventory_invalid=0
+  while IFS= read -r -d $'\0' row; do
+    metadata="${row%%$'\t'*}"
+    if [[ "$metadata" == "$row" ]]; then
+      inventory_invalid=1
+      break
+    fi
+    file_mode="${metadata%% *}"
+    remainder="${metadata#* }"
+    object_type="${remainder%% *}"
+    object_id="${remainder##* }"
+    case "${file_mode}:${object_type}" in
+      100644:blob|100755:blob|120000:blob)
+        ;;
+      *)
+        inventory_invalid=1
+        break
+        ;;
+    esac
+    if ! is_full_commit_id "${object_id}" \
+      || ! git_exec -C "${root}" cat-file blob "${object_id}" > /dev/null 2>&1; then
+      inventory_invalid=1
+      break
+    fi
+    object_count=$((object_count + 1))
+  done < "${inventory_file}"
+  rm -f "${inventory_file}"
+  if [[ "$inventory_invalid" == "1" || "$object_count" -eq 0 ]]; then
     print -r -- "Offline source cache is incomplete for commit ${ref}; reconnect and refresh this installer cache before retrying offline." >&2
     return 2
   fi

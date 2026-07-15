@@ -171,15 +171,18 @@ Operational controls are:
 
 ```bash
 open-nova update --dry-run
-open-nova update --apply --offline
+open-nova update --apply --offline --ref <full-commit-sha>
+open-nova update --apply --offline --source-root /path/to/source
 open-nova update --apply --source-only
 open-nova update --apply --force-rebuild
 ```
 
 `--source-only` fails closed unless reuse is proven. `--force-rebuild` always
-creates a candidate venv. Offline rebuilds require a complete trusted cache at
-`<runtime>/app/dependency-cache/v1` and fail before service stop when it is
-missing or altered. Settings, SQLite, logs, generated user data, service
+creates a candidate venv. Offline source selection requires a local
+`--source-root` or a full `--ref` already present in the installer source cache;
+offline mode does not resolve `latest`. Offline rebuilds additionally require a
+complete trusted cache at `<runtime>/app/dependency-cache/v1` and fail before
+service stop when it is missing or altered. Settings, SQLite, logs, generated user data, service
 configuration, and rollback metadata remain Runtime-owned and are preserved.
 If activation or health verification fails, the transaction restores the
 previous active source, venv, and service state. Product version reporting comes

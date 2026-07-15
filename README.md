@@ -338,7 +338,7 @@ open-nova update --apply
 - `open-nova update` only displays the update plan.
 - `--dry-run` runs a no-change preview and reports venv reuse versus locked rebuild when the candidate source is available. A cold remote source cache can still limit the preview to source acquisition.
 - Only `--apply` executes the protected update transaction.
-- Matching dependency fingerprints reuse the active venv with zero pip work; otherwise Open Nova builds a separate candidate venv from its exact hash-verified Runtime lock. Operators can require `--source-only`, require `--force-rebuild`, or prohibit source/dependency network access with `--offline`.
+- Matching dependency fingerprints reuse the active venv with zero pip work; otherwise Open Nova builds a separate candidate venv from its exact hash-verified Runtime lock. Operators can require `--source-only`, require `--force-rebuild`, or prohibit source/dependency network access with `--offline`. Offline source selection requires either `--source-root PATH` or a full `--ref` already present in the installer source cache.
 
 > The stable-channel one-liner installs this workflow only after it is included in a published stable Release; it never installs unreleased `main` code.
 

@@ -308,13 +308,15 @@ candidate venv，通过验证后才原子切换 pointer，绝不在 active venv 
 前 fail closed。
 
 ```bash
-open-nova update --apply --offline       # 禁止源码和依赖网络访问
-open-nova update --apply --source-only   # 必须复用 venv，否则 fail closed
-open-nova update --apply --force-rebuild # 必须创建按锁构建的新 candidate venv
+open-nova update --apply --offline --ref <full-commit-sha>        # 使用已缓存远端 commit
+open-nova update --apply --offline --source-root /path/to/source  # 使用本地 checkout
+open-nova update --apply --source-only                            # 必须复用 venv，否则 fail closed
+open-nova update --apply --force-rebuild                          # 必须创建按锁构建的新 candidate venv
 ```
 
-离线重建若发现 `~/.open-nova/app/dependency-cache/v1` 缺失、不完整或被篡改，会在
-停止服务之前失败。
+离线远端选择必须提供已存在于 installer `--cache-root` 中的完整 commit；离线模式绝不
+解析 `latest`。离线重建若发现 `~/.open-nova/app/dependency-cache/v1` 缺失、不完整或
+被篡改，会在停止服务之前失败。
 
 指定不可变完整 commit：
 
