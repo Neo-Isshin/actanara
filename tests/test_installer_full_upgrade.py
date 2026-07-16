@@ -271,6 +271,11 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                 maybe_fault("doctor")
                 print('{{"status":"ok","fixture":"candidate-doctor"}}')
                 raise SystemExit(0)
+            if args[:4] == ["-m", "data_foundation.cli", "onboarding", "runtime-apply"]:
+                record("candidate", "runtime-apply")
+                maybe_fault("runtime-apply")
+                print('{{"status":"ok","fixture":"runtime-apply"}}')
+                raise SystemExit(0)
             record("candidate", "other")
             raise SystemExit(0)
             """
@@ -396,9 +401,9 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                     settings_path = runtime / "config" / "settings.json"
                     pointer = runtime / ".venv"
                     recovery = "--allow-untrusted-active-venv" in args
-                    if LEGACY_SETTINGS_ONLY and (not recovery or pointer.is_symlink()):
+                    if LEGACY_SETTINGS_ONLY and not recovery:
                         raise SystemExit(72)
-                    if LEGACY_SETTINGS_ONLY:
+                    if LEGACY_SETTINGS_ONLY and not pointer.is_symlink():
                         active_venv = pointer
                         active_marker = None
                         marker_status = "unavailable"
@@ -423,6 +428,9 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                         ),
                     ))
                     raise SystemExit(0)
+                if command == "migrate-legacy-settings":
+                    record("contract", "migrate-legacy-settings")
+                    os.execv(REAL_PYTHON, [REAL_PYTHON, *args])
                 selected_profiles()
                 fingerprint = DEPENDENCY_MARKER["dependencyFingerprint"]
                 if command == "plan":

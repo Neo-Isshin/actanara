@@ -1,5 +1,7 @@
+import errno
 import json
 import os
+import pty
 import subprocess
 import tempfile
 import unittest
@@ -9,10 +11,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BOOTSTRAP = ROOT / "install" / "bootstrap.sh"
 DEFAULT_SOURCE_URL = "https://github.com/Neo-Isshin/open-nova.git"
-DEFAULT_LATEST_RELEASE_API = "https://api.github.com/repos/Neo-Isshin/open-nova/releases/latest"
 COMMIT = "b" * 40
 OTHER_COMMIT = "c" * 40
-TAG_OBJECT = "a" * 40
 
 
 class UpdateBootstrapSafetyTests(unittest.TestCase):
@@ -27,7 +27,6 @@ class UpdateBootstrapSafetyTests(unittest.TestCase):
         self.install_log = self.root / "install.log"
         self.location = self.root / "location.json"
         self.fake_git = self.bin_dir / "git"
-        self.fake_curl = self.bin_dir / "curl"
         self.fake_installer = self.root / "install.sh"
         self.home.mkdir()
         self.bin_dir.mkdir()
@@ -42,32 +41,10 @@ print -r -- "$*" >> "$NOVA_TEST_INSTALL_LOG"
             encoding="utf-8",
         )
         self.fake_installer.chmod(0o755)
-        self.fake_curl.write_text(
-            """#!/usr/bin/env zsh
-set -eu
-if [[ "${NOVA_TEST_CURL_FAIL:-0}" == "1" ]]; then
-  exit 22
-fi
-print -r -- "${NOVA_TEST_RELEASE_JSON:-}"
-""",
-            encoding="utf-8",
-        )
-        self.fake_curl.chmod(0o755)
         self.fake_git.write_text(
             """#!/usr/bin/env zsh
 set -eu
 print -r -- "$*" >> "$NOVA_TEST_GIT_LOG"
-if [[ "${1:-}" == "ls-remote" ]]; then
-  if [[ "${NOVA_TEST_LS_REMOTE_FAIL:-0}" == "1" ]]; then
-    exit 2
-  fi
-  tag="${NOVA_TEST_RELEASE_TAG:-v1.2.3}"
-  print -r -- "${NOVA_TEST_TAG_OBJECT}\trefs/tags/${tag}"
-  if [[ -n "${NOVA_TEST_PEELED_COMMIT:-}" ]]; then
-    print -r -- "${NOVA_TEST_PEELED_COMMIT}\trefs/tags/${tag}^{}"
-  fi
-  exit 0
-fi
 if [[ "${1:-}" == "clone" ]]; then
   target="${@: -1}"
   mkdir -p "$target/.git" "$target/install"
@@ -86,6 +63,10 @@ if [[ "${1:-}" == "-C" && "${3:-}" == "rev-parse" ]]; then
   print -r -- "${NOVA_TEST_REV_PARSE_COMMIT:-${NOVA_TEST_COMMIT}}"
   exit 0
 fi
+if [[ "${1:-}" == "ls-remote" ]]; then
+  print -r -- "${NOVA_TEST_COMMIT}\trefs/heads/main"
+  exit 0
+fi
 exit 0
 """,
             encoding="utf-8",
@@ -102,7 +83,6 @@ exit 0
             "NOVA_INSTALL_REF",
             "NOVA_INSTALL_CACHE_ROOT",
             "NOVA_INSTALL_GIT",
-            "NOVA_INSTALL_CURL",
             "NOVA_INSTALL_PLUTIL",
         ):
             env.pop(name, None)
@@ -110,23 +90,11 @@ exit 0
             {
                 "HOME": str(self.home),
                 "NOVA_LOCATION_FILE": str(self.location),
-                "NOVA_INSTALL_CURL": str(self.fake_curl),
                 "NOVA_TEST_GIT_LOG": str(self.git_log),
                 "NOVA_TEST_INSTALL_LOG": str(self.install_log),
                 "NOVA_TEST_INSTALLER": str(self.fake_installer),
                 "NOVA_TEST_SOURCE_URL": DEFAULT_SOURCE_URL,
                 "NOVA_INSTALL_VERBOSE": "1",
-                "NOVA_TEST_RELEASE_JSON": json.dumps(
-                    {
-                        "name": "Open Nova v1.2.3",
-                        "tag_name": "v1.2.3",
-                        "draft": False,
-                        "prerelease": False,
-                    }
-                ),
-                "NOVA_TEST_RELEASE_TAG": "v1.2.3",
-                "NOVA_TEST_TAG_OBJECT": TAG_OBJECT,
-                "NOVA_TEST_PEELED_COMMIT": COMMIT,
                 "NOVA_TEST_COMMIT": COMMIT,
             }
         )
@@ -141,6 +109,39 @@ exit 0
             text=True,
             capture_output=True,
             check=False,
+            start_new_session=True,
+        )
+
+    def _run_with_tty(
+        self,
+        *arguments: str,
+        response: str,
+        env: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        command = ["zsh", str(BOOTSTRAP), *arguments]
+        child_pid, master_fd = pty.fork()
+        if child_pid == 0:
+            os.chdir(self.root)
+            os.execvpe(command[0], command, env or self._environment())
+        os.write(master_fd, response.encode("utf-8"))
+        output = bytearray()
+        try:
+            while True:
+                block = os.read(master_fd, 4096)
+                if not block:
+                    break
+                output.extend(block)
+        except OSError as exc:
+            if exc.errno != errno.EIO:
+                raise
+        finally:
+            os.close(master_fd)
+        _, wait_status = os.waitpid(child_pid, 0)
+        return subprocess.CompletedProcess(
+            command,
+            os.waitstatus_to_exitcode(wait_status),
+            output.decode("utf-8", errors="replace"),
+            "",
         )
 
     def _remote_arguments(self, *, source_url: str = DEFAULT_SOURCE_URL, ref: str | None = None) -> list[str]:
@@ -196,7 +197,8 @@ exit 0
         script = BOOTSTRAP.read_text(encoding="utf-8")
 
         self.assertIn(f'DEFAULT_SOURCE_URL="{DEFAULT_SOURCE_URL}"', script)
-        self.assertIn(f'DEFAULT_LATEST_RELEASE_API="{DEFAULT_LATEST_RELEASE_API}"', script)
+        self.assertIn("refs/remotes/origin/main^{commit}", script)
+        self.assertNotIn("releases/latest", script)
         self.assertNotIn("git" + "ea", script.lower())
 
     def test_hosted_stream_is_one_compound_command_and_truncation_executes_nothing(self) -> None:
@@ -220,42 +222,67 @@ exit 0
         self.assertFalse(self.git_log.exists())
         self.assertFalse(self.install_log.exists())
 
-    def test_default_remote_resolves_annotated_stable_tag_to_peeled_commit(self) -> None:
+    def test_default_remote_resolves_and_detaches_exact_origin_main_commit(self) -> None:
         result = self._run(*self._remote_arguments())
         output = self._output(result)
         git_log = self.git_log.read_text(encoding="utf-8")
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn(f"refs/tags/v1.2.3^{{}}", git_log)
         self.assertIn("clone --filter=blob:none --sparse --no-checkout", git_log)
+        self.assertIn(
+            "fetch --force origin +refs/heads/main:refs/remotes/origin/main",
+            git_log,
+        )
+        self.assertIn("rev-parse --verify refs/remotes/origin/main^{commit}", git_log)
         self.assertIn(f"checkout --detach {COMMIT}", git_log)
         self.assertIn(f"reset --hard {COMMIT}", git_log)
         self.assertNotIn("origin/HEAD", git_log)
+        self.assertNotIn("refs/tags/", git_log)
+        self.assertIn("已获取最新版本", output)
         self.assertTrue(self.install_log.is_file())
         installer_args = self.install_log.read_text(encoding="utf-8").split()
         self.assertNotIn("--upgrade", installer_args)
         self.assertNotIn("--yes", installer_args)
 
-    def test_default_remote_resolves_lightweight_stable_tag_to_direct_commit(self) -> None:
-        result = self._run(
-            *self._remote_arguments(),
-            env=self._environment(
-                NOVA_TEST_TAG_OBJECT=COMMIT,
-                NOVA_TEST_PEELED_COMMIT="",
-                NOVA_TEST_REV_PARSE_COMMIT=COMMIT,
-            ),
+    def test_default_origin_main_must_resolve_to_a_full_commit(self) -> None:
+        cases = (
+            {"NOVA_TEST_REV_PARSE_FAIL": "1"},
+            {"NOVA_TEST_REV_PARSE_COMMIT": "main"},
         )
-        git_log = self.git_log.read_text(encoding="utf-8")
+        for index, overrides in enumerate(cases):
+            with self.subTest(index=index):
+                cache = self.root / f"invalid-main-cache-{index}"
+                arguments = self._remote_arguments()
+                arguments[arguments.index(str(self.cache))] = str(cache)
+                self.git_log.unlink(missing_ok=True)
+                result = self._run(*arguments, env=self._environment(**overrides))
+
+                self.assertEqual(result.returncode, 2, self._output(result))
+                self.assertIn("origin/main did not resolve to an exact commit", self._output(result))
+                self.assertIn(
+                    "rev-parse --verify refs/remotes/origin/main^{commit}",
+                    self.git_log.read_text(encoding="utf-8"),
+                )
+                self.assertFalse(self.install_log.exists())
+
+    def test_default_remote_dry_run_resolves_main_without_creating_cache(self) -> None:
+        arguments = self._remote_arguments()
+        arguments.insert(0, "--dry-run")
+
+        result = self._run(*arguments)
 
         self.assertEqual(result.returncode, 0, self._output(result))
-        self.assertIn(f"checkout --detach {COMMIT}", git_log)
-        self.assertIn(f"reset --hard {COMMIT}", git_log)
-        self.assertNotIn("origin/HEAD", git_log)
+        git_log = self.git_log.read_text(encoding="utf-8")
+        self.assertIn(
+            f"ls-remote --exit-code {DEFAULT_SOURCE_URL} refs/heads/main",
+            git_log,
+        )
+        self.assertFalse(self.cache.exists())
+        self.assertFalse(self.install_log.exists())
 
     def test_hosted_stdin_bootstrap_never_adopts_the_current_checkout(self) -> None:
         script = BOOTSTRAP.read_text(encoding="utf-8")
         env = self._environment(
-            NOVA_INSTALL_REF=COMMIT,
             NOVA_INSTALL_CACHE_ROOT=str(self.cache),
             NOVA_INSTALL_GIT=str(self.fake_git),
         )
@@ -283,150 +310,41 @@ exit 0
         git_log = self.git_log.read_text(encoding="utf-8")
         self.assertIn("clone --filter=blob:none --sparse --no-checkout", git_log)
         self.assertIn(DEFAULT_SOURCE_URL, git_log)
+        self.assertIn("rev-parse --verify refs/remotes/origin/main^{commit}", git_log)
+        self.assertIn(f"checkout --detach {COMMIT}", git_log)
         self.assertNotIn(str(ROOT / "install" / "install.sh"), self.install_log.read_text(encoding="utf-8"))
 
-    def test_no_release_rate_limit_nonstable_malformed_or_wrong_tag_fail_before_cache_write(self) -> None:
-        cases = (
-            ({"NOVA_TEST_CURL_FAIL": "1"}, "latest stable Open Nova release could not be read"),
-            (
-                {
-                    "NOVA_TEST_RELEASE_JSON": json.dumps(
-                        {"message": "API rate limit exceeded", "documentation_url": "https://docs.github.com/"}
-                    )
-                },
-                "latest stable Open Nova release response is invalid",
-            ),
-            (
-                {
-                    "NOVA_TEST_RELEASE_JSON": json.dumps(
-                        {"tag_name": "v1.2.3", "draft": True, "prerelease": False}
-                    )
-                },
-                "latest Open Nova release is not stable",
-            ),
-            (
-                {
-                    "NOVA_TEST_RELEASE_JSON": json.dumps(
-                        {"tag_name": "v1.2.3", "draft": False, "prerelease": True}
-                    )
-                },
-                "latest Open Nova release is not stable",
-            ),
-            (
-                {
-                    "NOVA_TEST_RELEASE_JSON": json.dumps(
-                        {
-                            "name": "Open Nova v1.2.3 — WITHDRAWN",
-                            "tag_name": "v1.2.3",
-                            "draft": False,
-                            "prerelease": False,
-                        }
-                    )
-                },
-                "latest Open Nova release was withdrawn",
-            ),
-            (
-                {
-                    "NOVA_TEST_RELEASE_JSON": json.dumps(
-                        {"tag_name": "../main", "draft": False, "prerelease": False}
-                    )
-                },
-                "invalid version tag",
-            ),
-            (
-                {"NOVA_TEST_RELEASE_TAG": "v9.9.9"},
-                "did not resolve to an exact version",
-            ),
-        )
-        for index, (overrides, expected) in enumerate(cases):
-            with self.subTest(index=index):
-                cache = self.root / f"Cache-{index}"
-                arguments = self._remote_arguments()
-                arguments[arguments.index(str(self.cache))] = str(cache)
-                result = self._run(*arguments, env=self._environment(**overrides))
-                self.assertEqual(result.returncode, 2, self._output(result))
-                self.assertIn(expected, self._output(result))
-                self.assertFalse(cache.exists())
+    def test_offline_without_ref_still_fails_before_cache_write(self) -> None:
+        arguments = self._remote_arguments()
+        arguments.insert(arguments.index("--"), "--offline")
 
-    def test_withdrawn_release_name_fails_without_plutil_for_escaped_and_lowercase_titles(self) -> None:
-        payloads = (
-            (
-                '{"name":"Open Nova v1.2.3 \\u2014 '
-                '\\u0057\\u0049\\u0054\\u0048\\u0044\\u0052\\u0041\\u0057\\u004e",'
-                '"tag_name":"v1.2.3","draft":false,"prerelease":false}'
-            ),
-            json.dumps(
-                {
-                    "name": "open nova v1.2.3 — withdrawn",
-                    "tag_name": "v1.2.3",
-                    "draft": False,
-                    "prerelease": False,
-                }
-            ),
-        )
-        for index, payload in enumerate(payloads):
-            with self.subTest(index=index):
-                cache = self.root / f"Withdrawn-Cache-{index}"
-                arguments = self._remote_arguments()
-                arguments[arguments.index(str(self.cache))] = str(cache)
-                result = self._run(
-                    *arguments,
-                    env=self._environment(
-                        NOVA_INSTALL_PLUTIL="/no/such/plutil",
-                        NOVA_TEST_RELEASE_JSON=payload,
-                    ),
-                )
-                self.assertEqual(result.returncode, 2, self._output(result))
-                self.assertIn("latest Open Nova release was withdrawn", self._output(result))
-                self.assertFalse(cache.exists())
+        result = self._run(*arguments)
 
-    def test_release_name_missing_or_null_is_accepted_for_compatibility_without_plutil(self) -> None:
-        payloads = (
-            {"tag_name": "v1.2.3", "draft": False, "prerelease": False},
-            {"name": None, "tag_name": "v1.2.3", "draft": False, "prerelease": False},
+        self.assertEqual(result.returncode, 2, self._output(result))
+        self.assertIn("offline setup requires a local source or exact cached version", self._output(result))
+        self.assertFalse(self.cache.exists())
+        self.assertFalse(self.git_log.exists())
+
+    def test_official_url_forms_without_ref_follow_main(self) -> None:
+        source_urls = (
+            "https://github.com/Neo-Isshin/open-nova",
+            "https://github.com/Neo-Isshin/open-nova/",
+            DEFAULT_SOURCE_URL,
         )
-        for index, payload in enumerate(payloads):
-            with self.subTest(index=index):
-                cache = self.root / f"Compatible-Cache-{index}"
-                arguments = self._remote_arguments()
+        for index, source_url in enumerate(source_urls):
+            with self.subTest(source_url=source_url):
+                cache = self.root / f"official-main-cache-{index}"
+                arguments = self._remote_arguments(source_url=source_url)
                 arguments[arguments.index(str(self.cache))] = str(cache)
-                result = self._run(
-                    *arguments,
-                    env=self._environment(
-                        NOVA_INSTALL_PLUTIL="/no/such/plutil",
-                        NOVA_TEST_RELEASE_JSON=json.dumps(payload),
-                    ),
-                )
+                self.git_log.unlink(missing_ok=True)
+                self.install_log.unlink(missing_ok=True)
+
+                result = self._run(*arguments)
+
                 self.assertEqual(result.returncode, 0, self._output(result))
-
-    def test_duplicate_or_malformed_release_name_fails_closed_without_plutil(self) -> None:
-        payloads = (
-            '{"name":"safe","name":"WITHDRAWN","tag_name":"v1.2.3",'
-            '"draft":false,"prerelease":false}',
-            '{"name":"safe","\\u006eame":"WITHDRAWN","tag_name":"v1.2.3",'
-            '"draft":false,"prerelease":false}',
-            '{"name":"bad\\qescape","tag_name":"v1.2.3",'
-            '"draft":false,"prerelease":false}',
-            '{"name":{"title":"WITHDRAWN"},"tag_name":"v1.2.3",'
-            '"draft":false,"prerelease":false}',
-            '{"name":"safe","tag_name":"v1.2.3",'
-            '"draft":false,"prerelease":false} trailing',
-        )
-        for index, payload in enumerate(payloads):
-            with self.subTest(index=index):
-                cache = self.root / f"Invalid-Name-Cache-{index}"
-                arguments = self._remote_arguments()
-                arguments[arguments.index(str(self.cache))] = str(cache)
-                result = self._run(
-                    *arguments,
-                    env=self._environment(
-                        NOVA_INSTALL_PLUTIL="/no/such/plutil",
-                        NOVA_TEST_RELEASE_JSON=payload,
-                    ),
-                )
-                self.assertEqual(result.returncode, 2, self._output(result))
-                self.assertIn("latest stable Open Nova release response is invalid", self._output(result))
-                self.assertFalse(cache.exists())
+                git_log = self.git_log.read_text(encoding="utf-8")
+                self.assertIn("rev-parse --verify refs/remotes/origin/main^{commit}", git_log)
+                self.assertIn(f"checkout --detach {COMMIT}", git_log)
 
     def test_custom_remote_without_commit_and_symbolic_remote_ref_fail_closed(self) -> None:
         cases = (
@@ -452,6 +370,7 @@ exit 0
 
         self.assertEqual(result.returncode, 0, self._output(result))
         self.assertIn(f"checkout --detach {COMMIT}", git_log)
+        self.assertNotIn("refs/remotes/origin/main", git_log)
         self.assertNotIn("origin/HEAD", git_log)
 
     def test_official_https_cache_urls_with_or_without_dot_git_are_equivalent(self) -> None:
@@ -463,13 +382,21 @@ exit 0
         shutil_installer.chmod(0o755)
 
         result = self._run(
-            *self._remote_arguments(ref=COMMIT),
+            *self._remote_arguments(),
             env=self._environment(
                 NOVA_TEST_SOURCE_URL="https://github.com/Neo-Isshin/open-nova"
             ),
         )
 
         self.assertEqual(result.returncode, 0, self._output(result))
+        git_log = self.git_log.read_text(encoding="utf-8")
+        self.assertLess(
+            git_log.index(
+                "fetch --force origin +refs/heads/main:refs/remotes/origin/main"
+            ),
+            git_log.index("rev-parse --verify refs/remotes/origin/main^{commit}"),
+        )
+        self.assertIn(f"checkout --detach {COMMIT}", git_log)
         self.assertTrue(self.install_log.is_file())
 
     def test_truly_different_cache_source_still_fails_without_installer_writes(self) -> None:
@@ -490,6 +417,36 @@ exit 0
         self.assertIn("download cache source does not match", self._output(result))
         self.assertEqual(sentinel.read_text(encoding="utf-8"), "preserve\n")
         self.assertFalse(self.install_log.exists())
+
+    def test_implicit_default_cache_mismatch_uses_isolated_official_cache(self) -> None:
+        legacy_source = self.home / ".cache" / "open-nova" / "installer" / "source"
+        (legacy_source / ".git").mkdir(parents=True)
+        sentinel = legacy_source / "legacy-cache.txt"
+        sentinel.write_text("keep legacy cache\n", encoding="utf-8")
+        arguments = self._remote_arguments()
+        cache_index = arguments.index("--cache-root")
+        del arguments[cache_index : cache_index + 2]
+
+        result = self._run(
+            *arguments,
+            env=self._environment(
+                NOVA_TEST_SOURCE_URL="https://legacy.invalid/open-nova.git"
+            ),
+        )
+
+        self.assertEqual(result.returncode, 0, self._output(result))
+        self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep legacy cache\n")
+        git_log = self.git_log.read_text(encoding="utf-8")
+        isolated_source = (
+            self.home
+            / ".cache"
+            / "open-nova"
+            / "installer"
+            / "official-main"
+            / "source"
+        )
+        self.assertIn(str(isolated_source), git_log)
+        self.assertTrue(self.install_log.is_file())
 
     def test_full_sha256_commit_is_accepted(self) -> None:
         commit = "d" * 64
@@ -572,18 +529,149 @@ exit 0
                 self.assertEqual(Path(installer_args[runtime_arg + 1]), case_runtime)
                 self.assertTrue(cache.exists())
 
-    def test_partial_runtime_marker_still_fails_before_clone(self) -> None:
+    def test_pending_repair_configuration_routes_modern_runtime_to_repair(self) -> None:
         runtime = self.root / "runtime"
-        self._write_marker(runtime)
-        result = self._run(
-            *self._remote_arguments(ref=COMMIT),
-            env=self._environment(NOVA_INSTALL_VERBOSE="1"),
+        self._write_updateable_runtime(runtime)
+        pending = runtime / "app" / ".repair-configuration-pending"
+        pending.write_text("20260716T120000-12345-6789\n", encoding="utf-8")
+        pending.chmod(0o600)
+        arguments = self._remote_arguments(ref=COMMIT)
+        arguments.append("--yes")
+
+        result = self._run(*arguments)
+
+        self.assertEqual(result.returncode, 0, self._output(result))
+        installer_args = self.install_log.read_text(encoding="utf-8").split()
+        self.assertEqual(installer_args.count("--repair-existing"), 1)
+        self.assertEqual(installer_args.count("--upgrade"), 0)
+        self.assertEqual(installer_args.count("--yes"), 1)
+        runtime_index = installer_args.index("--runtime")
+        self.assertEqual(Path(installer_args[runtime_index + 1]), runtime)
+        self.assertEqual(
+            pending.read_text(encoding="utf-8"),
+            "20260716T120000-12345-6789\n",
         )
+        self.assertTrue(self.cache.exists())
+
+    def test_unsafe_pending_repair_marker_fails_before_source_writes(self) -> None:
+        unsafe_payloads = (
+            "",
+            "../escape\n",
+            "fixture-tx\nsecond-line\n",
+            "fixture-tx\n\n",
+            f"{'a' * 129}\n",
+            " leading-space\n",
+        )
+        for index, payload in enumerate(unsafe_payloads):
+            with self.subTest(payload=payload):
+                runtime = self.root / f"unsafe-pending-runtime-{index}"
+                cache = self.root / f"unsafe-pending-cache-{index}"
+                self._write_updateable_runtime(runtime)
+                pending = runtime / "app" / ".repair-configuration-pending"
+                pending.write_text(payload, encoding="utf-8")
+                arguments = self._remote_arguments(ref=COMMIT)
+                arguments[arguments.index(str(self.cache))] = str(cache)
+                arguments[arguments.index(str(self.root / "runtime"))] = str(runtime)
+                arguments.append("--yes")
+                self.git_log.unlink(missing_ok=True)
+                self.install_log.unlink(missing_ok=True)
+
+                result = self._run(*arguments)
+
+                self.assertEqual(result.returncode, 2, self._output(result))
+                self.assertFalse(cache.exists())
+                self.assertFalse(self.git_log.exists())
+                self.assertFalse(self.install_log.exists())
+
+        runtime = self.root / "linked-pending-runtime"
+        cache = self.root / "linked-pending-cache"
+        self._write_updateable_runtime(runtime)
+        pending_target = self.root / "pending-target"
+        pending_target.write_text("fixture-tx\n", encoding="utf-8")
+        (runtime / "app" / ".repair-configuration-pending").symlink_to(pending_target)
+        arguments = self._remote_arguments(ref=COMMIT)
+        arguments[arguments.index(str(self.cache))] = str(cache)
+        arguments[arguments.index(str(self.root / "runtime"))] = str(runtime)
+        arguments.append("--yes")
+        self.git_log.unlink(missing_ok=True)
+        self.install_log.unlink(missing_ok=True)
+
+        result = self._run(*arguments)
 
         self.assertEqual(result.returncode, 2, self._output(result))
-        self.assertIn("existing Open Nova state is incomplete", self._output(result))
-        self.assertFalse(self.cache.exists())
+        self.assertFalse(cache.exists())
+        self.assertFalse(self.git_log.exists())
         self.assertFalse(self.install_log.exists())
+
+    def test_partial_runtime_without_tty_or_yes_fails_before_source_writes(self) -> None:
+        runtime = self.root / "runtime"
+        self._write_marker(runtime)
+        for index, suffix in enumerate(((), ("--llm-model", "--yes"))):
+            with self.subTest(suffix=suffix):
+                cache = self.root / f"confirmation-cache-{index}"
+                arguments = self._remote_arguments(ref=COMMIT)
+                arguments[arguments.index(str(self.cache))] = str(cache)
+                arguments.extend(suffix)
+                result = self._run(
+                    *arguments,
+                    env=self._environment(NOVA_INSTALL_VERBOSE="0"),
+                )
+
+                self.assertEqual(result.returncode, 2, self._output(result))
+                self.assertIn("请添加 --yes 后重试", self._output(result))
+                self.assertFalse(cache.exists())
+                self.assertFalse(self.install_log.exists())
+
+    def test_partial_runtime_yes_routes_once_to_guarded_repair(self) -> None:
+        runtime = self.root / "runtime"
+        self._write_marker(runtime)
+        settings_before = (runtime / "config" / "settings.json").read_bytes()
+        arguments = self._remote_arguments()
+        arguments.extend(("--repair-existing", "--repair-existing", "--yes", "--yes"))
+
+        result = self._run(*arguments)
+
+        self.assertEqual(result.returncode, 0, self._output(result))
+        installer_args = self.install_log.read_text(encoding="utf-8").split()
+        self.assertEqual(installer_args.count("--repair-existing"), 1)
+        self.assertEqual(installer_args.count("--yes"), 1)
+        self.assertNotIn("--upgrade", installer_args)
+        runtime_index = installer_args.index("--runtime")
+        self.assertEqual(Path(installer_args[runtime_index + 1]), runtime)
+        self.assertEqual((runtime / "config" / "settings.json").read_bytes(), settings_before)
+        self.assertTrue(self.cache.exists())
+        git_log = self.git_log.read_text(encoding="utf-8")
+        self.assertIn("rev-parse --verify refs/remotes/origin/main^{commit}", git_log)
+        self.assertIn(f"checkout --detach {COMMIT}", git_log)
+
+    def test_partial_runtime_tty_prompt_accepts_default_and_decline_is_noop(self) -> None:
+        prompt = "当前 Open Nova 不能直接升级，是否进行覆盖安装？现有数据与设置不会丢失，只会重建运行环境与依赖。 [Y/n]"
+        for index, (response, accepted) in enumerate((("\n", True), ("n\n", False))):
+            with self.subTest(response=response):
+                runtime = self.root / f"runtime-{index}"
+                cache = self.root / f"tty-cache-{index}"
+                self._write_marker(runtime)
+                marker = runtime / "config" / "settings.json"
+                before = marker.read_bytes()
+                arguments = self._remote_arguments(ref=COMMIT)
+                arguments[arguments.index(str(self.cache))] = str(cache)
+                arguments[arguments.index(str(self.root / "runtime"))] = str(runtime)
+                self.install_log.unlink(missing_ok=True)
+
+                result = self._run_with_tty(*arguments, response=response)
+
+                self.assertEqual(result.returncode, 0, self._output(result))
+                self.assertIn(prompt, self._output(result))
+                self.assertEqual(marker.read_bytes(), before)
+                if accepted:
+                    installer_args = self.install_log.read_text(encoding="utf-8").split()
+                    self.assertEqual(installer_args.count("--repair-existing"), 1)
+                    self.assertEqual(installer_args.count("--yes"), 1)
+                    self.assertTrue(cache.exists())
+                else:
+                    self.assertIn("已取消 Open Nova 恢复", self._output(result))
+                    self.assertFalse(cache.exists())
+                    self.assertFalse(self.install_log.exists())
 
     def test_foreign_runtime_manifest_still_fails_before_clone(self) -> None:
         runtime = self.root / "runtime"
@@ -599,6 +687,28 @@ exit 0
         self.assertEqual(result.returncode, 2, self._output(result))
         self.assertFalse(self.cache.exists())
         self.assertFalse(self.install_log.exists())
+
+    def test_symlink_or_non_directory_runtime_root_fails_before_clone(self) -> None:
+        actual = self.root / "actual-runtime"
+        self._write_marker(actual)
+        linked = self.root / "linked-runtime"
+        linked.symlink_to(actual, target_is_directory=True)
+        occupied = self.root / "occupied-runtime"
+        occupied.write_text("operator-owned\n", encoding="utf-8")
+
+        for index, runtime in enumerate((linked, occupied)):
+            with self.subTest(runtime=runtime):
+                cache = self.root / f"unsafe-runtime-cache-{index}"
+                arguments = self._remote_arguments(ref=COMMIT)
+                arguments[arguments.index(str(self.cache))] = str(cache)
+                arguments[arguments.index(str(self.root / "runtime"))] = str(runtime)
+                arguments.append("--yes")
+                result = self._run(*arguments)
+
+                self.assertEqual(result.returncode, 2, self._output(result))
+                self.assertIn("symlink or non-directory", self._output(result))
+                self.assertFalse(cache.exists())
+                self.assertFalse(self.install_log.exists())
 
     def test_symlinked_location_pointer_fails_before_clone(self) -> None:
         actual = self.root / "actual-location.json"
@@ -655,14 +765,14 @@ exit 0
         self.assertFalse(self.cache.exists())
         self.assertFalse(self.git_log.exists())
 
-    def test_upgrade_bypasses_fresh_install_collision_guard(self) -> None:
+    def test_explicit_upgrade_is_converted_to_legacy_repair(self) -> None:
         runtime = self.root / "runtime"
         self._write_marker(runtime)
         launch_agent = self.home / "Library" / "LaunchAgents" / "com.open-nova.dashboard.plist"
         launch_agent.parent.mkdir(parents=True)
         launch_agent.write_text("plist\n", encoding="utf-8")
         arguments = self._remote_arguments(ref=COMMIT)
-        arguments.append("--upgrade")
+        arguments.extend(("--upgrade", "--yes"))
 
         result = self._run(*arguments)
 
@@ -670,6 +780,10 @@ exit 0
         self.assertTrue(self.install_log.is_file())
         self.assertEqual(
             self.install_log.read_text(encoding="utf-8").split().count("--upgrade"),
+            0,
+        )
+        self.assertEqual(
+            self.install_log.read_text(encoding="utf-8").split().count("--repair-existing"),
             1,
         )
 

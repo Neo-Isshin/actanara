@@ -77,8 +77,11 @@ PIPELINE_PROMPT_PAYLOAD_PROFILE="zh-CN"
 RAG_LANGUAGE_PROFILE="zh"
 DRY_RUN=0
 UPGRADE=0
+UPGRADE_EXPLICIT=0
+REPAIR_EXISTING=0
 SOURCE_ONLY=0
 FORCE_REBUILD=0
+FORCE_REBUILD_EXPLICIT=0
 OFFLINE=0
 RESULT_JSON=0
 UPDATE_RESULT_EMITTED=0
@@ -157,6 +160,9 @@ UPDATE_TRANSACTION_ACTIVE=0
 UPDATE_TRANSACTION_ID=""
 UPDATE_TRANSACTION_DIR=""
 UPDATE_TRANSACTION_JOURNAL=""
+REPAIR_BACKUP_DIR=""
+REPAIR_RAG_SERVICE_ENABLED=0
+REPAIR_CONFIGURATION_COMPLETE=0
 UPDATE_VALIDATION_RUNTIME=""
 UPDATE_SERVICE_STATE_FILE=""
 UPDATE_PRIOR_SOURCE_KIND="missing"
@@ -225,6 +231,7 @@ Options:
   --language LOCALE           Setup language: zh-CN or en-US. Default: zh-CN.
   --dry-run                   Print the plan without writing files or running commands.
   --upgrade                   Update an existing Open Nova installation.
+  --repair-existing           Rebuild a legacy Open Nova installation while preserving user data.
   --source-only               Update Open Nova files without changing installed software.
   --force-rebuild             Reinstall required software during an update.
   --offline                   Install using previously downloaded files only.
@@ -339,6 +346,7 @@ error() {
       *"credential rotation"*) friendly_key="error_ai_key" ;;
       *"LLM API key environment variable name"*) friendly_key="error_ai_key_setting" ;;
       *"Dashboard is required"*) friendly_key="error_dashboard_required" ;;
+      *"repair configuration is incomplete"*) friendly_key="error_repair_incomplete" ;;
       *"Unknown option"*|*"mutually exclusive"*|*"requires --upgrade"*|*"must be local or cloud"*) friendly_key="error_options" ;;
       *"pyproject.toml"*|*"source root"*|*"source staging"*|*"source release"*) friendly_key="error_source_files" ;;
       *"dependency"*|*"wheelhouse"*) friendly_key="error_software" ;;
@@ -685,6 +693,7 @@ installer_text() {
         error_ai_key_setting) print -r -- "The AI key setting is not valid." ;;
         error_dashboard_required) print -r -- "Dashboard is included with Open Nova. Use --no-dashboard-server to leave its background service off." ;;
         error_recovery) print -r -- "The update did not finish cleanly. Your previous installation was kept; see the setup log." ;;
+        error_repair_incomplete) print -r -- "Open Nova was rebuilt, but setup did not finish. Your data is safe; run the one-liner again." ;;
         error_setup) print -r -- "Setup could not finish safely. See the setup log for details." ;;
         next_steps) print -r -- "Next steps" ;;
         plan_summary) print -r -- "Setup plan" ;;
@@ -692,6 +701,10 @@ installer_text() {
         dry_run_complete) print -r -- "Your Open Nova setup plan is ready." ;;
         upgrade_complete) print -r -- "Open Nova is up to date." ;;
         upgrade_plan_complete) print -r -- "Your Open Nova update plan is ready." ;;
+        repair_complete) print -r -- "Open Nova was rebuilt. Your settings and data were kept." ;;
+        repair_plan_complete) print -r -- "Your Open Nova rebuild plan is ready." ;;
+        repair_backup) print -r -- "Recovery backup" ;;
+        repair_incomplete) print -r -- "Open Nova was rebuilt, but setup did not finish. Your data is safe; run the one-liner again." ;;
         update_no_changes) print -r -- "Open Nova is already up to date." ;;
         source_update_complete) print -r -- "Open Nova files are up to date." ;;
         source_update_plan_complete) print -r -- "Your Open Nova file update plan is ready." ;;
@@ -861,6 +874,7 @@ installer_text() {
         error_ai_key_setting) print -r -- "AI 密钥设置无效。" ;;
         error_dashboard_required) print -r -- "Dashboard 是 Open Nova 的内置功能；如不需要后台服务，请使用 --no-dashboard-server。" ;;
         error_recovery) print -r -- "更新未能完整结束；原安装已保留，请查看安装日志。" ;;
+        error_repair_incomplete) print -r -- "Open Nova 环境已重建，但配置未完成。原有数据仍安全，请重新运行 one-liner。" ;;
         error_setup) print -r -- "安装未能安全完成，请查看安装日志了解详情。" ;;
         next_steps) print -r -- "接下来" ;;
         plan_summary) print -r -- "安装计划" ;;
@@ -868,6 +882,10 @@ installer_text() {
         dry_run_complete) print -r -- "Open Nova 安装计划已生成。" ;;
         upgrade_complete) print -r -- "Open Nova 已更新完成。" ;;
         upgrade_plan_complete) print -r -- "Open Nova 更新计划已生成。" ;;
+        repair_complete) print -r -- "Open Nova 已完成重建，原有设置和数据均已保留。" ;;
+        repair_plan_complete) print -r -- "Open Nova 重建计划已生成。" ;;
+        repair_backup) print -r -- "恢复备份" ;;
+        repair_incomplete) print -r -- "Open Nova 环境已重建，但配置未完成。原有数据仍安全，请重新运行 one-liner。" ;;
         update_no_changes) print -r -- "Open Nova 已是最新状态。" ;;
         source_update_complete) print -r -- "Open Nova 文件已更新。" ;;
         source_update_plan_complete) print -r -- "Open Nova 文件更新计划已生成。" ;;
@@ -2069,6 +2087,22 @@ PY
     return 1
   fi
   progress_ok "$display_label"
+}
+
+migrate_legacy_settings_for_repair() {
+  if [[ "$REPAIR_EXISTING" != "1" || "$DRY_RUN" == "1" ]]; then
+    return 0
+  fi
+  if ! PYTHONDONTWRITEBYTECODE=1 "${PYTHON_BIN}" \
+    "${DEPENDENCY_CONTRACT_HELPER}" migrate-legacy-settings \
+    --runtime "${RUNTIME_HOME}" \
+    --scheduler-enabled "$(( 1 - NO_SCHEDULER ))" \
+    --dashboard-enabled "${ENABLE_DASHBOARD}" \
+    --dashboard-server-enabled "$(( 1 - NO_DASHBOARD_SERVER ))" \
+    --rag-server-enabled "${REPAIR_RAG_SERVICE_ENABLED}" >/dev/null; then
+    error "legacy Open Nova Settings could not be migrated safely"
+    return 1
+  fi
 }
 
 store_installer_llm_api_key_secret() {
@@ -3734,6 +3768,37 @@ select_dashboard_port() {
   return 0
 }
 
+require_repair_runtime_identity() {
+  if [[ "$REPAIR_EXISTING" != "1" ]]; then
+    return 0
+  fi
+  if [[ -L "$RUNTIME_HOME" || ! -d "$RUNTIME_HOME" ]]; then
+    error "--repair-existing requires a legacy Open Nova Runtime: ${RUNTIME_HOME}"
+    return 2
+  fi
+  if [[ ! -f "${RUNTIME_HOME}/config/settings.json" || -L "${RUNTIME_HOME}/config/settings.json" ]]; then
+    error "--repair-existing requires a legacy Open Nova Runtime with preservable Settings"
+    return 2
+  fi
+  local marker=""
+  local marker_count=0
+  for marker in \
+    "${RUNTIME_HOME}/app/source" \
+    "${RUNTIME_HOME}/.venv" \
+    "${RUNTIME_HOME}/config/runtime.json" \
+    "${RUNTIME_HOME}/data/nova_data.sqlite3" \
+    "${RUNTIME_HOME}/bin/open-nova" \
+    "${RUNTIME_HOME}/bin/nova-diary"; do
+    if [[ -e "$marker" || -L "$marker" ]]; then
+      (( marker_count += 1 ))
+    fi
+  done
+  if (( marker_count == 0 )); then
+    error "--repair-existing requires a legacy Open Nova Runtime"
+    return 2
+  fi
+}
+
 require_fresh_runtime_empty() {
   if [[ "$UPGRADE" == "1" || "$DRY_RUN" == "1" ]]; then
     return 0
@@ -4248,6 +4313,9 @@ inherit_upgrade_dependency_profiles() {
   if [[ "$SOURCE_ONLY" != "1" ]]; then
     recovery_allowed=1
     profile_command+=(--allow-untrusted-active-venv)
+  fi
+  if [[ "$REPAIR_EXISTING" == "1" ]]; then
+    profile_command+=(--allow-legacy-settings)
   fi
   profile_json="$(PYTHONDONTWRITEBYTECODE=1 "${PYTHON_BIN}" \
     "${profile_command[@]}")" || return $?
@@ -4770,6 +4838,9 @@ update_exit_handler() {
       UPDATE_RESULT_STAGE="rollback-complete"
       error "Open Nova update failed; rollback restored the prior source, venv, control files, and services"
     fi
+  elif [[ "$REPAIR_EXISTING" == "1" && "$UPDATE_COMMITTED" == "1" && "$REPAIR_CONFIGURATION_COMPLETE" != "1" && -n "$REPAIR_BACKUP_DIR" ]]; then
+    error "repair configuration is incomplete"
+    print -r -- "$(installer_text repair_backup): ${REPAIR_BACKUP_DIR}" >&2
   fi
   # zsh does not reliably invoke the outer EXIT trap when this handler exits
   # from inside ZERR/signal processing. Emit here so every recoverable
@@ -4789,6 +4860,8 @@ begin_update_transaction() {
   UPDATE_TRANSACTION_ID="$(date +%Y%m%dT%H%M%S)-$$-${RANDOM}"
   if [[ "$UPDATE_REUSES_VENV" == "1" ]]; then
     mode="source-only"
+  elif [[ "$REPAIR_EXISTING" == "1" ]]; then
+    mode="repair"
   fi
   if [[ "$PLATFORM" == "Darwin" ]]; then
     resolve_launchctl_bin
@@ -5027,6 +5100,108 @@ PY
   UPDATE_PLISTS_NORMALIZED="$changed"
 }
 
+inherit_repair_service_state() {
+  if [[ "$REPAIR_EXISTING" != "1" || "$DRY_RUN" == "1" ]]; then
+    return 0
+  fi
+  local parsed=""
+  parsed="$(PYTHONDONTWRITEBYTECODE=1 "${PYTHON_BIN}" - "${UPDATE_TRANSACTION_JOURNAL}" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+path = Path(os.path.abspath(sys.argv[1]))
+if path.is_symlink() or not path.is_file():
+    raise SystemExit(2)
+state = json.loads(path.read_text(encoding="utf-8"))
+services = state.get("services") if isinstance(state, dict) else None
+if state.get("mode") != "repair" or state.get("status") != "committed" or not isinstance(services, list):
+    raise SystemExit(2)
+loaded = {"scheduler": False, "dashboard": False, "rag": False}
+for service in services:
+    if not isinstance(service, dict) or type(service.get("loaded")) is not bool:
+        raise SystemExit(2)
+    if not service["loaded"]:
+        continue
+    kind = service.get("kind")
+    if kind in {"scheduler-pipeline", "scheduler-aggregation"}:
+        loaded["scheduler"] = True
+    elif kind in {"dashboard", "watchdog"}:
+        loaded["dashboard"] = True
+    elif kind == "rag":
+        loaded["rag"] = True
+
+runtime = Path(str(state.get("runtime") or ""))
+settings_path = runtime / "config" / "settings.json"
+if settings_path.is_symlink() or not settings_path.is_file():
+    raise SystemExit(2)
+settings = json.loads(settings_path.read_text(encoding="utf-8"))
+if not isinstance(settings, dict):
+    raise SystemExit(2)
+
+features = settings.get("features") if isinstance(settings.get("features"), dict) else {}
+schedule = settings.get("schedule") if isinstance(settings.get("schedule"), dict) else {}
+dashboard = settings.get("dashboard") if isinstance(settings.get("dashboard"), dict) else {}
+dashboard_server = dashboard.get("server") if isinstance(dashboard.get("server"), dict) else {}
+rag = settings.get("rag") if isinstance(settings.get("rag"), dict) else {}
+rag_server = rag.get("server") if isinstance(rag.get("server"), dict) else {}
+
+
+def explicit_bool(mapping, key):
+    value = mapping.get(key)
+    return value if type(value) is bool else None
+
+
+def resolve_desired(values, fallback):
+    explicit = [value for value in values if type(value) is bool]
+    if False in explicit:
+        return False
+    if True in explicit:
+        return True
+    return fallback
+
+
+desired = {
+    "scheduler": resolve_desired(
+        [explicit_bool(schedule, "enabled")],
+        loaded["scheduler"],
+    ),
+    "dashboard": resolve_desired(
+        [
+            explicit_bool(features, "dashboard"),
+            explicit_bool(dashboard_server, "enabled"),
+        ],
+        loaded["dashboard"],
+    ),
+    "rag": resolve_desired(
+        [
+            explicit_bool(features, "rag"),
+            explicit_bool(rag, "enabled"),
+            explicit_bool(rag_server, "enabled"),
+        ],
+        loaded["rag"],
+    ),
+}
+print("\t".join("1" if desired[key] else "0" for key in ("scheduler", "dashboard", "rag")))
+PY
+)" || return 2
+  local fields=("${(@ps:\t:)parsed}")
+  if [[ "${#fields[@]}" != "3" ]] || [[ "${fields[*]}" == *[^01\ ]* ]]; then
+    return 2
+  fi
+  if [[ "$NO_SCHEDULER_SET" != "1" ]]; then
+    NO_SCHEDULER=$(( 1 - fields[1] ))
+  fi
+  if [[ "$NO_DASHBOARD_SERVER_SET" != "1" ]]; then
+    NO_DASHBOARD_SERVER=$(( 1 - fields[2] ))
+  fi
+  REPAIR_RAG_SERVICE_ENABLED="${fields[3]}"
+  if [[ "$ENABLE_RAG" != "1" ]]; then
+    REPAIR_RAG_SERVICE_ENABLED=0
+  fi
+}
+
 record_services_stopped_result() {
   local stopped=""
   stopped="$(PYTHONDONTWRITEBYTECODE=1 "${PYTHON_BIN}" - "${UPDATE_TRANSACTION_JOURNAL}" <<'PY'
@@ -5091,7 +5266,14 @@ run_guarded_update_transaction() {
   maybe_fail_update_phase prior-captured
   stage_runtime_source
   record_update_candidate source "${STAGED_RELEASE_TARGET}"
-  update_transaction_command verify-migration-compatibility --state "${UPDATE_TRANSACTION_JOURNAL}"
+  local migration_compatibility_args=(
+    verify-migration-compatibility
+    --state "${UPDATE_TRANSACTION_JOURNAL}"
+  )
+  if [[ "$REPAIR_EXISTING" == "1" ]]; then
+    migration_compatibility_args+=(--allow-legacy-repair)
+  fi
+  update_transaction_command "${migration_compatibility_args[@]}"
   maybe_fail_update_phase migration-compatibility-verified
   run_dependency_update_plan "${STAGED_RELEASE_TARGET}"
   if [[ \
@@ -5132,6 +5314,15 @@ run_guarded_update_transaction() {
   maybe_fail_update_phase source-promoted
   if [[ "$UPDATE_REUSES_VENV" != "1" ]]; then
     maybe_fail_update_phase venv-promoted
+  fi
+  if [[ "$REPAIR_EXISTING" == "1" ]]; then
+    update_transaction_command commit-repair --state "${UPDATE_TRANSACTION_JOURNAL}"
+    UPDATE_COMMITTED=1
+    UPDATE_TRANSACTION_ACTIVE=0
+    UPDATE_MODE="repair"
+    UPDATE_RESULT_STAGE="repair-configuration"
+    REPAIR_BACKUP_DIR="${UPDATE_TRANSACTION_DIR}/backups"
+    return 0
   fi
   update_transaction_command restore-services --state "${UPDATE_TRANSACTION_JOURNAL}"
   maybe_fail_update_phase services-restored
@@ -5695,16 +5886,23 @@ while [[ $# -gt 0 ]]; do
       ;;
     --upgrade)
       UPGRADE=1
+      UPGRADE_EXPLICIT=1
+      shift
+      ;;
+    --repair-existing)
+      REPAIR_EXISTING=1
       shift
       ;;
     --source-only|--sync-runtime-source)
       SOURCE_ONLY=1
       UPGRADE=1
+      UPGRADE_EXPLICIT=1
       WIZARD_MODE=0
       shift
       ;;
     --force-rebuild)
       FORCE_REBUILD=1
+      FORCE_REBUILD_EXPLICIT=1
       shift
       ;;
     --offline)
@@ -5742,6 +5940,27 @@ done
 
 trap 'emit_update_result $?' EXIT
 
+if [[ "$REPAIR_EXISTING" == "1" && (
+  "$UPGRADE_EXPLICIT" == "1" ||
+  "$SOURCE_ONLY" == "1" ||
+  "$FORCE_REBUILD_EXPLICIT" == "1"
+) ]]; then
+  UPDATE_RESULT_STAGE="argument-validation"
+  UPDATE_REASON="repair-existing-has-conflicting-update-mode"
+  error "--repair-existing cannot be combined with --upgrade, --source-only, or --force-rebuild"
+  exit 2
+fi
+if [[ "$REPAIR_EXISTING" == "1" ]]; then
+  UPGRADE=1
+  FORCE_REBUILD=1
+  WIZARD_MODE=0
+  if [[ "$DRY_RUN" != "1" && "$YES" != "1" ]]; then
+    UPDATE_RESULT_STAGE="argument-validation"
+    UPDATE_REASON="repair-existing-requires-confirmation"
+    error "--repair-existing requires confirmation through the one-liner or --yes"
+    exit 2
+  fi
+fi
 if [[ "$SOURCE_ONLY" == "1" && "$FORCE_REBUILD" == "1" ]]; then
   UPDATE_RESULT_STAGE="argument-validation"
   UPDATE_REASON="source-only-and-force-rebuild-are-mutually-exclusive"
@@ -5764,6 +5983,8 @@ if [[ ! -f "${SOURCE_ROOT}/pyproject.toml" ]]; then
   exit 2
 fi
 RUNTIME_DEPENDENCY_LOCK="${SOURCE_ROOT}/install/runtime-dependencies.lock.json"
+RUNTIME_HOME="${RUNTIME_HOME:a}"
+require_repair_runtime_identity || exit 2
 RUNTIME_HOME="${RUNTIME_HOME:A}"
 require_fresh_runtime_empty || exit 2
 resolve_python_bin || true
@@ -5841,7 +6062,7 @@ print_installer_data_notice
 if [[ "$WIZARD_CONFIRMED" != "1" || ! -t 1 ]]; then
   render_console_header
 fi
-log "mode: $([[ "$SOURCE_ONLY" == "1" ]] && print source-only || ([[ "$UPGRADE" == "1" ]] && print upgrade || print install))"
+log "mode: $([[ "$REPAIR_EXISTING" == "1" ]] && print repair || ([[ "$SOURCE_ONLY" == "1" ]] && print source-only || ([[ "$UPGRADE" == "1" ]] && print upgrade || print install)))"
 log "source root: ${SOURCE_ROOT}"
 log "runtime: ${RUNTIME_HOME}"
 log "language: ${INSTALL_LANGUAGE} (pipeline=${PIPELINE_LANGUAGE_PROFILE}, diarySchema=${PIPELINE_DIARY_SCHEMA_VERSION}, promptPayload=${PIPELINE_PROMPT_PAYLOAD_PROFILE})"
@@ -5922,9 +6143,16 @@ if [[ "$UPGRADE" == "1" ]]; then
     print_completion
     exit 0
   fi
+  inherit_repair_service_state
   UPDATE_RESULT_STAGE="cli-shim"
   create_cli_shim
-  if [[ "$DRY_RUN" == "1" ]]; then
+  if [[ "$REPAIR_EXISTING" == "1" ]]; then
+    if [[ "$DESKTOP_DIARY_LINK_SET" == "1" && "$CREATE_DESKTOP_DIARY_LINK" == "1" ]]; then
+      create_desktop_diary_link
+    fi
+    ensure_cli_on_shell_path
+    UPDATE_RESULT_STAGE="$([[ "$DRY_RUN" == "1" ]] && print plan || print repair-configuration)"
+  elif [[ "$DRY_RUN" == "1" ]]; then
     UPDATE_RESULT_STAGE="plan"
   else
     UPDATE_RESULT_STAGE="complete"
@@ -5941,37 +6169,42 @@ if [[ "$UPGRADE" == "1" ]]; then
     print_completion
     exit 0
   fi
-  if [[ "$DRY_RUN" == "1" ]]; then
-    COMPLETION_TEXT="$(installer_text upgrade_plan_complete)"
-  else
-    COMPLETION_TEXT="$(installer_text upgrade_complete)"
-    log "Upgrade preserved Settings, runtime manifest, location pointer, live SQLite state without rewind, service loaded/running state, and configured Dashboard port; legacy Python LaunchAgents were transactionally normalized when required"
-    log "Credential rotation, external Skill registration, and background embedding deployment were not performed inside the update transaction"
+  if [[ "$REPAIR_EXISTING" != "1" ]]; then
+    if [[ "$DRY_RUN" == "1" ]]; then
+      COMPLETION_TEXT="$(installer_text upgrade_plan_complete)"
+    else
+      COMPLETION_TEXT="$(installer_text upgrade_complete)"
+      log "Upgrade preserved Settings, runtime manifest, location pointer, live SQLite state without rewind, service loaded/running state, and configured Dashboard port; legacy Python LaunchAgents were transactionally normalized when required"
+      log "Credential rotation, external Skill registration, and background embedding deployment were not performed inside the update transaction"
+    fi
+    print_completion
+    exit 0
   fi
-  print_completion
-  exit 0
 fi
 
-print_phase phase_preparing
-prepare_fresh_dependency_cache "${SOURCE_ROOT}"
-run_cmd mkdir -p "${RUNTIME_HOME}"
-run_cmd mkdir -p "${DIARY_OUTPUT_DIR}" "${REPORTS_OUTPUT_DIR}" "${SNAPSHOTS_OUTPUT_DIR}" "${ARCHIVES_OUTPUT_DIR}"
-create_desktop_diary_link
-stage_runtime_source
-create_fresh_runtime_venv
-print_phase phase_installing
-stable_source_root="${DEPLOY_SOURCE_ROOT}"
-DEPLOY_SOURCE_ROOT="${STAGED_RELEASE_TARGET:-${SOURCE_ROOT}}"
-install_fresh_locked_dependencies "${DEPLOY_SOURCE_ROOT}" "${FRESH_STAGED_VENV:-${VENV_DIR}}"
-run_runtime_dependency_gate
-DEPLOY_SOURCE_ROOT="${stable_source_root}"
-promote_fresh_runtime_artifacts
-create_cli_shim
-ensure_cli_on_shell_path
+if [[ "$UPGRADE" != "1" ]]; then
+  print_phase phase_preparing
+  prepare_fresh_dependency_cache "${SOURCE_ROOT}"
+  run_cmd mkdir -p "${RUNTIME_HOME}"
+  run_cmd mkdir -p "${DIARY_OUTPUT_DIR}" "${REPORTS_OUTPUT_DIR}" "${SNAPSHOTS_OUTPUT_DIR}" "${ARCHIVES_OUTPUT_DIR}"
+  create_desktop_diary_link
+  stage_runtime_source
+  create_fresh_runtime_venv
+  print_phase phase_installing
+  stable_source_root="${DEPLOY_SOURCE_ROOT}"
+  DEPLOY_SOURCE_ROOT="${STAGED_RELEASE_TARGET:-${SOURCE_ROOT}}"
+  install_fresh_locked_dependencies "${DEPLOY_SOURCE_ROOT}" "${FRESH_STAGED_VENV:-${VENV_DIR}}"
+  run_runtime_dependency_gate
+  DEPLOY_SOURCE_ROOT="${stable_source_root}"
+  promote_fresh_runtime_artifacts
+  create_cli_shim
+  ensure_cli_on_shell_path
+fi
 
 print_phase phase_configuring
 log "Applying runtime bootstrap and active runtime pointer"
 export_runtime_environment
+migrate_legacy_settings_for_repair
 runtime_apply_args=(
   -m data_foundation.cli
   onboarding runtime-apply
@@ -6036,7 +6269,7 @@ if [[ "$NO_DASHBOARD_SERVER" != "1" ]]; then
   fi
 fi
 
-if [[ "$ENABLE_RAG" == "1" ]]; then
+if [[ "$ENABLE_RAG" == "1" && ( "$REPAIR_EXISTING" != "1" || "$REPAIR_RAG_SERVICE_ENABLED" == "1" ) ]]; then
   if [[ "$PLATFORM" == "Darwin" ]]; then
     log "Installing nova-RAG server LaunchAgent service"
     run_rag_service_launch_agent_apply
@@ -6079,9 +6312,20 @@ fi
 print_phase phase_verifying
 run_post_install_doctor
 cleanup_runtime_source_artifacts
+if [[ "$REPAIR_EXISTING" == "1" && "$DRY_RUN" != "1" ]]; then
+  update_transaction_command complete-repair --state "${UPDATE_TRANSACTION_JOURNAL}"
+  REPAIR_CONFIGURATION_COMPLETE=1
+fi
 
 if [[ "$DRY_RUN" == "1" ]]; then
-  COMPLETION_TEXT="$(installer_text dry_run_complete)"
+  if [[ "$REPAIR_EXISTING" == "1" ]]; then
+    COMPLETION_TEXT="$(installer_text repair_plan_complete)"
+  else
+    COMPLETION_TEXT="$(installer_text dry_run_complete)"
+  fi
+elif [[ "$REPAIR_EXISTING" == "1" ]]; then
+  UPDATE_RESULT_STAGE="complete"
+  COMPLETION_TEXT="$(installer_text repair_complete)"
 elif [[ "$UPGRADE" == "1" ]]; then
   COMPLETION_TEXT="$(installer_text upgrade_complete)"
 else
@@ -6089,3 +6333,6 @@ else
 fi
 
 print_completion
+if [[ "$REPAIR_EXISTING" == "1" && -n "$REPAIR_BACKUP_DIR" ]]; then
+  print -r -- "$(installer_text repair_backup): ${REPAIR_BACKUP_DIR}"
+fi

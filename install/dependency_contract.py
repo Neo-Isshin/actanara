@@ -268,6 +268,7 @@ def runtime_dependency_profiles(
     runtime: Path | str,
     *,
     allow_untrusted_active_venv: bool = False,
+    allow_legacy_settings: bool = False,
 ) -> dict[str, Any]:
     """Read the Runtime-owned settings that select dependency profiles.
 
@@ -299,21 +300,56 @@ def runtime_dependency_profiles(
     )
     if not isinstance(settings, dict):
         raise _error("settings-profile-untrusted", "Runtime Settings must be a JSON object")
+    if allow_legacy_settings:
+        schema_version = settings.get("schemaVersion")
+        if schema_version is not None and not (
+            type(schema_version) is int and schema_version in {0, 1}
+        ):
+            raise _error(
+                "settings-profile-untrusted",
+                "Runtime Settings use an unsupported schema version",
+            )
     features = settings.get("features")
     rag = settings.get("rag")
+    if allow_legacy_settings and "features" not in settings:
+        features = {}
+    if allow_legacy_settings and "rag" not in settings:
+        rag = {}
     if not isinstance(features, dict) or not isinstance(rag, dict):
         raise _error(
             "settings-profile-untrusted",
             "Runtime Settings do not contain a trustworthy RAG dependency profile",
         )
-    feature_enabled = features.get("rag")
-    rag_enabled = rag.get("enabled")
-    if type(feature_enabled) is not bool or type(rag_enabled) is not bool:
-        raise _error(
-            "settings-profile-untrusted",
-            "Runtime Settings contain an ambiguous RAG dependency profile",
-        )
-    if feature_enabled != rag_enabled:
+    feature_enabled = features.get("rag") if "rag" in features else None
+    rag_enabled_value = rag.get("enabled") if "enabled" in rag else None
+    if allow_legacy_settings:
+        if (
+            (feature_enabled is not None and type(feature_enabled) is not bool)
+            or (rag_enabled_value is not None and type(rag_enabled_value) is not bool)
+        ):
+            raise _error(
+                "settings-profile-untrusted",
+                "Runtime Settings contain an ambiguous RAG dependency profile",
+            )
+        known_flags = [
+            value
+            for value in (feature_enabled, rag_enabled_value)
+            if type(value) is bool
+        ]
+        if len(set(known_flags)) > 1:
+            raise _error(
+                "settings-profile-untrusted",
+                "Runtime Settings contain conflicting RAG dependency profile flags",
+            )
+        rag_enabled = known_flags[0] if known_flags else False
+    else:
+        if type(feature_enabled) is not bool or type(rag_enabled_value) is not bool:
+            raise _error(
+                "settings-profile-untrusted",
+                "Runtime Settings contain an ambiguous RAG dependency profile",
+            )
+        rag_enabled = rag_enabled_value
+    if type(feature_enabled) is bool and feature_enabled != rag_enabled:
         raise _error(
             "settings-profile-untrusted",
             "Runtime Settings contain conflicting RAG dependency profile flags",
@@ -323,12 +359,38 @@ def runtime_dependency_profiles(
     embedding_mode: str | None = None
     if rag_enabled:
         embedding = rag.get("embedding")
-        if not isinstance(embedding, dict) or embedding.get("mode") not in {"local", "cloud"}:
+        if allow_legacy_settings and not isinstance(embedding, dict) and (
+            "embedding" not in rag or embedding is None
+        ):
+            embedding = {}
+        if not isinstance(embedding, dict):
             raise _error(
                 "settings-profile-untrusted",
                 "Runtime Settings do not identify a supported RAG embedding dependency profile",
             )
-        embedding_mode = str(embedding["mode"])
+        mode = embedding.get("mode")
+        provider = embedding.get("provider")
+        supported_modes = ("local", "cloud")
+        if mode is not None:
+            if mode not in supported_modes:
+                raise _error(
+                    "settings-profile-untrusted",
+                    "Runtime Settings do not identify a supported RAG embedding dependency profile",
+                )
+            embedding_mode = str(mode)
+        elif allow_legacy_settings:
+            normalized_provider = str(provider or "").strip()
+            if normalized_provider in supported_modes:
+                embedding_mode = normalized_provider
+            elif normalized_provider:
+                embedding_mode = "cloud"
+            else:
+                embedding_mode = "local"
+        else:
+            raise _error(
+                "settings-profile-untrusted",
+                "Runtime Settings do not identify a supported RAG embedding dependency profile",
+            )
         profiles.append("rag-server")
         if embedding_mode == "local":
             profiles.append("rag-local")
@@ -399,6 +461,217 @@ def runtime_dependency_profiles(
     }
 
 
+def migrate_legacy_runtime_settings(
+    runtime: Path | str,
+    *,
+    scheduler_enabled: bool | None = None,
+    dashboard_enabled: bool | None = None,
+    dashboard_server_enabled: bool | None = None,
+    rag_server_enabled: bool | None = None,
+) -> dict[str, Any]:
+    """Complete trusted pre-GitHub RAG profile fields without replacing choices.
+
+    The repair path uses this narrow mutation after dependency selection.  It
+    never fills defaults or rewrites an already-current Settings file.
+    """
+
+    profile = runtime_dependency_profiles(
+        runtime,
+        allow_untrusted_active_venv=True,
+        allow_legacy_settings=True,
+    )
+    home = _lexical_absolute(runtime)
+    settings_path = home / "config" / "settings.json"
+    settings, raw = _read_strict_json_file(
+        settings_path,
+        label="Runtime Settings",
+        require_private_owner=True,
+    )
+    if not isinstance(settings, dict):
+        raise _error("settings-profile-untrusted", "Runtime Settings must be a JSON object")
+    if _sha256_bytes(raw) != profile["evidence"]["settingsSha256"]:
+        raise _error("settings-profile-untrusted", "Runtime Settings changed during repair")
+
+    schema_version = settings.get("schemaVersion")
+    changed = False
+    if schema_version != 1:
+        if schema_version is not None and not (
+            type(schema_version) is int and schema_version == 0
+        ):
+            raise _error(
+                "settings-profile-untrusted",
+                "Runtime Settings use an unsupported schema version",
+            )
+        settings["schemaVersion"] = 1
+        changed = True
+
+    features = settings.get("features")
+    if not isinstance(features, dict):
+        features = {}
+        settings["features"] = features
+        changed = True
+    rag = settings.get("rag")
+    if not isinstance(rag, dict):
+        rag = {}
+        settings["rag"] = rag
+        changed = True
+    enabled = profile["rag"]["enabled"] is True
+    if "rag" not in features:
+        features["rag"] = enabled
+        changed = True
+    if "enabled" not in rag:
+        rag["enabled"] = enabled
+        changed = True
+
+    if enabled:
+        embedding = rag.get("embedding")
+        if not isinstance(embedding, dict):
+            embedding = {}
+            rag["embedding"] = embedding
+            changed = True
+        mode = profile["rag"]["embeddingMode"]
+        if mode not in {"local", "cloud"}:
+            raise _error(
+                "settings-profile-untrusted",
+                "Runtime Settings do not identify a supported legacy RAG profile",
+            )
+        if embedding.get("mode") is None:
+            embedding["mode"] = mode
+            changed = True
+        if embedding.get("providerId") is None:
+            legacy_provider = str(embedding.get("provider") or "").strip()
+            embedding["providerId"] = (
+                legacy_provider
+                if legacy_provider and legacy_provider not in {"local", "cloud"}
+                else mode
+            )
+            changed = True
+
+    service_defaults = (
+        ("scheduler", scheduler_enabled),
+        ("dashboard", dashboard_enabled),
+        ("dashboard server", dashboard_server_enabled),
+        ("RAG server", rag_server_enabled),
+    )
+    if any(value is not None and type(value) is not bool for _label, value in service_defaults):
+        raise _error(
+            "settings-profile-untrusted",
+            "Legacy service defaults must be booleans",
+        )
+
+    if scheduler_enabled is not None:
+        schedule = settings.get("schedule")
+        if schedule is None:
+            schedule = {}
+            settings["schedule"] = schedule
+            changed = True
+        if not isinstance(schedule, dict):
+            raise _error(
+                "settings-profile-untrusted",
+                "Runtime Settings contain an invalid scheduler section",
+            )
+        if "enabled" not in schedule:
+            schedule["enabled"] = scheduler_enabled
+            changed = True
+
+    if dashboard_enabled is not None or dashboard_server_enabled is not None:
+        dashboard = settings.get("dashboard")
+        if dashboard is None:
+            dashboard = {}
+            settings["dashboard"] = dashboard
+            changed = True
+        if not isinstance(dashboard, dict):
+            raise _error(
+                "settings-profile-untrusted",
+                "Runtime Settings contain an invalid Dashboard section",
+            )
+        if dashboard_enabled is not None and "dashboard" not in features:
+            features["dashboard"] = dashboard_enabled
+            changed = True
+        if dashboard_server_enabled is not None:
+            server = dashboard.get("server")
+            if server is None:
+                server = {}
+                dashboard["server"] = server
+                changed = True
+            if not isinstance(server, dict):
+                raise _error(
+                    "settings-profile-untrusted",
+                    "Runtime Settings contain an invalid Dashboard server section",
+                )
+            if "enabled" not in server:
+                server["enabled"] = dashboard_server_enabled
+                changed = True
+
+    if rag_server_enabled is not None:
+        server = rag.get("server")
+        if server is None:
+            server = {}
+            rag["server"] = server
+            changed = True
+        if not isinstance(server, dict):
+            raise _error(
+                "settings-profile-untrusted",
+                "Runtime Settings contain an invalid RAG server section",
+            )
+        if "enabled" not in server:
+            server["enabled"] = rag_server_enabled
+            changed = True
+
+    if not changed:
+        return {
+            "schemaVersion": 1,
+            "status": "unchanged",
+            "settingsMigrated": False,
+        }
+
+    if features.get("rag") is not enabled or rag.get("enabled") is not enabled:
+        raise _error(
+            "settings-profile-untrusted",
+            "Runtime Settings changed inconsistently during legacy migration",
+        )
+    details = settings_path.lstat()
+    if (
+        not stat.S_ISREG(details.st_mode)
+        or details.st_nlink != 1
+        or details.st_uid != os.getuid()
+        or stat.S_IMODE(details.st_mode) & 0o022
+    ):
+        raise _error(
+            "settings-profile-untrusted",
+            "Runtime Settings changed to an unsafe file during repair",
+        )
+    identity = tuple(
+        getattr(details, field)
+        for field in (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_nlink",
+            "st_uid",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
+    )
+    payload = (
+        json.dumps(settings, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False)
+        + "\n"
+    ).encode("utf-8")
+    _atomic_write(
+        settings_path,
+        payload,
+        mode=stat.S_IMODE(details.st_mode),
+        replace=True,
+        expected_identity=identity,
+    )
+    return {
+        "schemaVersion": 1,
+        "status": "migrated",
+        "settingsMigrated": True,
+    }
+
+
 def _canonical_json_bytes(value: Any) -> bytes:
     return json.dumps(
         value,
@@ -459,7 +732,14 @@ def _fsync_directory(path: Path) -> None:
         os.close(descriptor)
 
 
-def _atomic_write(path: Path, raw: bytes, *, mode: int, replace: bool) -> None:
+def _atomic_write(
+    path: Path,
+    raw: bytes,
+    *,
+    mode: int,
+    replace: bool,
+    expected_identity: tuple[int, ...] | None = None,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.parent / f".{path.name}.tmp-{os.getpid()}-{os.urandom(4).hex()}"
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
@@ -473,6 +753,26 @@ def _atomic_write(path: Path, raw: bytes, *, mode: int, replace: bool) -> None:
             os.fsync(handle.fileno())
         os.chmod(temporary, mode)
         if replace:
+            if expected_identity is not None:
+                try:
+                    current = path.lstat()
+                except OSError as exc:
+                    raise _error("unsafe-file", f"file changed before replacement: {path.name}") from exc
+                current_identity = tuple(
+                    getattr(current, field)
+                    for field in (
+                        "st_dev",
+                        "st_ino",
+                        "st_mode",
+                        "st_nlink",
+                        "st_uid",
+                        "st_size",
+                        "st_mtime_ns",
+                        "st_ctime_ns",
+                    )
+                )
+                if current_identity != expected_identity:
+                    raise _error("unsafe-file", f"file changed before replacement: {path.name}")
             os.replace(temporary, path)
         else:
             try:
@@ -1931,6 +2231,17 @@ def _parser() -> argparse.ArgumentParser:
     runtime_profiles = subcommands.add_parser("runtime-profiles")
     runtime_profiles.add_argument("--runtime", required=True)
     runtime_profiles.add_argument("--allow-untrusted-active-venv", action="store_true")
+    runtime_profiles.add_argument("--allow-legacy-settings", action="store_true")
+
+    migrate_settings = subcommands.add_parser("migrate-legacy-settings")
+    migrate_settings.add_argument("--runtime", required=True)
+    for option in (
+        "scheduler-enabled",
+        "dashboard-enabled",
+        "dashboard-server-enabled",
+        "rag-server-enabled",
+    ):
+        migrate_settings.add_argument(f"--{option}", choices=("0", "1"))
 
     fingerprint = subcommands.add_parser("fingerprint")
     _add_selection_arguments(fingerprint)
@@ -1993,6 +2304,16 @@ def _dispatch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         return runtime_dependency_profiles(
             args.runtime,
             allow_untrusted_active_venv=args.allow_untrusted_active_venv,
+            allow_legacy_settings=args.allow_legacy_settings,
+        ), 0
+    if args.command == "migrate-legacy-settings":
+        optional_bool = lambda value: None if value is None else value == "1"
+        return migrate_legacy_runtime_settings(
+            args.runtime,
+            scheduler_enabled=optional_bool(args.scheduler_enabled),
+            dashboard_enabled=optional_bool(args.dashboard_enabled),
+            dashboard_server_enabled=optional_bool(args.dashboard_server_enabled),
+            rag_server_enabled=optional_bool(args.rag_server_enabled),
         ), 0
     if args.command == "fingerprint":
         selection = _selection_from_args(args)

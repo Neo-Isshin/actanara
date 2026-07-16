@@ -353,6 +353,22 @@ class UpdateTransactionTests(unittest.TestCase):
             "profile": home / ".zprofile",
         }
 
+    def _make_legacy_pointers_concrete(
+        self,
+        fixture: dict[str, Path],
+    ) -> tuple[tuple[int, int], tuple[int, int]]:
+        source = fixture["runtime"] / "app" / "source"
+        prior_source = source.resolve(strict=True)
+        source.unlink()
+        prior_source.rename(source)
+        venv = fixture["runtime"] / ".venv"
+        source_stat = source.stat(follow_symlinks=False)
+        venv_stat = venv.stat(follow_symlinks=False)
+        return (
+            (source_stat.st_dev, source_stat.st_ino),
+            (venv_stat.st_dev, venv_stat.st_ino),
+        )
+
     def _database_values(self, path: Path) -> list[str]:
         connection = sqlite3.connect(path)
         try:
@@ -509,6 +525,40 @@ class UpdateTransactionTests(unittest.TestCase):
             calls_path,
         )
 
+    def _begin_only_result(
+        self,
+        fixture: dict[str, Path],
+        *,
+        mode: str,
+        platform: str = "Linux",
+        launchctl: str = "/usr/bin/true",
+        uid: int = 0,
+    ) -> subprocess.CompletedProcess[str]:
+        return self._run(
+            "begin",
+            "--runtime",
+            str(fixture["runtime"]),
+            "--home",
+            str(fixture["home"]),
+            "--source-pointer",
+            str(fixture["runtime"] / "app" / "source"),
+            "--venv-pointer",
+            str(fixture["runtime"] / ".venv"),
+            "--mode",
+            mode,
+            "--tx-id",
+            "fixture-tx",
+            "--owner-pid",
+            str(os.getpid()),
+            "--platform",
+            platform,
+            "--launchctl",
+            launchctl,
+            "--uid",
+            str(uid),
+            check=False,
+        )
+
     def _begin(
         self,
         fixture: dict[str, Path],
@@ -590,7 +640,7 @@ class UpdateTransactionTests(unittest.TestCase):
             ).stdout.strip()
         )
         fixture["candidate_source"] = source_candidate
-        if mode == "upgrade":
+        if mode in {"upgrade", "repair"}:
             venv_template = fixture["candidate_venv"]
             venv_candidate = Path(
                 self._run(
@@ -628,6 +678,8 @@ class UpdateTransactionTests(unittest.TestCase):
         self,
         fixture: dict[str, Path],
         journal: Path,
+        *,
+        allow_legacy_repair: bool = False,
     ) -> None:
         self._run(
             "record-candidate",
@@ -638,7 +690,14 @@ class UpdateTransactionTests(unittest.TestCase):
             "--candidate",
             str(fixture["candidate_source"]),
         )
-        self._run("verify-migration-compatibility", "--state", str(journal))
+        compatibility_args = [
+            "verify-migration-compatibility",
+            "--state",
+            str(journal),
+        ]
+        if allow_legacy_repair:
+            compatibility_args.append("--allow-legacy-repair")
+        self._run(*compatibility_args)
         self._run(
             "record-candidate",
             "--state",
@@ -649,8 +708,18 @@ class UpdateTransactionTests(unittest.TestCase):
             str(fixture["candidate_venv"]),
         )
 
-    def _prepare_stopped_candidate(self, fixture: dict[str, Path], journal: Path) -> None:
-        self._record_and_verify_source_candidate(fixture, journal)
+    def _prepare_stopped_candidate(
+        self,
+        fixture: dict[str, Path],
+        journal: Path,
+        *,
+        allow_legacy_repair: bool = False,
+    ) -> None:
+        self._record_and_verify_source_candidate(
+            fixture,
+            journal,
+            allow_legacy_repair=allow_legacy_repair,
+        )
         self._run("stop", "--state", str(journal))
         self._run(
             "capture-mutable",
@@ -672,6 +741,26 @@ class UpdateTransactionTests(unittest.TestCase):
         self._prepare_stopped_candidate(fixture, journal)
         self._run("normalize-service-plists", "--state", str(journal))
         self._run("promote", "--state", str(journal))
+
+    def _commit_repair_transaction(
+        self,
+        fixture: dict[str, Path],
+    ) -> Path:
+        journal = self._begin(
+            fixture,
+            owner_pid=os.getpid(),
+            mode="repair",
+            settings_only_profile_evidence=True,
+        )
+        self._prepare_stopped_candidate(
+            fixture,
+            journal,
+            allow_legacy_repair=True,
+        )
+        self._run("normalize-service-plists", "--state", str(journal))
+        self._run("promote", "--state", str(journal))
+        self._run("commit-repair", "--state", str(journal))
+        return journal
 
     def test_begin_preserves_preexisting_reserved_artifact(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1379,6 +1468,142 @@ print -r -- "$reserved"
                 json.loads(journal.read_text(encoding="utf-8"))["serviceStopInitiated"]
             )
             self._run("rollback", "--state", str(journal))
+
+    def test_legacy_repair_migration_flag_is_bound_to_repair_journal(self):
+        cases = (
+            ("upgrade", True),
+            ("repair", False),
+        )
+        for mode, allow_legacy_repair in cases:
+            with (
+                self.subTest(mode=mode, allow_legacy_repair=allow_legacy_repair),
+                tempfile.TemporaryDirectory() as tmp,
+            ):
+                fixture = self._fixture(Path(tmp))
+                journal = self._begin(
+                    fixture,
+                    owner_pid=os.getpid(),
+                    mode=mode,
+                    settings_only_profile_evidence=mode == "repair",
+                )
+                self._run(
+                    "record-candidate",
+                    "--state",
+                    str(journal),
+                    "--kind",
+                    "source",
+                    "--candidate",
+                    str(fixture["candidate_source"]),
+                )
+                arguments = [
+                    "verify-migration-compatibility",
+                    "--state",
+                    str(journal),
+                ]
+                if allow_legacy_repair:
+                    arguments.append("--allow-legacy-repair")
+
+                result = self._run(*arguments, check=False)
+
+                self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+                state = json.loads(journal.read_text(encoding="utf-8"))
+                self.assertIsNone(state["databaseCompatibility"])
+                self.assertFalse(state["serviceStopInitiated"])
+                self._run("rollback", "--state", str(journal))
+
+    def test_upgrade_migration_gate_still_rejects_missing_prior_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            source = fixture["runtime"] / "app" / "source"
+            shutil.rmtree(source.resolve(strict=True))
+            journal = self._begin(fixture, owner_pid=os.getpid(), mode="upgrade")
+            self._run(
+                "record-candidate",
+                "--state",
+                str(journal),
+                "--kind",
+                "source",
+                "--candidate",
+                str(fixture["candidate_source"]),
+            )
+
+            result = self._run(
+                "verify-migration-compatibility",
+                "--state",
+                str(journal),
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn(
+                "prior source tree is unavailable for migration compatibility",
+                result.stderr,
+            )
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertIsNone(state["databaseCompatibility"])
+            self.assertFalse(state["serviceStopInitiated"])
+            self._run("rollback", "--state", str(journal))
+
+    def test_repair_migration_gate_accepts_only_candidate_known_live_ledger(self):
+        for unknown_ledger in (False, True):
+            with self.subTest(unknown_ledger=unknown_ledger), tempfile.TemporaryDirectory() as tmp:
+                fixture = self._fixture(Path(tmp))
+                if unknown_ledger:
+                    with closing(sqlite3.connect(fixture["database"])) as connection:
+                        connection.execute(
+                            "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                            ("9999_unknown", "2026-07-11T00:00:01+00:00"),
+                        )
+                        connection.commit()
+                source = fixture["runtime"] / "app" / "source"
+                shutil.rmtree(source.resolve(strict=True))
+                journal = self._begin(
+                    fixture,
+                    owner_pid=os.getpid(),
+                    mode="repair",
+                    settings_only_profile_evidence=True,
+                )
+                self._run(
+                    "record-candidate",
+                    "--state",
+                    str(journal),
+                    "--kind",
+                    "source",
+                    "--candidate",
+                    str(fixture["candidate_source"]),
+                )
+
+                result = self._run(
+                    "verify-migration-compatibility",
+                    "--state",
+                    str(journal),
+                    "--allow-legacy-repair",
+                    check=False,
+                )
+
+                if unknown_ledger:
+                    self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+                    self.assertIn(
+                        "live database has a migration unreadable by the candidate",
+                        result.stderr,
+                    )
+                    self.assertIsNone(
+                        json.loads(journal.read_text(encoding="utf-8"))[
+                            "databaseCompatibility"
+                        ]
+                    )
+                else:
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    evidence = json.loads(journal.read_text(encoding="utf-8"))[
+                        "databaseCompatibility"
+                    ]
+                    self.assertTrue(evidence["legacyRepair"])
+                    self.assertEqual(evidence["priorMigrations"], [])
+                    self.assertEqual(
+                        evidence["appliedMigrations"],
+                        [self.BASE_MIGRATION_VERSION],
+                    )
+                self._run("rollback", "--state", str(journal))
 
     def test_migration_gate_rejects_nonempty_database_without_ledger(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -3086,6 +3311,226 @@ print -r -- "$reserved"
             )
             self.assertFalse((fixture["runtime"] / "app" / ".update-transaction.lock").exists())
 
+    def test_repair_begin_accepts_legacy_dashboard_states_that_upgrade_rejects(self):
+        cases = (
+            (
+                "loaded-not-running",
+                "waiting",
+                False,
+                "loaded but not running",
+            ),
+            (
+                "unrecoverable-health",
+                "running",
+                True,
+                "no valid health endpoint",
+            ),
+        )
+        for case, launch_state, invalid_settings, upgrade_error in cases:
+            for mode in ("repair", "upgrade"):
+                with (
+                    self.subTest(case=case, mode=mode),
+                    tempfile.TemporaryDirectory() as tmp,
+                ):
+                    root = Path(tmp)
+                    fixture = self._fixture(root)
+                    if invalid_settings:
+                        fixture["settings"].write_text("{legacy-settings\n", encoding="utf-8")
+                    launch_agents = fixture["home"] / "Library" / "LaunchAgents"
+                    launch_agents.mkdir(parents=True)
+                    label = "com.open-nova.dashboard"
+                    self._write_runtime_plist(
+                        launch_agents / f"{label}.plist",
+                        label=label,
+                        runtime=fixture["runtime"],
+                    )
+                    state_dir = root / "launchctl-state"
+                    state_dir.mkdir()
+                    (state_dir / label).write_text(f"{launch_state}\n", encoding="utf-8")
+                    calls_path = root / "launchctl-calls.log"
+                    fake_launchctl = root / "launchctl"
+                    self._write_stateful_fake_launchctl(
+                        fake_launchctl,
+                        state_dir=state_dir,
+                        calls_path=calls_path,
+                    )
+
+                    result = self._begin_only_result(
+                        fixture,
+                        mode=mode,
+                        platform="Darwin",
+                        launchctl=str(fake_launchctl),
+                        uid=0,
+                    )
+
+                    mutations = [
+                        call
+                        for call in calls_path.read_text(encoding="utf-8").splitlines()
+                        if call.startswith(("bootout ", "bootstrap ", "kickstart "))
+                    ]
+                    self.assertEqual(mutations, [])
+                    self.assertEqual(
+                        (state_dir / label).read_text(encoding="utf-8").strip(),
+                        launch_state,
+                    )
+                    if mode == "upgrade":
+                        self.assertEqual(
+                            result.returncode,
+                            70,
+                            result.stdout + result.stderr,
+                        )
+                        self.assertIn(upgrade_error, result.stderr)
+                        self.assertFalse(
+                            (
+                                fixture["runtime"]
+                                / "app"
+                                / ".update-transaction.lock"
+                            ).exists()
+                        )
+                        continue
+
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    journal = Path(result.stdout.strip())
+                    state = json.loads(journal.read_text(encoding="utf-8"))
+                    service = next(
+                        item for item in state["services"] if item["label"] == label
+                    )
+                    self.assertEqual(state["status"], "prepared")
+                    self.assertTrue(service["loaded"])
+                    self.assertEqual(service["state"], launch_state)
+                    self.assertFalse(state["serviceStopInitiated"])
+                    self._run("rollback", "--state", str(journal))
+                    self.assertEqual(
+                        (state_dir / label).read_text(encoding="utf-8").strip(),
+                        launch_state,
+                    )
+
+    def test_repair_begin_still_rejects_running_scheduler(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._fixture(root)
+            launch_agents = fixture["home"] / "Library" / "LaunchAgents"
+            launch_agents.mkdir(parents=True)
+            label = "com.open-nova.pipeline"
+            plist_path = launch_agents / f"{label}.plist"
+            with plist_path.open("wb") as handle:
+                plistlib.dump(
+                    {
+                        "Label": label,
+                        "ProgramArguments": [
+                            str(fixture["runtime"] / ".venv" / "bin" / "python"),
+                            str(
+                                fixture["runtime"]
+                                / "app"
+                                / "source"
+                                / "advanced"
+                                / "pipeline"
+                                / "run_daily_pipeline.py"
+                            ),
+                        ],
+                        "EnvironmentVariables": {
+                            "NOVA_HOME": str(fixture["runtime"]),
+                        },
+                    },
+                    handle,
+                )
+            state_dir = root / "launchctl-state"
+            state_dir.mkdir()
+            (state_dir / label).write_text("running\n", encoding="utf-8")
+            calls_path = root / "launchctl-calls.log"
+            fake_launchctl = root / "launchctl"
+            self._write_stateful_fake_launchctl(
+                fake_launchctl,
+                state_dir=state_dir,
+                calls_path=calls_path,
+            )
+
+            result = self._begin_only_result(
+                fixture,
+                mode="repair",
+                platform="Darwin",
+                launchctl=str(fake_launchctl),
+                uid=0,
+            )
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("managed scheduler job is currently running", result.stderr)
+            self.assertEqual(
+                (state_dir / label).read_text(encoding="utf-8").strip(),
+                "running",
+            )
+            self.assertFalse(
+                any(
+                    call.startswith(("bootout ", "bootstrap ", "kickstart "))
+                    for call in calls_path.read_text(encoding="utf-8").splitlines()
+                )
+            )
+            self.assertFalse(
+                (fixture["runtime"] / "app" / ".update-transaction.lock").exists()
+            )
+
+    def test_repair_accepts_legacy_runtime_bound_plist_without_nova_home(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._fixture(root)
+            launch_agents = fixture["home"] / "Library" / "LaunchAgents"
+            launch_agents.mkdir(parents=True)
+            label = "open-nova.daily.pipeline"
+            plist_path = launch_agents / f"{label}.plist"
+            with plist_path.open("wb") as handle:
+                plistlib.dump(
+                    {
+                        "Label": label,
+                        "ProgramArguments": [
+                            str(fixture["runtime"] / ".venv" / "bin" / "python"),
+                            str(
+                                fixture["runtime"]
+                                / "app"
+                                / "source"
+                                / "advanced"
+                                / "pipeline"
+                                / "run_daily_pipeline.py"
+                            ),
+                        ],
+                        "WorkingDirectory": str(fixture["runtime"] / "app" / "source"),
+                    },
+                    handle,
+                )
+            state_dir = root / "launchctl-state"
+            state_dir.mkdir()
+            calls_path = root / "launchctl-calls.log"
+            fake_launchctl = root / "launchctl"
+            self._write_stateful_fake_launchctl(
+                fake_launchctl,
+                state_dir=state_dir,
+                calls_path=calls_path,
+            )
+
+            journal = self._begin(
+                fixture,
+                owner_pid=os.getpid(),
+                mode="repair",
+                settings_only_profile_evidence=True,
+                platform="Darwin",
+                launchctl=str(fake_launchctl),
+                uid=0,
+            )
+            self._prepare_stopped_candidate(
+                fixture,
+                journal,
+                allow_legacy_repair=True,
+            )
+            self._run("normalize-service-plists", "--state", str(journal))
+            self._run("promote", "--state", str(journal))
+            self._run("commit-repair", "--state", str(journal))
+
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            service = next(item for item in state["services"] if item["label"] == label)
+            self.assertEqual(state["status"], "committed")
+            self.assertFalse(service["loaded"])
+            self.assertNotIn("NOVA_HOME", plistlib.loads(plist_path.read_bytes()).get("EnvironmentVariables", {}))
+            self._run("complete-repair", "--state", str(journal))
+
     def test_verify_allows_legitimate_sqlite_writer_after_capture(self):
         with tempfile.TemporaryDirectory() as tmp:
             fixture = self._fixture(Path(tmp))
@@ -3469,6 +3914,246 @@ print -r -- "$reserved"
             self.assertEqual(os.readlink(source), "releases/old")
             self.assertTrue(venv.is_dir())
             self.assertEqual((venv / "bin" / "python").read_text(encoding="utf-8"), "old-venv\n")
+
+    def test_repair_commit_keeps_legacy_services_stopped_and_backups(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._fixture(root)
+            source_identity, venv_identity = self._make_legacy_pointers_concrete(fixture)
+            launch_agents = fixture["home"] / "Library" / "LaunchAgents"
+            launch_agents.mkdir(parents=True)
+            label = "com.open-nova.dashboard.watchdog"
+            plist_path = launch_agents / f"{label}.plist"
+            with plist_path.open("wb") as handle:
+                plistlib.dump(
+                    {
+                        "Label": label,
+                        "ProgramArguments": [
+                            str(fixture["runtime"] / ".venv" / "bin" / "python"),
+                            str(
+                                fixture["runtime"]
+                                / "app"
+                                / "source"
+                                / "advanced"
+                                / "dashboard"
+                                / "dashboard_launch_agent.py"
+                            ),
+                            "check",
+                            "--url",
+                            "http://127.0.0.1:42173/health",
+                            "--label",
+                            "com.open-nova.dashboard",
+                            "--restart",
+                        ],
+                        "EnvironmentVariables": {
+                            "NOVA_HOME": str(fixture["runtime"]),
+                        },
+                        "RunAtLoad": True,
+                    },
+                    handle,
+                )
+            state_dir = root / "launchctl-state"
+            state_dir.mkdir()
+            (state_dir / label).write_text("running\n", encoding="utf-8")
+            calls_path = root / "launchctl-calls.log"
+            fake_launchctl = root / "launchctl"
+            self._write_stateful_fake_launchctl(
+                fake_launchctl,
+                state_dir=state_dir,
+                calls_path=calls_path,
+            )
+            journal = self._begin(
+                fixture,
+                owner_pid=os.getpid(),
+                platform="Darwin",
+                launchctl=str(fake_launchctl),
+                uid=0,
+                mode="repair",
+                settings_only_profile_evidence=True,
+            )
+
+            self._prepare_stopped_candidate(
+                fixture,
+                journal,
+                allow_legacy_repair=True,
+            )
+            self.assertFalse((state_dir / label).exists())
+            self._run("normalize-service-plists", "--state", str(journal))
+            self._run("promote", "--state", str(journal))
+            self._run("commit-repair", "--state", str(journal))
+
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertEqual(state["status"], "committed")
+            events = [
+                json.loads(line)
+                for line in (journal.parent / "events.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+            self.assertIn(
+                {
+                    "event": "repair-committed-services-stopped",
+                    "status": "committed",
+                },
+                [
+                    {"event": event["event"], "status": event["status"]}
+                    for event in events
+                ],
+            )
+            self.assertTrue(state["serviceStopInitiated"])
+            self.assertFalse((state_dir / label).exists())
+            mutations = [
+                call
+                for call in calls_path.read_text(encoding="utf-8").splitlines()
+                if call.startswith(("bootout ", "bootstrap ", "kickstart "))
+            ]
+            self.assertEqual(mutations, [f"bootout gui/0/{label}"])
+            source_backup = Path(state["source"]["priorBackupPath"])
+            venv_backup = Path(state["venv"]["priorBackupPath"])
+            self.assertTrue(source_backup.is_dir())
+            self.assertTrue(venv_backup.is_dir())
+            self.assertEqual(
+                (source_backup.stat().st_dev, source_backup.stat().st_ino),
+                source_identity,
+            )
+            self.assertEqual(
+                (venv_backup.stat().st_dev, venv_backup.stat().st_ino),
+                venv_identity,
+            )
+            repair_backups = Path(state["repairBackupPath"])
+            self.assertTrue(repair_backups.is_dir())
+            self.assertTrue(any(repair_backups.iterdir()))
+            self.assertFalse(
+                (fixture["runtime"] / "app" / ".update-transaction.lock").exists()
+            )
+
+    def test_repair_pending_marker_lifecycle_is_bound_to_transaction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            journal = self._commit_repair_transaction(fixture)
+            marker = fixture["runtime"] / "app" / ".repair-configuration-pending"
+
+            self.assertTrue(marker.is_file())
+            self.assertFalse(marker.is_symlink())
+            self.assertEqual(marker.stat(follow_symlinks=False).st_mode & 0o777, 0o600)
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertEqual(
+                marker.read_text(encoding="ascii"),
+                f"{state['txId']}\n",
+            )
+            self.assertFalse(state["repairConfigurationComplete"])
+
+            self._run("complete-repair", "--state", str(journal))
+
+            self.assertFalse(marker.exists())
+            self.assertFalse(marker.is_symlink())
+            completed = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertTrue(completed["repairConfigurationComplete"])
+
+    def test_complete_repair_preserves_pending_marker_for_wrong_journal_or_marker(self):
+        for attack in ("wrong-journal", "wrong-marker"):
+            with self.subTest(attack=attack), tempfile.TemporaryDirectory() as tmp:
+                fixture = self._fixture(Path(tmp))
+                journal = self._commit_repair_transaction(fixture)
+                marker = fixture["runtime"] / "app" / ".repair-configuration-pending"
+                self.assertTrue(marker.is_file())
+                if attack == "wrong-journal":
+                    wrong_dir = (
+                        fixture["runtime"]
+                        / "app"
+                        / "update-transactions"
+                        / "wrong-tx"
+                    )
+                    wrong_dir.mkdir()
+                    wrong_journal = wrong_dir / "journal.json"
+                    shutil.copy2(journal, wrong_journal)
+                    state_argument = wrong_journal
+                else:
+                    marker.write_text("wrong-tx\n", encoding="ascii")
+                    marker.chmod(0o600)
+                    state_argument = journal
+                preserved = marker.read_bytes()
+
+                result = self._run(
+                    "complete-repair",
+                    "--state",
+                    str(state_argument),
+                    check=False,
+                )
+
+                self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+                self.assertTrue(marker.is_file())
+                self.assertEqual(marker.read_bytes(), preserved)
+                state = json.loads(journal.read_text(encoding="utf-8"))
+                self.assertFalse(state["repairConfigurationComplete"])
+
+    def test_repair_pre_promotion_failure_rolls_back_concrete_pointer_inodes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp))
+            source_identity, venv_identity = self._make_legacy_pointers_concrete(fixture)
+            journal = self._begin(
+                fixture,
+                owner_pid=os.getpid(),
+                mode="repair",
+                settings_only_profile_evidence=True,
+            )
+            self._prepare_stopped_candidate(
+                fixture,
+                journal,
+                allow_legacy_repair=True,
+            )
+            self._run("normalize-service-plists", "--state", str(journal))
+
+            result = self._run(
+                "promote",
+                "--state",
+                str(journal),
+                check=False,
+                env={
+                    "NOVA_INSTALL_TEST_MODE": "1",
+                    "NOVA_INSTALL_TEST_FAIL_PHASE": "source-promotion-armed",
+                },
+            )
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            source = fixture["runtime"] / "app" / "source"
+            venv = fixture["runtime"] / ".venv"
+            self.assertFalse(source.is_symlink())
+            self.assertFalse(venv.is_symlink())
+            self.assertEqual(
+                (source.stat().st_dev, source.stat().st_ino),
+                source_identity,
+            )
+            self.assertEqual(
+                (venv.stat().st_dev, venv.stat().st_ino),
+                venv_identity,
+            )
+
+            self._run("rollback", "--state", str(journal))
+
+            self.assertFalse(source.is_symlink())
+            self.assertFalse(venv.is_symlink())
+            self.assertEqual(
+                (source.stat().st_dev, source.stat().st_ino),
+                source_identity,
+            )
+            self.assertEqual(
+                (venv.stat().st_dev, venv.stat().st_ino),
+                venv_identity,
+            )
+            self.assertEqual(
+                (source / "pyproject.toml").read_text(encoding="utf-8"),
+                '[project]\nname="old"\nversion="0"\n',
+            )
+            self.assertEqual(
+                (venv / "bin" / "python").read_text(encoding="utf-8"),
+                "old-venv\n",
+            )
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertEqual(state["status"], "rolled-back")
+            self.assertFalse(
+                (fixture["runtime"] / "app" / ".update-transaction.lock").exists()
+            )
 
     def test_sigkill_pointer_promotion_windows_recover_idempotently(self):
         cases = (

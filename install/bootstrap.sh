@@ -6,13 +6,13 @@ set -euo pipefail
 
 BOOTSTRAP_DIR="${0:A:h}"
 DEFAULT_CACHE_ROOT="${NOVA_INSTALL_CACHE_ROOT:-$HOME/.cache/open-nova/installer}"
+CACHE_ROOT_EXPLICIT=$([[ -n "${NOVA_INSTALL_CACHE_ROOT:-}" ]] && print 1 || print 0)
 DEFAULT_SOURCE_URL="https://github.com/Neo-Isshin/open-nova.git"
-DEFAULT_LATEST_RELEASE_API="https://api.github.com/repos/Neo-Isshin/open-nova/releases/latest"
 SOURCE_ROOT="${NOVA_INSTALL_SOURCE_ROOT:-}"
 SOURCE_URL="${NOVA_INSTALL_SOURCE_URL:-}"
 SOURCE_REF="${NOVA_INSTALL_REF:-}"
+FOLLOW_OFFICIAL_MAIN=0
 GIT_BIN="${NOVA_INSTALL_GIT:-git}"
-CURL_BIN="${NOVA_INSTALL_CURL:-curl}"
 PLUTIL_BIN="${NOVA_INSTALL_PLUTIL:-/usr/bin/plutil}"
 ZSH_BIN="${NOVA_INSTALL_ZSH:-${ZSH_VERSION:+/bin/zsh}}"
 DRY_RUN=0
@@ -52,7 +52,7 @@ Preparation options:
   --source-url URL         Download Open Nova from this URL.
                           Default: https://github.com/Neo-Isshin/open-nova.git
   --ref VERSION           Use an exact 40- or 64-character version ID.
-                          Omit it to use the latest stable release.
+                          Omit it to use the latest official main version.
   --cache-root PATH        Download cache folder. Default: ~/.cache/open-nova/installer
   --git PATH              Git executable. Default: git
   --offline               Use local or previously downloaded files only.
@@ -72,9 +72,15 @@ bootstrap_text() {
         downloading) print -r -- "Downloading Open Nova" ;;
         checking_updates) print -r -- "Checking the selected Open Nova version" ;;
         preparing_files) print -r -- "Preparing installation files" ;;
-        latest_ready) print -r -- "Latest stable version selected" ;;
+        latest_ready) print -r -- "Latest version downloaded" ;;
         cache_ready) print -r -- "Previously downloaded files are ready" ;;
+        cache_isolated) print -r -- "The previous download folder was kept; using a new download folder" ;;
         existing_ready) print -r -- "Existing Open Nova data will be kept and updated" ;;
+        legacy_repair_prompt) print -r -- "This Open Nova installation cannot be updated directly. Reinstall it in place? Your data and settings will be kept; only the runtime and dependencies will be rebuilt. [Y/n]" ;;
+        legacy_repair_ready) print -r -- "Existing Open Nova data and settings will be kept while the runtime and dependencies are rebuilt" ;;
+        legacy_repair_cancelled) print -r -- "Open Nova recovery cancelled; existing files were not changed" ;;
+        legacy_repair_confirmation_required) print -r -- "An earlier Open Nova installation needs confirmation. Run again with --yes to keep its data and settings and rebuild the runtime." ;;
+        legacy_repair_answer_invalid) print -r -- "Please answer Y or N." ;;
         starting) print -r -- "Starting Open Nova setup" ;;
         starting_update) print -r -- "Starting Open Nova update" ;;
         step_failed) print -r -- "Could not prepare Open Nova. Run again with NOVA_INSTALL_VERBOSE=1 for details." ;;
@@ -99,9 +105,15 @@ bootstrap_text() {
         downloading) print -r -- "下载 Open Nova" ;;
         checking_updates) print -r -- "检查所选 Open Nova 版本" ;;
         preparing_files) print -r -- "准备安装文件" ;;
-        latest_ready) print -r -- "已选择最新稳定版本" ;;
+        latest_ready) print -r -- "已获取最新版本" ;;
         cache_ready) print -r -- "已准备此前下载的文件" ;;
+        cache_isolated) print -r -- "已保留原下载文件夹，将使用新的下载文件夹" ;;
         existing_ready) print -r -- "已保留现有 Open Nova 数据，将直接更新" ;;
+        legacy_repair_prompt) print -r -- "当前 Open Nova 不能直接升级，是否进行覆盖安装？现有数据与设置不会丢失，只会重建运行环境与依赖。 [Y/n]" ;;
+        legacy_repair_ready) print -r -- "将保留现有 Open Nova 数据与设置，并重建运行环境与依赖" ;;
+        legacy_repair_cancelled) print -r -- "已取消 Open Nova 恢复，现有文件未作修改" ;;
+        legacy_repair_confirmation_required) print -r -- "检测到较早版本的 Open Nova。请添加 --yes 后重试，以保留现有数据与设置并重建运行环境。" ;;
+        legacy_repair_answer_invalid) print -r -- "请输入 Y 或 N。" ;;
         starting) print -r -- "启动 Open Nova 安装" ;;
         starting_update) print -r -- "启动 Open Nova 更新" ;;
         step_failed) print -r -- "未能准备 Open Nova，可设置 NOVA_INSTALL_VERBOSE=1 后重试以查看详情。" ;;
@@ -381,200 +393,19 @@ extract_json_string() {
   print -rn -- "$value"
 }
 
-extract_json_boolean() {
-  local payload="$1"
-  local field="$2"
-  local value=""
-  if [[ -x "$PLUTIL_BIN" ]]; then
-    if value="$(print -rn -- "$payload" | "$PLUTIL_BIN" -extract "$field" raw -o - - 2>/dev/null)"; then
-      [[ "$value" == "true" || "$value" == "false" ]] || return 1
-      print -rn -- "$value"
+installer_option_takes_value() {
+  case "$1" in
+    --runtime|--diary-output|--desktop-diary-link|--shell-path-file|--reports-output|--snapshots-output|--archives-output|--source-root|--python|--dashboard-port|--dashboard-host|--rag-embedding-mode|--rag-local-model|--rag-local-dimension|--llm-provider|--llm-endpoint|--llm-model|--llm-api-key-env|--rag-cloud-provider|--rag-cloud-endpoint|--rag-cloud-model|--rag-cloud-dimension|--rag-cloud-api-key-env|--language)
       return 0
-    fi
-  fi
-
-  local flattened=""
-  local occurrences=""
-  flattened="$(print -rn -- "$payload" | /usr/bin/tr '\r\n' '  ' 2>/dev/null)" || return 1
-  occurrences="$(print -rn -- "$flattened" | /usr/bin/grep -o "\"${field}\"[[:space:]]*:" 2>/dev/null | /usr/bin/wc -l | /usr/bin/tr -d '[:space:]')" || return 1
-  [[ "$occurrences" == "1" ]] || return 1
-  value="$(print -rn -- "$flattened" | /usr/bin/sed -n "s/.*\"${field}\"[[:space:]]*:[[:space:]]*\\(true\\|false\\).*/\\1/p")" || return 1
-  [[ "$value" == "true" || "$value" == "false" ]] || return 1
-  print -rn -- "$value"
-}
-
-parse_latest_release_json() {
-  local payload="$1"
-  print -rn -- "$payload" | /usr/bin/awk '
-function fail() { failed = 1; return 0 }
-function skip_ws(    c) {
-  while (cursor <= length(input)) {
-    c = substr(input, cursor, 1)
-    if (c != " " && c != "\t" && c != "\r" && c != "\n") break
-    cursor++
-  }
-}
-function hex_digit(c,    position) {
-  position = index("0123456789abcdef", tolower(c))
-  return position == 0 ? -1 : position - 1
-}
-function parse_string(    c, escape, code, digit, index_value, decoded) {
-  if (substr(input, cursor, 1) != "\"") return fail()
-  cursor++
-  decoded = ""
-  while (cursor <= length(input)) {
-    c = substr(input, cursor, 1)
-    cursor++
-    if (c == "\"") {
-      parsed_string = decoded
-      return 1
-    }
-    if (c == "\\") {
-      if (cursor > length(input)) return fail()
-      escape = substr(input, cursor, 1)
-      cursor++
-      if (escape == "u") {
-        if (cursor + 3 > length(input)) return fail()
-        code = 0
-        for (index_value = 0; index_value < 4; index_value++) {
-          digit = hex_digit(substr(input, cursor + index_value, 1))
-          if (digit < 0) return fail()
-          code = code * 16 + digit
-        }
-        cursor += 4
-        decoded = decoded (code <= 127 ? sprintf("%c", code) : "?")
-      } else if (index("\"\\/bfnrt", escape) > 0) {
-        if (escape == "\"" || escape == "\\" || escape == "/") {
-          decoded = decoded escape
-        } else {
-          decoded = decoded " "
-        }
-      } else {
-        return fail()
-      }
-    } else {
-      if (c ~ /[[:cntrl:]]/) return fail()
-      decoded = decoded c
-    }
-  }
-  return fail()
-}
-function consume_literal(word) {
-  if (substr(input, cursor, length(word)) != word) return fail()
-  cursor += length(word)
+      ;;
+  esac
   return 1
-}
-function parse_number(    remainder) {
-  remainder = substr(input, cursor)
-  if (match(remainder, /^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?/) != 1) return fail()
-  cursor += RLENGTH
-  return 1
-}
-function parse_array(depth,    c) {
-  cursor++
-  skip_ws()
-  if (substr(input, cursor, 1) == "]") { cursor++; return 1 }
-  while (!failed) {
-    if (!parse_value(depth + 1)) return 0
-    skip_ws()
-    c = substr(input, cursor, 1)
-    if (c == "]") { cursor++; return 1 }
-    if (c != ",") return fail()
-    cursor++
-    skip_ws()
-  }
-  return 0
-}
-function parse_object(depth,    c, key) {
-  cursor++
-  skip_ws()
-  if (substr(input, cursor, 1) == "}") { cursor++; return 1 }
-  while (!failed) {
-    if (!parse_string()) return 0
-    key = parsed_string
-    skip_ws()
-    if (substr(input, cursor, 1) != ":") return fail()
-    cursor++
-    skip_ws()
-    if (depth == 1 && key == "name") {
-      name_count++
-      if (name_count != 1) return fail()
-      c = substr(input, cursor, 1)
-      if (c == "\"") {
-        if (!parse_string()) return 0
-        name_kind = "string"
-        name_value = parsed_string
-      } else if (substr(input, cursor, 4) == "null") {
-        if (!consume_literal("null")) return 0
-        name_kind = "null"
-      } else {
-        return fail()
-      }
-    } else if (depth == 1 && key == "tag_name") {
-      tag_count++
-      if (tag_count != 1 || substr(input, cursor, 1) != "\"") return fail()
-      if (!parse_string() || parsed_string == "") return fail()
-      tag_value = parsed_string
-    } else if (depth == 1 && (key == "draft" || key == "prerelease")) {
-      if (key == "draft") {
-        draft_count++
-        if (draft_count != 1) return fail()
-      } else {
-        prerelease_count++
-        if (prerelease_count != 1) return fail()
-      }
-      if (substr(input, cursor, 4) == "true") {
-        if (!consume_literal("true")) return 0
-        boolean_value = "true"
-      } else if (substr(input, cursor, 5) == "false") {
-        if (!consume_literal("false")) return 0
-        boolean_value = "false"
-      } else {
-        return fail()
-      }
-      if (key == "draft") draft_value = boolean_value
-      else prerelease_value = boolean_value
-    } else if (!parse_value(depth + 1)) {
-      return 0
-    }
-    skip_ws()
-    c = substr(input, cursor, 1)
-    if (c == "}") { cursor++; return 1 }
-    if (c != ",") return fail()
-    cursor++
-    skip_ws()
-  }
-  return 0
-}
-function parse_value(depth,    c) {
-  skip_ws()
-  c = substr(input, cursor, 1)
-  if (c == "{") return parse_object(depth)
-  if (c == "[") return parse_array(depth)
-  if (c == "\"") return parse_string()
-  if (c == "t") return consume_literal("true")
-  if (c == "f") return consume_literal("false")
-  if (c == "n") return consume_literal("null")
-  return parse_number()
-}
-{ input = input (NR == 1 ? "" : "\n") $0 }
-END {
-  cursor = 1
-  skip_ws()
-  if (substr(input, cursor, 1) != "{" || !parse_object(1)) failed = 1
-  skip_ws()
-  if (cursor <= length(input)) failed = 1
-  if (tag_count != 1 || draft_count != 1 || prerelease_count != 1) failed = 1
-  if (failed) exit 2
-  if (name_count == 0 || name_kind == "null") name_status = "absent"
-  else if (tolower(name_value) ~ /withdrawn/) name_status = "withdrawn"
-  else name_status = "ok"
-  printf "%s\t%s\t%s\t%s\n", tag_value, draft_value, prerelease_value, name_status
-}'
 }
 
 parse_installer_safety_args() {
   INSTALLER_UPGRADE=0
+  INSTALLER_REPAIR=0
+  INSTALLER_SPECIAL_UPDATE=0
   INSTALLER_RUNTIME="${NOVA_INSTALL_RUNTIME:-$HOME/.open-nova}"
   INSTALLER_RUNTIME_ARG=0
   INSTALLER_RUNTIME_ENV=0
@@ -588,8 +419,16 @@ parse_installer_safety_args() {
   while (( index <= ${#INSTALL_ARGS[@]} )); do
     arg="${INSTALL_ARGS[$index]}"
     case "$arg" in
-      --upgrade|--source-only|--sync-runtime-source)
+      --upgrade)
         INSTALLER_UPGRADE=1
+        ;;
+      --source-only|--sync-runtime-source)
+        INSTALLER_UPGRADE=1
+        INSTALLER_SPECIAL_UPDATE=1
+        ;;
+      --repair-existing)
+        INSTALLER_UPGRADE=1
+        INSTALLER_REPAIR=1
         ;;
       --yes)
         INSTALLER_YES=1
@@ -608,9 +447,13 @@ parse_installer_safety_args() {
         INSTALLER_RUNTIME="$value"
         INSTALLER_RUNTIME_ARG=1
         ;;
-      --diary-output|--desktop-diary-link|--shell-path-file|--reports-output|--snapshots-output|--archives-output|--source-root|--python|--dashboard-port|--dashboard-host|--rag-embedding-mode|--rag-local-model|--rag-local-dimension|--llm-provider|--llm-endpoint|--llm-model|--llm-api-key-env|--rag-cloud-provider|--rag-cloud-endpoint|--rag-cloud-model|--rag-cloud-dimension|--rag-cloud-api-key-env|--language)
+      *)
         # A token consumed as another option's value must never be mistaken for
-        # --upgrade and used to bypass the fresh-install guard.
+        # an update approval flag.
+        if ! installer_option_takes_value "$arg"; then
+          index=$(( index + 1 ))
+          continue
+        fi
         if (( index < ${#INSTALL_ARGS[@]} )); then
           index=$(( index + 1 ))
         fi
@@ -618,6 +461,61 @@ parse_installer_safety_args() {
     esac
     index=$(( index + 1 ))
   done
+}
+
+ensure_installer_flag_once() {
+  local expected="$1"
+  local argument=""
+  local found=0
+  local normalized=()
+  local index=1
+  while (( index <= ${#INSTALL_ARGS[@]} )); do
+    argument="${INSTALL_ARGS[$index]}"
+    if installer_option_takes_value "$argument"; then
+      normalized+=("$argument")
+      if (( index < ${#INSTALL_ARGS[@]} )); then
+        index=$(( index + 1 ))
+        normalized+=("${INSTALL_ARGS[$index]}")
+      fi
+      index=$(( index + 1 ))
+      continue
+    fi
+    if [[ "$argument" == "$expected" ]]; then
+      if [[ "$found" == "0" ]]; then
+        normalized+=("$argument")
+        found=1
+      fi
+      index=$(( index + 1 ))
+      continue
+    fi
+    normalized+=("$argument")
+    index=$(( index + 1 ))
+  done
+  if [[ "$found" == "0" ]]; then
+    normalized+=("$expected")
+  fi
+  INSTALL_ARGS=("${normalized[@]}")
+}
+
+remove_installer_flag() {
+  local unwanted="$1"
+  local argument=""
+  local normalized=()
+  local index=1
+  while (( index <= ${#INSTALL_ARGS[@]} )); do
+    argument="${INSTALL_ARGS[$index]}"
+    if installer_option_takes_value "$argument"; then
+      normalized+=("$argument")
+      if (( index < ${#INSTALL_ARGS[@]} )); then
+        index=$(( index + 1 ))
+        normalized+=("${INSTALL_ARGS[$index]}")
+      fi
+    elif [[ "$argument" != "$unwanted" ]]; then
+      normalized+=("$argument")
+    fi
+    index=$(( index + 1 ))
+  done
+  INSTALL_ARGS=("${normalized[@]}")
 }
 
 normalize_runtime_candidate() {
@@ -667,15 +565,84 @@ runtime_has_open_nova_marker() {
   return 1
 }
 
-runtime_is_updateable_open_nova() {
+runtime_repair_configuration_pending_status() {
+  local candidate="$1"
+  local marker="${candidate}/app/.repair-configuration-pending"
+  local marker_size=""
+  local marker_identity=""
+  local expected_uid=""
+  local tx_id=""
+  if [[ ! -e "$marker" && ! -L "$marker" ]]; then
+    return 1
+  fi
+  if [[ ! -f "$marker" || -L "$marker" ]]; then
+    return 2
+  fi
+  marker_identity="$(/usr/bin/stat -f '%l:%Lp:%u' "$marker" 2>/dev/null)" || return 2
+  expected_uid="$(/usr/bin/id -u 2>/dev/null)" || return 2
+  [[ "$marker_identity" == "1:600:${expected_uid}" ]] || return 2
+  marker_size="$(/usr/bin/wc -c < "$marker" | /usr/bin/tr -d '[:space:]')" || return 2
+  [[ "$marker_size" =~ "^[0-9]+$" ]] || return 2
+  (( marker_size >= 2 && marker_size <= 129 )) || return 2
+  tx_id="$(<"$marker")" || return 2
+  [[ "$tx_id" =~ "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" ]] || return 2
+  (( marker_size == ${#tx_id} + 1 )) || return 2
+  return 0
+}
+
+runtime_root_is_unsafe() {
+  local candidate="$1"
+  [[ -L "$candidate" ]] && return 0
+  [[ -e "$candidate" && ! -d "$candidate" ]] && return 0
+  return 1
+}
+
+runtime_source_manifest_path() {
   local candidate="$1"
   local source_pointer="${candidate}/app/source"
   local source_raw=""
   local generation=""
   local source_target=""
   local manifest=""
-  local manifest_payload=""
   local manifest_size=""
+  [[ -d "$candidate" && ! -L "$candidate" ]] || return 1
+  [[ -d "${candidate}/app" && ! -L "${candidate}/app" ]] || return 1
+  if [[ -L "$source_pointer" ]]; then
+    source_raw="$(/usr/bin/readlink "$source_pointer" 2>/dev/null)" || return 1
+    [[ "$source_raw" == releases/* ]] || return 1
+    generation="${source_raw#releases/}"
+    [[ -n "$generation" && "$generation" != "." && "$generation" != ".." && "$generation" != */* ]] || return 1
+    [[ -d "${candidate}/app/releases" && ! -L "${candidate}/app/releases" ]] || return 1
+    source_target="${candidate}/app/releases/${generation}"
+  elif [[ -d "$source_pointer" ]]; then
+    source_target="$source_pointer"
+  else
+    return 1
+  fi
+  [[ -d "$source_target" && ! -L "$source_target" ]] || return 1
+  manifest="${source_target}/.open-nova-runtime-source.json"
+  [[ -f "$manifest" && ! -L "$manifest" ]] || return 1
+  manifest_size="$(/usr/bin/wc -c < "$manifest" | /usr/bin/tr -d '[:space:]')" || return 1
+  [[ "$manifest_size" =~ "^[0-9]+$" ]] || return 1
+  (( manifest_size > 0 && manifest_size <= 1048576 )) || return 1
+  print -rn -- "$manifest"
+}
+
+runtime_has_explicit_foreign_manifest() {
+  local candidate="$1"
+  local manifest=""
+  local manifest_payload=""
+  local product=""
+  manifest="$(runtime_source_manifest_path "$candidate")" || return 1
+  manifest_payload="$(<"$manifest")" || return 1
+  product="$(extract_json_string "$manifest_payload" "product")" || return 1
+  [[ "$product" != "open-nova" ]]
+}
+
+runtime_is_updateable_open_nova() {
+  local candidate="$1"
+  local manifest=""
+  local manifest_payload=""
   local product=""
   local deployment_mode=""
   [[ -d "$candidate" && ! -L "$candidate" ]] || return 1
@@ -684,22 +651,41 @@ runtime_is_updateable_open_nova() {
   [[ -d "${candidate}/app/releases" && ! -L "${candidate}/app/releases" ]] || return 1
   [[ -f "${candidate}/config/settings.json" && ! -L "${candidate}/config/settings.json" ]] || return 1
   [[ -f "${candidate}/config/runtime.json" && ! -L "${candidate}/config/runtime.json" ]] || return 1
-  [[ -L "$source_pointer" ]] || return 1
-  source_raw="$(/usr/bin/readlink "$source_pointer" 2>/dev/null)" || return 1
-  [[ "$source_raw" == releases/* ]] || return 1
-  generation="${source_raw#releases/}"
-  [[ -n "$generation" && "$generation" != "." && "$generation" != ".." && "$generation" != */* ]] || return 1
-  source_target="${candidate}/app/releases/${generation}"
-  [[ -d "$source_target" && ! -L "$source_target" ]] || return 1
-  manifest="${source_target}/.open-nova-runtime-source.json"
-  [[ -f "$manifest" && ! -L "$manifest" ]] || return 1
-  manifest_size="$(/usr/bin/wc -c < "$manifest" | /usr/bin/tr -d '[:space:]')" || return 1
-  [[ "$manifest_size" =~ "^[0-9]+$" ]] || return 1
-  (( manifest_size > 0 && manifest_size <= 1048576 )) || return 1
+  [[ -L "${candidate}/app/source" ]] || return 1
+  manifest="$(runtime_source_manifest_path "$candidate")" || return 1
   manifest_payload="$(<"$manifest")" || return 1
   product="$(extract_json_string "$manifest_payload" "product")" || return 1
   deployment_mode="$(extract_json_string "$manifest_payload" "deploymentMode")" || return 1
   [[ "$product" == "open-nova" && "$deployment_mode" == "release-symlink" ]]
+}
+
+confirm_legacy_runtime_repair() {
+  if [[ "$INSTALLER_YES" == "1" ]]; then
+    return 0
+  fi
+  local answer=""
+  while true; do
+    if ! print -rn -- "$(bootstrap_text legacy_repair_prompt) " 2>/dev/null > /dev/tty; then
+      bootstrap_problem legacy_repair_confirmation_required "legacy Open Nova repair requires confirmation or --yes"
+      return 2
+    fi
+    if ! IFS= read -r answer 2>/dev/null < /dev/tty; then
+      bootstrap_problem legacy_repair_confirmation_required "legacy Open Nova repair confirmation could not be read; rerun with --yes"
+      return 2
+    fi
+    case "${answer:l}" in
+      ""|y|yes)
+        return 0
+        ;;
+      n|no)
+        print -r -- "  • $(bootstrap_text legacy_repair_cancelled)"
+        return 3
+        ;;
+      *)
+        print -r -- "$(bootstrap_text legacy_repair_answer_invalid)" 2>/dev/null > /dev/tty
+        ;;
+    esac
+  done
 }
 
 read_saved_runtime_location() {
@@ -739,6 +725,7 @@ select_installer_mode_before_source_writes() {
   local selected_runtime="$INSTALLER_RUNTIME"
   local pointed_runtime=""
   local normalized_runtime=""
+  local repair_pending_status=1
 
   if [[ "$INSTALLER_RUNTIME_ARG" != "1" && "$INSTALLER_RUNTIME_ENV" != "1" ]]; then
     if [[ -n "${NOVA_HOME:-}" ]]; then
@@ -758,21 +745,53 @@ select_installer_mode_before_source_writes() {
     INSTALL_ARGS+=(--runtime "$normalized_runtime")
   fi
 
-  if [[ "$INSTALLER_UPGRADE" == "1" ]]; then
-    return 0
+  if runtime_root_is_unsafe "$normalized_runtime"; then
+    bootstrap_problem runtime_incomplete "selected Open Nova Runtime root is a symlink or non-directory: ${normalized_runtime}"
+    return 2
   fi
   if runtime_has_open_nova_marker "$normalized_runtime"; then
-    if ! runtime_is_updateable_open_nova "$normalized_runtime"; then
-      bootstrap_problem runtime_incomplete "existing Open Nova state is incomplete at ${normalized_runtime}"
+    if runtime_has_explicit_foreign_manifest "$normalized_runtime"; then
+      bootstrap_problem runtime_incomplete "selected Runtime source manifest belongs to another product: ${normalized_runtime}"
       return 2
     fi
-    INSTALL_ARGS+=(--upgrade)
-    if [[ "$INSTALLER_YES" != "1" ]]; then
-      INSTALL_ARGS+=(--yes)
-      INSTALLER_YES=1
+    set +e
+    runtime_repair_configuration_pending_status "$normalized_runtime"
+    repair_pending_status=$?
+    set -e
+    if [[ "$repair_pending_status" == "2" ]]; then
+      bootstrap_problem runtime_incomplete "selected Runtime repair marker is unsafe: ${normalized_runtime}"
+      return 2
     fi
+    if [[ "$repair_pending_status" != "0" ]] && runtime_is_updateable_open_nova "$normalized_runtime"; then
+      if [[ "$INSTALLER_UPGRADE" == "1" ]]; then
+        return 0
+      fi
+      ensure_installer_flag_once --upgrade
+      ensure_installer_flag_once --yes
+      INSTALLER_YES=1
+      INSTALLER_UPGRADE=1
+      bootstrap_ok "$(bootstrap_text existing_ready)"
+      return 0
+    fi
+
+    if [[ "$INSTALLER_SPECIAL_UPDATE" == "1" ]]; then
+      return 0
+    fi
+    confirm_legacy_runtime_repair || return $?
+    # A legacy Runtime cannot use the ordinary update contract. Convert an
+    # explicit --upgrade request into the confirmed repair mode instead of
+    # forwarding mutually exclusive installer flags.
+    remove_installer_flag --upgrade
+    ensure_installer_flag_once --repair-existing
+    ensure_installer_flag_once --yes
+    INSTALLER_REPAIR=1
     INSTALLER_UPGRADE=1
-    bootstrap_ok "$(bootstrap_text existing_ready)"
+    INSTALLER_YES=1
+    bootstrap_ok "$(bootstrap_text legacy_repair_ready)"
+    return 0
+  fi
+
+  if [[ "$INSTALLER_UPGRADE" == "1" ]]; then
     return 0
   fi
 
@@ -785,66 +804,27 @@ select_installer_mode_before_source_writes() {
   done
 }
 
-resolve_latest_stable_commit() {
-  if ! command -v "$CURL_BIN" >/dev/null 2>&1 && [[ ! -x "$CURL_BIN" ]]; then
-    bootstrap_problem version_unavailable "curl executable not found: ${CURL_BIN}"
-    return 2
-  fi
-  local payload=""
-  if ! payload="$("$CURL_BIN" -fsSL --proto '=https' --tlsv1.2 --connect-timeout 10 --max-time 30 "$DEFAULT_LATEST_RELEASE_API")"; then
-    bootstrap_problem version_unavailable "latest stable Open Nova release could not be read"
-    return 2
-  fi
-  local release_tag=""
-  local release_metadata=""
-  local release_name_status=""
-  local release_draft=""
-  local release_prerelease=""
-  if ! release_metadata="$(parse_latest_release_json "$payload")"; then
-    bootstrap_problem version_unavailable "latest stable Open Nova release response is invalid"
-    return 2
-  fi
-  IFS=$'\t' read -r release_tag release_draft release_prerelease release_name_status <<< "$release_metadata"
-  if [[ "$release_draft" != "false" || "$release_prerelease" != "false" ]]; then
-    bootstrap_problem version_unavailable "latest Open Nova release is not stable"
-    return 2
-  fi
-  # GitHub immutable Releases may still have their human-facing title and
-  # notes edited after publication.  Treat an explicit WITHDRAWN title as a
-  # distribution stop even though GitHub's /releases/latest endpoint continues
-  # to classify the object as published, non-draft, and non-prerelease.
-  if [[ "$release_name_status" == "withdrawn" ]]; then
-    bootstrap_problem version_unavailable "latest Open Nova release was withdrawn"
-    return 2
-  fi
-  if [[ ! "$release_tag" =~ "^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$" ]] \
-    || [[ "$release_tag" == *..* || "$release_tag" == *'@{'* || "$release_tag" == *. ]]; then
-    bootstrap_problem version_unavailable "latest Open Nova release returned an invalid version tag"
-    return 2
-  fi
-
-  local remote_rows=""
-  if ! remote_rows="$("$GIT_BIN" ls-remote --tags "$DEFAULT_SOURCE_URL" "refs/tags/${release_tag}" "refs/tags/${release_tag}^{}")"; then
-    bootstrap_problem version_unavailable "stable release tag ${release_tag} could not be resolved"
-    return 2
-  fi
-  local direct_commit=""
-  local peeled_commit=""
-  local object_id=""
-  local ref_name=""
-  while IFS=$'\t' read -r object_id ref_name; do
-    if [[ "$ref_name" == "refs/tags/${release_tag}^{}" ]] && is_full_commit_id "$object_id"; then
-      peeled_commit="${object_id:l}"
-    elif [[ "$ref_name" == "refs/tags/${release_tag}" ]] && is_full_commit_id "$object_id"; then
-      direct_commit="${object_id:l}"
+resolve_official_main_commit() {
+  local source_root="$1"
+  local resolved_commit=""
+  if [[ "$DRY_RUN" == "1" && ! -d "${source_root}/.git" ]]; then
+    local remote_line=""
+    local remote_ref=""
+    remote_line="$(git_exec ls-remote --exit-code "$SOURCE_URL" refs/heads/main 2>/dev/null || true)"
+    resolved_commit="${remote_line%%[[:space:]]*}"
+    remote_ref="${remote_line#*[[:space:]]}"
+    if [[ "$remote_ref" != "refs/heads/main" ]]; then
+      resolved_commit=""
     fi
-  done <<< "$remote_rows"
-  local resolved_commit="${peeled_commit:-$direct_commit}"
-  if [[ -z "$resolved_commit" ]]; then
-    bootstrap_problem version_unavailable "stable release tag ${release_tag} did not resolve to an exact version"
+  else
+    resolved_commit="$(git_exec -C "$source_root" rev-parse --verify 'refs/remotes/origin/main^{commit}' 2>/dev/null || true)"
+  fi
+  resolved_commit="${resolved_commit:l}"
+  if ! is_full_commit_id "$resolved_commit"; then
+    bootstrap_problem version_unavailable "official origin/main did not resolve to an exact commit"
     return 2
   fi
-  log "Selected latest stable release tag: ${release_tag} (${resolved_commit})" >&2
+  log "Selected latest official main commit: ${resolved_commit}" >&2
   bootstrap_ok "$(bootstrap_text latest_ready)" >&2
   print -rn -- "$resolved_commit"
 }
@@ -869,6 +849,7 @@ while [[ $# -gt 0 ]]; do
     --cache-root)
       require_value "$1" "${2:-}"
       DEFAULT_CACHE_ROOT="$2"
+      CACHE_ROOT_EXPLICIT=1
       shift 2
       ;;
     --git)
@@ -930,7 +911,13 @@ fi
 
 # Runtime selection intentionally runs before cache directory creation, clone,
 # fetch, sparse-checkout, or any other installer-owned source write.
-select_installer_mode_before_source_writes || exit $?
+runtime_selection_status=0
+select_installer_mode_before_source_writes || runtime_selection_status=$?
+if [[ "$runtime_selection_status" == "3" ]]; then
+  exit 0
+elif [[ "$runtime_selection_status" != "0" ]]; then
+  exit "$runtime_selection_status"
+fi
 
 if [[ -z "$SOURCE_ROOT" ]]; then
   if [[ -z "$SOURCE_URL" ]]; then
@@ -945,11 +932,11 @@ if [[ -z "$SOURCE_ROOT" ]]; then
       bootstrap_problem offline_missing "offline setup requires a local source or exact cached version"
       exit 2
     fi
-    if [[ "$SOURCE_URL" != "$DEFAULT_SOURCE_URL" ]]; then
+    if ! source_urls_match "$SOURCE_URL" "$DEFAULT_SOURCE_URL"; then
       bootstrap_problem version_invalid "custom source URL requires an exact version ID"
       exit 2
     fi
-    SOURCE_REF="$(resolve_latest_stable_commit)" || exit $?
+    FOLLOW_OFFICIAL_MAIN=1
   elif ! is_full_commit_id "$SOURCE_REF"; then
     bootstrap_problem version_invalid "remote version must be a full 40- or 64-character commit ID"
     exit 2
@@ -960,6 +947,20 @@ if [[ -z "$SOURCE_ROOT" ]]; then
   SOURCE_ROOT="${cache_root}/source"
   BOOTSTRAP_LOG_FILE="${cache_root}/bootstrap.log"
   CACHE_SOURCE=1
+  if [[ -d "${SOURCE_ROOT}/.git" ]]; then
+    existing_source_url="$(git_exec -C "${SOURCE_ROOT}" remote get-url origin 2>/dev/null || true)"
+    if ! source_urls_match "$existing_source_url" "$SOURCE_URL"; then
+      if [[ "$CACHE_ROOT_EXPLICIT" == "0" ]] && source_urls_match "$SOURCE_URL" "$DEFAULT_SOURCE_URL"; then
+        cache_root="${cache_root}/official-main"
+        SOURCE_ROOT="${cache_root}/source"
+        BOOTSTRAP_LOG_FILE="${cache_root}/bootstrap.log"
+        bootstrap_ok "$(bootstrap_text cache_isolated)"
+      else
+        bootstrap_problem cache_mismatch "download cache source does not match requested source"
+        exit 2
+      fi
+    fi
+  fi
   if [[ "$DRY_RUN" != "1" && -d "$cache_root" ]]; then
     prepare_bootstrap_log "$cache_root"
   fi
@@ -972,7 +973,12 @@ if [[ -z "$SOURCE_ROOT" ]]; then
     log "Updating existing source checkout: ${SOURCE_ROOT}"
     if [[ "$OFFLINE" != "1" ]]; then
       configure_sparse_checkout "${SOURCE_ROOT}"
-      run_git_cmd -C "${SOURCE_ROOT}" fetch --all --tags --force
+      if [[ "$FOLLOW_OFFICIAL_MAIN" == "1" ]]; then
+        run_git_cmd -C "${SOURCE_ROOT}" fetch --force origin \
+          '+refs/heads/main:refs/remotes/origin/main'
+      else
+        run_git_cmd -C "${SOURCE_ROOT}" fetch --all --tags --force
+      fi
     else
       verify_offline_source_cache "${SOURCE_ROOT}" "${SOURCE_REF}" || exit $?
       configure_sparse_checkout "${SOURCE_ROOT}"
@@ -991,12 +997,19 @@ if [[ -z "$SOURCE_ROOT" ]]; then
     fi
     run_git_cmd clone --filter=blob:none --sparse --no-checkout "${SOURCE_URL}" "${SOURCE_ROOT}"
     configure_sparse_checkout "${SOURCE_ROOT}"
+    if [[ "$FOLLOW_OFFICIAL_MAIN" == "1" ]]; then
+      run_git_cmd -C "${SOURCE_ROOT}" fetch --force origin \
+        '+refs/heads/main:refs/remotes/origin/main'
+    fi
   fi
 fi
 
 SOURCE_ROOT="${SOURCE_ROOT:A}"
 SELECTED_REF=""
 if [[ "$CACHE_SOURCE" == "1" ]]; then
+  if [[ "$FOLLOW_OFFICIAL_MAIN" == "1" ]]; then
+    SOURCE_REF="$(resolve_official_main_commit "$SOURCE_ROOT")" || exit $?
+  fi
   SELECTED_REF="$SOURCE_REF"
   if [[ "$DRY_RUN" != "1" ]]; then
     resolved_object="$(git_exec -C "${SOURCE_ROOT}" rev-parse --verify "${SOURCE_REF}^{commit}" 2>/dev/null || true)"

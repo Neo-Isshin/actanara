@@ -342,6 +342,327 @@ class RuntimeDependencyProfileTests(unittest.TestCase):
                     allow_untrusted_active_venv=True,
                 )
 
+    def test_repair_profiles_accept_pre_github_embedding_provider_semantics(self):
+        cases = (
+            ({"provider": "local"}, "local", ["dashboard", "rag-local", "rag-server"]),
+            ({"provider": "cloud"}, "cloud", ["dashboard", "rag-server"]),
+            ({"provider": "openai"}, "cloud", ["dashboard", "rag-server"]),
+            (
+                {"mode": "local", "provider": "legacy-provider-id"},
+                "local",
+                ["dashboard", "rag-local", "rag-server"],
+            ),
+            ({"mode": None, "provider": "voyage"}, "cloud", ["dashboard", "rag-server"]),
+        )
+        for embedding, expected_mode, expected_profiles in cases:
+            with self.subTest(embedding=embedding), tempfile.TemporaryDirectory(
+                dir=SECURE_TEMP_PARENT
+            ) as temporary:
+                runtime, _ = self._write_settings(
+                    Path(temporary),
+                    {
+                        "features": {"rag": True},
+                        "rag": {
+                            "enabled": True,
+                            "embedding": embedding,
+                        },
+                    },
+                )
+
+                if embedding.get("mode") in {"local", "cloud"}:
+                    strict = contract.runtime_dependency_profiles(runtime)
+                    self.assertEqual(strict["rag"]["embeddingMode"], expected_mode)
+                else:
+                    with self.assertRaises(contract.ContractError):
+                        contract.runtime_dependency_profiles(runtime)
+
+                payload = contract.runtime_dependency_profiles(
+                    runtime,
+                    allow_untrusted_active_venv=True,
+                    allow_legacy_settings=True,
+                )
+
+                self.assertEqual(payload["profiles"], expected_profiles)
+                self.assertEqual(
+                    payload["rag"],
+                    {"enabled": True, "embeddingMode": expected_mode},
+                )
+
+    def test_repair_profiles_reject_ambiguous_pre_github_settings(self):
+        cases = (
+            (
+                "unsupported-explicit-mode",
+                {
+                    "features": {"rag": True},
+                    "rag": {
+                        "enabled": True,
+                        "embedding": {"mode": "unknown", "provider": "cloud"},
+                    },
+                },
+            ),
+            (
+                "conflicting-enabled-flags",
+                {
+                    "features": {"rag": True},
+                    "rag": {
+                        "enabled": False,
+                        "embedding": {"provider": "local"},
+                    },
+                },
+            ),
+            (
+                "non-boolean-enabled-flag",
+                {
+                    "features": {"rag": 1},
+                    "rag": {
+                        "enabled": True,
+                        "embedding": {"provider": "local"},
+                    },
+                },
+            ),
+            (
+                "unsupported-settings-schema",
+                {
+                    "schemaVersion": 2,
+                    "features": {"rag": False},
+                    "rag": {"enabled": False},
+                },
+            ),
+        )
+        for label, settings_payload in cases:
+            with self.subTest(case=label), tempfile.TemporaryDirectory(
+                dir=SECURE_TEMP_PARENT
+            ) as temporary:
+                runtime, _ = self._write_settings(Path(temporary), settings_payload)
+
+                with self.assertRaises(contract.ContractError):
+                    contract.runtime_dependency_profiles(
+                        runtime,
+                        allow_untrusted_active_venv=True,
+                        allow_legacy_settings=True,
+                    )
+
+    def test_repair_migrates_only_pre_github_embedding_mode(self):
+        for provider, expected_mode, expected_provider_id in (
+            ("local", "local", "local"),
+            ("cloud", "cloud", "cloud"),
+            ("cohere", "cloud", "cohere"),
+        ):
+            with self.subTest(provider=provider), tempfile.TemporaryDirectory(
+                dir=SECURE_TEMP_PARENT
+            ) as temporary:
+                runtime, settings_path = self._write_settings(
+                    Path(temporary),
+                    {
+                        "features": {"rag": True, "custom": True},
+                        "rag": {
+                            "enabled": True,
+                            "embedding": {
+                                "provider": provider,
+                                "model": "user-model",
+                            },
+                            "userOption": "keep-me",
+                        },
+                        "userSection": {"answer": 42},
+                    },
+                )
+                mode_before = stat.S_IMODE(settings_path.stat().st_mode)
+
+                parser = contract._parser()
+                args = parser.parse_args(
+                    ["migrate-legacy-settings", "--runtime", str(runtime)]
+                )
+                result, returncode = contract._dispatch(args)
+
+                self.assertEqual(returncode, 0)
+                self.assertEqual(
+                    result,
+                    {
+                        "schemaVersion": 1,
+                        "status": "migrated",
+                        "settingsMigrated": True,
+                    },
+                )
+                migrated = json.loads(settings_path.read_text(encoding="utf-8"))
+                self.assertEqual(migrated["rag"]["embedding"]["mode"], expected_mode)
+                self.assertEqual(migrated["rag"]["embedding"]["provider"], provider)
+                self.assertEqual(
+                    migrated["rag"]["embedding"]["providerId"],
+                    expected_provider_id,
+                )
+                self.assertEqual(migrated["rag"]["embedding"]["model"], "user-model")
+                self.assertEqual(migrated["rag"]["userOption"], "keep-me")
+                self.assertEqual(migrated["userSection"], {"answer": 42})
+                self.assertEqual(stat.S_IMODE(settings_path.stat().st_mode), mode_before)
+
+    def test_repair_leaves_current_or_disabled_settings_byte_identical(self):
+        cases = (
+            {
+                "schemaVersion": 1,
+                "features": {"rag": True},
+                "rag": {
+                    "enabled": True,
+                    "embedding": {
+                        "mode": "cloud",
+                        "provider": "cloud",
+                        "providerId": "cloud",
+                    },
+                },
+            },
+            {
+                "schemaVersion": 1,
+                "features": {"rag": False},
+                "rag": {"enabled": False},
+            },
+        )
+        for settings_payload in cases:
+            with self.subTest(settings=settings_payload), tempfile.TemporaryDirectory(
+                dir=SECURE_TEMP_PARENT
+            ) as temporary:
+                runtime, settings_path = self._write_settings(
+                    Path(temporary), settings_payload
+                )
+                before = settings_path.read_bytes()
+                inode = settings_path.stat().st_ino
+
+                result = contract.migrate_legacy_runtime_settings(runtime)
+
+                self.assertEqual(result["status"], "unchanged")
+                self.assertFalse(result["settingsMigrated"])
+                self.assertEqual(settings_path.read_bytes(), before)
+                self.assertEqual(settings_path.stat().st_ino, inode)
+
+    def test_repair_rejects_unsupported_explicit_mode_without_writing(self):
+        with tempfile.TemporaryDirectory(dir=SECURE_TEMP_PARENT) as temporary:
+            runtime, settings_path = self._write_settings(
+                Path(temporary),
+                {
+                    "features": {"rag": True},
+                    "rag": {
+                        "enabled": True,
+                        "embedding": {"mode": "unknown", "provider": "cloud"},
+                    },
+                },
+            )
+            before = settings_path.read_bytes()
+
+            with self.assertRaises(contract.ContractError):
+                contract.migrate_legacy_runtime_settings(runtime)
+
+            self.assertEqual(settings_path.read_bytes(), before)
+
+    def test_repair_migrates_missing_component_flags_without_losing_user_settings(self):
+        cases = (
+            ({"userSection": {"answer": 42}}, False, None),
+            (
+                {
+                    "features": {"rag": True},
+                    "userSection": {"answer": 42},
+                },
+                True,
+                "local",
+            ),
+            (
+                {
+                    "rag": {
+                        "enabled": True,
+                        "embedding": {"provider": "cohere", "model": "custom"},
+                    },
+                    "userSection": {"answer": 42},
+                },
+                True,
+                "cloud",
+            ),
+        )
+        for settings_payload, enabled, mode in cases:
+            with self.subTest(settings=settings_payload), tempfile.TemporaryDirectory(
+                dir=SECURE_TEMP_PARENT
+            ) as temporary:
+                runtime, settings_path = self._write_settings(
+                    Path(temporary), settings_payload
+                )
+
+                with self.assertRaises(contract.ContractError):
+                    contract.runtime_dependency_profiles(
+                        runtime,
+                        allow_untrusted_active_venv=True,
+                    )
+                profile = contract.runtime_dependency_profiles(
+                    runtime,
+                    allow_untrusted_active_venv=True,
+                    allow_legacy_settings=True,
+                )
+                result = contract.migrate_legacy_runtime_settings(runtime)
+                migrated = json.loads(settings_path.read_text(encoding="utf-8"))
+
+                self.assertEqual(profile["rag"], {"enabled": enabled, "embeddingMode": mode})
+                self.assertTrue(result["settingsMigrated"])
+                self.assertEqual(migrated["schemaVersion"], 1)
+                self.assertIs(migrated["features"]["rag"], enabled)
+                self.assertIs(migrated["rag"]["enabled"], enabled)
+                if enabled:
+                    self.assertEqual(migrated["rag"]["embedding"]["mode"], mode)
+                    expected_provider_id = (
+                        "cohere"
+                        if migrated["rag"]["embedding"].get("provider") == "cohere"
+                        else mode
+                    )
+                    self.assertEqual(
+                        migrated["rag"]["embedding"]["providerId"],
+                        expected_provider_id,
+                    )
+                self.assertEqual(migrated["userSection"], {"answer": 42})
+
+    def test_repair_persists_inherited_service_intent_only_for_missing_fields(self):
+        cases = (
+            (
+                {
+                    "features": {"rag": False},
+                    "rag": {"enabled": False},
+                    "userSection": {"answer": 42},
+                },
+                {"scheduler": True, "dashboard": True, "dashboardServer": False, "ragServer": False},
+            ),
+            (
+                {
+                    "features": {"rag": False, "dashboard": False},
+                    "rag": {"enabled": False, "server": {"enabled": True}},
+                    "dashboard": {"server": {"enabled": True}},
+                    "schedule": {"enabled": False},
+                    "userSection": {"answer": 42},
+                },
+                {"scheduler": False, "dashboard": False, "dashboardServer": True, "ragServer": True},
+            ),
+        )
+        for settings_payload, expected in cases:
+            with self.subTest(settings=settings_payload), tempfile.TemporaryDirectory(
+                dir=SECURE_TEMP_PARENT
+            ) as temporary:
+                runtime, settings_path = self._write_settings(
+                    Path(temporary), settings_payload
+                )
+
+                contract.migrate_legacy_runtime_settings(
+                    runtime,
+                    scheduler_enabled=True,
+                    dashboard_enabled=True,
+                    dashboard_server_enabled=False,
+                    rag_server_enabled=False,
+                )
+                migrated = json.loads(settings_path.read_text(encoding="utf-8"))
+
+                self.assertIs(migrated["schedule"]["enabled"], expected["scheduler"])
+                self.assertIs(migrated["features"]["dashboard"], expected["dashboard"])
+                self.assertIs(
+                    migrated["dashboard"]["server"]["enabled"],
+                    expected["dashboardServer"],
+                )
+                self.assertIs(
+                    migrated["rag"]["server"]["enabled"],
+                    expected["ragServer"],
+                )
+                self.assertEqual(migrated["userSection"], {"answer": 42})
+
     def test_force_rebuild_profiles_ignore_untrusted_active_marker_but_not_settings(self):
         with tempfile.TemporaryDirectory(dir=SECURE_TEMP_PARENT) as temporary:
             root = Path(temporary)
@@ -376,7 +697,10 @@ class RuntimeDependencyProfileTests(unittest.TestCase):
                 root,
                 {
                     "features": {"rag": True},
-                    "rag": {"enabled": True, "embedding": {"mode": "local"}},
+                    "rag": {
+                        "enabled": True,
+                        "embedding": {"mode": "local", "provider": "local"},
+                    },
                 },
             )
             generation = (runtime / ".venv").resolve()

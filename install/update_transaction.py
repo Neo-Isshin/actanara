@@ -52,6 +52,7 @@ PRE_COMMIT_WRITER_CONTRACT = "prior-reader-compatible-v1"
 MIGRATION_CLASSES = {"rollback-compatible-additive", "breaking"}
 SAFE_MIGRATION_VERSION_RE = re.compile(r"^[0-9]{4}_[a-z0-9_]+$")
 ARTIFACT_MARKER_NAME = ".open-nova-update-owner"
+REPAIR_CONFIGURATION_PENDING_NAME = ".repair-configuration-pending"
 SAFE_ARTIFACT_NONCE_RE = re.compile(r"^[0-9a-f]{16}$")
 FORBIDDEN_PAYLOAD_NAMES = {
     ".DS_Store",
@@ -366,6 +367,73 @@ def _atomic_bytes(path: Path, payload: bytes, *, mode: int) -> None:
             tmp.unlink()
         except FileNotFoundError:
             pass
+
+
+def _repair_configuration_pending_path(state: dict[str, Any]) -> Path:
+    runtime = Path(str(state.get("runtime") or ""))
+    expected = runtime / "app" / REPAIR_CONFIGURATION_PENDING_NAME
+    configured = state.get("repairConfigurationPending")
+    if isinstance(configured, dict) and configured.get("path") is not None:
+        if Path(str(configured["path"])) != expected:
+            raise TransactionError("repair configuration marker escaped the managed Runtime")
+    return expected
+
+
+def _repair_configuration_pending_payload(tx_id: str) -> bytes:
+    if not SAFE_TX_ID_RE.fullmatch(tx_id) or tx_id in {".", ".."}:
+        raise TransactionError("repair configuration marker transaction id is invalid")
+    return f"{tx_id}\n".encode("ascii")
+
+
+def _read_repair_configuration_pending(path: Path) -> tuple[bytes, os.stat_result]:
+    flags = os.O_RDONLY
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(path, flags)
+    except FileNotFoundError:
+        raise
+    except OSError as exc:
+        raise TransactionError("repair configuration marker cannot be opened safely") from exc
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or before.st_uid != os.getuid()
+            or stat.S_IMODE(before.st_mode) != 0o600
+            or before.st_size < 2
+            or before.st_size > 129
+        ):
+            raise TransactionError("repair configuration marker identity is unsafe")
+        raw = os.read(descriptor, 130)
+        after = os.fstat(descriptor)
+        identity_fields = (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_nlink",
+            "st_uid",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
+        if (
+            len(raw) != before.st_size
+            or any(getattr(before, field) != getattr(after, field) for field in identity_fields)
+        ):
+            raise TransactionError("repair configuration marker changed while it was read")
+        try:
+            tx_id = raw.decode("ascii").removesuffix("\n")
+        except UnicodeDecodeError as exc:
+            raise TransactionError("repair configuration marker content is invalid") from exc
+        if raw != _repair_configuration_pending_payload(tx_id):
+            raise TransactionError("repair configuration marker content is invalid")
+        return raw, before
+    finally:
+        os.close(descriptor)
 
 
 def _load_state(path: Path) -> dict[str, Any]:
@@ -1757,7 +1825,7 @@ def _verify_recorded_candidate_artifacts(state: dict[str, Any]) -> None:
     if Path(str(state["source"].get("candidateTarget") or "")) != source:
         raise TransactionError("recorded source candidate no longer matches its owned artifact")
     _validate_source_payload(state["source"])
-    if state.get("mode") != "upgrade":
+    if state.get("mode") not in {"upgrade", "repair"}:
         _verify_active_venv_reuse_binding(state)
         return
     venv_record = _candidate_artifact_record(state, "venv")
@@ -1947,6 +2015,25 @@ def _plist_targets_runtime(path: Path, runtime: Path, label: str) -> bool:
     return _legacy_watchdog_targets_runtime(payload, runtime)
 
 
+def _legacy_repair_plist_targets_runtime(path: Path, runtime: Path, label: str) -> bool:
+    """Accept an old service only when its plist is concretely Runtime-bound."""
+
+    try:
+        payload = plistlib.loads(path.read_bytes())
+    except (OSError, plistlib.InvalidFileException, ValueError):
+        return False
+    if not isinstance(payload, dict) or str(payload.get("Label") or "").strip() != label:
+        return False
+    arguments = payload.get("ProgramArguments")
+    if not isinstance(arguments, list) or not all(isinstance(item, str) for item in arguments):
+        return False
+    candidates = [Path(item).expanduser() for item in arguments if Path(item).expanduser().is_absolute()]
+    working_directory = payload.get("WorkingDirectory")
+    if isinstance(working_directory, str) and Path(working_directory).expanduser().is_absolute():
+        candidates.append(Path(working_directory).expanduser())
+    return any(candidate != runtime and _is_within(candidate, runtime) for candidate in candidates)
+
+
 def _legacy_watchdog_targets_runtime(payload: dict[str, Any], runtime: Path) -> bool:
     """Recognize only the exact pre-v1 watchdog shape that omitted NOVA_HOME."""
     arguments = payload.get("ProgramArguments")
@@ -2013,7 +2100,7 @@ def _service_binding_roots(state: dict[str, Any]) -> dict[str, Path]:
     candidate_source = Path(str(state.get("source", {}).get("candidateTarget") or ""))
     if not candidate_source.is_absolute() or candidate_source.is_symlink() or not candidate_source.is_dir():
         raise TransactionError("managed service binding has no valid source candidate")
-    if state.get("mode") == "upgrade":
+    if state.get("mode") in {"upgrade", "repair"}:
         candidate_venv = Path(str(state.get("venv", {}).get("candidateTarget") or ""))
         if not candidate_venv.is_absolute() or candidate_venv.is_symlink() or not candidate_venv.is_dir():
             raise TransactionError("managed service binding has no valid venv candidate")
@@ -2398,6 +2485,15 @@ def _verify_service_plist_bindings(state: dict[str, Any]) -> None:
         return
     if not state.get("servicePlistNormalizationComplete"):
         raise TransactionError("managed service plist binding gate was not completed")
+    if state.get("mode") == "repair":
+        for service in state.get("services") or []:
+            if service.get("kind") not in NORMALIZED_PYTHON_SERVICE_KINDS:
+                continue
+            if not _file_matches_snapshot(_managed_plist_snapshot(state, service)):
+                raise TransactionError(
+                    f"legacy managed service definition changed during repair: {service['label']}"
+                )
+        return
     for service in state.get("services") or []:
         if service.get("kind") not in NORMALIZED_PYTHON_SERVICE_KINDS:
             continue
@@ -2465,6 +2561,11 @@ def normalize_service_plists(args: argparse.Namespace) -> int:
     if state.get("status") != "stopped" or not state.get("mutableStateCaptured"):
         raise TransactionError("managed plist normalization requires stopped services and captured state")
     _verify_critical_control_state(state)
+    if state.get("mode") == "repair":
+        state["servicePlistNormalizationComplete"] = True
+        _verify_service_plist_bindings(state)
+        _save_state(state_path, state, event="legacy-managed-plists-preserved")
+        return 0
     if state.get("platform") != "Darwin":
         state["servicePlistNormalizationComplete"] = True
         _save_state(state_path, state, event="managed-plists-normalized")
@@ -3044,7 +3145,17 @@ def _verify_critical_control_state(state: dict[str, Any]) -> None:
             raise TransactionError(
                 f"managed service definition changed concurrently: {service['label']}"
             )
-        if plist.is_file() and not _plist_targets_runtime(plist, runtime, service["label"]):
+        if plist.is_file() and not (
+            _plist_targets_runtime(plist, runtime, service["label"])
+            or (
+                state.get("mode") == "repair"
+                and _legacy_repair_plist_targets_runtime(
+                    plist,
+                    runtime,
+                    service["label"],
+                )
+            )
+        ):
             raise TransactionError(
                 f"managed service definition provenance changed: {service['label']}"
             )
@@ -3756,7 +3867,7 @@ def begin(args: argparse.Namespace) -> int:
     )
     if settings_only_profile_evidence:
         if (
-            args.mode != "upgrade"
+            args.mode not in {"upgrade", "repair"}
             or active_profile_evidence_requested
             or not isinstance(args.expected_settings_sha256, str)
             or not SHA256_RE.fullmatch(args.expected_settings_sha256)
@@ -3936,6 +4047,34 @@ def begin(args: argparse.Namespace) -> int:
                 venv_pointer
             )
         state["status"] = "preparing"
+        if args.mode == "repair":
+            repair_pending = runtime / "app" / REPAIR_CONFIGURATION_PENDING_NAME
+            try:
+                _read_repair_configuration_pending(repair_pending)
+            except FileNotFoundError:
+                pass
+            _snapshot_path(
+                state_path,
+                state,
+                "repair-configuration-pending",
+                repair_pending,
+            )
+            pending_snapshot = state["files"][-1]
+            if (
+                pending_snapshot.get("key") != "repair-configuration-pending"
+                or pending_snapshot.get("kind") not in {"missing", "file"}
+                or not _file_matches_snapshot(pending_snapshot)
+            ):
+                raise TransactionError("repair configuration marker snapshot is unsafe")
+            if pending_snapshot["kind"] == "file":
+                current_pending, _metadata = _read_repair_configuration_pending(
+                    repair_pending
+                )
+                backup_pending, _metadata = _read_repair_configuration_pending(
+                    Path(str(pending_snapshot.get("backupPath") or ""))
+                )
+                if current_pending != backup_pending:
+                    raise TransactionError("repair configuration marker changed during capture")
         _snapshot_path(state_path, state, "settings", runtime / "config" / "settings.json")
         _snapshot_path(state_path, state, "runtime-manifest", runtime / "config" / "runtime.json")
         if profile_evidence_requested:
@@ -3991,7 +4130,15 @@ def begin(args: argparse.Namespace) -> int:
             for kind, label, plist_path in inventory:
                 if not _is_within(plist_path, launch_agents_root):
                     raise TransactionError(f"managed plist path escaped LaunchAgents for label {label}")
-                if plist_path.is_file() and not _plist_targets_runtime(plist_path, runtime, label):
+                if plist_path.is_file() and not (
+                    _plist_targets_runtime(plist_path, runtime, label)
+                    or (
+                        args.mode == "repair"
+                        and _legacy_repair_plist_targets_runtime(
+                            plist_path, runtime, label
+                        )
+                    )
+                ):
                     raise TransactionError(
                         f"managed service plist provenance does not match the selected Runtime: {label}"
                     )
@@ -4031,7 +4178,12 @@ def begin(args: argparse.Namespace) -> int:
                     raise TransactionError(
                         f"managed scheduler job is currently running; update refused before service stop: {label}"
                     )
-                if kind in {"dashboard", "rag"} and loaded and launch_state not in RUNNING_STATES:
+                if (
+                    args.mode != "repair"
+                    and kind in {"dashboard", "rag"}
+                    and loaded
+                    and launch_state not in RUNNING_STATES
+                ):
                     raise TransactionError(
                         f"managed {kind} service is loaded but not running; repair or unload it before update: {label}"
                     )
@@ -4048,7 +4200,7 @@ def begin(args: argparse.Namespace) -> int:
         state["services"] = services
         state["settingsSummary"] = settings_summary
         _verify_critical_control_state(state)
-        if args.platform == "Darwin":
+        if args.platform == "Darwin" and args.mode != "repair":
             _verify_service_health(state)
         state["status"] = "prepared"
         _save_state(state_path, state, event="prior-captured")
@@ -4334,10 +4486,15 @@ def verify_migration_compatibility(args: argparse.Namespace) -> int:
     pointer = state["source"]
     candidate = Path(str(pointer.get("candidateTarget") or ""))
     prior_text = str(pointer.get("priorResolvedTarget") or "")
-    if not candidate.is_dir() or not prior_text:
-        raise TransactionError("migration compatibility requires prior and candidate source trees")
-    prior = Path(prior_text)
-    if not prior.is_dir():
+    allow_legacy_repair = bool(getattr(args, "allow_legacy_repair", False))
+    if allow_legacy_repair != (state.get("mode") == "repair"):
+        raise TransactionError(
+            "legacy migration compatibility is available only to repair transactions"
+        )
+    if not candidate.is_dir():
+        raise TransactionError("migration compatibility requires a candidate source tree")
+    prior = Path(prior_text) if prior_text else None
+    if (prior is None or not prior.is_dir()) and not allow_legacy_repair:
         raise TransactionError("prior source tree is unavailable for migration compatibility")
     _verify_artifact_ownership(
         _candidate_artifact_record(state, "source"),
@@ -4349,7 +4506,13 @@ def verify_migration_compatibility(args: argparse.Namespace) -> int:
     except (OSError, json.JSONDecodeError) as exc:
         raise TransactionError("candidate source manifest is unreadable") from exc
     compatibility = _candidate_migration_contract(candidate, manifest)
-    prior_records = _source_migration_inventory(prior)
+    prior_records: list[dict[str, str]] = []
+    if prior is not None and prior.is_dir():
+        try:
+            prior_records = _source_migration_inventory(prior)
+        except TransactionError:
+            if not allow_legacy_repair:
+                raise
     prior_by_version = {record["version"]: record for record in prior_records}
     candidate_records = compatibility["migrations"]
     candidate_by_version = {record["version"]: record for record in candidate_records}
@@ -4364,13 +4527,13 @@ def verify_migration_compatibility(args: argparse.Namespace) -> int:
     new_records = [
         record for record in candidate_records if record["version"] not in prior_by_version
     ]
-    prior_maximum = max(prior_by_version)
+    prior_maximum = max(prior_by_version) if prior_by_version else "unversioned"
     for record in new_records:
-        if record["version"] <= prior_maximum:
+        if prior_by_version and record["version"] <= prior_maximum:
             raise TransactionError(
                 f"candidate inserted a migration before the prior schema boundary: {record['version']}"
             )
-        if record["rollbackClass"] != "rollback-compatible-additive":
+        if not allow_legacy_repair and record["rollbackClass"] != "rollback-compatible-additive":
             raise TransactionError(
                 f"candidate migration is not rollback-compatible additive: {record['version']}"
             )
@@ -4381,7 +4544,7 @@ def verify_migration_compatibility(args: argparse.Namespace) -> int:
     if _runtime_database_identity(runtime) != database_identity:
         raise TransactionError("Runtime database identity changed during migration compatibility check")
     for version in applied_versions:
-        if version not in prior_by_version:
+        if prior_by_version and not allow_legacy_repair and version not in prior_by_version:
             raise TransactionError(f"live database has a migration unknown to the prior source: {version}")
         if version not in candidate_by_version:
             raise TransactionError(f"live database has a migration unreadable by the candidate: {version}")
@@ -4415,6 +4578,7 @@ def verify_migration_compatibility(args: argparse.Namespace) -> int:
         "candidateMigrations": sorted(candidate_by_version),
         "newMigrations": [record["version"] for record in new_records],
         "verifiedAt": _now(),
+        "legacyRepair": allow_legacy_repair,
     }
     _save_state(state_path, state, event="migration-compatibility-verified")
     return 0
@@ -4433,6 +4597,7 @@ def _require_verified_migration_compatibility(state: dict[str, Any]) -> None:
         or evidence.get("policy") != MIGRATION_POLICY
         or evidence.get("preCommitWriterContract") != PRE_COMMIT_WRITER_CONTRACT
         or evidence.get("candidateManifestSha256") != pointer.get("candidateSha256")
+        or evidence.get("legacyRepair") is not (state.get("mode") == "repair")
         or evidence.get("priorReaderBindingSha256")
         != _prior_reader_binding_sha256(
             str(evidence.get("priorMigrationSetSha256") or ""),
@@ -4508,7 +4673,7 @@ def stop_services(args: argparse.Namespace) -> int:
     if state.get("status") != "candidate-staged":
         raise TransactionError("service stop requires a staged candidate")
     if not state.get("sourceCandidateReady") or (
-        state.get("mode") == "upgrade" and not state.get("venvCandidateReady")
+        state.get("mode") in {"upgrade", "repair"} and not state.get("venvCandidateReady")
     ):
         raise TransactionError("service stop requires all mode-specific candidates to be validated")
     _verify_critical_control_state(state)
@@ -4562,7 +4727,7 @@ def promote(args: argparse.Namespace) -> int:
     _save_state(state_path, state, event="promotion-started")
     _promote_pointer(state_path, state, "source")
     _maybe_test_fail("source-pointer-promoted")
-    if state["mode"] == "upgrade":
+    if state["mode"] in {"upgrade", "repair"}:
         _promote_pointer(state_path, state, "venv")
         _maybe_test_fail("venv-pointer-promoted")
     state["status"] = "promoted"
@@ -4654,7 +4819,7 @@ def verify(args: argparse.Namespace) -> int:
     _verify_recorded_candidate_artifacts(state)
     _verify_live_migration_ledger(state)
     _verify_service_plist_bindings(state)
-    if state["mode"] == "upgrade":
+    if state["mode"] in {"upgrade", "repair"}:
         venv = Path(state["venv"]["path"])
         candidate_venv = Path(state["venv"]["candidateTarget"])
         if not venv.is_symlink() or venv.resolve(strict=False) != candidate_venv.resolve(strict=False):
@@ -4876,6 +5041,44 @@ def cleanup_validation_runtime(args: argparse.Namespace) -> int:
     return 0
 
 
+def _restore_repair_configuration_pending_snapshot(
+    state: dict[str, Any],
+    record: dict[str, Any],
+) -> None:
+    marker = _repair_configuration_pending_path(state)
+    if Path(str(record.get("path") or "")) != marker:
+        raise TransactionError("repair configuration marker snapshot escaped the Runtime")
+    if record.get("kind") not in {"missing", "file"}:
+        raise TransactionError("repair configuration marker snapshot has an unsafe type")
+    if _file_matches_snapshot(record):
+        return
+
+    try:
+        current, _metadata = _read_repair_configuration_pending(marker)
+    except FileNotFoundError:
+        current = None
+    if current is not None and current != _repair_configuration_pending_payload(str(state["txId"])):
+        raise TransactionError("repair configuration marker changed concurrently")
+
+    if record["kind"] == "missing":
+        if current is not None:
+            marker.unlink()
+            _fsync_dir(marker.parent)
+        return
+
+    backup = Path(str(record.get("backupPath") or ""))
+    if (
+        backup.is_symlink()
+        or not backup.is_file()
+        or _sha256(backup) != record.get("sha256")
+    ):
+        raise TransactionError("repair configuration marker backup is missing or changed")
+    prior, _metadata = _read_repair_configuration_pending(backup)
+    _atomic_bytes(marker, prior, mode=int(record["mode"]))
+    if not _file_matches_snapshot(record):
+        raise TransactionError("prior repair configuration marker was not restored")
+
+
 def rollback_state(state_path: Path, state: dict[str, Any]) -> None:
     state = _stop_recorded_candidate_command(state_path, state)
     errors: list[str] = []
@@ -4931,6 +5134,8 @@ def rollback_state(state_path: Path, state: dict[str, Any]) -> None:
                 # made by a legitimate writer after capture and cannot safely
                 # distinguish them from candidate writes.
                 _validate_sqlite_snapshot_record(item)
+            elif item["key"] == "repair-configuration-pending":
+                _restore_repair_configuration_pending_snapshot(state, item)
             elif item["key"] == "managed-plist":
                 service = services_by_plist.get(str(item.get("path") or ""))
                 if _file_matches_snapshot(item):
@@ -4997,6 +5202,134 @@ def commit(args: argparse.Namespace) -> int:
     _save_state(state_path, state, event="committed")
     _maybe_test_fail("commit-journaled-before-lock-release")
     _release_lock(state)
+    return 0
+
+
+def commit_repair(args: argparse.Namespace) -> int:
+    """Commit rebuilt Runtime pointers while legacy services remain stopped.
+
+    A repair may cross migration boundaries that the legacy reader cannot
+    safely consume.  It therefore commits the validated source and venv before
+    any candidate service is started.  The installer performs configuration,
+    schema migration, service registration, and the final doctor afterwards.
+    Durable Settings and SQLite snapshots captured in the transaction are kept
+    for operator recovery.
+    """
+
+    state_path = Path(args.state)
+    state = _load_state(state_path)
+    if state.get("mode") != "repair" or state.get("status") != "promoted":
+        raise TransactionError("repair commit requires promoted repair candidates")
+    if not state.get("mutableStateCaptured") or (
+        state.get("platform") == "Darwin" and not state.get("serviceStopInitiated")
+    ):
+        raise TransactionError("repair commit requires captured state and a completed service stop")
+    _verify_critical_control_state(state)
+    _verify_recorded_candidate_artifacts(state)
+    _verify_live_migration_ledger(state)
+    _verify_service_plist_bindings(state)
+
+    source = Path(state["source"]["path"])
+    candidate_source = Path(state["source"]["candidateTarget"])
+    venv = Path(state["venv"]["path"])
+    candidate_venv = Path(state["venv"]["candidateTarget"])
+    if (
+        not source.is_symlink()
+        or source.resolve(strict=False) != candidate_source.resolve(strict=False)
+    ):
+        raise TransactionError("repair source pointer does not match its staged candidate")
+    if (
+        not venv.is_symlink()
+        or venv.resolve(strict=False) != candidate_venv.resolve(strict=False)
+    ):
+        raise TransactionError("repair venv pointer does not match its staged candidate")
+
+    if state["platform"] == "Darwin":
+        for service in state.get("services") or []:
+            loaded, _ = _launch_state(state["launchctl"], state["domain"], service["label"])
+            if loaded:
+                raise TransactionError(
+                    f"legacy managed service restarted before repair commit: {service['label']}"
+                )
+
+    pending_records = [
+        item
+        for item in state.get("files") or []
+        if item.get("key") == "repair-configuration-pending"
+    ]
+    if (
+        len(pending_records) != 1
+        or pending_records[0].get("kind") not in {"missing", "file"}
+        or not _file_matches_snapshot(pending_records[0])
+    ):
+        raise TransactionError("repair configuration marker changed before repair commit")
+    pending_path = _repair_configuration_pending_path(state)
+    pending_payload = _repair_configuration_pending_payload(str(state["txId"]))
+    state["repairConfigurationPending"] = {
+        "path": str(pending_path),
+        "txId": str(state["txId"]),
+        "sha256": hashlib.sha256(pending_payload).hexdigest(),
+        "device": None,
+        "inode": None,
+    }
+    state["repairConfigurationComplete"] = False
+    _save_state(state_path, state, event="repair-configuration-marker-planned")
+    _atomic_bytes(pending_path, pending_payload, mode=0o600)
+    written_payload, written_metadata = _read_repair_configuration_pending(pending_path)
+    if written_payload != pending_payload:
+        raise TransactionError("repair configuration marker does not match its transaction")
+    state["repairConfigurationPending"]["device"] = written_metadata.st_dev
+    state["repairConfigurationPending"]["inode"] = written_metadata.st_ino
+    _save_state(state_path, state, event="repair-configuration-marker-created")
+
+    state["repairBackupPath"] = str(state_path.parent / "backups")
+    state["status"] = "committed"
+    _save_state(state_path, state, event="repair-committed-services-stopped")
+    _maybe_test_fail("repair-commit-journaled-before-lock-release")
+    _release_lock(state)
+    return 0
+
+
+def complete_repair(args: argparse.Namespace) -> int:
+    """Clear the durable retry marker after repair configuration succeeds."""
+
+    state_path = Path(args.state)
+    state = _load_state(state_path)
+    if state.get("mode") != "repair" or state.get("status") != "committed":
+        raise TransactionError("repair completion requires a committed repair transaction")
+    pending = state.get("repairConfigurationPending")
+    expected_fields = {"path", "txId", "sha256", "device", "inode"}
+    if (
+        not isinstance(pending, dict)
+        or set(pending) != expected_fields
+        or pending.get("txId") != state.get("txId")
+        or not isinstance(pending.get("device"), int)
+        or not isinstance(pending.get("inode"), int)
+    ):
+        raise TransactionError("repair configuration marker binding is incomplete")
+    marker = _repair_configuration_pending_path(state)
+    payload, metadata = _read_repair_configuration_pending(marker)
+    expected_payload = _repair_configuration_pending_payload(str(state["txId"]))
+    if (
+        payload != expected_payload
+        or hashlib.sha256(payload).hexdigest() != pending.get("sha256")
+        or metadata.st_dev != pending.get("device")
+        or metadata.st_ino != pending.get("inode")
+    ):
+        raise TransactionError("repair configuration marker does not belong to this transaction")
+
+    state["repairConfigurationComplete"] = True
+    _save_state(state_path, state, event="repair-configuration-complete")
+    _maybe_test_fail("repair-configuration-complete-before-marker-clear")
+    payload, metadata = _read_repair_configuration_pending(marker)
+    if (
+        payload != expected_payload
+        or metadata.st_dev != pending.get("device")
+        or metadata.st_ino != pending.get("inode")
+    ):
+        raise TransactionError("repair configuration marker changed before completion")
+    marker.unlink()
+    _fsync_dir(marker.parent)
     return 0
 
 
@@ -5076,7 +5409,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("missing", "trusted"),
     )
     begin_parser.add_argument("--expected-active-marker-sha256")
-    begin_parser.add_argument("--mode", choices=("upgrade", "source-only"), required=True)
+    begin_parser.add_argument("--mode", choices=("upgrade", "repair", "source-only"), required=True)
     begin_parser.add_argument("--tx-id", required=True)
     begin_parser.add_argument("--owner-pid", type=int, required=True)
     begin_parser.add_argument("--platform", required=True)
@@ -5109,6 +5442,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     migration_compatibility = sub.add_parser("verify-migration-compatibility")
     migration_compatibility.add_argument("--state", required=True)
+    migration_compatibility.add_argument("--allow-legacy-repair", action="store_true")
     migration_compatibility.set_defaults(func=verify_migration_compatibility)
 
     cleanup_validation = sub.add_parser("cleanup-validation-runtime")
@@ -5134,6 +5468,8 @@ def build_parser() -> argparse.ArgumentParser:
         ("restore-services", restore_services),
         ("verify", verify),
         ("commit", commit),
+        ("commit-repair", commit_repair),
+        ("complete-repair", complete_repair),
         ("rollback", rollback),
     ):
         command = sub.add_parser(name)

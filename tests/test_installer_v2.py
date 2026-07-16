@@ -324,7 +324,7 @@ set -eu
 print -r -- "$0 $*" >> "{log_path}"
 if [[ "${{1:-}}" == */dependency_contract.py ]]; then
   case "${{2:-}}" in
-    runtime-profiles|cache-status|write-marker|verify-marker)
+    runtime-profiles|migrate-legacy-settings|cache-status|write-marker|verify-marker)
       exec {sys.executable!r} "$@"
       ;;
     materialize-cache)
@@ -510,6 +510,72 @@ done
             encoding="utf-8",
         )
         installer.chmod(0o755)
+
+    def _legacy_repair_fixture(
+        self,
+        root: Path,
+    ) -> tuple[unittest.TestCase, dict[str, object], dict[str, object]]:
+        # Reuse the focused full-upgrade harness so repair exercises the real
+        # transaction driver without network access or a real dependency install.
+        from tests import test_installer_full_upgrade as full_upgrade_support
+
+        harness = full_upgrade_support.InstallerFullUpgradeTests(
+            "test_legacy_concrete_venv_settings_only_upgrade_preserves_protected_state"
+        )
+        fixture = harness._fixture(root, legacy_settings_only=True)
+        runtime = Path(fixture["runtime"])
+        source = runtime / "app" / "source"
+        source.unlink()
+        source.mkdir()
+        source_sentinel = source / "legacy-source.txt"
+        source_sentinel.write_text("legacy concrete source\n", encoding="utf-8")
+
+        cli = runtime / "bin" / "open-nova"
+        cli.write_text(
+            "#!/usr/bin/env zsh\nprint -r -- 'legacy open-nova'\n",
+            encoding="utf-8",
+        )
+        cli.chmod(0o755)
+        user_sentinel = runtime / "user-owned.txt"
+        user_sentinel.write_text("preserve user state\n", encoding="utf-8")
+        user_sentinel.chmod(0o640)
+
+        fixture["protected_hashes"][user_sentinel] = hashlib.sha256(
+            user_sentinel.read_bytes()
+        ).hexdigest()
+        fixture["protected_bytes"][user_sentinel] = user_sentinel.read_bytes()
+        command = fixture["command"]
+        command[command.index("--upgrade")] = "--repair-existing"
+        command.append("--result-json")
+
+        venv = runtime / ".venv"
+        venv_python = venv / "bin" / "python"
+        settings = runtime / "config" / "settings.json"
+        database = runtime / "data" / "nova_data.sqlite3"
+        prior = {
+            "source": source,
+            "source_inode": source.stat().st_ino,
+            "source_sentinel": source_sentinel,
+            "source_sentinel_inode": source_sentinel.stat().st_ino,
+            "source_sentinel_bytes": source_sentinel.read_bytes(),
+            "venv": venv,
+            "venv_inode": venv.stat().st_ino,
+            "venv_python": venv_python,
+            "venv_python_inode": venv_python.stat().st_ino,
+            "venv_python_bytes": venv_python.read_bytes(),
+            "cli": cli,
+            "cli_inode": cli.stat().st_ino,
+            "cli_bytes": cli.read_bytes(),
+            "settings": settings,
+            "settings_bytes": settings.read_bytes(),
+            "database": database,
+            "database_bytes": database.read_bytes(),
+            "user_sentinel": user_sentinel,
+            "user_sentinel_inode": user_sentinel.stat().st_ino,
+            "user_sentinel_mode": user_sentinel.stat().st_mode & 0o777,
+            "user_sentinel_bytes": user_sentinel.read_bytes(),
+        }
+        return harness, fixture, prior
 
     def _write_offline_cache_git(
         self,
@@ -3051,6 +3117,320 @@ exit 1
         self.assertTrue(envelope["plannedDependenciesInstall"])
         self.assertFalse(envelope["dependenciesInstalled"])
         self.assertFalse(envelope["servicesStopped"])
+
+    def test_repair_existing_rejects_explicit_update_mode_flags(self):
+        conflicting_flags = ("--upgrade", "--source-only", "--force-rebuild")
+        for conflicting_flag in conflicting_flags:
+            for ordered_flags in (
+                ("--repair-existing", conflicting_flag),
+                (conflicting_flag, "--repair-existing"),
+            ):
+                with self.subTest(flag=conflicting_flag, order=ordered_flags), tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp)
+                    home = root / "Home"
+                    runtime = home / ".open-nova"
+                    home.mkdir()
+                    result = subprocess.run(
+                        [
+                            "zsh",
+                            str(INSTALLER),
+                            "--language",
+                            "en-US",
+                            *ordered_flags,
+                            "--runtime",
+                            str(runtime),
+                            "--source-root",
+                            str(ROOT),
+                            "--dry-run",
+                            "--yes",
+                        ],
+                        cwd=ROOT,
+                        env={
+                            **os.environ,
+                            "HOME": str(home),
+                            "NOVA_INSTALL_PLATFORM": "Darwin",
+                            "NOVA_INSTALL_VERBOSE": "1",
+                        },
+                        text=True,
+                        capture_output=True,
+                        timeout=30,
+                        check=False,
+                    )
+
+                    output = result.stdout + result.stderr
+                    self.assertEqual(result.returncode, 2, output)
+                    self.assertIn("--repair-existing", output)
+                    self.assertRegex(output, r"mutually exclusive|cannot be combined")
+                    self.assertNotIn("Unknown option", output)
+                    self.assertFalse(runtime.exists())
+
+    def test_repair_existing_real_apply_requires_legacy_runtime(self):
+        for runtime_kind in ("missing", "foreign-directory"):
+            with self.subTest(runtime_kind=runtime_kind), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                home = root / "Home"
+                runtime = home / ".open-nova"
+                home.mkdir()
+                sentinel = runtime / "operator-owned.txt"
+                if runtime_kind == "foreign-directory":
+                    runtime.mkdir()
+                    sentinel.write_text("foreign directory\n", encoding="utf-8")
+                result = subprocess.run(
+                    [
+                        "zsh",
+                        str(INSTALLER),
+                        "--repair-existing",
+                        "--runtime",
+                        str(runtime),
+                        "--source-root",
+                        str(ROOT),
+                        "--python",
+                        sys.executable,
+                        "--no-python-auto-install",
+                        "--yes",
+                        "--no-scheduler",
+                        "--no-dashboard-server",
+                        "--no-desktop-diary-link",
+                        "--no-shell-path",
+                    ],
+                    cwd=ROOT,
+                    env={
+                        **os.environ,
+                        "HOME": str(home),
+                        "NOVA_INSTALL_PLATFORM": "Darwin",
+                        "NOVA_INSTALL_VERBOSE": "1",
+                    },
+                    text=True,
+                    capture_output=True,
+                    timeout=30,
+                    check=False,
+                )
+
+                output = result.stdout + result.stderr
+                self.assertEqual(result.returncode, 2, output)
+                self.assertIn("--repair-existing requires a legacy Open Nova Runtime", output)
+                self.assertFalse((runtime / "app" / "update-transactions").exists())
+                if runtime_kind == "missing":
+                    self.assertFalse(runtime.exists())
+                else:
+                    self.assertEqual(sentinel.read_text(encoding="utf-8"), "foreign directory\n")
+                    self.assertEqual(sorted(path.name for path in runtime.iterdir()), [sentinel.name])
+
+    def test_repair_existing_rebuilds_managed_components_and_preserves_user_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            harness, fixture, prior = self._legacy_repair_fixture(Path(tmp))
+
+            result = harness._run_update(fixture)
+
+            output = result.stdout + result.stderr
+            self.assertEqual(result.returncode, 0, output)
+            self.assertEqual(harness._service_state(fixture), {})
+            self.assertFalse((Path(fixture["app"]) / ".update-transaction.lock").exists())
+            journals = harness._journal_paths(fixture)
+            self.assertEqual(len(journals), 1)
+            committed = json.loads(journals[0].read_text(encoding="utf-8"))
+            self.assertEqual(committed["status"], "committed")
+            self.assertEqual(committed["mode"], "repair")
+            self.assertTrue(committed["repairConfigurationComplete"])
+            self.assertFalse(
+                (Path(fixture["runtime"]) / "app" / ".repair-configuration-pending").exists()
+            )
+            self.assertEqual(
+                Path(committed["repairBackupPath"]),
+                journals[0].parent / "backups",
+            )
+            self.assertTrue(Path(committed["repairBackupPath"]).is_dir())
+            source = prior["source"]
+            venv = prior["venv"]
+            cli = prior["cli"]
+            self.assertTrue(source.is_symlink())
+            self.assertRegex(os.readlink(source), r"^releases/[^/]+$")
+            self.assertTrue(venv.is_symlink())
+            self.assertRegex(os.readlink(venv), r"^app/venvs/[^/]+$")
+            self.assertTrue((venv / "bin" / "python").is_file())
+            self.assertTrue(cli.is_file())
+            self.assertTrue(os.access(cli, os.X_OK))
+            self.assertNotEqual(cli.read_bytes(), prior["cli_bytes"])
+            self.assertNotEqual(cli.stat().st_ino, prior["cli_inode"])
+            settings_before = json.loads(prior["settings_bytes"])
+            settings_after = json.loads(prior["settings"].read_text(encoding="utf-8"))
+            settings_before["schemaVersion"] = 1
+            settings_before["features"]["dashboard"] = True
+            settings_before["schedule"]["enabled"] = False
+            settings_before["dashboard"]["server"] = {"enabled": False}
+            settings_before["rag"]["server"]["enabled"] = False
+            self.assertEqual(settings_after, settings_before)
+            self.assertEqual(prior["database"].read_bytes(), prior["database_bytes"])
+            self.assertEqual(prior["user_sentinel"].read_bytes(), prior["user_sentinel_bytes"])
+            self.assertEqual(prior["user_sentinel"].stat().st_ino, prior["user_sentinel_inode"])
+            self.assertEqual(
+                prior["user_sentinel"].stat().st_mode & 0o777,
+                prior["user_sentinel_mode"],
+            )
+            with closing(sqlite3.connect(prior["database"])) as connection:
+                self.assertEqual(
+                    connection.execute("SELECT value FROM evidence ORDER BY id").fetchall(),
+                    [("before-full-upgrade",)],
+                )
+
+    def test_repair_existing_failure_restores_legacy_components_and_user_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            harness, fixture, prior = self._legacy_repair_fixture(Path(tmp))
+
+            result = harness._run_update(
+                fixture,
+                env_overrides={"NOVA_INSTALL_TEST_FAIL_PHASE": "venv-promoted"},
+            )
+
+            output = result.stdout + result.stderr
+            self.assertNotEqual(result.returncode, 0, output)
+            source = prior["source"]
+            venv = prior["venv"]
+            cli = prior["cli"]
+            self.assertTrue(source.is_dir())
+            self.assertFalse(source.is_symlink())
+            self.assertEqual(source.stat().st_ino, prior["source_inode"])
+            self.assertEqual(
+                prior["source_sentinel"].stat().st_ino,
+                prior["source_sentinel_inode"],
+            )
+            self.assertEqual(
+                prior["source_sentinel"].read_bytes(),
+                prior["source_sentinel_bytes"],
+            )
+            self.assertTrue(venv.is_dir())
+            self.assertFalse(venv.is_symlink())
+            self.assertEqual(venv.stat().st_ino, prior["venv_inode"])
+            self.assertEqual(prior["venv_python"].stat().st_ino, prior["venv_python_inode"])
+            self.assertEqual(prior["venv_python"].read_bytes(), prior["venv_python_bytes"])
+            self.assertEqual(cli.stat().st_ino, prior["cli_inode"])
+            self.assertEqual(cli.read_bytes(), prior["cli_bytes"])
+            self.assertEqual(prior["settings"].read_bytes(), prior["settings_bytes"])
+            self.assertEqual(prior["database"].read_bytes(), prior["database_bytes"])
+            self.assertEqual(prior["user_sentinel"].read_bytes(), prior["user_sentinel_bytes"])
+            self.assertEqual(prior["user_sentinel"].stat().st_ino, prior["user_sentinel_inode"])
+            self.assertEqual(
+                prior["user_sentinel"].stat().st_mode & 0o777,
+                prior["user_sentinel_mode"],
+            )
+            harness._assert_protected_unchanged(fixture)
+            journals = harness._journal_paths(fixture)
+            self.assertEqual(len(journals), 1)
+            journal = json.loads(journals[0].read_text(encoding="utf-8"))
+            self.assertEqual(journal["status"], "rolled-back")
+            self.assertEqual(journal["rollbackErrors"], [])
+            self.assertIn("venv-promoted", harness._journal_events(journals[0]))
+            self.assertFalse((Path(fixture["app"]) / ".update-transaction.lock").exists())
+
+    def test_repair_existing_post_commit_failure_is_completed_by_retry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            harness, fixture, prior = self._legacy_repair_fixture(Path(tmp))
+            pending = Path(fixture["runtime"]) / "app" / ".repair-configuration-pending"
+            fixture["command"].remove("--no-scheduler")
+
+            failed = harness._run_update(
+                fixture,
+                env_overrides={
+                    "NOVA_FULL_UPGRADE_FAULT_PHASE": "runtime-apply",
+                    "NOVA_FULL_UPGRADE_FAULT_KIND": "return",
+                },
+            )
+
+            failed_output = failed.stdout + failed.stderr
+            self.assertNotEqual(failed.returncode, 0, failed_output)
+            self.assertIn("请重新运行 one-liner", failed_output)
+            self.assertNotIn("--repair-existing", failed_output)
+            self.assertTrue(pending.is_file())
+            self.assertEqual(pending.stat().st_mode & 0o777, 0o600)
+            first_journals = harness._journal_paths(fixture)
+            self.assertEqual(len(first_journals), 1)
+            first_state = json.loads(first_journals[0].read_text(encoding="utf-8"))
+            self.assertEqual(first_state["status"], "committed")
+            self.assertFalse(first_state["repairConfigurationComplete"])
+            self.assertEqual(pending.read_text(encoding="ascii"), f"{first_state['txId']}\n")
+            self.assertEqual(prior["database"].read_bytes(), prior["database_bytes"])
+            self.assertEqual(prior["user_sentinel"].read_bytes(), prior["user_sentinel_bytes"])
+            first_settings = json.loads(prior["settings"].read_text(encoding="utf-8"))
+            self.assertIs(first_settings["schedule"]["enabled"], True)
+            self.assertIs(first_settings["features"]["dashboard"], True)
+            self.assertIs(first_settings["dashboard"]["server"]["enabled"], False)
+
+            retried = harness._run_update(fixture)
+
+            retried_output = retried.stdout + retried.stderr
+            self.assertEqual(retried.returncode, 0, retried_output)
+            self.assertFalse(pending.exists())
+            journals = harness._journal_paths(fixture)
+            self.assertEqual(len(journals), 2)
+            states = [json.loads(path.read_text(encoding="utf-8")) for path in journals]
+            self.assertEqual(
+                sorted(state["repairConfigurationComplete"] for state in states),
+                [False, True],
+            )
+            self.assertEqual(prior["database"].read_bytes(), prior["database_bytes"])
+            self.assertEqual(prior["user_sentinel"].read_bytes(), prior["user_sentinel_bytes"])
+            calls = [
+                json.loads(line)
+                for line in Path(fixture["python_log"])
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+            argument_lines = [" ".join(call.get("argv") or []) for call in calls]
+            self.assertTrue(
+                any("--scheduler-register-apply" in line for line in argument_lines)
+            )
+            self.assertFalse(
+                any("install_dashboard_launch_agent" in line for line in argument_lines)
+            )
+
+    def test_repair_existing_restores_services_requested_by_settings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            harness, fixture, prior = self._legacy_repair_fixture(Path(tmp))
+            command = fixture["command"]
+            command.remove("--no-scheduler")
+            command.remove("--no-dashboard-server")
+            settings = prior["settings"]
+            payload = json.loads(settings.read_text(encoding="utf-8"))
+            payload["features"]["dashboard"] = True
+            payload["dashboard"]["server"] = {"enabled": True}
+            payload["schedule"]["enabled"] = True
+            settings.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
+            fixture["protected_hashes"][settings] = hashlib.sha256(
+                settings.read_bytes()
+            ).hexdigest()
+            fixture["protected_bytes"][settings] = settings.read_bytes()
+
+            result = harness._run_update(fixture)
+
+            output = result.stdout + result.stderr
+            self.assertEqual(result.returncode, 0, output)
+            calls = [
+                json.loads(line)
+                for line in Path(fixture["python_log"])
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+            argument_lines = [" ".join(call.get("argv") or []) for call in calls]
+            self.assertTrue(
+                any("--scheduler-plist-apply" in line for line in argument_lines)
+            )
+            self.assertTrue(
+                any("--scheduler-register-apply" in line for line in argument_lines)
+            )
+            self.assertTrue(
+                any("install_dashboard_launch_agent" in line for line in argument_lines)
+            )
+            self.assertFalse(
+                any("install_rag_launch_agent" in line for line in argument_lines)
+            )
+            self.assertFalse(
+                (Path(fixture["runtime"]) / "app" / ".repair-configuration-pending").exists()
+            )
+            migrated = json.loads(settings.read_text(encoding="utf-8"))
+            self.assertIs(migrated["schedule"]["enabled"], True)
+            self.assertIs(migrated["features"]["dashboard"], True)
+            self.assertIs(migrated["dashboard"]["server"]["enabled"], True)
+            self.assertIs(migrated["rag"]["server"]["enabled"], False)
 
     def test_upgrade_requires_existing_runtime_for_real_apply(self):
         with tempfile.TemporaryDirectory() as tmp:
