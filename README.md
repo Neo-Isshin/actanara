@@ -3,9 +3,9 @@
 </h1>
 
 <p align="center">
-  <strong>Share memory across agent runtimes and turn siloed activity into searchable, reusable local AI assets.</strong>
+  <strong>Your agents do valuable work. Open Nova makes sure it does not disappear with the session.</strong>
   <br>
-  Highly Automated AI Asset Operations · Cross-Runtime Memory Sharing · Deep LLM Involvement
+  Turn Codex, Claude Code, Gemini CLI, OpenClaw, and Hermes activity into local reports, task evidence, reusable assets, and shared searchable memory.
 </p>
 
 <p align="center">
@@ -16,21 +16,45 @@
 <p align="center">
   <a href="https://neo-isshin.github.io/open-nova/"><img src="https://img.shields.io/badge/Website-GitHub%20Pages-2563EB" alt="Website"></a>
   <a href="https://github.com/Neo-Isshin/open-nova/releases/latest"><img src="https://img.shields.io/github/v/release/Neo-Isshin/open-nova?display_name=tag&amp;sort=semver" alt="Latest stable Release"></a>
-  <a href="#quick-start"><img src="https://img.shields.io/badge/Install-stable%20one--liner-0284C7" alt="Stable one-line install command"></a>
+  <a href="https://neo-isshin.github.io/open-nova/dashboard-demo/"><img src="https://img.shields.io/badge/Demo-interactive-7C3AED" alt="Interactive Dashboard Demo"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0--or--later-16A34A" alt="License"></a>
   <a href="https://discord.gg/JvJHngZWz"><img src="https://img.shields.io/badge/Discord-Join-5865F2" alt="Discord"></a>
 </p>
 
 <p align="center">
-  <a href="https://neo-isshin.github.io/open-nova/">Release Website</a> ·
-  <a href="https://neo-isshin.github.io/open-nova/dashboard-demo/"><strong>Real Dashboard Static Demo</strong></a> ·
-  <a href="docs/local-operations-runbook.md"><strong>Local Operations Runbook</strong></a> ·
+  <a href="https://neo-isshin.github.io/open-nova/dashboard-demo/"><strong>Try the Interactive Dashboard</strong></a> ·
+  <a href="#install-open-nova"><strong>Install Open Nova</strong></a> ·
+  <a href="docs/local-operations-runbook.md">Operations Runbook</a> ·
   <a href="docs/rag-external-agent-contract.md">nova-RAG External Contract</a>
 </p>
 
-Open Nova is a highly automated, structured, local-first AI asset operations system. It organizes sessions, tasks, usage, and work traces from supported agent runtimes, turning fragmented activity into unified local data, diaries, task evidence, and searchable memory.
+<p align="center">
+  <a href="https://neo-isshin.github.io/open-nova/dashboard-demo/">
+    <img src="docs/assets/dashboard/dashboard-ai-assets-overview.png" alt="Real Open Nova local Dashboard showing AI assets across agent runtimes" width="920">
+  </a>
+</p>
 
-Open Nova is also a system with **deep LLM involvement**: LLMs participate in summarization, task extraction, learning-asset generation, and knowledge organization, while deterministic components control data collection, parsing, attribution, scheduling, persistence, and security boundaries.
+<p align="center"><sub><b>Real local Dashboard</b> · select the image to explore the interactive demo</sub></p>
+
+## What Open Nova gives you
+
+| | Outcome |
+| :--- | :--- |
+| **Shared memory across agents** | Work completed in Claude Code can be found and reused from Codex through a restricted, read-only retrieval boundary. |
+| **A graph of work that actually happened** | `Nova-Task` derives tasks, status, and evidence from conversations, file changes, and tool results—not just manually written tickets. |
+| **Automatic work narratives** | Daily, weekly, and monthly reports turn fragmented sessions into a durable record of progress, decisions, and lessons learned. |
+| **A local source of truth** | Sessions, usage, generated assets, task evidence, and indexes remain in user-controlled local storage with explicit integration boundaries. |
+
+<a id="install-open-nova"></a>
+## Install the latest stable release
+
+```bash
+curl -fsSL https://github.com/Neo-Isshin/open-nova/releases/latest/download/install.sh | zsh
+```
+
+The stable installer targets local macOS environments, requires no `sudo`, and installs an immutable GitHub Release rather than following `main`. New here? You can explore the [interactive Dashboard demo](https://neo-isshin.github.io/open-nova/dashboard-demo/) before installing.
+
+Open Nova is a structured, local-first AI asset operations system. LLMs participate in summarization, task extraction, learning-asset generation, and knowledge organization, while deterministic components control data collection, parsing, attribution, scheduling, persistence, and security boundaries.
 
 > In this README, an **agent runtime** means an AI tool environment with its own sessions, logs, memory, and execution context, such as Codex, Claude Code, Gemini CLI, OpenClaw, or Hermes.
 
@@ -137,8 +161,12 @@ curl -fsSL https://github.com/Neo-Isshin/open-nova/releases/latest/download/inst
 > [!IMPORTANT]
 > This command is for a fresh installation only. If the bootstrap detects an existing Open Nova runtime, an active runtime pointer, or a managed LaunchAgent, it stops safely before writing to the source cache. For an existing installation, run `open-nova update` or `open-nova update --dry-run` to review the plan, then use `open-nova update --apply` to perform the update.
 
-> [!WARNING]
-> `v1.0.0` has been withdrawn: its update transaction could leave managed services bound to an old concrete source directory. Its immutable tag and artifacts remain available for audit only. Do not install or recommend it.
+<details>
+<summary><strong>Historical release notice: v1.0.0 was withdrawn</strong></summary>
+
+`v1.0.0` was withdrawn because its update transaction could leave managed services bound to an old concrete source directory. Its immutable tag and artifacts remain available for audit only. Do not install or recommend it.
+
+</details>
 
 #### Installer Write Locations
 

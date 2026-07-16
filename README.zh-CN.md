@@ -3,9 +3,9 @@
 </h1>
 
 <p align="center">
-  <strong>跨多 Agent Runtime 共享记忆，将相互独立的 Agent 活动整合为可检索、可复用的本地 AI 资产。</strong>
+  <strong>Agent 完成了有价值的工作，Open Nova 让这些成果不再随 Session 消失。</strong>
   <br>
-  高度自动化的 AI 资产运维 · 跨 Runtime 记忆共享 · LLM 深度参与
+  将 Codex、Claude Code、Gemini CLI、OpenClaw 和 Hermes 的活动沉淀为本地报告、任务证据、可复用资产与跨 Runtime 共享记忆。
 </p>
 
 <p align="center">
@@ -16,21 +16,45 @@
 <p align="center">
   <a href="https://neo-isshin.github.io/open-nova/"><img src="https://img.shields.io/badge/Website-GitHub%20Pages-2563EB" alt="Website"></a>
   <a href="https://github.com/Neo-Isshin/open-nova/releases/latest"><img src="https://img.shields.io/github/v/release/Neo-Isshin/open-nova?display_name=tag&amp;sort=semver" alt="最新稳定 Release"></a>
-  <a href="#quick-start"><img src="https://img.shields.io/badge/Install-稳定版一行安装-0284C7" alt="稳定版一行安装命令"></a>
+  <a href="https://neo-isshin.github.io/open-nova/dashboard-demo/"><img src="https://img.shields.io/badge/Demo-在线交互-7C3AED" alt="在线交互 Dashboard Demo"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0--or--later-16A34A" alt="License"></a>
   <a href="https://discord.gg/JvJHngZWz"><img src="https://img.shields.io/badge/Discord-加入-5865F2" alt="Discord"></a>
 </p>
 
 <p align="center">
-  <a href="https://neo-isshin.github.io/open-nova/">官网发布页</a> ·
-  <a href="https://neo-isshin.github.io/open-nova/dashboard-demo/"><strong>真实 Dashboard 静态 Demo</strong></a> ·
-  <a href="docs/local-operations-runbook.zh-CN.md"><strong>中文本地操作 Runbook</strong></a> ·
+  <a href="https://neo-isshin.github.io/open-nova/dashboard-demo/"><strong>体验在线 Dashboard</strong></a> ·
+  <a href="#install-open-nova"><strong>安装 Open Nova</strong></a> ·
+  <a href="docs/local-operations-runbook.zh-CN.md">中文操作 Runbook</a> ·
   <a href="docs/rag-external-agent-contract.md">nova-RAG 外部合约（English）</a>
 </p>
 
-Open Nova 是一个高度自动化、结构化、本地优先的 AI 资产运维系统。它从受支持的 Agent Runtime 中整理会话、任务、用量和工作轨迹，将零散活动沉淀为统一的本地数据、日记、任务证据和可检索记忆。
+<p align="center">
+  <a href="https://neo-isshin.github.io/open-nova/dashboard-demo/">
+    <img src="docs/assets/dashboard/dashboard-ai-assets-overview.png" alt="Open Nova 真实本地 Dashboard，统一展示多个 Agent Runtime 的 AI 资产" width="920">
+  </a>
+</p>
 
-Open Nova 也是一个 **LLM 深度参与**的系统：LLM 参与总结、任务提取、学习资产生成和知识组织；数据采集、解析、归因、调度、持久化和安全边界则由确定性组件控制。
+<p align="center"><sub><b>真实本地 Dashboard</b> · 点击图片进入在线交互 Demo</sub></p>
+
+## Open Nova 能为你留下什么
+
+| | 结果 |
+| :--- | :--- |
+| **跨 Agent 共享记忆** | Claude Code 已完成的工作，可以通过受限的只读检索边界被 Codex 找到并复用。 |
+| **真正发生过的工作图谱** | `Nova-Task` 从对话、文件变更和工具结果中提取任务、状态与证据，而不只依赖手写工单。 |
+| **自动生成的工作叙事** | 日报、周报和月报把零散 Session 变成可长期回顾的进展、决策与经验记录。 |
+| **本地事实来源** | Session、用量、生成资产、任务证据和索引保留在用户掌控的本地存储中，集成边界清晰可见。 |
+
+<a id="install-open-nova"></a>
+## 安装最新稳定版
+
+```bash
+curl -fsSL https://github.com/Neo-Isshin/open-nova/releases/latest/download/install.sh | zsh
+```
+
+稳定版安装器面向本地 macOS 环境，无需 `sudo`，并且只安装不可变的 GitHub Release，不会跟随 `main`。第一次了解 Open Nova？可以先体验[在线 Dashboard Demo](https://neo-isshin.github.io/open-nova/dashboard-demo/)，再决定是否安装。
+
+Open Nova 是一个结构化、本地优先的 AI 资产运维系统。LLM 参与总结、任务提取、学习资产生成和知识组织；数据采集、解析、归因、调度、持久化和安全边界则由确定性组件控制。
 
 > 本文中的 **Agent Runtime** 指拥有独立会话、日志、记忆和执行上下文的 AI 工具环境，例如 Codex、Claude Code、Gemini CLI、OpenClaw 和 Hermes。
 
@@ -137,8 +161,12 @@ curl -fsSL https://github.com/Neo-Isshin/open-nova/releases/latest/download/inst
 > [!IMPORTANT]
 > 这条命令仅用于全新安装。如果 bootstrap 发现已有 Open Nova Runtime、活动 Runtime 指针或托管 LaunchAgent，会在写入源码缓存前安全终止。已有安装应先运行 `open-nova update` 或 `open-nova update --dry-run` 检查计划，再用 `open-nova update --apply` 执行更新。
 
-> [!WARNING]
-> `v1.0.0` 已撤回：它的更新事务可能使托管服务继续绑定到旧的具体源码目录。该版本的不可变 tag 和制品仅供审计，请勿安装或推荐。
+<details>
+<summary><strong>历史版本说明：v1.0.0 已撤回</strong></summary>
+
+`v1.0.0` 因更新事务可能使托管服务继续绑定到旧的具体源码目录而被撤回。该版本的不可变 tag 和制品仅供审计，请勿安装或推荐。
+
+</details>
 
 #### 安装器会写入哪些位置
 
