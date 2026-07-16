@@ -115,6 +115,7 @@ exit 0
                 "NOVA_TEST_INSTALL_LOG": str(self.install_log),
                 "NOVA_TEST_INSTALLER": str(self.fake_installer),
                 "NOVA_TEST_SOURCE_URL": DEFAULT_SOURCE_URL,
+                "NOVA_INSTALL_VERBOSE": "1",
                 "NOVA_TEST_RELEASE_JSON": json.dumps(
                     {
                         "name": "Open Nova v1.2.3",
@@ -164,6 +165,33 @@ exit 0
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text("marker\n", encoding="utf-8")
 
+    def _write_updateable_runtime(self, runtime: Path) -> None:
+        config = runtime / "config"
+        release = runtime / "app" / "releases" / "installed"
+        config.mkdir(parents=True, exist_ok=True)
+        release.mkdir(parents=True, exist_ok=True)
+        (config / "settings.json").write_text(
+            '{"features":{"rag":false},"rag":{"enabled":false}}\n',
+            encoding="utf-8",
+        )
+        (config / "runtime.json").write_text(
+            '{"runtime":"open-nova"}\n',
+            encoding="utf-8",
+        )
+        (release / ".open-nova-runtime-source.json").write_text(
+            json.dumps(
+                {
+                    "schemaVersion": 2,
+                    "product": "open-nova",
+                    "deploymentMode": "release-symlink",
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (runtime / "app" / "source").symlink_to("releases/installed")
+
     def test_github_defaults_are_canonical_and_do_not_reference_legacy_host(self) -> None:
         script = BOOTSTRAP.read_text(encoding="utf-8")
 
@@ -204,6 +232,9 @@ exit 0
         self.assertIn(f"reset --hard {COMMIT}", git_log)
         self.assertNotIn("origin/HEAD", git_log)
         self.assertTrue(self.install_log.is_file())
+        installer_args = self.install_log.read_text(encoding="utf-8").split()
+        self.assertNotIn("--upgrade", installer_args)
+        self.assertNotIn("--yes", installer_args)
 
     def test_default_remote_resolves_lightweight_stable_tag_to_direct_commit(self) -> None:
         result = self._run(
@@ -256,14 +287,14 @@ exit 0
 
     def test_no_release_rate_limit_nonstable_malformed_or_wrong_tag_fail_before_cache_write(self) -> None:
         cases = (
-            ({"NOVA_TEST_CURL_FAIL": "1"}, "No stable Open Nova release"),
+            ({"NOVA_TEST_CURL_FAIL": "1"}, "latest stable Open Nova release could not be read"),
             (
                 {
                     "NOVA_TEST_RELEASE_JSON": json.dumps(
                         {"message": "API rate limit exceeded", "documentation_url": "https://docs.github.com/"}
                     )
                 },
-                "latest-release response is invalid",
+                "latest stable Open Nova release response is invalid",
             ),
             (
                 {
@@ -271,7 +302,7 @@ exit 0
                         {"tag_name": "v1.2.3", "draft": True, "prerelease": False}
                     )
                 },
-                "draft or prerelease",
+                "latest Open Nova release is not stable",
             ),
             (
                 {
@@ -279,7 +310,7 @@ exit 0
                         {"tag_name": "v1.2.3", "draft": False, "prerelease": True}
                     )
                 },
-                "draft or prerelease",
+                "latest Open Nova release is not stable",
             ),
             (
                 {
@@ -292,7 +323,7 @@ exit 0
                         }
                     )
                 },
-                "explicitly withdrawn",
+                "latest Open Nova release was withdrawn",
             ),
             (
                 {
@@ -300,11 +331,11 @@ exit 0
                         {"tag_name": "../main", "draft": False, "prerelease": False}
                     )
                 },
-                "unsafe tag",
+                "invalid version tag",
             ),
             (
                 {"NOVA_TEST_RELEASE_TAG": "v9.9.9"},
-                "did not peel to a full commit",
+                "did not resolve to an exact version",
             ),
         )
         for index, (overrides, expected) in enumerate(cases):
@@ -346,7 +377,7 @@ exit 0
                     ),
                 )
                 self.assertEqual(result.returncode, 2, self._output(result))
-                self.assertIn("explicitly withdrawn", self._output(result))
+                self.assertIn("latest Open Nova release was withdrawn", self._output(result))
                 self.assertFalse(cache.exists())
 
     def test_release_name_missing_or_null_is_accepted_for_compatibility_without_plutil(self) -> None:
@@ -394,14 +425,14 @@ exit 0
                     ),
                 )
                 self.assertEqual(result.returncode, 2, self._output(result))
-                self.assertIn("latest-release response is invalid", self._output(result))
+                self.assertIn("latest stable Open Nova release response is invalid", self._output(result))
                 self.assertFalse(cache.exists())
 
     def test_custom_remote_without_commit_and_symbolic_remote_ref_fail_closed(self) -> None:
         cases = (
-            ("https://example.invalid/open-nova.git", None, "custom --source-url"),
-            (DEFAULT_SOURCE_URL, "main", "full 40/64-hex commit"),
-            (DEFAULT_SOURCE_URL, "v1.2.3", "full 40/64-hex commit"),
+            ("https://example.invalid/open-nova.git", None, "custom source URL"),
+            (DEFAULT_SOURCE_URL, "main", "full 40- or 64-character commit ID"),
+            (DEFAULT_SOURCE_URL, "v1.2.3", "full 40- or 64-character commit ID"),
         )
         for index, (source_url, ref, expected) in enumerate(cases):
             with self.subTest(index=index):
@@ -422,6 +453,43 @@ exit 0
         self.assertEqual(result.returncode, 0, self._output(result))
         self.assertIn(f"checkout --detach {COMMIT}", git_log)
         self.assertNotIn("origin/HEAD", git_log)
+
+    def test_official_https_cache_urls_with_or_without_dot_git_are_equivalent(self) -> None:
+        source = self.cache / "source"
+        (source / ".git").mkdir(parents=True)
+        (source / "install").mkdir()
+        shutil_installer = source / "install" / "install.sh"
+        shutil_installer.write_bytes(self.fake_installer.read_bytes())
+        shutil_installer.chmod(0o755)
+
+        result = self._run(
+            *self._remote_arguments(ref=COMMIT),
+            env=self._environment(
+                NOVA_TEST_SOURCE_URL="https://github.com/Neo-Isshin/open-nova"
+            ),
+        )
+
+        self.assertEqual(result.returncode, 0, self._output(result))
+        self.assertTrue(self.install_log.is_file())
+
+    def test_truly_different_cache_source_still_fails_without_installer_writes(self) -> None:
+        source = self.cache / "source"
+        (source / ".git").mkdir(parents=True)
+        sentinel = source / "operator-owned.txt"
+        sentinel.write_text("preserve\n", encoding="utf-8")
+
+        result = self._run(
+            *self._remote_arguments(ref=COMMIT),
+            env=self._environment(
+                NOVA_TEST_SOURCE_URL="https://github.com/other/open-nova.git",
+                NOVA_INSTALL_VERBOSE="1",
+            ),
+        )
+
+        self.assertEqual(result.returncode, 2, self._output(result))
+        self.assertIn("download cache source does not match", self._output(result))
+        self.assertEqual(sentinel.read_text(encoding="utf-8"), "preserve\n")
+        self.assertFalse(self.install_log.exists())
 
     def test_full_sha256_commit_is_accepted(self) -> None:
         commit = "d" * 64
@@ -463,54 +531,95 @@ exit 0
         self.assertFalse(self.git_log.exists())
         self.assertFalse(self.cache.exists())
 
-    def test_nonupgrade_detects_target_nova_home_default_and_pointer_runtimes_before_clone(self) -> None:
-        cases: list[tuple[str, dict[str, str], Path]] = []
-
-        target = self.root / "target-existing"
-        self._write_marker(target)
-        cases.append(("target", {}, target))
-
-        nova_home = self.root / "nova-home-existing"
-        self._write_marker(nova_home, "config/runtime.json")
-        cases.append(("nova-home", {"NOVA_HOME": str(nova_home)}, nova_home))
-
-        default_runtime = self.home / ".open-nova"
-        self._write_marker(default_runtime, "bin/open-nova")
-        cases.append(("default", {}, default_runtime))
-
-        pointed_runtime = self.root / "pointed-existing"
-        self._write_marker(pointed_runtime, "data/nova_data.sqlite3")
-        cases.append(("pointer", {"pointer": str(pointed_runtime)}, pointed_runtime))
-
-        for index, (name, extra_env, existing_runtime) in enumerate(cases):
+    def test_oneliner_auto_updates_target_nova_home_default_and_pointer_runtimes(self) -> None:
+        for index, name in enumerate(("target", "nova-home", "default", "pointer")):
             with self.subTest(name=name):
-                # Isolate each case from markers used by preceding subtests.
                 case_home = self.root / f"Home-{index}"
                 case_home.mkdir()
                 case_location = self.root / f"location-{index}.json"
-                case_runtime = self.root / f"clean-target-{index}"
+                case_runtime = self.root / f"existing-{name}-{index}"
                 env_values = {
                     "HOME": str(case_home),
                     "NOVA_LOCATION_FILE": str(case_location),
                     "NOVA_INSTALL_PLUTIL": "/no/such/plutil",
                 }
-                env_values.update({key: value for key, value in extra_env.items() if key != "pointer"})
-                if name == "target":
-                    case_runtime = existing_runtime
+                if name == "nova-home":
+                    env_values["NOVA_HOME"] = str(case_runtime)
                 elif name == "default":
-                    self._write_marker(case_home / ".open-nova", "bin/open-nova")
+                    case_runtime = case_home / ".open-nova"
                 elif name == "pointer":
-                    case_location.write_text(json.dumps({"novaHome": extra_env["pointer"]}), encoding="utf-8")
+                    case_location.write_text(
+                        json.dumps({"novaHome": str(case_runtime)}),
+                        encoding="utf-8",
+                    )
+                self._write_updateable_runtime(case_runtime)
                 cache = self.root / f"runtime-guard-cache-{index}"
                 arguments = self._remote_arguments(ref=COMMIT)
                 arguments[arguments.index(str(self.cache))] = str(cache)
                 runtime_index = arguments.index(str(self.root / "runtime"))
-                arguments[runtime_index] = str(case_runtime)
+                if name == "target":
+                    arguments[runtime_index] = str(case_runtime)
+                else:
+                    del arguments[runtime_index - 1 : runtime_index + 1]
+                self.install_log.unlink(missing_ok=True)
                 result = self._run(*arguments, env=self._environment(**env_values))
-                self.assertEqual(result.returncode, 2, self._output(result))
-                self.assertIn("Existing Open Nova Runtime detected", self._output(result))
-                self.assertIn("open-nova update", self._output(result))
-                self.assertFalse(cache.exists())
+                self.assertEqual(result.returncode, 0, self._output(result))
+                installer_args = self.install_log.read_text(encoding="utf-8").split()
+                self.assertEqual(installer_args.count("--upgrade"), 1)
+                self.assertEqual(installer_args.count("--yes"), 1)
+                self.assertNotIn("--force-rebuild", installer_args)
+                runtime_arg = installer_args.index("--runtime")
+                self.assertEqual(Path(installer_args[runtime_arg + 1]), case_runtime)
+                self.assertTrue(cache.exists())
+
+    def test_partial_runtime_marker_still_fails_before_clone(self) -> None:
+        runtime = self.root / "runtime"
+        self._write_marker(runtime)
+        result = self._run(
+            *self._remote_arguments(ref=COMMIT),
+            env=self._environment(NOVA_INSTALL_VERBOSE="1"),
+        )
+
+        self.assertEqual(result.returncode, 2, self._output(result))
+        self.assertIn("existing Open Nova state is incomplete", self._output(result))
+        self.assertFalse(self.cache.exists())
+        self.assertFalse(self.install_log.exists())
+
+    def test_foreign_runtime_manifest_still_fails_before_clone(self) -> None:
+        runtime = self.root / "runtime"
+        self._write_updateable_runtime(runtime)
+        manifest = runtime / "app" / "source" / ".open-nova-runtime-source.json"
+        manifest.write_text(
+            '{"product":"other","deploymentMode":"release-symlink"}\n',
+            encoding="utf-8",
+        )
+
+        result = self._run(*self._remote_arguments(ref=COMMIT))
+
+        self.assertEqual(result.returncode, 2, self._output(result))
+        self.assertFalse(self.cache.exists())
+        self.assertFalse(self.install_log.exists())
+
+    def test_symlinked_location_pointer_fails_before_clone(self) -> None:
+        actual = self.root / "actual-location.json"
+        actual.write_text(
+            json.dumps({"novaHome": str(self.root / "runtime")}),
+            encoding="utf-8",
+        )
+        location = self.root / "linked-location.json"
+        location.symlink_to(actual)
+        arguments = self._remote_arguments(ref=COMMIT)
+        runtime_index = arguments.index(str(self.root / "runtime"))
+        del arguments[runtime_index - 1 : runtime_index + 1]
+
+        result = self._run(
+            *arguments,
+            env=self._environment(NOVA_LOCATION_FILE=str(location)),
+        )
+
+        self.assertEqual(result.returncode, 2, self._output(result))
+        self.assertFalse(self.cache.exists())
+        self.assertFalse(self.install_log.exists())
 
     def test_malformed_or_unsafe_location_pointer_fails_before_clone(self) -> None:
         cases = ("not-json", json.dumps({"novaHome": "relative/runtime"}))
@@ -521,6 +630,8 @@ exit 0
                 cache = self.root / f"unsafe-pointer-cache-{index}"
                 arguments = self._remote_arguments(ref=COMMIT)
                 arguments[arguments.index(str(self.cache))] = str(cache)
+                runtime_index = arguments.index(str(self.root / "runtime"))
+                del arguments[runtime_index - 1 : runtime_index + 1]
                 result = self._run(
                     *arguments,
                     env=self._environment(
@@ -529,7 +640,7 @@ exit 0
                     ),
                 )
                 self.assertEqual(result.returncode, 2, self._output(result))
-                self.assertIn("fresh install refused", self._output(result))
+                self.assertIn("Open Nova", self._output(result))
                 self.assertFalse(cache.exists())
 
     def test_existing_open_nova_launch_agent_fails_before_clone(self) -> None:
@@ -540,8 +651,7 @@ exit 0
         result = self._run(*self._remote_arguments(ref=COMMIT))
 
         self.assertEqual(result.returncode, 2, self._output(result))
-        self.assertIn("Existing Open Nova LaunchAgent", self._output(result))
-        self.assertIn("open-nova update", self._output(result))
+        self.assertIn("Open Nova", self._output(result))
         self.assertFalse(self.cache.exists())
         self.assertFalse(self.git_log.exists())
 
@@ -558,7 +668,10 @@ exit 0
 
         self.assertEqual(result.returncode, 0, self._output(result))
         self.assertTrue(self.install_log.is_file())
-        self.assertIn("--upgrade", self.install_log.read_text(encoding="utf-8"))
+        self.assertEqual(
+            self.install_log.read_text(encoding="utf-8").split().count("--upgrade"),
+            1,
+        )
 
     def test_apply_rejects_non_commit_or_nonmatching_object_without_head_fallback(self) -> None:
         cases = (
@@ -576,7 +689,7 @@ exit 0
                 git_log = self.git_log.read_text(encoding="utf-8")
 
                 self.assertEqual(result.returncode, 2, self._output(result))
-                self.assertIn("not the required commit", self._output(result))
+                self.assertIn("does not match required commit", self._output(result))
                 self.assertNotIn("origin/HEAD", git_log)
                 self.assertNotIn("checkout --detach", git_log)
                 self.assertNotIn("reset --hard", git_log)

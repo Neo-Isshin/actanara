@@ -4239,13 +4239,23 @@ inherit_upgrade_dependency_profiles() {
   fi
   local profile_json=""
   local parsed=""
+  local recovery_allowed=0
+  local profile_command=(
+    "${DEPENDENCY_CONTRACT_HELPER}"
+    runtime-profiles
+    --runtime "${RUNTIME_HOME}"
+  )
+  if [[ "$SOURCE_ONLY" != "1" ]]; then
+    recovery_allowed=1
+    profile_command+=(--allow-untrusted-active-venv)
+  fi
   profile_json="$(PYTHONDONTWRITEBYTECODE=1 "${PYTHON_BIN}" \
-    "${DEPENDENCY_CONTRACT_HELPER}" runtime-profiles \
-    --runtime "${RUNTIME_HOME}")" || return $?
+    "${profile_command[@]}")" || return $?
   parsed="$(print -rn -- "$profile_json" | "${PYTHON_BIN}" -c '
 import json
 import sys
 
+recovery_allowed = len(sys.argv) == 2 and sys.argv[1] == "1"
 value = json.load(sys.stdin)
 if (
     not isinstance(value, dict)
@@ -4307,6 +4317,10 @@ elif marker_status == "trusted":
     if not isinstance(marker_sha, str) or not __import__("re").fullmatch(r"[0-9a-f]{64}", marker_sha):
         raise SystemExit(2)
     marker_sha_text = marker_sha
+elif marker_status == "unavailable":
+    if not recovery_allowed or marker_sha is not None or dev_test:
+        raise SystemExit(2)
+    marker_sha_text = "none"
 else:
     raise SystemExit(2)
 print("\t".join((
@@ -4318,7 +4332,7 @@ print("\t".join((
     marker_status,
     marker_sha_text,
 )))
-')" || return 2
+' "$recovery_allowed")" || return 2
   local fields=("${(@ps:\t:)parsed}")
   if [[ "${#fields[@]}" != "7" ]]; then
     return 2
@@ -4361,12 +4375,19 @@ print("\t".join((
   else
     DEPENDENCY_PROFILE_MARKER_SHA256="${fields[7]}"
   fi
+  if [[ "$DEPENDENCY_PROFILE_MARKER_STATUS" == "unavailable" ]]; then
+    FORCE_REBUILD=1
+  fi
   # Upgrade dependency selection never requests a Settings rewrite.  This is
   # also compatible with v1.0.1, whose CLI forwards matching RAG profile flags.
   RAG_SET=0
   RAG_ENABLE_SET=0
   RAG_EMBEDDING_MODE_SET=0
-  DEPENDENCY_PROFILE_SOURCE="runtime-settings+active-marker"
+  if [[ "$DEPENDENCY_PROFILE_MARKER_STATUS" == "unavailable" ]]; then
+    DEPENDENCY_PROFILE_SOURCE="runtime-settings-recovery"
+  else
+    DEPENDENCY_PROFILE_SOURCE="runtime-settings+active-marker"
+  fi
 }
 
 parse_dependency_plan() {
@@ -4482,7 +4503,7 @@ run_dependency_update_plan() {
     --cache-root "${RUNTIME_HOME}/app/dependency-cache/v1"
     --mode "$mode"
   )
-  if [[ "$PYTHON_SET" == "1" ]]; then
+  if [[ "$PYTHON_SET" == "1" || "$FORCE_REBUILD" == "1" ]]; then
     command+=(--python "${PYTHON_BIN}")
   fi
   if [[ "$OFFLINE" == "1" ]]; then
@@ -4762,7 +4783,9 @@ begin_update_transaction() {
   local launchctl_path="/usr/bin/true"
   local mode="upgrade"
   local begin_rc=0
-  local marker_evidence_args=()
+  local profile_evidence_args=(
+    --expected-settings-sha256 "${DEPENDENCY_PROFILE_SETTINGS_SHA256}"
+  )
   UPDATE_TRANSACTION_ID="$(date +%Y%m%dT%H%M%S)-$$-${RANDOM}"
   if [[ "$UPDATE_REUSES_VENV" == "1" ]]; then
     mode="source-only"
@@ -4780,10 +4803,18 @@ begin_update_transaction() {
       return 1
     fi
   fi
-  if [[ -n "$DEPENDENCY_PROFILE_MARKER_SHA256" ]]; then
-    marker_evidence_args=(
-      --expected-active-marker-sha256 "$DEPENDENCY_PROFILE_MARKER_SHA256"
+  if [[ "$DEPENDENCY_PROFILE_MARKER_STATUS" == "unavailable" ]]; then
+    profile_evidence_args+=(--settings-only-profile-evidence)
+  else
+    profile_evidence_args+=(
+      --expected-active-venv-target "${DEPENDENCY_PROFILE_ACTIVE_VENV_TARGET}"
+      --expected-active-marker-status "${DEPENDENCY_PROFILE_MARKER_STATUS}"
     )
+    if [[ -n "$DEPENDENCY_PROFILE_MARKER_SHA256" ]]; then
+      profile_evidence_args+=(
+        --expected-active-marker-sha256 "$DEPENDENCY_PROFILE_MARKER_SHA256"
+      )
+    fi
   fi
   update_transaction_command recover --runtime "${RUNTIME_HOME}"
   set +e
@@ -4792,10 +4823,7 @@ begin_update_transaction() {
     --home "${HOME}" \
     --source-pointer "${DEPLOY_SOURCE_ROOT}" \
     --venv-pointer "${VENV_DIR}" \
-    --expected-settings-sha256 "${DEPENDENCY_PROFILE_SETTINGS_SHA256}" \
-    --expected-active-venv-target "${DEPENDENCY_PROFILE_ACTIVE_VENV_TARGET}" \
-    --expected-active-marker-status "${DEPENDENCY_PROFILE_MARKER_STATUS}" \
-    "${marker_evidence_args[@]}" \
+    "${profile_evidence_args[@]}" \
     --mode "${mode}" \
     --tx-id "${UPDATE_TRANSACTION_ID}" \
     --owner-pid "$$" \

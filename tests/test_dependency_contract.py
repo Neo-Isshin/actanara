@@ -285,6 +285,90 @@ class RuntimeDependencyProfileTests(unittest.TestCase):
                     {"settings-profile-untrusted", "unsafe-file", "unsafe-permissions"},
                 )
 
+    def test_force_rebuild_profiles_recover_from_legacy_venv_using_settings_only(self):
+        with tempfile.TemporaryDirectory(dir=SECURE_TEMP_PARENT) as temporary:
+            root = Path(temporary)
+            runtime, settings = self._write_settings(
+                root,
+                {
+                    "features": {"rag": True},
+                    "rag": {"enabled": True, "embedding": {"mode": "cloud"}},
+                },
+            )
+            pointer = runtime / ".venv"
+            pointer.unlink()
+            legacy_python = pointer / "bin" / "python"
+            legacy_python.parent.mkdir(parents=True)
+            legacy_python.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            legacy_python.chmod(0o755)
+
+            with self.assertRaisesRegex(
+                contract.ContractError,
+                "active Runtime venv cannot provide trustworthy",
+            ):
+                contract.runtime_dependency_profiles(runtime)
+
+            parser = contract._parser()
+            args = parser.parse_args(
+                [
+                    "runtime-profiles",
+                    "--runtime",
+                    str(runtime),
+                    "--allow-untrusted-active-venv",
+                ]
+            )
+            payload, returncode = contract._dispatch(args)
+
+            self.assertEqual(returncode, 0)
+            self.assertEqual(payload["profiles"], ["dashboard", "rag-server"])
+            self.assertEqual(
+                payload["rag"],
+                {"enabled": True, "embeddingMode": "cloud"},
+            )
+            self.assertEqual(
+                payload["evidence"],
+                {
+                    "settingsSha256": hashlib.sha256(settings.read_bytes()).hexdigest(),
+                    "activeVenvTarget": str(pointer),
+                    "activeMarkerStatus": "unavailable",
+                    "activeMarkerSha256": None,
+                },
+            )
+
+            settings.chmod(0o622)
+            with self.assertRaises(contract.ContractError):
+                contract.runtime_dependency_profiles(
+                    runtime,
+                    allow_untrusted_active_venv=True,
+                )
+
+    def test_force_rebuild_profiles_ignore_untrusted_active_marker_but_not_settings(self):
+        with tempfile.TemporaryDirectory(dir=SECURE_TEMP_PARENT) as temporary:
+            root = Path(temporary)
+            runtime, settings = self._write_settings(
+                root,
+                {"features": {"rag": False}, "rag": {"enabled": False}},
+            )
+            marker = (runtime / ".venv").resolve() / contract.MARKER_NAME
+            marker.write_text('{"not":"a dependency marker"}\n', encoding="utf-8")
+            marker.chmod(0o444)
+
+            with self.assertRaises(contract.ContractError):
+                contract.runtime_dependency_profiles(runtime)
+
+            payload = contract.runtime_dependency_profiles(
+                runtime,
+                allow_untrusted_active_venv=True,
+            )
+
+            self.assertEqual(payload["profiles"], ["dashboard"])
+            self.assertEqual(payload["evidence"]["activeMarkerStatus"], "unavailable")
+            self.assertIsNone(payload["evidence"]["activeMarkerSha256"])
+            self.assertEqual(
+                payload["evidence"]["settingsSha256"],
+                hashlib.sha256(settings.read_bytes()).hexdigest(),
+            )
+
     def test_runtime_profiles_inherit_only_dev_test_from_trusted_active_marker(self):
         with tempfile.TemporaryDirectory(dir=SECURE_TEMP_PARENT) as temporary:
             root = Path(temporary)
@@ -337,11 +421,16 @@ class RuntimeDependencyProfileTests(unittest.TestCase):
             marker_path.chmod(0o444)
 
             payload = contract.runtime_dependency_profiles(runtime)
+            recovery_enabled_payload = contract.runtime_dependency_profiles(
+                runtime,
+                allow_untrusted_active_venv=True,
+            )
 
             self.assertEqual(
                 payload["profiles"],
                 ["dashboard", "dev-test", "rag-local", "rag-server"],
             )
+            self.assertEqual(recovery_enabled_payload, payload)
             self.assertEqual(payload["evidence"]["activeMarkerStatus"], "trusted")
             self.assertEqual(
                 payload["evidence"]["activeMarkerSha256"],

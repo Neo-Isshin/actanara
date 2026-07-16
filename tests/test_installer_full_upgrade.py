@@ -142,7 +142,13 @@ class InstallerFullUpgradeTests(unittest.TestCase):
         thread.start()
         return server, thread, int(server.server_address[1])
 
-    def _write_fake_python(self, path: Path, log_path: Path) -> None:
+    def _write_fake_python(
+        self,
+        path: Path,
+        log_path: Path,
+        *,
+        legacy_settings_only: bool = False,
+    ) -> None:
         dependency_marker = self._fixture_dependency_marker()
         candidate_program = textwrap.dedent(
             f"""\
@@ -285,6 +291,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
             FAULT_CONFIG_PATH = Path({str(log_path.with_name("fake-python-fault.json"))!r})
             CANDIDATE_PROGRAM = {candidate_program!r}
             DEPENDENCY_MARKER = {dependency_marker!r}
+            LEGACY_SETTINGS_ONLY = {legacy_settings_only!r}
 
 
             def fixture_value(name, default=None):
@@ -387,9 +394,18 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                     record("contract", "runtime-profiles")
                     runtime = Path(option("--runtime"))
                     settings_path = runtime / "config" / "settings.json"
-                    active_venv = (runtime / ".venv").resolve()
-                    active_marker = active_venv / ".open-nova-dependencies.json"
-                    marker_status = "trusted" if active_marker.exists() else "missing"
+                    pointer = runtime / ".venv"
+                    recovery = "--allow-untrusted-active-venv" in args
+                    if LEGACY_SETTINGS_ONLY and (not recovery or pointer.is_symlink()):
+                        raise SystemExit(72)
+                    if LEGACY_SETTINGS_ONLY:
+                        active_venv = pointer
+                        active_marker = None
+                        marker_status = "unavailable"
+                    else:
+                        active_venv = pointer.resolve()
+                        active_marker = active_venv / ".open-nova-dependencies.json"
+                        marker_status = "trusted" if active_marker.exists() else "missing"
                     print_json(dict(
                         schemaVersion=1,
                         status="ok",
@@ -401,7 +417,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                             activeMarkerStatus=marker_status,
                             activeMarkerSha256=(
                                 hashlib.sha256(active_marker.read_bytes()).hexdigest()
-                                if marker_status == "trusted"
+                                if marker_status == "trusted" and active_marker is not None
                                 else None
                             ),
                         ),
@@ -413,12 +429,18 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                     selected_python = option("--python")
                     if not selected_python or not Path(selected_python).is_absolute():
                         raise SystemExit(66)
+                    if LEGACY_SETTINGS_ONLY and option("--mode") != "force-rebuild":
+                        raise SystemExit(71)
                     record("contract", "dependency-plan")
                     print_json(dict(
                         schemaVersion=1,
                         status="ready",
                         updateMode="rebuild-candidate-venv",
-                        reason="legacy-runtime-no-dependency-marker",
+                        reason=(
+                            "forced-rebuild"
+                            if LEGACY_SETTINGS_ONLY
+                            else "legacy-runtime-no-dependency-marker"
+                        ),
                         dependencyFingerprint=fingerprint,
                         reusesRuntimeVenv=False,
                         plannedDependenciesInstalled=True,
@@ -650,7 +672,12 @@ class InstallerFullUpgradeTests(unittest.TestCase):
         with path.open("wb") as handle:
             plistlib.dump(payload, handle, sort_keys=False)
 
-    def _fixture(self, root: Path) -> dict[str, object]:
+    def _fixture(
+        self,
+        root: Path,
+        *,
+        legacy_settings_only: bool = False,
+    ) -> dict[str, object]:
         home = root / "Home"
         runtime = home / ".open-nova"
         app = runtime / "app"
@@ -774,7 +801,11 @@ class InstallerFullUpgradeTests(unittest.TestCase):
         python_log = root / "fake-python.jsonl"
         python_fault_config = root / "fake-python-fault.json"
         fake_python = root / "python"
-        self._write_fake_python(fake_python, python_log)
+        self._write_fake_python(
+            fake_python,
+            python_log,
+            legacy_settings_only=legacy_settings_only,
+        )
         marker = root / "fault-reached"
 
         protected_paths = [settings, runtime_manifest, location, database, *plist_paths.values()]
@@ -1261,6 +1292,44 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                 for path in self._journal_paths(fixture)
             )
             self.assertEqual(statuses, ["committed", "rolled-back"])
+
+    def test_legacy_concrete_venv_settings_only_upgrade_preserves_protected_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = self._fixture(Path(tmp), legacy_settings_only=True)
+            self.assertIn("--upgrade", fixture["command"])
+            self.assertNotIn("--force-rebuild", fixture["command"])
+
+            result = self._run_update(fixture)
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self._assert_successful_full_upgrade(fixture)
+            committed = [
+                json.loads(path.read_text(encoding="utf-8"))
+                for path in self._journal_paths(fixture)
+                if json.loads(path.read_text(encoding="utf-8"))["status"] == "committed"
+            ]
+            self.assertEqual(len(committed), 1)
+            self.assertEqual(
+                committed[0]["dependencyProfileBinding"]["bindingKind"],
+                "pointer-only",
+            )
+            self.assertEqual(
+                committed[0]["dependencyProfileEvidence"]["activeMarkerStatus"],
+                "unavailable",
+            )
+            records = [
+                json.loads(line)
+                for line in Path(fixture["python_log"]).read_text(encoding="utf-8").splitlines()
+            ]
+            profile_record = next(
+                record for record in records if record["phase"] == "runtime-profiles"
+            )
+            self.assertIn("--allow-untrusted-active-venv", profile_record["argv"])
+            plan_record = next(
+                record for record in records if record["phase"] == "dependency-plan"
+            )
+            mode_index = plan_record["argv"].index("--mode")
+            self.assertEqual(plan_record["argv"][mode_index + 1], "force-rebuild")
 
     def test_fake_launchctl_rejects_production_labels_and_mutations_fail_closed(self):
         with tempfile.TemporaryDirectory() as tmp:

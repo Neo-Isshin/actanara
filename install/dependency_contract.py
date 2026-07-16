@@ -264,7 +264,11 @@ def _read_strict_json_file(
     return _strict_json_bytes(raw, label=label), raw
 
 
-def runtime_dependency_profiles(runtime: Path | str) -> dict[str, Any]:
+def runtime_dependency_profiles(
+    runtime: Path | str,
+    *,
+    allow_untrusted_active_venv: bool = False,
+) -> dict[str, Any]:
     """Read the Runtime-owned settings that select dependency profiles.
 
     This deliberately returns only non-secret booleans/profile identifiers. It
@@ -334,39 +338,49 @@ def runtime_dependency_profiles(runtime: Path | str) -> dict[str, Any]:
     # that Settings intentionally do not model (currently ``dev-test``).
     # Missing markers identify a legacy Runtime and conservatively select no
     # unprovable operational profile; malformed markers fail closed.
+    active_venv: Path | None
     try:
         active_venv, _ = _managed_active_venv(home)
     except ContractError as exc:
-        raise _error(
-            "settings-profile-untrusted",
-            "active Runtime venv cannot provide trustworthy dependency profile evidence",
-        ) from exc
-    marker_path = active_venv / MARKER_NAME
-    marker_status = "missing"
-    marker_sha256: str | None = None
-    if marker_path.exists() or marker_path.is_symlink():
-        marker_payload, marker_raw = _read_strict_json_file(
-            marker_path,
-            label="dependency marker",
-            require_private_owner=True,
-            required_mode=0o444,
-        )
-        marker = _validate_marker_payload(marker_payload)
-        marker_profiles = set(marker["profiles"])
-        supported_profiles = {"dashboard", "rag-server", "rag-local", "dev-test"}
-        if (
-            "dashboard" not in marker_profiles
-            or not marker_profiles.issubset(supported_profiles)
-            or ("rag-local" in marker_profiles and "rag-server" not in marker_profiles)
-        ):
+        if not allow_untrusted_active_venv:
             raise _error(
                 "settings-profile-untrusted",
-                "active dependency marker contains an unsupported profile selection",
+                "active Runtime venv cannot provide trustworthy dependency profile evidence",
+            ) from exc
+        active_venv = None
+    marker_path = active_venv / MARKER_NAME if active_venv is not None else None
+    marker_status = "missing" if active_venv is not None else "unavailable"
+    marker_sha256: str | None = None
+    if marker_path is not None and (marker_path.exists() or marker_path.is_symlink()):
+        try:
+            marker_payload, marker_raw = _read_strict_json_file(
+                marker_path,
+                label="dependency marker",
+                require_private_owner=True,
+                required_mode=0o444,
             )
-        if "dev-test" in marker_profiles:
-            profiles.append("dev-test")
-        marker_status = "trusted"
-        marker_sha256 = _sha256_bytes(marker_raw)
+            marker = _validate_marker_payload(marker_payload)
+            marker_profiles = set(marker["profiles"])
+            supported_profiles = {"dashboard", "rag-server", "rag-local", "dev-test"}
+            if (
+                "dashboard" not in marker_profiles
+                or not marker_profiles.issubset(supported_profiles)
+                or ("rag-local" in marker_profiles and "rag-server" not in marker_profiles)
+            ):
+                raise _error(
+                    "settings-profile-untrusted",
+                    "active dependency marker contains an unsupported profile selection",
+                )
+            if "dev-test" in marker_profiles:
+                profiles.append("dev-test")
+            marker_status = "trusted"
+            marker_sha256 = _sha256_bytes(marker_raw)
+        except ContractError:
+            if not allow_untrusted_active_venv:
+                raise
+            active_venv = None
+            marker_status = "unavailable"
+            marker_sha256 = None
     return {
         "schemaVersion": 1,
         "status": "ok",
@@ -374,7 +388,11 @@ def runtime_dependency_profiles(runtime: Path | str) -> dict[str, Any]:
         "rag": {"enabled": rag_enabled, "embeddingMode": embedding_mode},
         "evidence": {
             "settingsSha256": _sha256_bytes(settings_raw),
-            "activeVenvTarget": str(active_venv.resolve(strict=True)),
+            "activeVenvTarget": str(
+                active_venv.resolve(strict=True)
+                if active_venv is not None
+                else home / ".venv"
+            ),
             "activeMarkerStatus": marker_status,
             "activeMarkerSha256": marker_sha256,
         },
@@ -1912,6 +1930,7 @@ def _parser() -> argparse.ArgumentParser:
 
     runtime_profiles = subcommands.add_parser("runtime-profiles")
     runtime_profiles.add_argument("--runtime", required=True)
+    runtime_profiles.add_argument("--allow-untrusted-active-venv", action="store_true")
 
     fingerprint = subcommands.add_parser("fingerprint")
     _add_selection_arguments(fingerprint)
@@ -1971,7 +1990,10 @@ def _dispatch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     if args.command == "probe-environment":
         return {"schemaVersion": 1, "status": "ok", "environment": probe_environment(args.python)}, 0
     if args.command == "runtime-profiles":
-        return runtime_dependency_profiles(args.runtime), 0
+        return runtime_dependency_profiles(
+            args.runtime,
+            allow_untrusted_active_venv=args.allow_untrusted_active_venv,
+        ), 0
     if args.command == "fingerprint":
         selection = _selection_from_args(args)
         return {

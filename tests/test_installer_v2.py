@@ -1566,11 +1566,15 @@ exit 1
         self.assertNotIn('rm -rf "${RUNTIME_HOME}"', script)
         self.assertNotIn('rm -rf "${RUNTIME_HOME}/data"', script)
         self.assertIn("legacy Python LaunchAgents may receive cache-suppression environment metadata", script)
-        self.assertIn('"${DEPENDENCY_CONTRACT_HELPER}" runtime-profiles', script)
+        self.assertIn("local profile_command=(", script)
+        self.assertIn("runtime-profiles", script)
+        self.assertIn("--allow-untrusted-active-venv", script)
         self.assertIn('DEPENDENCY_PROFILE_SOURCE="runtime-settings+active-marker"', script)
+        self.assertIn('DEPENDENCY_PROFILE_SOURCE="runtime-settings-recovery"', script)
         self.assertIn('--expected-settings-sha256 "${DEPENDENCY_PROFILE_SETTINGS_SHA256}"', script)
         self.assertIn('--expected-active-venv-target "${DEPENDENCY_PROFILE_ACTIVE_VENV_TARGET}"', script)
         self.assertIn('--expected-active-marker-status "${DEPENDENCY_PROFILE_MARKER_STATUS}"', script)
+        self.assertIn("--settings-only-profile-evidence", script)
         self.assertIn("Upgrade dependency selection never requests a Settings rewrite", script)
         self.assertIn("UPDATE_ROLLBACK_COMPLETE=0", script)
         self.assertIn("UPDATE_STATE_CERTAIN=0", script)
@@ -2991,6 +2995,61 @@ exit 1
         self.assertTrue(envelope["plannedDependenciesInstall"])
         self.assertFalse(envelope["dependenciesInstalled"])
         self.assertFalse(envelope["sourceUpdated"])
+        self.assertFalse(envelope["servicesStopped"])
+
+    def test_upgrade_dry_run_recovers_legacy_concrete_venv_without_force_flag(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "Home"
+            runtime = home / ".open-nova"
+            home.mkdir()
+            self._write_prior_runtime_source(runtime)
+            managed_venv = self._write_trusted_runtime_venv(runtime)
+            pointer = runtime / ".venv"
+            pointer.unlink()
+            managed_venv.rename(pointer)
+            source_target_before = os.readlink(runtime / "app" / "source")
+            settings_before = (runtime / "config" / "settings.json").read_bytes()
+            python_before = (pointer / "bin" / "python").read_bytes()
+
+            result = subprocess.run(
+                [
+                    "zsh",
+                    str(INSTALLER),
+                    "--dry-run",
+                    "--upgrade",
+                    "--runtime",
+                    str(runtime),
+                    "--source-root",
+                    str(ROOT),
+                    "--result-json",
+                    "--no-scheduler",
+                    "--no-dashboard-server",
+                ],
+                cwd=ROOT,
+                env={**os.environ, "HOME": str(home), "NOVA_INSTALL_PLATFORM": "Darwin"},
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(os.readlink(runtime / "app" / "source"), source_target_before)
+            self.assertTrue(pointer.is_dir())
+            self.assertFalse(pointer.is_symlink())
+            self.assertEqual((runtime / "config" / "settings.json").read_bytes(), settings_before)
+            self.assertEqual((pointer / "bin" / "python").read_bytes(), python_before)
+
+        output = result.stdout + result.stderr
+        self.assertEqual(result.returncode, 0, output)
+        envelope_line = next(
+            line
+            for line in output.splitlines()
+            if line.startswith("OPEN_NOVA_UPDATE_RESULT_JSON=")
+        )
+        envelope = json.loads(envelope_line.split("=", 1)[1])
+        self.assertEqual(envelope["updateMode"], "rebuild-candidate-venv")
+        self.assertEqual(envelope["reason"], "forced-rebuild")
+        self.assertTrue(envelope["plannedDependenciesInstall"])
+        self.assertFalse(envelope["dependenciesInstalled"])
         self.assertFalse(envelope["servicesStopped"])
 
     def test_upgrade_requires_existing_runtime_for_real_apply(self):

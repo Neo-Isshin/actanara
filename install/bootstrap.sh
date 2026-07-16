@@ -74,10 +74,13 @@ bootstrap_text() {
         preparing_files) print -r -- "Preparing installation files" ;;
         latest_ready) print -r -- "Latest stable version selected" ;;
         cache_ready) print -r -- "Previously downloaded files are ready" ;;
+        existing_ready) print -r -- "Existing Open Nova data will be kept and updated" ;;
         starting) print -r -- "Starting Open Nova setup" ;;
+        starting_update) print -r -- "Starting Open Nova update" ;;
         step_failed) print -r -- "Could not prepare Open Nova. Run again with NOVA_INSTALL_VERBOSE=1 for details." ;;
         options_conflict) print -r -- "Some preparation options cannot be used together. Run with --help." ;;
-        existing_install) print -r -- "Open Nova is already installed. Run open-nova doctor, then open-nova update --apply." ;;
+        runtime_incomplete) print -r -- "This Open Nova folder is incomplete and cannot be updated safely." ;;
+        service_unmatched) print -r -- "An Open Nova background service exists, but its installation folder could not be found." ;;
         location_invalid) print -r -- "The saved Open Nova location could not be read safely." ;;
         version_unavailable) print -r -- "The selected Open Nova version could not be verified." ;;
         version_invalid) print -r -- "Choose an exact Open Nova version ID." ;;
@@ -98,10 +101,13 @@ bootstrap_text() {
         preparing_files) print -r -- "准备安装文件" ;;
         latest_ready) print -r -- "已选择最新稳定版本" ;;
         cache_ready) print -r -- "已准备此前下载的文件" ;;
+        existing_ready) print -r -- "已保留现有 Open Nova 数据，将直接更新" ;;
         starting) print -r -- "启动 Open Nova 安装" ;;
+        starting_update) print -r -- "启动 Open Nova 更新" ;;
         step_failed) print -r -- "未能准备 Open Nova，可设置 NOVA_INSTALL_VERBOSE=1 后重试以查看详情。" ;;
         options_conflict) print -r -- "部分准备选项不能同时使用，请通过 --help 查看用法。" ;;
-        existing_install) print -r -- "检测到已安装的 Open Nova；请先运行 open-nova doctor，再运行 open-nova update --apply。" ;;
+        runtime_incomplete) print -r -- "此 Open Nova 文件夹不完整，无法安全更新。" ;;
+        service_unmatched) print -r -- "检测到 Open Nova 后台服务，但未找到对应的安装文件夹。" ;;
         location_invalid) print -r -- "无法安全读取已保存的 Open Nova 位置。" ;;
         version_unavailable) print -r -- "未能确认所选 Open Nova 版本。" ;;
         version_invalid) print -r -- "请选择完整、准确的 Open Nova 版本 ID。" ;;
@@ -570,6 +576,12 @@ END {
 parse_installer_safety_args() {
   INSTALLER_UPGRADE=0
   INSTALLER_RUNTIME="${NOVA_INSTALL_RUNTIME:-$HOME/.open-nova}"
+  INSTALLER_RUNTIME_ARG=0
+  INSTALLER_RUNTIME_ENV=0
+  INSTALLER_YES=0
+  if [[ -n "${NOVA_INSTALL_RUNTIME:-}" ]]; then
+    INSTALLER_RUNTIME_ENV=1
+  fi
   local index=1
   local arg=""
   local value=""
@@ -578,6 +590,9 @@ parse_installer_safety_args() {
     case "$arg" in
       --upgrade|--source-only|--sync-runtime-source)
         INSTALLER_UPGRADE=1
+        ;;
+      --yes)
+        INSTALLER_YES=1
         ;;
       --runtime)
         if (( index >= ${#INSTALL_ARGS[@]} )); then
@@ -591,6 +606,7 @@ parse_installer_safety_args() {
           return 2
         fi
         INSTALLER_RUNTIME="$value"
+        INSTALLER_RUNTIME_ARG=1
         ;;
       --diary-output|--desktop-diary-link|--shell-path-file|--reports-output|--snapshots-output|--archives-output|--source-root|--python|--dashboard-port|--dashboard-host|--rag-embedding-mode|--rag-local-model|--rag-local-dimension|--llm-provider|--llm-endpoint|--llm-model|--llm-api-key-env|--rag-cloud-provider|--rag-cloud-endpoint|--rag-cloud-model|--rag-cloud-dimension|--rag-cloud-api-key-env|--language)
         # A token consumed as another option's value must never be mistaken for
@@ -613,7 +629,25 @@ normalize_runtime_candidate() {
   elif [[ "$candidate" == "~"* ]]; then
     return 1
   fi
-  print -rn -- "${candidate:A}"
+  print -rn -- "${candidate:a}"
+}
+
+canonical_source_url() {
+  local value="$1"
+  case "$value" in
+    "https://github.com/Neo-Isshin/open-nova"|"https://github.com/Neo-Isshin/open-nova/"|"https://github.com/Neo-Isshin/open-nova.git"|"https://github.com/Neo-Isshin/open-nova.git/")
+      print -rn -- "$DEFAULT_SOURCE_URL"
+      ;;
+    *)
+      print -rn -- "$value"
+      ;;
+  esac
+}
+
+source_urls_match() {
+  local existing="$1"
+  local requested="$2"
+  [[ "$(canonical_source_url "$existing")" == "$(canonical_source_url "$requested")" ]]
 }
 
 runtime_has_open_nova_marker() {
@@ -633,32 +667,42 @@ runtime_has_open_nova_marker() {
   return 1
 }
 
-reject_existing_runtime_candidate() {
-  local label="$1"
-  local raw_candidate="$2"
-  local candidate=""
-  if ! candidate="$(normalize_runtime_candidate "$raw_candidate")"; then
-    bootstrap_problem location_invalid "cannot safely resolve ${label} Open Nova folder"
-    return 2
-  fi
-  if runtime_has_open_nova_marker "$candidate"; then
-    bootstrap_problem existing_install "existing Open Nova installation detected at ${candidate}"
-    return 2
-  fi
+runtime_is_updateable_open_nova() {
+  local candidate="$1"
+  local source_pointer="${candidate}/app/source"
+  local source_raw=""
+  local generation=""
+  local source_target=""
+  local manifest=""
+  local manifest_payload=""
+  local manifest_size=""
+  local product=""
+  local deployment_mode=""
+  [[ -d "$candidate" && ! -L "$candidate" ]] || return 1
+  [[ -d "${candidate}/config" && ! -L "${candidate}/config" ]] || return 1
+  [[ -d "${candidate}/app" && ! -L "${candidate}/app" ]] || return 1
+  [[ -d "${candidate}/app/releases" && ! -L "${candidate}/app/releases" ]] || return 1
+  [[ -f "${candidate}/config/settings.json" && ! -L "${candidate}/config/settings.json" ]] || return 1
+  [[ -f "${candidate}/config/runtime.json" && ! -L "${candidate}/config/runtime.json" ]] || return 1
+  [[ -L "$source_pointer" ]] || return 1
+  source_raw="$(/usr/bin/readlink "$source_pointer" 2>/dev/null)" || return 1
+  [[ "$source_raw" == releases/* ]] || return 1
+  generation="${source_raw#releases/}"
+  [[ -n "$generation" && "$generation" != "." && "$generation" != ".." && "$generation" != */* ]] || return 1
+  source_target="${candidate}/app/releases/${generation}"
+  [[ -d "$source_target" && ! -L "$source_target" ]] || return 1
+  manifest="${source_target}/.open-nova-runtime-source.json"
+  [[ -f "$manifest" && ! -L "$manifest" ]] || return 1
+  manifest_size="$(/usr/bin/wc -c < "$manifest" | /usr/bin/tr -d '[:space:]')" || return 1
+  [[ "$manifest_size" =~ "^[0-9]+$" ]] || return 1
+  (( manifest_size > 0 && manifest_size <= 1048576 )) || return 1
+  manifest_payload="$(<"$manifest")" || return 1
+  product="$(extract_json_string "$manifest_payload" "product")" || return 1
+  deployment_mode="$(extract_json_string "$manifest_payload" "deploymentMode")" || return 1
+  [[ "$product" == "open-nova" && "$deployment_mode" == "release-symlink" ]]
 }
 
-guard_fresh_install_before_source_writes() {
-  parse_installer_safety_args || return $?
-  if [[ "$INSTALLER_UPGRADE" == "1" ]]; then
-    return 0
-  fi
-
-  reject_existing_runtime_candidate "target" "$INSTALLER_RUNTIME" || return $?
-  if [[ -n "${NOVA_HOME:-}" ]]; then
-    reject_existing_runtime_candidate "NOVA_HOME" "$NOVA_HOME" || return $?
-  fi
-  reject_existing_runtime_candidate "default" "$HOME/.open-nova" || return $?
-
+read_saved_runtime_location() {
   local location_file="${NOVA_LOCATION_FILE:-$HOME/.config/open-nova/location.json}"
   local location_payload=""
   local pointed_runtime=""
@@ -686,13 +730,56 @@ guard_fresh_install_before_source_writes() {
       bootstrap_problem location_invalid "saved Open Nova location is not an absolute path: ${location_file}"
       return 2
     fi
-    reject_existing_runtime_candidate "location pointer" "$pointed_runtime" || return $?
+  fi
+  print -rn -- "$pointed_runtime"
+}
+
+select_installer_mode_before_source_writes() {
+  parse_installer_safety_args || return $?
+  local selected_runtime="$INSTALLER_RUNTIME"
+  local pointed_runtime=""
+  local normalized_runtime=""
+
+  if [[ "$INSTALLER_RUNTIME_ARG" != "1" && "$INSTALLER_RUNTIME_ENV" != "1" ]]; then
+    if [[ -n "${NOVA_HOME:-}" ]]; then
+      selected_runtime="$NOVA_HOME"
+    else
+      pointed_runtime="$(read_saved_runtime_location)" || return $?
+      if [[ -n "$pointed_runtime" ]]; then
+        selected_runtime="$pointed_runtime"
+      fi
+    fi
+  fi
+  if ! normalized_runtime="$(normalize_runtime_candidate "$selected_runtime")"; then
+    bootstrap_problem location_invalid "cannot safely resolve the selected Open Nova folder"
+    return 2
+  fi
+  if [[ "$INSTALLER_RUNTIME_ARG" != "1" ]]; then
+    INSTALL_ARGS+=(--runtime "$normalized_runtime")
+  fi
+
+  if [[ "$INSTALLER_UPGRADE" == "1" ]]; then
+    return 0
+  fi
+  if runtime_has_open_nova_marker "$normalized_runtime"; then
+    if ! runtime_is_updateable_open_nova "$normalized_runtime"; then
+      bootstrap_problem runtime_incomplete "existing Open Nova state is incomplete at ${normalized_runtime}"
+      return 2
+    fi
+    INSTALL_ARGS+=(--upgrade)
+    if [[ "$INSTALLER_YES" != "1" ]]; then
+      INSTALL_ARGS+=(--yes)
+      INSTALLER_YES=1
+    fi
+    INSTALLER_UPGRADE=1
+    bootstrap_ok "$(bootstrap_text existing_ready)"
+    return 0
   fi
 
   local launch_agent=""
   for launch_agent in "$HOME"/Library/LaunchAgents/com.open-nova*.plist(N); do
     if [[ -e "$launch_agent" || -L "$launch_agent" ]]; then
-      bootstrap_problem existing_install "existing Open Nova background service detected: ${launch_agent}"
+      bootstrap_problem service_unmatched "existing Open Nova background service has no selected Runtime: ${launch_agent}"
       return 2
     fi
   done
@@ -841,9 +928,9 @@ if [[ -n "$SOURCE_ROOT" && -n "$SOURCE_REF" ]]; then
   exit 2
 fi
 
-# This guard intentionally runs before cache directory creation, clone, fetch,
-# sparse-checkout, or any other installer-owned source write.
-guard_fresh_install_before_source_writes || exit $?
+# Runtime selection intentionally runs before cache directory creation, clone,
+# fetch, sparse-checkout, or any other installer-owned source write.
+select_installer_mode_before_source_writes || exit $?
 
 if [[ -z "$SOURCE_ROOT" ]]; then
   if [[ -z "$SOURCE_URL" ]]; then
@@ -878,7 +965,7 @@ if [[ -z "$SOURCE_ROOT" ]]; then
   fi
   if [[ -d "${SOURCE_ROOT}/.git" ]]; then
     existing_source_url="$(git_exec -C "${SOURCE_ROOT}" remote get-url origin 2>/dev/null || true)"
-    if [[ "$existing_source_url" != "$SOURCE_URL" ]]; then
+    if ! source_urls_match "$existing_source_url" "$SOURCE_URL"; then
       bootstrap_problem cache_mismatch "download cache source does not match requested source"
       exit 2
     fi
@@ -949,10 +1036,14 @@ if [[ -z "$ZSH_BIN" ]]; then
   bootstrap_problem shell_missing "zsh executable not found"
   exit 2
 fi
-if [[ "${NOVA_INSTALL_VERBOSE:-0}" == "1" ]]; then
-  print -r -- "+ $(bootstrap_text starting)"
+bootstrap_start_key="starting"
+if [[ "$INSTALLER_UPGRADE" == "1" ]]; then
+  bootstrap_start_key="starting_update"
 fi
-bootstrap_ok "$(bootstrap_text starting)"
+if [[ "${NOVA_INSTALL_VERBOSE:-0}" == "1" ]]; then
+  print -r -- "+ $(bootstrap_text "$bootstrap_start_key")"
+fi
+bootstrap_ok "$(bootstrap_text "$bootstrap_start_key")"
 if [[ "$DRY_RUN" == "1" ]]; then
   if [[ -f "${SOURCE_ROOT}/install/install.sh" ]]; then
     "$ZSH_BIN" "${SOURCE_ROOT}/install/install.sh" --source-root "${SOURCE_ROOT}" "${INSTALL_ARGS[@]}"

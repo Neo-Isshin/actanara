@@ -1519,6 +1519,47 @@ def _active_dependency_profile_binding(pointer: Path) -> dict[str, Any]:
     }
 
 
+def _untrusted_venv_pointer_binding(pointer: Path) -> dict[str, Any]:
+    """Bind an untrusted legacy pointer without following or executing it."""
+
+    pointer = _lexical_absolute(pointer)
+    try:
+        metadata = pointer.lstat()
+    except FileNotFoundError:
+        return {
+            "bindingKind": "pointer-only",
+            "pointerKind": "missing",
+            "pointerDevice": None,
+            "pointerInode": None,
+            "pointerMode": None,
+            "pointerRawTarget": None,
+        }
+    except OSError as exc:
+        raise TransactionError("legacy Runtime venv pointer cannot be inspected") from exc
+    if stat.S_ISLNK(metadata.st_mode):
+        pointer_kind = "symlink"
+        try:
+            raw_target = os.readlink(pointer)
+        except OSError as exc:
+            raise TransactionError("legacy Runtime venv pointer cannot be read") from exc
+    elif stat.S_ISDIR(metadata.st_mode):
+        pointer_kind = "directory"
+        raw_target = None
+    elif stat.S_ISREG(metadata.st_mode):
+        pointer_kind = "file"
+        raw_target = None
+    else:
+        raise TransactionError("legacy Runtime venv pointer has an unsupported type")
+    return {
+        "bindingKind": "pointer-only",
+        "pointerKind": pointer_kind,
+        "pointerDevice": metadata.st_dev,
+        "pointerInode": metadata.st_ino,
+        "pointerMode": stat.S_IMODE(metadata.st_mode),
+        "pointerRawTarget": raw_target,
+    }
+
+
 def _active_venv_reuse_binding(pointer: Path) -> dict[str, Any]:
     binding = _active_dependency_profile_binding(pointer)
     if binding["markerStatus"] != "trusted":
@@ -1540,6 +1581,15 @@ def _verify_dependency_profile_binding(state: dict[str, Any]) -> None:
     if not isinstance(expected, dict):
         raise TransactionError("dependency profile evidence binding is invalid")
     pointer = state.get("venv") if isinstance(state.get("venv"), dict) else {}
+    if expected.get("bindingKind") == "pointer-only":
+        current = _untrusted_venv_pointer_binding(
+            Path(str(pointer.get("path") or ""))
+        )
+        if current != expected:
+            raise TransactionError(
+                "legacy Runtime venv pointer changed after transaction begin"
+            )
+        return
     current = _active_dependency_profile_binding(Path(str(pointer.get("path") or "")))
     if current != expected:
         raise TransactionError(
@@ -3067,6 +3117,8 @@ def _promote_pointer(state_path: Path, state: dict[str, Any], name: str) -> None
     if not candidate.exists():
         raise TransactionError(f"{name} candidate does not exist")
     prior_kind = pointer["priorKind"]
+    if name == "venv":
+        _verify_dependency_profile_binding(state)
     if prior_kind == "symlink" and (
         not path.is_symlink() or os.readlink(path) != pointer.get("priorRawTarget")
     ):
@@ -3688,14 +3740,29 @@ def begin(args: argparse.Namespace) -> int:
         raise TransactionError("update Runtime or HOME is unavailable") from exc
     if not SAFE_TX_ID_RE.fullmatch(args.tx_id) or args.tx_id in {".", ".."}:
         raise TransactionError("update transaction id contains unsafe characters")
-    profile_evidence_values = (
-        args.expected_settings_sha256,
+    active_profile_evidence_values = (
         args.expected_active_venv_target,
         args.expected_active_marker_status,
         args.expected_active_marker_sha256,
     )
-    profile_evidence_requested = any(value is not None for value in profile_evidence_values)
-    if profile_evidence_requested:
+    active_profile_evidence_requested = any(
+        value is not None for value in active_profile_evidence_values
+    )
+    settings_only_profile_evidence = bool(args.settings_only_profile_evidence)
+    profile_evidence_requested = (
+        args.expected_settings_sha256 is not None
+        or active_profile_evidence_requested
+        or settings_only_profile_evidence
+    )
+    if settings_only_profile_evidence:
+        if (
+            args.mode != "upgrade"
+            or active_profile_evidence_requested
+            or not isinstance(args.expected_settings_sha256, str)
+            or not SHA256_RE.fullmatch(args.expected_settings_sha256)
+        ):
+            raise TransactionError("settings-only dependency profile evidence is invalid")
+    elif profile_evidence_requested:
         if (
             not isinstance(args.expected_settings_sha256, str)
             or not SHA256_RE.fullmatch(args.expected_settings_sha256)
@@ -3846,7 +3913,11 @@ def begin(args: argparse.Namespace) -> int:
         # for a later promotion or recovery decision.
         state["source"] = _pointer_state(source_pointer)
         state["venv"] = _pointer_state(venv_pointer)
-        if profile_evidence_requested:
+        if settings_only_profile_evidence:
+            state["dependencyProfileBinding"] = _untrusted_venv_pointer_binding(
+                venv_pointer
+            )
+        elif active_profile_evidence_requested:
             profile_binding = _active_dependency_profile_binding(venv_pointer)
             if (
                 profile_binding.get("targetPath")
@@ -3881,9 +3952,19 @@ def begin(args: argparse.Namespace) -> int:
                 )
             state["dependencyProfileEvidence"] = {
                 "settingsSha256": args.expected_settings_sha256,
-                "activeVenvTarget": args.expected_active_venv_target,
-                "activeMarkerStatus": args.expected_active_marker_status,
-                "activeMarkerSha256": args.expected_active_marker_sha256,
+                "activeVenvTarget": (
+                    None if settings_only_profile_evidence else args.expected_active_venv_target
+                ),
+                "activeMarkerStatus": (
+                    "unavailable"
+                    if settings_only_profile_evidence
+                    else args.expected_active_marker_status
+                ),
+                "activeMarkerSha256": (
+                    None
+                    if settings_only_profile_evidence
+                    else args.expected_active_marker_sha256
+                ),
             }
         _save_state(state_path, state, event="control-state-captured")
         services: list[dict[str, Any]] = []
@@ -4988,6 +5069,7 @@ def build_parser() -> argparse.ArgumentParser:
     begin_parser.add_argument("--source-pointer", required=True)
     begin_parser.add_argument("--venv-pointer", required=True)
     begin_parser.add_argument("--expected-settings-sha256")
+    begin_parser.add_argument("--settings-only-profile-evidence", action="store_true")
     begin_parser.add_argument("--expected-active-venv-target")
     begin_parser.add_argument(
         "--expected-active-marker-status",

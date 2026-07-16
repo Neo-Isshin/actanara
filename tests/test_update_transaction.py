@@ -519,6 +519,7 @@ class UpdateTransactionTests(unittest.TestCase):
         uid: int = 0,
         materialize_candidates: bool = True,
         mode: str = "upgrade",
+        settings_only_profile_evidence: bool = False,
     ) -> Path:
         settings_sha256 = hashlib.sha256(fixture["settings"].read_bytes()).hexdigest()
         active_venv_target = (fixture["runtime"] / ".venv").resolve()
@@ -530,6 +531,19 @@ class UpdateTransactionTests(unittest.TestCase):
                 "--expected-active-marker-sha256",
                 hashlib.sha256(active_marker.read_bytes()).hexdigest(),
             ]
+        profile_evidence_args = ["--expected-settings-sha256", settings_sha256]
+        if settings_only_profile_evidence:
+            profile_evidence_args.append("--settings-only-profile-evidence")
+        else:
+            profile_evidence_args.extend(
+                [
+                    "--expected-active-venv-target",
+                    str(active_venv_target),
+                    "--expected-active-marker-status",
+                    marker_status,
+                    *marker_args,
+                ]
+            )
         result = self._run(
             "begin",
             "--runtime",
@@ -540,13 +554,7 @@ class UpdateTransactionTests(unittest.TestCase):
             str(fixture["runtime"] / "app" / "source"),
             "--venv-pointer",
             str(fixture["runtime"] / ".venv"),
-            "--expected-settings-sha256",
-            settings_sha256,
-            "--expected-active-venv-target",
-            str(active_venv_target),
-            "--expected-active-marker-status",
-            marker_status,
-            *marker_args,
+            *profile_evidence_args,
             "--mode",
             mode,
             "--tx-id",
@@ -1590,10 +1598,26 @@ print -r -- "$reserved"
                 server.server_close()
                 server_thread.join(timeout=5)
 
-    def test_rollback_restores_pointers_and_preserves_live_sqlite_commits(self):
+    def test_settings_only_legacy_venv_rollback_restores_pointers_and_preserves_live_sqlite_commits(self):
         with tempfile.TemporaryDirectory() as tmp:
             fixture = self._fixture(Path(tmp))
-            journal = self._begin(fixture, owner_pid=os.getpid())
+            legacy_venv = fixture["runtime"] / ".venv"
+            legacy_inode = legacy_venv.stat(follow_symlinks=False).st_ino
+            legacy_python = (legacy_venv / "bin" / "python").read_bytes()
+            journal = self._begin(
+                fixture,
+                owner_pid=os.getpid(),
+                settings_only_profile_evidence=True,
+            )
+            prepared = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertEqual(
+                prepared["dependencyProfileBinding"]["bindingKind"],
+                "pointer-only",
+            )
+            self.assertEqual(
+                prepared["dependencyProfileEvidence"]["activeMarkerStatus"],
+                "unavailable",
+            )
             self._prepare_and_promote(fixture, journal)
 
             source = fixture["runtime"] / "app" / "source"
@@ -1621,7 +1645,8 @@ print -r -- "$reserved"
             self.assertEqual(os.readlink(source), "releases/old")
             self.assertTrue(venv.is_dir())
             self.assertFalse(venv.is_symlink())
-            self.assertEqual((venv / "bin" / "python").read_text(encoding="utf-8"), "old-venv\n")
+            self.assertEqual(venv.stat(follow_symlinks=False).st_ino, legacy_inode)
+            self.assertEqual((venv / "bin" / "python").read_bytes(), legacy_python)
             self.assertEqual(fixture["settings"].read_text(encoding="utf-8"), '{"dashboard":{"port":42173}}\n')
             self.assertEqual(
                 self._database_values(fixture["database"]),
@@ -1636,6 +1661,31 @@ print -r -- "$reserved"
             self.assertEqual(os.readlink(source), "releases/old")
             self.assertTrue(venv.is_dir())
             self.assertFalse(venv.is_symlink())
+
+    def test_settings_only_legacy_venv_pointer_race_is_rejected_before_service_stop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._fixture(root)
+            journal = self._begin(
+                fixture,
+                owner_pid=os.getpid(),
+                settings_only_profile_evidence=True,
+            )
+            self._record_and_verify_source_candidate(fixture, journal)
+            pointer = fixture["runtime"] / ".venv"
+            original = root / "legacy-venv-original"
+            pointer.rename(original)
+            shutil.copytree(original, pointer)
+
+            result = self._run("stop", "--state", str(journal), check=False)
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("legacy Runtime venv pointer changed", result.stderr)
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            self.assertFalse(state["serviceStopInitiated"])
+            shutil.rmtree(pointer)
+            original.rename(pointer)
+            self._run("rollback", "--state", str(journal))
 
     def test_legacy_absolute_symlinks_promote_relative_and_rollback_exactly(self):
         from advanced.dashboard import dashboard_launch_agent as dashboard_launcher
