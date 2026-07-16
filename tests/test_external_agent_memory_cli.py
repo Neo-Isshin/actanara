@@ -208,7 +208,7 @@ class ExternalAgentMemoryCliTests(unittest.TestCase):
         payload = {"summary": {"errors": 0}}
         with (
             patch("data_foundation.operator_cli.nova_settings_status", return_value=payload) as status,
-            patch("data_foundation.operator_cli.format_nova_settings_status", return_value="Nova settings status:\n") as formatter,
+            patch("data_foundation.operator_cli.format_nova_settings_status", return_value="Open Nova · System status\n") as formatter,
             redirect_stdout(io.StringIO()) as output,
         ):
             code = cli.main(["settings", "status"])
@@ -216,32 +216,44 @@ class ExternalAgentMemoryCliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         status.assert_called_once_with(None, doctor_profile="all")
         formatter.assert_called_once_with(payload)
-        self.assertIn("Nova settings status:", output.getvalue())
+        self.assertIn("Open Nova · System status", output.getvalue())
 
     def test_packaged_cli_supports_layered_doctor_flags(self):
         payload = {"summary": {"errors": 0}, "doctorProfile": "pipeline"}
         with (
             patch("data_foundation.operator_cli.nova_settings_status", return_value=payload) as status,
-            patch("data_foundation.operator_cli.format_nova_settings_status", return_value="Nova doctor (pipeline): ok\n"),
+            patch("data_foundation.operator_cli.format_nova_settings_status", return_value="Open Nova · Daily diary check\n"),
             redirect_stdout(io.StringIO()) as output,
         ):
             code = cli.main(["doctor", "--pipeline"])
 
         self.assertEqual(code, 0)
         status.assert_called_once_with(None, doctor_profile="pipeline")
-        self.assertIn("Nova doctor (pipeline):", output.getvalue())
+        self.assertIn("Open Nova · Daily diary check", output.getvalue())
 
     def test_packaged_cli_no_args_prints_product_command_guide(self):
         with redirect_stdout(io.StringIO()) as output:
             code = cli.main([])
 
         self.assertEqual(code, 0)
-        self.assertIn("Open Nova CLI", output.getvalue())
+        self.assertIn("Open Nova", output.getvalue())
+        self.assertIn("Start here:", output.getvalue())
         self.assertIn("open-nova doctor", output.getvalue())
+
+    def test_rag_group_help_keeps_existing_nonzero_exit_code(self):
+        with redirect_stdout(io.StringIO()) as output:
+            code = cli.main(["rag"])
+
+        self.assertEqual(code, 1)
+        self.assertIn("search-memory", output.getvalue())
 
     def test_compact_memory_results_reports_unavailable_without_mutation_hint(self):
         text = compact_memory_results({"available": False, "reason": "server-unavailable"})
-        self.assertEqual(text, "RAG unavailable: server-unavailable")
+        self.assertIn("Open Nova · Memory search", text)
+        self.assertIn("Unavailable", text)
+        self.assertIn("not responding", text)
+        self.assertIn("open-nova doctor --rag", text)
+        self.assertNotIn("server-unavailable", text)
 
     def test_normalize_memory_response_preserves_external_evidence_schema(self):
         payload = normalize_memory_response({"available": False, "reason": "server-unavailable"}, query="policy", top_k=3)

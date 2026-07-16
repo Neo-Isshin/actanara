@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Open Nova operator CLI.
-
-This is a thin product-facing wrapper around existing service boundaries. It
-does not execute arbitrary shell commands.
-"""
+"""Open Nova command line interface."""
 
 from __future__ import annotations
 
@@ -20,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
+from data_foundation.cli_output import friendly_name, render_cli, status_item, status_label
 from data_foundation.external_agent_memory import compact_memory_results, search_memory
 from data_foundation.daily_completeness import evaluate_daily_completeness
 from data_foundation.diary_metrics import (
@@ -117,182 +114,197 @@ def main(argv: list[str] | None = None) -> int:
     return handler(args)
 
 
-def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="open-nova", description=__doc__)
-    subcommands = parser.add_subparsers(dest="command")
+def _command_help(parser: argparse.ArgumentParser):
+    def show_help(_args: argparse.Namespace) -> int:
+        parser.print_help()
+        return 0
 
-    doctor = subcommands.add_parser("doctor", help="Check Open Nova subsystem status.")
+    return show_help
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="open-nova",
+        description="Create diaries, search your memory, and manage your local Open Nova setup.",
+        epilog=_product_help_groups(),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    subcommands = parser.add_subparsers(dest="command", title="Commands", metavar="COMMAND")
+
+    doctor = subcommands.add_parser("doctor", help="Check whether Open Nova is ready.")
     _add_doctor_args(doctor)
     doctor.set_defaults(handler=_settings_status)
 
-    model = subcommands.add_parser("model", help="Inspect or configure the diary-generation LLM provider.")
+    model = subcommands.add_parser("model", help="Show, choose, or test the AI model used for diaries.")
     model_subcommands = model.add_subparsers(dest="model_command")
     model.set_defaults(handler=_model_show)
-    model_show = model_subcommands.add_parser("show", help="Print the current LLM provider.")
+    model_show = model_subcommands.add_parser("show", help="Show the current AI model.")
     _add_status_args(model_show)
     model_show.set_defaults(handler=_model_show)
-    model_list = model_subcommands.add_parser("list", help="List configured LLM provider catalog entries.")
+    model_list = model_subcommands.add_parser("list", help="List available AI model services.")
     _add_status_args(model_list)
     model_list.set_defaults(handler=_model_list)
-    model_set = model_subcommands.add_parser("set", help="Update non-secret LLM provider metadata.")
+    model_set = model_subcommands.add_parser("set", help="Choose the AI model and connection settings.")
     _add_status_args(model_set)
-    model_set.add_argument("--provider", help="Provider id from the catalog, or custom.")
-    model_set.add_argument("--model", help="Model id used for diary generation.")
-    model_set.add_argument("--endpoint", help="Provider endpoint URL.")
-    model_set.add_argument("--api", help="Transport API, such as openai-compatible or anthropic-messages.")
-    model_set.add_argument("--context-window", type=int, help="Optional context window tokens.")
-    model_set.add_argument("--max-tokens", type=int, help="Optional max output tokens.")
-    model_set.add_argument("--pipeline-concurrency", type=int, help="Optional pipeline concurrency.")
-    model_set.add_argument("--timeout-seconds", type=int, help="Optional provider timeout.")
-    model_set.add_argument("--api-key-env", help="Environment variable name used for process-local key injection.")
+    model_set.add_argument("--provider", help="Model service name from `model list`, or custom.")
+    model_set.add_argument("--model", help="Model name used to create diaries.")
+    model_set.add_argument("--endpoint", help="Custom service URL.")
+    model_set.add_argument("--api", help="Compatibility mode required by the model service.")
+    model_set.add_argument("--context-window", type=int, help="Maximum amount of source text sent to the model.")
+    model_set.add_argument("--max-tokens", type=int, help="Maximum length of a model response.")
+    model_set.add_argument("--pipeline-concurrency", type=int, help="Number of diary sections created at once.")
+    model_set.add_argument("--timeout-seconds", type=int, help="Seconds to wait for the model service.")
+    model_set.add_argument("--api-key-env", help="Environment variable that contains the API key.")
     model_set.set_defaults(handler=_model_set)
-    model_key = model_subcommands.add_parser("key", help="Store the LLM API key from stdin.")
+    model_key = model_subcommands.add_parser("key", help="Save the AI model API key from standard input.")
     _add_status_args(model_key)
-    model_key.add_argument("--value-stdin", action="store_true", help="Read the secret value from stdin.")
+    model_key.add_argument("--value-stdin", action="store_true", help="Read the API key from standard input.")
     model_key.set_defaults(handler=_secrets_set_llm_api_key)
-    model_test = model_subcommands.add_parser("test", help="Probe the configured LLM provider without persisting changes.")
+    model_test = model_subcommands.add_parser("test", help="Check the current AI model connection without changing settings.")
     _add_status_args(model_test)
     model_test.set_defaults(handler=_model_test)
 
-    onboard = subcommands.add_parser("onboard", help="Product alias for onboarding setup commands.")
+    onboard = subcommands.add_parser("onboard", help="Check or finish first-time setup.")
     onboard_subcommands = onboard.add_subparsers(dest="onboard_command")
     onboard.set_defaults(handler=_onboarding_doctor)
-    onboard_status = onboard_subcommands.add_parser("status", help="Print onboarding status.")
+    onboard_status = onboard_subcommands.add_parser("status", help="Show setup status and next steps.")
     _add_onboarding_args(onboard_status)
     onboard_status.set_defaults(handler=_onboarding_doctor)
-    onboard_doctor = onboard_subcommands.add_parser("doctor", help="Run onboarding doctor checks.")
+    onboard_doctor = onboard_subcommands.add_parser("doctor", help="Check first-time setup.")
     _add_onboarding_args(onboard_doctor)
     onboard_doctor.set_defaults(handler=_onboarding_doctor)
-    onboard_plan = onboard_subcommands.add_parser("plan", help="Print an onboarding plan.")
+    onboard_plan = onboard_subcommands.add_parser("plan", help="Preview first-time setup.")
     _add_onboarding_args(onboard_plan)
     onboard_plan.set_defaults(handler=_onboarding_plan)
-    onboard_apply = onboard_subcommands.add_parser("apply", help="Run guarded onboarding apply.")
+    onboard_apply = onboard_subcommands.add_parser("apply", help="Complete setup after confirmation.")
     _add_onboarding_apply_args(onboard_apply)
     onboard_apply.set_defaults(handler=_onboarding_apply_blocked)
 
-    config = subcommands.add_parser("config", help="Inspect or update operator settings through nova-settings.")
+    config = subcommands.add_parser("config", help="Show or change Open Nova settings.")
     config_subcommands = config.add_subparsers(dest="config_command")
     config.set_defaults(handler=_config_show)
-    config_show = config_subcommands.add_parser("show", help="Print current settings.")
+    config_show = config_subcommands.add_parser("show", help="Show current settings.")
     _add_status_args(config_show)
     config_show.set_defaults(handler=_config_show)
-    config_doctor = config_subcommands.add_parser("doctor", help="Run settings doctor checks.")
+    config_doctor = config_subcommands.add_parser("doctor", help="Check current settings.")
     _add_doctor_args(config_doctor)
     config_doctor.set_defaults(handler=_settings_status)
-    config_keys = config_subcommands.add_parser("keys", help="List writable and protected settings groups.")
+    config_keys = config_subcommands.add_parser("keys", help="Show settings you can change.")
     _add_status_args(config_keys)
     config_keys.set_defaults(handler=_config_keys)
-    config_get = config_subcommands.add_parser("get", help="Read one settings path.")
+    config_get = config_subcommands.add_parser("get", help="Show one setting.")
     _add_status_args(config_get)
-    config_get.add_argument("path", help="Dot path, for example general.timezone.")
+    config_get.add_argument("path", help="Setting name, for example general.timezone.")
     config_get.set_defaults(handler=_config_get)
-    config_set = config_subcommands.add_parser("set", help="Write one supported operator settings path.")
+    config_set = config_subcommands.add_parser("set", help="Change one supported setting.")
     _add_status_args(config_set)
-    config_set.add_argument("path", help="Dot path under an operator-writable settings group.")
-    config_set.add_argument("value", help="Value. JSON scalars/objects are accepted.")
+    config_set.add_argument("path", help="Setting name shown by `config keys`.")
+    config_set.add_argument("value", help="New value; JSON values are accepted.")
     config_set.set_defaults(handler=_config_set)
 
     update = subcommands.add_parser(
         "update",
-        help="Plan or apply a guarded Open Nova upgrade.",
+        help="Check for an update or install it.",
         description=(
-            "Plan or apply a guarded Open Nova upgrade. By default, the bootstrap resolves "
-            "the latest stable Release and pins its full commit before installation."
+            "Check or install an Open Nova update. By default, Open Nova uses "
+            "the latest stable release."
         ),
     )
     _add_status_args(update)
     update_mode = update.add_mutually_exclusive_group()
-    update_mode.add_argument("--apply", action="store_true", help="Run the guarded installer upgrade now.")
-    update_mode.add_argument("--dry-run", action="store_true", help="Run bootstrap/installer dry-run without mutations.")
+    update_mode.add_argument("--apply", action="store_true", help="Install the update now.")
+    update_mode.add_argument("--dry-run", action="store_true", help="Preview the update without changing anything.")
     update.add_argument(
         "--ref",
         help=(
-            "Explicit remote commit: a full 40- or 64-character hexadecimal object ID. "
-            "Omit to resolve the latest stable Release and pin its commit."
+            "Use an exact 40- or 64-character version ID. "
+            "Omit this option to use the latest stable release."
         ),
     )
-    update.add_argument("--source-url", default=DEFAULT_UPDATE_SOURCE_URL, help="Git source URL for update bootstrap.")
+    update.add_argument("--source-url", default=DEFAULT_UPDATE_SOURCE_URL, help="Address to download the update from.")
     update.add_argument(
         "--source-root",
-        help="Use an existing local source checkout instead of fetching; cannot be combined with --ref.",
+        help="Use an existing local copy instead of downloading; cannot be combined with --ref.",
     )
-    update.add_argument("--cache-root", help="Installer source cache root. Defaults to ~/.cache/open-nova/installer.")
+    update.add_argument("--cache-root", help="Folder used to keep downloaded update files.")
     update_dependency_mode = update.add_mutually_exclusive_group()
     update_dependency_mode.add_argument(
         "--source-only",
         action="store_true",
-        help="Require reuse of the active Runtime venv; fail closed when its dependency contract is incompatible.",
+        help="Update app files only; stop if the current installation cannot be reused.",
     )
     update_dependency_mode.add_argument(
         "--force-rebuild",
         action="store_true",
-        help="Force a new candidate Runtime venv even when the active dependency contract is reusable.",
+        help="Reinstall required software during the update.",
     )
     update.add_argument(
         "--offline",
         action="store_true",
         help=(
-            "Forbid update network access. Requires --source-root PATH or a full --ref already "
-            "present in the installer source cache; a locked rebuild also requires the trusted dependency cache."
+            "Do not use the network. Requires --source-root PATH or an exact --ref already "
+            "downloaded; reinstalling also requires previously downloaded software."
         ),
     )
     update.set_defaults(handler=_update_run)
 
-    search = subcommands.add_parser("search", help="Search nova-RAG memory through the external read-only facade.")
+    search = subcommands.add_parser("search", help="Search your Open Nova memory.")
     _add_rag_search_args(search)
     search.set_defaults(handler=_search_memory)
 
-    task = subcommands.add_parser("task", help="Print Nova-Task v2 authority counts.")
+    task = subcommands.add_parser("task", help="Show task totals.")
     _add_status_args(task)
     task.set_defaults(handler=_task_counts)
 
-    rag_rebuild = subcommands.add_parser("rag-rebuild", help="Rebuild nova-RAG v2 and promote the candidate after confirmation.")
+    rag_rebuild = subcommands.add_parser("rag-rebuild", help="Rebuild memory after confirmation.")
     _add_status_args(rag_rebuild)
-    rag_rebuild.add_argument("--dry-run", action="store_true", help="Print the rebuild plan without mutations.")
+    rag_rebuild.add_argument("--dry-run", action="store_true", help="Preview the rebuild without changing anything.")
     rag_rebuild.add_argument("--confirm", dest="confirmation_text", help=f'Exact confirmation phrase: "{RAG_REBUILD_CONFIRMATION}"')
     rag_rebuild.set_defaults(handler=_rag_rebuild)
 
     rag_update = subcommands.add_parser(
         "rag-update",
-        help="Build a nova-RAG v2 candidate with active embedding reuse and promote after confirmation.",
+        help="Refresh memory after confirmation.",
     )
     _add_status_args(rag_update)
-    rag_update.add_argument("--dry-run", action="store_true", help="Print the candidate sync plan without mutations.")
+    rag_update.add_argument("--dry-run", action="store_true", help="Preview the refresh without changing anything.")
     rag_update.add_argument("--confirm", dest="confirmation_text", help=f'Exact confirmation phrase: "{RAG_UPDATE_CONFIRMATION}"')
     rag_update.set_defaults(handler=_rag_update)
 
-    settings = subcommands.add_parser("settings", help="Inspect runtime settings.")
+    settings = subcommands.add_parser("settings", help="Check Open Nova settings.")
     settings_subcommands = settings.add_subparsers(dest="settings_command")
-    status = settings_subcommands.add_parser("status", help="Print read-only settings status.")
+    settings.set_defaults(handler=_command_help(settings))
+    status = settings_subcommands.add_parser("status", help="Show settings status.")
     _add_status_args(status)
     status.set_defaults(handler=_settings_status)
 
-    doctor = settings_subcommands.add_parser("doctor", help="Run read-only settings doctor checks.")
+    doctor = settings_subcommands.add_parser("doctor", help="Check settings for problems.")
     _add_doctor_args(doctor)
     doctor.set_defaults(handler=_settings_status)
 
-    onboarding = subcommands.add_parser("onboarding", help="Inspect new-user onboarding readiness.")
+    onboarding = subcommands.add_parser("onboarding", help="Detailed first-time setup commands.")
     onboarding_subcommands = onboarding.add_subparsers(dest="onboarding_command")
-    onboarding_doctor = onboarding_subcommands.add_parser("doctor", help="Run read-only onboarding doctor checks.")
+    onboarding.set_defaults(handler=_command_help(onboarding))
+    onboarding_doctor = onboarding_subcommands.add_parser("doctor", help="Check first-time setup.")
     _add_onboarding_args(onboarding_doctor)
     onboarding_doctor.set_defaults(handler=_onboarding_doctor)
-    onboarding_plan = onboarding_subcommands.add_parser("plan", help="Print a read-only selectable subsystem plan.")
+    onboarding_plan = onboarding_subcommands.add_parser("plan", help="Preview setup for selected features.")
     _add_onboarding_args(onboarding_plan)
     onboarding_plan.set_defaults(handler=_onboarding_plan)
     onboarding_one_liner = onboarding_subcommands.add_parser(
         "runtime-dry-run",
-        help="Print a read-only runtime bootstrap dry-run schema draft.",
+        help="Preview how Open Nova will prepare its data folder.",
     )
     _add_onboarding_args(onboarding_one_liner)
     onboarding_one_liner.set_defaults(handler=_onboarding_one_liner_dry_run)
     onboarding_one_liner_apply = onboarding_subcommands.add_parser(
         "runtime-apply",
-        help="Apply runtime bootstrap; scheduler registration is explicit opt-in.",
+        help="Prepare Open Nova; automatic daily runs remain optional.",
     )
     _add_onboarding_args(onboarding_one_liner_apply)
     onboarding_one_liner_apply.add_argument(
         "--confirmation-text",
-        help="Exact runtime bootstrap confirmation phrase.",
+        help="Exact confirmation phrase.",
     )
     onboarding_one_liner_apply.add_argument(
         "--confirm",
@@ -302,64 +314,64 @@ def _parser() -> argparse.ArgumentParser:
     onboarding_one_liner_apply.add_argument(
         "--select-active-runtime",
         action="store_true",
-        help="Persist the resolved runtime as the active NOVA_HOME pointer.",
+        help="Use this data folder as the active Open Nova installation.",
     )
     onboarding_one_liner_apply.add_argument(
         "--with-scheduler",
         action="store_true",
-        help="Also write/register managed LaunchAgent scheduler jobs after scheduler confirmation.",
+        help="Also enable automatic daily runs after confirmation.",
     )
     onboarding_one_liner_apply.add_argument(
         "--scheduler-confirmation-text",
-        help="Exact scheduler registration phrase required with --with-scheduler.",
+        help="Exact confirmation phrase required with --with-scheduler.",
     )
     onboarding_one_liner_apply.add_argument(
         "--use-default-runtime",
         action="store_true",
-        help="Use ~/.open-nova when --runtime is not provided.",
+        help="Use ~/.open-nova when --runtime is omitted.",
     )
     onboarding_one_liner_apply.add_argument(
         "--language",
-        help="Install-time language profile for runtime bootstrap: zh-CN or en-US.",
+        help="Diary language: zh-CN or en-US.",
     )
     onboarding_one_liner_apply.set_defaults(handler=_onboarding_one_liner_apply)
     onboarding_one_liner_status = onboarding_subcommands.add_parser(
         "runtime-status",
-        help="Inspect runtime bootstrap artifacts without writes.",
+        help="Check files created during setup without changing them.",
     )
     _add_status_args(onboarding_one_liner_status)
     onboarding_one_liner_status.set_defaults(handler=_onboarding_one_liner_status)
     onboarding_one_liner_release = onboarding_subcommands.add_parser(
         "runtime-release-gate",
-        help="Print release gates for runtime bootstrap minimal or scheduler opt-in surface.",
+        help="Check whether setup is ready, with automatic runs optional.",
     )
     _add_onboarding_args(onboarding_one_liner_release)
     onboarding_one_liner_release.add_argument(
         "--with-scheduler",
         action="store_true",
-        help="Include scheduler opt-in gates.",
+        help="Also check optional automatic daily runs.",
     )
     onboarding_one_liner_release.set_defaults(handler=_onboarding_one_liner_release_gate)
     onboarding_one_liner_matrix = onboarding_subcommands.add_parser(
         "runtime-validation-matrix",
-        help="Print the read-only runtime bootstrap clean-machine validation matrix.",
+        help="Show setup verification results.",
     )
     _add_status_args(onboarding_one_liner_matrix)
     onboarding_one_liner_matrix.set_defaults(handler=_onboarding_one_liner_validation_matrix)
     onboarding_rollback_plan = onboarding_subcommands.add_parser(
         "rollback-plan",
-        help="Print read-only onboarding rollback plan artifacts; does not execute rollback.",
+        help="Show available recovery steps without running them.",
     )
     _add_status_args(onboarding_rollback_plan)
     onboarding_rollback_plan.set_defaults(handler=_onboarding_rollback_plan_status)
     onboarding_release = onboarding_subcommands.add_parser(
         "release-gate",
-        help="Print read-only release gates for future onboarding apply.",
+        help="Check whether detailed setup is ready.",
     )
     _add_onboarding_args(onboarding_release)
     onboarding_release.add_argument(
         "--confirmation-text",
-        help="Exact future apply confirmation phrase. Checked by release-gate preflight only.",
+        help="Exact confirmation phrase to verify.",
     )
     onboarding_release.add_argument(
         "--confirm",
@@ -369,12 +381,12 @@ def _parser() -> argparse.ArgumentParser:
     onboarding_release.set_defaults(handler=_onboarding_release_gate)
     onboarding_approval = onboarding_subcommands.add_parser(
         "approval-checklist",
-        help="Print read-only operator approvals required before write-capable onboarding apply.",
+        help="Show confirmations required before setup can make changes.",
     )
     _add_onboarding_args(onboarding_approval)
     onboarding_approval.add_argument(
         "--confirmation-text",
-        help="Exact future apply confirmation phrase. Checked by included release-gate evidence only.",
+        help="Exact confirmation phrase to verify.",
     )
     onboarding_approval.add_argument(
         "--confirm",
@@ -384,34 +396,36 @@ def _parser() -> argparse.ArgumentParser:
     onboarding_approval.set_defaults(handler=_onboarding_approval_packet)
     onboarding_apply = onboarding_subcommands.add_parser(
         "apply",
-        help="Blocked skeleton for future onboarding apply; performs no writes.",
+        help="Run the detailed setup action after confirmation.",
     )
     _add_onboarding_apply_args(onboarding_apply)
     onboarding_apply.set_defaults(handler=_onboarding_apply_blocked)
 
-    pipeline = subcommands.add_parser("pipeline", help="Run the daily production pipeline.")
+    pipeline = subcommands.add_parser("pipeline", help="Create a diary for today or a selected date.")
     _add_status_args(pipeline)
-    pipeline.add_argument("date", nargs="?", help="Optional business date, YYYY-MM-DD or YYMMDD.")
-    pipeline.add_argument("--date", dest="date_flag", help="Optional business date, YYYY-MM-DD or YYMMDD.")
+    pipeline.add_argument("date", nargs="?", help="Diary date, YYYY-MM-DD or YYMMDD.")
+    pipeline.add_argument("--date", dest="date_flag", help="Diary date, YYYY-MM-DD or YYMMDD.")
     pipeline.add_argument(
         "--force",
         action="store_true",
-        help="Regenerate an already complete day using frozen Foundation inputs.",
+        help="Create the diary again using the activity already collected.",
     )
     pipeline.set_defaults(handler=_pipeline_run)
 
-    dashboard = subcommands.add_parser("dashboard", help="Operate the local Dashboard service.")
+    dashboard = subcommands.add_parser("dashboard", help="Manage the local Dashboard.")
     dashboard_subcommands = dashboard.add_subparsers(dest="dashboard_command")
-    dashboard_restart = dashboard_subcommands.add_parser("restart", help="Restart the managed Dashboard LaunchAgent.")
+    dashboard.set_defaults(handler=_command_help(dashboard))
+    dashboard_restart = dashboard_subcommands.add_parser("restart", help="Restart Dashboard.")
     _add_status_args(dashboard_restart)
-    dashboard_restart.add_argument("--label", help="LaunchAgent service label; defaults to configured dashboard service label.")
+    dashboard_restart.add_argument("--label", help="Optional custom background-service name.")
     dashboard_restart.set_defaults(handler=_dashboard_restart)
 
-    scheduler = subcommands.add_parser("scheduler", help="Operate scheduler reconciliation checks.")
+    scheduler = subcommands.add_parser("scheduler", help="Check automatic daily runs.")
     scheduler_subcommands = scheduler.add_subparsers(dest="scheduler_command")
+    scheduler.set_defaults(handler=_command_help(scheduler))
     scheduler_reconcile = scheduler_subcommands.add_parser(
         "reconcile",
-        help="Check for missed daily pipeline runs and optionally apply catch-up rules.",
+        help="Find missed diaries and optionally catch up.",
     )
     _add_status_args(scheduler_reconcile)
     scheduler_reconcile.add_argument("--apply", action="store_true", help="Apply catch-up when missing days are within the automatic limit.")
@@ -419,11 +433,12 @@ def _parser() -> argparse.ArgumentParser:
     scheduler_reconcile.add_argument("--auto-limit-days", type=int, default=3, help="Maximum missing days to auto catch up.")
     scheduler_reconcile.set_defaults(handler=_scheduler_reconcile)
 
-    foundation = subcommands.add_parser("foundation", help="Operate Foundation SQLite read-model caches.")
+    foundation = subcommands.add_parser("foundation", help="Maintain Open Nova's local data.")
     foundation_subcommands = foundation.add_subparsers(dest="foundation_command")
+    foundation.set_defaults(handler=_command_help(foundation))
     sqlite_rebuild = foundation_subcommands.add_parser(
         "rebuild-sqlite-cache",
-        help="Dangerously replace and rebuild the SQLite read-model cache from current configured sources.",
+        help="Replace and rebuild the local database after confirmation.",
     )
     _add_status_args(sqlite_rebuild)
     sqlite_rebuild.add_argument("--start-date", help="Optional rebuild start date, YYYY-MM-DD.")
@@ -437,13 +452,13 @@ def _parser() -> argparse.ArgumentParser:
     sqlite_rebuild.set_defaults(handler=_foundation_rebuild_sqlite_cache)
     approve_diary_metrics = foundation_subcommands.add_parser(
         "approve-diary-metrics",
-        help="Approve the current diary metrics table mismatch for a business date.",
+        help="Confirm reviewed activity totals for a selected diary date.",
     )
     _add_status_args(approve_diary_metrics)
-    approve_diary_metrics.add_argument("date", help="Business date, YYYY-MM-DD or YYMMDD.")
+    approve_diary_metrics.add_argument("date", help="Diary date, YYYY-MM-DD or YYMMDD.")
     approve_diary_metrics.add_argument("--dry-run", action="store_true", help="Preview the approval without writes.")
-    approve_diary_metrics.add_argument("--operator", default="operator", help="Operator name recorded in the approval log.")
-    approve_diary_metrics.add_argument("--note", default="", help="Operator note recorded in the approval log.")
+    approve_diary_metrics.add_argument("--operator", default="operator", help="Name recorded with the approval.")
+    approve_diary_metrics.add_argument("--note", default="", help="Optional note recorded with the approval.")
     approve_diary_metrics.add_argument(
         "--confirm",
         dest="confirmation_text",
@@ -451,69 +466,82 @@ def _parser() -> argparse.ArgumentParser:
     )
     approve_diary_metrics.set_defaults(handler=_foundation_approve_diary_metrics)
 
-    secrets = subcommands.add_parser("secrets", help="Manage local secret references.")
+    secrets = subcommands.add_parser("secrets", help="Manage local API keys.")
     secrets_subcommands = secrets.add_subparsers(dest="secrets_command")
+    secrets.set_defaults(handler=_command_help(secrets))
     set_llm_key = secrets_subcommands.add_parser(
         "set-llm-api-key",
-        help="Store the LLM API key in the local secret store; reads the value from stdin.",
+        help="Save the AI model API key from standard input.",
     )
     _add_status_args(set_llm_key)
-    set_llm_key.add_argument("--value-stdin", action="store_true", help="Read the secret value from stdin.")
+    set_llm_key.add_argument("--value-stdin", action="store_true", help="Read the API key from standard input.")
     set_llm_key.set_defaults(handler=_secrets_set_llm_api_key)
 
     return parser
 
 
 def _product_command_guide() -> str:
-    return """Open Nova CLI
+    return """Open Nova
+
+Turn your daily activity into a useful diary.
 
 Usage:
   open-nova <command> [options]
 
-Common commands:
-  open-nova doctor                         Check subsystem status
-  open-nova model show                     Show diary-generation LLM provider
-  open-nova model list                     List provider catalog entries
+Start here:
+  open-nova doctor                         Check whether Open Nova is ready
+  open-nova onboard status                 Finish first-time setup
+  open-nova dashboard restart              Restart Dashboard
+
+Create and find:
+  open-nova pipeline [YYMMDD|YYYY-MM-DD]   Create a diary
+  open-nova search "query"                 Search your memory
+  open-nova task                           Show task totals
+
+AI model:
+  open-nova model show                     Show the current model
+  open-nova model list                     List available model services
   open-nova model set --provider P --model M
-  open-nova model set --api-key-env LLM_API_KEY
-  open-nova model key --value-stdin        Store LLM API key from stdin
-  open-nova onboard status                 Check initialization readiness
-  open-nova config show                    Show nova-settings summary
-  open-nova config keys                    Show writable settings groups
-  open-nova search "query"                 Search nova-RAG memory
-  open-nova task                           Show Nova-Task counts
-  open-nova pipeline [YYMMDD|YYYY-MM-DD]   Generate diary for today or a date
-  open-nova dashboard restart              Restart the managed Dashboard service
+  open-nova model key --value-stdin        Save the model API key
 
-Guarded maintenance:
-  open-nova rag-update                     Plan nova-RAG candidate sync
-  open-nova rag-rebuild                    Plan full nova-RAG rebuild
-  open-nova update --apply                 Upgrade from latest stable Release pinned to a commit
+Settings and updates:
+  open-nova config show                    Show current settings
+  open-nova config keys                    Show settings you can change
+  open-nova update                         Check the update plan
+  open-nova update --apply                 Install the update
 
-Advanced command groups:
-  open-nova settings ...
-  open-nova onboarding ...
-  open-nova foundation ...
-  open-nova secrets ...
-  open-nova rag search-memory ...
+Memory maintenance:
+  open-nova rag-update                     Refresh memory
+  open-nova rag-rebuild                    Rebuild memory
 
 Run `open-nova <command> --help` for command-specific options.
 """
 
 
+def _product_help_groups() -> str:
+    return """Common tasks:
+  Get ready      open-nova doctor | open-nova onboard status
+  Create diary   open-nova pipeline [YYMMDD|YYYY-MM-DD]
+  Search memory  open-nova search "query"
+  Choose model   open-nova model show | open-nova model set
+  Update         open-nova update
+
+Run `open-nova <command> --help` for details."""
+
+
 def _add_status_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--runtime", help="Inspect a candidate NOVA_HOME without selecting it.")
-    parser.add_argument("--legacy-diary-root", help="Legacy diary root used when --runtime initializes a path object.")
-    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    parser.add_argument("--runtime", help="Use a specific Open Nova data folder.")
+    parser.add_argument("--legacy-diary-root", help="Use an existing diary folder with --runtime.")
+    parser.add_argument("--json", action="store_true", help="Print JSON for scripts and automation.")
 
 
 def _add_doctor_args(parser: argparse.ArgumentParser) -> None:
     _add_status_args(parser)
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--installer", action="store_const", const="installer", dest="doctor_profile", help="Show installer/runtime bootstrap checks.")
-    group.add_argument("--pipeline", action="store_const", const="pipeline", dest="doctor_profile", help="Show daily pipeline and external tool checks.")
-    group.add_argument("--scheduler", action="store_const", const="scheduler", dest="doctor_profile", help="Show launchd scheduler/service checks.")
-    group.add_argument("--rag", action="store_const", const="rag", dest="doctor_profile", help="Show nova-RAG service checks.")
+    group.add_argument("--installer", action="store_const", const="installer", dest="doctor_profile", help="Check installation files and required software.")
+    group.add_argument("--pipeline", action="store_const", const="pipeline", dest="doctor_profile", help="Check daily diary creation and activity sources.")
+    group.add_argument("--scheduler", action="store_const", const="scheduler", dest="doctor_profile", help="Check automatic daily runs.")
+    group.add_argument("--rag", action="store_const", const="rag", dest="doctor_profile", help="Check memory search.")
 
 
 def _add_onboarding_args(parser: argparse.ArgumentParser) -> None:
@@ -522,7 +550,7 @@ def _add_onboarding_args(parser: argparse.ArgumentParser) -> None:
         "--profile",
         action="append",
         dest="profiles",
-        help="Select an onboarding subsystem profile. May be repeated.",
+        help="Include an optional feature. May be repeated.",
     )
 
 
@@ -530,75 +558,75 @@ def _add_onboarding_apply_args(parser: argparse.ArgumentParser) -> None:
     _add_onboarding_args(parser)
     parser.add_argument(
         "--confirmation-text",
-        help="Exact future apply confirmation phrase. Checked by preflight only; does not enable writes.",
+        help="Exact confirmation phrase.",
     )
     parser.add_argument(
         "--confirm",
         dest="confirmation_text",
-        help="Alias for --confirmation-text. Exact phrase is still required and apply remains blocked.",
+        help="Short form of --confirmation-text; the exact phrase is still required.",
     )
     parser.add_argument(
         "--sandbox-apply",
         action="store_true",
-        help="Apply to an explicit --runtime sandbox only; never registers scheduler or installs dependencies.",
+        help="Test setup in the selected --runtime folder only.",
     )
     parser.add_argument(
         "--runtime-bootstrap-apply",
         action="store_true",
-        help="Apply runtime directory/settings/audit bootstrap to explicit --runtime only; scheduler remains blocked.",
+        help="Prepare the selected --runtime folder without enabling automatic runs.",
     )
     parser.add_argument(
         "--scheduler-sandbox-apply",
         action="store_true",
-        help="Write managed launchd plists to a fake --scheduler-home only; never calls launchctl.",
+        help="Test automatic-run files under --scheduler-home.",
     )
     parser.add_argument(
         "--scheduler-plist-apply",
         action="store_true",
-        help="Write managed LaunchAgent plists under ~/Library/LaunchAgents; never calls launchctl.",
+        help="Write automatic-run files without enabling them.",
     )
     parser.add_argument(
         "--scheduler-register-apply",
         action="store_true",
-        help="Register existing managed LaunchAgent plists with launchctl after exact confirmation.",
+        help="Enable existing automatic-run files after confirmation.",
     )
     parser.add_argument(
         "--scheduler-unregister-apply",
         action="store_true",
-        help="Unregister managed LaunchAgent jobs with launchctl bootout after exact confirmation.",
+        help="Disable automatic daily runs after confirmation.",
     )
     parser.add_argument(
         "--scheduler-home",
-        help="Fake HOME used by --scheduler-sandbox-apply for Library/LaunchAgents writes.",
+        help="Temporary home folder used to test automatic runs.",
     )
     parser.add_argument(
         "--select-active-runtime",
         action="store_true",
-        help="With --runtime-bootstrap-apply, persist the resolved runtime as the active NOVA_HOME pointer.",
+        help="Use the prepared folder as the active Open Nova installation.",
     )
     parser.add_argument(
         "--use-default-runtime",
         action="store_true",
-        help="With --runtime-bootstrap-apply, use ~/.open-nova when --runtime is not provided.",
+        help="Use ~/.open-nova when --runtime is omitted.",
     )
     parser.add_argument(
         "--language",
-        help="Install-time language profile for explicit runtime bootstrap/sandbox apply: zh-CN or en-US.",
+        help="Diary language: zh-CN or en-US.",
     )
 
 
 def _add_rag_search_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("query", help="Search query")
-    parser.add_argument("--top-k", type=int, default=5, help="Maximum results, capped at 20")
-    parser.add_argument("--dashboard-url", default=None, help="Dashboard base URL; defaults to active Runtime settings")
-    parser.add_argument("--timeout", type=float, default=65, help="HTTP timeout in seconds (default: 65)")
-    parser.add_argument("--date", default="", help="Optional single business date filter")
-    parser.add_argument("--date-from", default="", help="Optional date range start")
-    parser.add_argument("--date-to", default="", help="Optional date range end")
-    parser.add_argument("--project", default="", help="Optional project filter")
-    parser.add_argument("--role", default="", help="Optional role/agent filter")
-    parser.add_argument("--source-set", action="append", default=[], help="Optional sourceSet filter; may repeat")
-    parser.add_argument("--json", action="store_true", help="Print raw JSON response")
+    parser.add_argument("query", help="Words or question to search for")
+    parser.add_argument("--top-k", type=int, default=5, help="Maximum number of results, up to 20")
+    parser.add_argument("--dashboard-url", default=None, help="Use a specific Dashboard URL")
+    parser.add_argument("--timeout", type=float, default=65, help="Seconds to wait for results")
+    parser.add_argument("--date", default="", help="Search one date")
+    parser.add_argument("--date-from", default="", help="Search from this date")
+    parser.add_argument("--date-to", default="", help="Search through this date")
+    parser.add_argument("--project", default="", help="Search one project")
+    parser.add_argument("--role", default="", help="Search one assistant or role")
+    parser.add_argument("--source-set", action="append", default=[], help="Search one kind of memory; may be repeated")
+    parser.add_argument("--json", action="store_true", help="Print JSON for scripts and automation")
 
 
 def _settings_status(args: argparse.Namespace) -> int:
@@ -617,14 +645,18 @@ def _model_show(args: argparse.Namespace) -> int:
         sys.stdout.write(json.dumps(provider, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     else:
         sys.stdout.write(
-            "Open Nova model: "
-            f"{provider.get('provider', '-')} / {provider.get('model', '-')} "
-            f"api={provider.get('api', '-')} "
-            f"apiKey={'set' if provider.get('hasApiKey') else 'missing'}\n"
+            render_cli(
+                "AI model",
+                fields=(
+                    ("Status", "Ready" if provider.get("hasApiKey") else "Needs an API key"),
+                    ("Service", provider.get("provider") or "Not set"),
+                    ("Model", provider.get("model") or "Not set"),
+                    ("Connection", provider.get("api") or "Not set"),
+                    ("URL", provider.get("endpoint")),
+                ),
+                next_steps=(() if provider.get("hasApiKey") else ("open-nova model key --value-stdin",)),
+            )
         )
-        endpoint = provider.get("endpoint")
-        if endpoint:
-            sys.stdout.write(f"Endpoint: {endpoint}\n")
     return 0
 
 
@@ -642,16 +674,28 @@ def _model_list(args: argparse.Namespace) -> int:
     if args.json:
         sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     else:
-        sys.stdout.write(f"Open Nova model catalog: {len(catalog)} provider(s)\n")
+        entries: list[str] = []
         for item in catalog:
             if not isinstance(item, dict):
                 continue
             models = item.get("models") if isinstance(item.get("models"), list) else []
             sample = ", ".join(str(model.get("id")) for model in models[:3] if isinstance(model, dict) and model.get("id"))
-            suffix = f" models={len(models)}"
+            entry = f"{item.get('name', item.get('id', 'Model service'))} ({item.get('id', '-')})"
             if sample:
-                suffix += f" [{sample}]"
-            sys.stdout.write(f"- {item.get('id', '-')}: {item.get('name', '-')} api={item.get('api', '-')}{suffix}\n")
+                entry += f"\n   Models: {sample}"
+            entries.append(entry)
+        current = payload.get("current") or {}
+        sys.stdout.write(
+            render_cli(
+                "Available AI models",
+                fields=(
+                    ("Services", len(catalog)),
+                    ("Current", f"{current.get('provider') or 'Not set'} / {current.get('model') or 'Not set'}"),
+                ),
+                sections=(("Model services", entries),),
+                next_steps=("open-nova model set --provider SERVICE --model MODEL",),
+            )
+        )
     return 0
 
 
@@ -672,17 +716,27 @@ def _model_set(args: argparse.Namespace) -> int:
         if value is not None
     }
     if not update:
-        sys.stderr.write("model set requires at least one provider field\n")
+        sys.stderr.write("Error: choose at least one model setting to change.\nTry: open-nova model set --help\n")
         return 2
     try:
         provider = write_llm_provider(update, _paths_from_args(args))
     except Exception as exc:
-        sys.stderr.write(f"{exc}\n")
+        sys.stderr.write(f"Error: {exc}\n")
         return 1
     if args.json:
         sys.stdout.write(json.dumps(provider, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     else:
-        sys.stdout.write(f"Updated Open Nova model: {provider.get('provider', '-')} / {provider.get('model', '-')}\n")
+        sys.stdout.write(
+            render_cli(
+                "AI model updated",
+                fields=(
+                    ("Status", "Ready"),
+                    ("Service", provider.get("provider") or "Not set"),
+                    ("Model", provider.get("model") or "Not set"),
+                ),
+                next_steps=("open-nova model test",),
+            )
+        )
     return 0
 
 
@@ -691,26 +745,41 @@ def _model_test(args: argparse.Namespace) -> int:
     if args.json:
         sys.stdout.write(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     else:
-        status = "ok" if result.get("ok") else result.get("status", "failed")
-        sys.stdout.write(f"Open Nova model test: {status}\n")
-        if result.get("error"):
-            sys.stdout.write(f"Error: {result['error']}\n")
+        sys.stdout.write(
+            render_cli(
+                "AI model check",
+                fields=(("Status", "Ready" if result.get("ok") else "Failed"),),
+                sections=(("Details", (_friendly_model_error(result.get("error")),)),) if result.get("error") else (),
+                next_steps=(() if result.get("ok") else ("open-nova model show",)),
+            )
+        )
     return 0 if result.get("ok") else 1
+
+
+def _friendly_model_error(value: object) -> str:
+    message = str(value or "").casefold()
+    if any(token in message for token in ("api key", "unauthorized", "401", "403")):
+        return "The AI provider rejected the API key."
+    if any(token in message for token in ("timeout", "timed out")):
+        return "The AI provider took too long to respond."
+    if any(token in message for token in ("connection", "network", "unreachable")):
+        return "The AI provider could not be reached."
+    return "The AI model check did not finish."
 
 
 def _secrets_set_llm_api_key(args: argparse.Namespace) -> int:
     if not args.value_stdin:
-        sys.stderr.write("set-llm-api-key requires --value-stdin\n")
+        sys.stderr.write("Error: the API key must be read from standard input.\nTry: open-nova model key --value-stdin\n")
         return 2
     value = sys.stdin.read().strip()
     if not value:
-        sys.stderr.write("secret value from stdin is empty\n")
+        sys.stderr.write("Error: no API key was provided.\n")
         return 2
     try:
         paths = _paths_from_args(args) or load_paths()
         provider = write_llm_api_key_secret(value, paths)
     except Exception as exc:
-        sys.stderr.write(f"{exc}\n")
+        sys.stderr.write(f"Error: {exc}\n")
         return 1
     secret_ref = provider.get("secretRef") if isinstance(provider.get("secretRef"), dict) else {}
     if args.json:
@@ -731,7 +800,13 @@ def _secrets_set_llm_api_key(args: argparse.Namespace) -> int:
             + "\n"
         )
     else:
-        sys.stdout.write(f"Stored LLM API key reference in {secret_ref.get('backend', 'secret-store')}\n")
+        sys.stdout.write(
+            render_cli(
+                "AI model key",
+                fields=(("Status", "Saved"), ("Data folder", paths.home)),
+                next_steps=("open-nova model test",),
+            )
+        )
     return 0
 
 
@@ -740,10 +815,18 @@ def _config_show(args: argparse.Namespace) -> int:
     if args.json:
         sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     else:
+        features = payload.get("features") if isinstance(payload.get("features"), dict) else {}
+        enabled = [friendly_name(key) for key, value in features.items() if value]
         sys.stdout.write(
-            f"Open Nova config: {payload.get('settingsPath', '-')}\n"
-            f"Runtime sources: {json.dumps(payload.get('runtimeSources', {}), ensure_ascii=False, sort_keys=True)}\n"
-            f"Features: {json.dumps(payload.get('features', {}), ensure_ascii=False, sort_keys=True)}\n"
+            render_cli(
+                "Settings",
+                fields=(
+                    ("Status", "Ready"),
+                    ("Settings file", payload.get("settingsPath", "—")),
+                    ("Features", ", ".join(enabled) if enabled else "Standard"),
+                ),
+                next_steps=("open-nova config keys",),
+            )
         )
     return 0
 
@@ -753,12 +836,12 @@ def _config_get(args: argparse.Namespace) -> int:
     try:
         value = _get_dot_path(payload, args.path)
     except KeyError:
-        sys.stderr.write(f"config path not found: {args.path}\n")
+        sys.stderr.write(f"Error: setting not found: {args.path}\nTry: open-nova config keys\n")
         return 1
     if args.json:
         sys.stdout.write(json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     else:
-        sys.stdout.write(f"{_format_scalar(value)}\n")
+        sys.stdout.write(render_cli("Setting", fields=(("Name", args.path), ("Value", _format_scalar(value)))))
     return 0
 
 
@@ -779,10 +862,19 @@ def _config_keys(args: argparse.Namespace) -> int:
     if args.json:
         sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     else:
-        sys.stdout.write("Open Nova config keys\n")
-        sys.stdout.write("Writable groups: " + ", ".join(payload["writableGroups"]) + "\n")
-        sys.stdout.write("Protected groups: " + ", ".join(payload["protectedGroups"]) + "\n")
-        sys.stdout.write("Dedicated commands: llmProvider -> open-nova model; rag -> RAG controls\n")
+        writable = [friendly_name(item) for item in payload["writableGroups"]]
+        sys.stdout.write(
+            render_cli(
+                "Settings you can change",
+                fields=(("Settings file", payload.get("settingsPath", "—")),),
+                sections=(("Available groups", writable),),
+                next_steps=(
+                    "open-nova config get general.timezone",
+                    "open-nova config set general.timezone Asia/Hong_Kong",
+                    "Use `open-nova model` for AI model settings",
+                ),
+            )
+        )
     return 0
 
 
@@ -791,13 +883,18 @@ def _config_set(args: argparse.Namespace) -> int:
         update = _nested_update(args.path, _parse_config_value(args.value))
         saved = write_operator_settings(update, _paths_from_args(args))
     except Exception as exc:
-        sys.stderr.write(f"{exc}\n")
+        sys.stderr.write(f"Error: {exc}\n")
         return 2
     value = _get_dot_path(saved, args.path)
     if args.json:
         sys.stdout.write(json.dumps({"path": args.path, "value": value}, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     else:
-        sys.stdout.write(f"Updated {args.path}: {_format_scalar(value)}\n")
+        sys.stdout.write(
+            render_cli(
+                "Setting updated",
+                fields=(("Status", "Ready"), ("Name", args.path), ("Value", _format_scalar(value))),
+            )
+        )
     return 0
 
 
@@ -807,7 +904,7 @@ def _update_run(args: argparse.Namespace) -> int:
         paths = _paths_from_args(args) or load_paths()
         command = _update_bootstrap_command(args, paths.home)
     except (FileNotFoundError, ValueError) as exc:
-        sys.stderr.write(f"Open Nova update blocked: {exc}\n")
+        sys.stderr.write(f"Error: {_friendly_update_start_error(exc)}\nTry: open-nova update --help\n")
         return 2
     should_execute = bool(args.apply or args.dry_run)
     source_selection = _update_source_selection(args)
@@ -850,13 +947,27 @@ def _update_run(args: argparse.Namespace) -> int:
         if args.json:
             sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
         else:
-            sys.stdout.write(f"Open Nova update {payload['status']}: {payload['reason']}\n")
-            sys.stdout.write(f"Source selection: {source_selection['policy']}\n")
-            sys.stdout.write("Command preview: " + _shell_join(command) + "\n")
+            source = "Local copy" if args.source_root else "Selected version" if args.ref else "Latest stable release"
+            sys.stdout.write(
+                render_cli(
+                    "Update",
+                    fields=(
+                        ("Status", "Ready"),
+                        ("Data folder", paths.home),
+                        ("Source", source),
+                    ),
+                    next_steps=("open-nova update --dry-run", "open-nova update --apply"),
+                )
+            )
         return 0
 
     if not args.json:
-        sys.stdout.write("Running Open Nova update: " + _shell_join(command) + "\n")
+        sys.stdout.write(
+            render_cli(
+                "Update",
+                fields=(("Status", "Previewing" if args.dry_run else "Installing"), ("Data folder", paths.home)),
+            )
+        )
     result = subprocess.run(command, text=True, capture_output=True, check=False)
     stdout = getattr(result, "stdout", "") or ""
     stderr = getattr(result, "stderr", "") or ""
@@ -911,6 +1022,23 @@ def _update_bootstrap_command(args: argparse.Namespace, runtime_home: Path) -> l
     command.extend(["--result-json", "--runtime", str(runtime_home), "--yes"])
     command.extend(_update_preserved_installer_args(runtime_home))
     return command
+
+
+def _friendly_update_start_error(error: Exception) -> str:
+    message = str(error)
+    if "--source-root cannot be combined with --ref" in message:
+        return "choose either a local copy or a version, not both"
+    if "--offline requires --source-root" in message:
+        return "offline update needs a local copy or a previously downloaded full version"
+    if "custom --source-url" in message:
+        return "choose an exact version when using a custom download source"
+    if "full 40- or 64-character hexadecimal commit ID" in message:
+        return "the version ID must contain exactly 40 or 64 hexadecimal characters"
+    if "installer bootstrap not found under --source-root" in message:
+        return "the selected local copy cannot update Open Nova"
+    if "installer bootstrap is unavailable" in message:
+        return "Open Nova's update files are missing; reinstall Open Nova or choose a local copy"
+    return f"update cannot start: {message}"
 
 
 def _update_result_envelope(stdout: str) -> dict | None:
@@ -1066,31 +1194,29 @@ def _update_output_without_result_envelopes(stdout: str) -> str:
     )
 
 
-def _format_update_result_value(value) -> str:
-    if value is True:
-        return "yes"
-    if value is False:
-        return "no"
-    if value is None:
-        return "unknown"
-    return str(value)
-
-
 def _write_update_human_result(payload: dict, returncode: int) -> None:
     target = sys.stdout if returncode == 0 else sys.stderr
-    target.write(
-        f"Open Nova update {payload['status']} at {payload['stage']}: "
-        f"mode={payload['updateMode']}, "
-        f"dependencies installed={_format_update_result_value(payload['dependenciesInstalled'])}, "
-        f"Runtime venv reused={_format_update_result_value(payload['reusesRuntimeVenv'])}, "
-        f"source updated={_format_update_result_value(payload['sourceUpdated'])}, "
-        f"cache used={_format_update_result_value(payload['cacheUsed'])}, "
-        f"services stopped={_format_update_result_value(payload['servicesStopped'])}\n"
-    )
+    if returncode == 0:
+        target.write(
+            render_cli(
+                "Update complete",
+                fields=(("Status", "Ready"),),
+                sections=(("Result", ("Open Nova is up to date.",)),),
+                next_steps=("open-nova doctor",),
+            )
+        )
+        return
+    details = ["The update did not finish."]
     if payload.get("stateCertain") is False:
-        target.write("Final pointer/service normalization state is uncertain; inspect the preserved transaction journal.\n")
-    if payload.get("reason"):
-        target.write(f"Reason: {payload['reason']}\n")
+        details.append("Open Nova could not confirm that recovery finished.")
+    target.write(
+        render_cli(
+            "Update failed",
+            fields=(("Status", "Failed"),),
+            sections=(("What happened", details),),
+            next_steps=("open-nova doctor --installer", "Review the update log above, then try again"),
+        )
+    )
 
 
 def _update_bootstrap_path(args: argparse.Namespace, runtime_home: Path) -> Path:
@@ -1229,7 +1355,7 @@ def _search_memory(args: argparse.Namespace) -> int:
             filters=filters,
         )
     except Exception as exc:
-        print(str(exc), file=sys.stderr)
+        print(f"Error: {exc}", file=sys.stderr)
         return 2
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
@@ -1244,7 +1370,7 @@ def _task_counts(args: argparse.Namespace) -> int:
         snapshot = diary_tasks_snapshot(paths)
         pending = pending_candidate_count(paths)
     except Exception as exc:
-        sys.stderr.write(f"{exc}\n")
+        sys.stderr.write(f"Error: {exc}\n")
         return 1
     payload = {
         "authority": "Nova-Task v2 SQLite",
@@ -1258,9 +1384,15 @@ def _task_counts(args: argparse.Namespace) -> int:
         sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     else:
         sys.stdout.write(
-            "Open Nova tasks: "
-            f"total={payload['total']} inProgress={payload['inProgress']} "
-            f"completed={payload['completed']} pendingCandidates={payload['pendingCandidates']}\n"
+            render_cli(
+                "Tasks",
+                fields=(
+                    ("Total", payload["total"]),
+                    ("In progress", payload["inProgress"]),
+                    ("Completed", payload["completed"]),
+                    ("Waiting for review", payload["pendingCandidates"]),
+                ),
+            )
         )
     return 0
 
@@ -1270,7 +1402,7 @@ def _onboarding_doctor(args: argparse.Namespace) -> int:
     try:
         payload = nova_onboarding_status(paths, selected_profiles=args.profiles)
     except ValueError as exc:
-        sys.stderr.write(f"{exc}\n")
+        sys.stderr.write(f"Error: {exc}\n")
         return 2
     output = dump_nova_onboarding_status_json(payload) if args.json else format_nova_onboarding_status(payload)
     sys.stdout.write(output)
@@ -1284,7 +1416,7 @@ def _onboarding_plan(args: argparse.Namespace) -> int:
     try:
         payload = onboarding_subsystem_plan(args.profiles, paths)
     except ValueError as exc:
-        sys.stderr.write(f"{exc}\n")
+        sys.stderr.write(f"Error: {exc}\n")
         return 2
     output = dump_onboarding_subsystem_plan_json(payload) if args.json else format_onboarding_subsystem_plan(payload)
     sys.stdout.write(output)
@@ -1298,7 +1430,7 @@ def _onboarding_one_liner_dry_run(args: argparse.Namespace) -> int:
     try:
         payload = onboarding_one_liner_dry_run(args.profiles, paths)
     except ValueError as exc:
-        sys.stderr.write(f"{exc}\n")
+        sys.stderr.write(f"Error: {exc}\n")
         return 2
     output = dump_onboarding_one_liner_dry_run_json(payload) if args.json else format_onboarding_one_liner_dry_run(payload)
     sys.stdout.write(output)
@@ -1324,7 +1456,7 @@ def _onboarding_one_liner_apply(args: argparse.Namespace) -> int:
             scheduler_confirmation_text=args.scheduler_confirmation_text,
         )
     except ValueError as exc:
-        sys.stderr.write(f"{exc}\n")
+        sys.stderr.write(f"Error: {exc}\n")
         return 2
     output = dump_onboarding_apply_blocked_json(payload) if args.json else format_onboarding_apply_blocked(payload)
     sys.stdout.write(output)
@@ -1348,7 +1480,7 @@ def _onboarding_one_liner_release_gate(args: argparse.Namespace) -> int:
     try:
         payload = onboarding_one_liner_release_gate(args.profiles, paths, with_scheduler=args.with_scheduler)
     except ValueError as exc:
-        sys.stderr.write(f"{exc}\n")
+        sys.stderr.write(f"Error: {exc}\n")
         return 2
     output = dump_onboarding_release_gate_json(payload) if args.json else format_onboarding_release_gate(payload)
     sys.stdout.write(output)
@@ -1448,7 +1580,7 @@ def _onboarding_apply_blocked(args: argparse.Namespace) -> int:
         else:
             payload = onboarding_apply_blocked(args.profiles, confirmation_text=args.confirmation_text)
     except ValueError as exc:
-        sys.stderr.write(f"{exc}\n")
+        sys.stderr.write(f"Error: {exc}\n")
         return 2
     output = dump_onboarding_apply_blocked_json(payload) if args.json else format_onboarding_apply_blocked(payload)
     sys.stdout.write(output)
@@ -1462,7 +1594,7 @@ def _onboarding_release_gate(args: argparse.Namespace) -> int:
     try:
         payload = onboarding_release_gate(args.profiles, paths, confirmation_text=args.confirmation_text)
     except ValueError as exc:
-        sys.stderr.write(f"{exc}\n")
+        sys.stderr.write(f"Error: {exc}\n")
         return 2
     output = dump_onboarding_release_gate_json(payload) if args.json else format_onboarding_release_gate(payload)
     sys.stdout.write(output)
@@ -1476,7 +1608,7 @@ def _onboarding_approval_packet(args: argparse.Namespace) -> int:
     try:
         payload = onboarding_approval_packet(args.profiles, paths, confirmation_text=args.confirmation_text)
     except ValueError as exc:
-        sys.stderr.write(f"{exc}\n")
+        sys.stderr.write(f"Error: {exc}\n")
         return 2
     output = dump_onboarding_approval_packet_json(payload) if args.json else format_onboarding_approval_packet(payload)
     sys.stdout.write(output)
@@ -1528,19 +1660,19 @@ def _runtime_bootstrap_paths_from_args(args: argparse.Namespace):
 
 def _pipeline_run(args: argparse.Namespace) -> int:
     if getattr(args, "date_flag", None) and getattr(args, "date", None):
-        sys.stderr.write("pipeline accepts either a positional date or --date, not both\n")
+        sys.stderr.write("Error: provide the date once, either after `pipeline` or with --date.\n")
         return 2
     try:
         target_date = _normalize_cli_date(getattr(args, "date_flag", None) or getattr(args, "date", None))
     except ValueError as exc:
-        sys.stderr.write(f"{exc}\n")
+        sys.stderr.write(f"Error: {exc}\n")
         return 2
     paths = _paths_from_args(args)
     force = bool(getattr(args, "force", False))
     if not force and _daily_diary_complete_for_cli(paths, target_date):
         sys.stderr.write(
-            f"Daily diary for {target_date} is already complete. "
-            "Use --force to regenerate it with frozen Foundation inputs.\n"
+            f"Error: the diary for {target_date} is already complete. "
+            "Use --force to create it again from the activity already collected.\n"
         )
         return 2
     if force:
@@ -1552,13 +1684,43 @@ def _pipeline_run(args: argparse.Namespace) -> int:
         )
     else:
         result = run_daily_pipeline(target_date, paths=paths)
-    sys.stdout.write(
-        f"Open Nova pipeline: date={result.business_date} "
-        f"steps={result.succeeded_steps}/{result.total_steps} success={result.success}\n"
-    )
+    result_sections = ()
+    next_steps = ()
     if result.failed_step:
-        sys.stdout.write(f"Failed step: {result.failed_step}\n")
+        result_sections = (("What happened", (f"Stopped while working on {_friendly_diary_step(result.failed_step)}.",)),)
+        next_steps = ("open-nova doctor --pipeline",)
+    sys.stdout.write(
+        render_cli(
+            "Daily diary",
+            fields=(
+                ("Status", "Ready" if result.success else "Failed"),
+                ("Date", result.business_date),
+                ("Progress", f"{result.succeeded_steps} of {result.total_steps} steps"),
+            ),
+            sections=result_sections,
+            next_steps=next_steps,
+        )
+    )
     return 0 if result.success else 1
+
+
+def _friendly_diary_step(value: object) -> str:
+    text = str(value or "").casefold()
+    if "rag" in text or "search" in text:
+        return "search memory"
+    if "task" in text:
+        return "task updates"
+    if "source" in text or "collect" in text:
+        return "activity collection"
+    if any(token in text for token in ("narrative", "technical", "learning")):
+        return "diary writing"
+    if any(token in text for token in ("foundation", "materialization", "input")):
+        return "diary preparation"
+    if "language" in text:
+        return "diary language settings"
+    if "lock" in text:
+        return "starting the diary"
+    return "the daily diary"
 
 
 def _scheduler_reconcile(args: argparse.Namespace) -> int:
@@ -1572,22 +1734,34 @@ def _scheduler_reconcile(args: argparse.Namespace) -> int:
     if args.json:
         sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     else:
-        sys.stdout.write(
-            "Open Nova scheduler reconcile: "
-            f"missing={payload.get('missingCount', 0)} "
-            f"range={payload.get('targetStart')}..{payload.get('targetEnd')} "
-            f"status={payload.get('status')}\n"
-        )
         missing = payload.get("missingDates") or []
-        if missing:
-            sys.stdout.write("Missing dates: " + ", ".join(map(str, missing)) + "\n")
-        if payload.get("requiresConfirmation"):
-            sys.stdout.write("Catch-up requires user confirmation because missing dates exceed the automatic limit.\n")
+        runs = []
         for run in payload.get("runs") or []:
-            sys.stdout.write(
-                f"Catch-up {run.get('date')}: success={run.get('success')} "
-                f"steps={run.get('steps')} failedStep={run.get('failedStep') or ''}\n"
+            runs.append(
+                status_item(
+                    bool(run.get("success")),
+                    f"Diary for {run.get('date')} was created",
+                    f"Diary for {run.get('date')} could not be created",
+                )
             )
+        next_steps = ()
+        if payload.get("requiresConfirmation"):
+            next_steps = ("Review the missed dates before starting a larger catch-up",)
+        sys.stdout.write(
+            render_cli(
+                "Automatic daily runs",
+                fields=(
+                    ("Status", status_label(payload.get("status"))),
+                    ("Missed diaries", payload.get("missingCount", 0)),
+                    ("Date range", f"{payload.get('targetStart')} to {payload.get('targetEnd')}"),
+                ),
+                sections=(
+                    ("Missed dates", [", ".join(map(str, missing))] if missing else []),
+                    ("Catch-up", runs),
+                ),
+                next_steps=next_steps,
+            )
+        )
     return 1 if payload.get("status") == "partial" else 0
 
 
@@ -1604,7 +1778,13 @@ def _dashboard_restart(args: argparse.Namespace) -> int:
     label = getattr(args, "label", None) or str(defaults.get("label") or "com.open-nova.dashboard")
     code = restart_dashboard_service(label)
     if code == 0:
-        sys.stdout.write(f"Dashboard restart requested: {label}\n")
+        sys.stdout.write(
+            render_cli(
+                "Dashboard",
+                fields=(("Status", "Restarted"),),
+                next_steps=("Open Dashboard and refresh the page",),
+            )
+        )
     return code
 
 
@@ -1635,7 +1815,7 @@ def _rag_sync_command(
 ) -> int:
     rag_settings = resolve_rag_settings(_paths_from_args(args))
     if not args.dry_run and args.confirmation_text is not None and str(args.confirmation_text or "") != confirmation:
-        sys.stderr.write(f"confirmationText must be exactly: {confirmation}\n")
+        sys.stderr.write(f"Error: confirmation must exactly match: {confirmation}\n")
         return 2
     if args.dry_run or str(args.confirmation_text or "") != confirmation:
         plan = plan_v2_production_sync(
@@ -1648,20 +1828,31 @@ def _rag_sync_command(
         if args.json:
             sys.stdout.write(json.dumps(plan, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
         else:
-            sys.stdout.write(f"Open Nova {action} plan: {plan['reason']}\n")
-            sys.stdout.write(f"To execute, rerun with --confirm \"{confirmation}\"\n")
+            title = "Rebuild memory" if action == "rag-rebuild" else "Refresh memory"
+            sys.stdout.write(
+                render_cli(
+                    title,
+                    fields=(("Status", "Ready to start"),),
+                    next_steps=(f'open-nova {action} --confirm "{confirmation}"',),
+                )
+            )
         return 0
     try:
         result = sync_v2_production_index(rag_settings, requested_by=requested_by, promote=True)
     except Exception as exc:
-        sys.stderr.write(f"{exc}\n")
+        sys.stderr.write(f"Error: {exc}\n")
         return 1
     if args.json:
         sys.stdout.write(json.dumps({"action": action, **result}, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     else:
-        sys.stdout.write(f"Open Nova {action}: {result.get('status', 'unknown')}\n")
-        if result.get("reason"):
-            sys.stdout.write(f"Reason: {result['reason']}\n")
+        title = "Memory rebuilt" if action == "rag-rebuild" else "Memory refreshed"
+        sys.stdout.write(
+            render_cli(
+                title,
+                fields=(("Status", status_label(result.get("status"))),),
+                next_steps=(() if result.get("status") == "promoted" else ("open-nova doctor --rag",)),
+            )
+        )
     return 0 if result.get("status") == "promoted" else 1
 
 
@@ -1742,20 +1933,28 @@ def _foundation_rebuild_sqlite_cache(args: argparse.Namespace) -> int:
                 end_date=end_date,
             )
     except ValueError as exc:
-        sys.stderr.write(f"{exc}\n")
+        sys.stderr.write(f"Error: {exc}\n")
         return 2
     if args.json:
         sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
     else:
-        sys.stdout.write(
-            "Open Nova SQLite cache rebuild "
-            + ("plan" if payload.get("dryRun") else payload.get("status", "completed"))
-            + f": runtime={payload.get('runtime')} database={payload.get('database')}\n"
+        next_steps = (
+            (f'open-nova foundation rebuild-sqlite-cache --confirm "{SQLITE_CACHE_REBUILD_CONFIRMATION}"',)
+            if payload.get("dryRun")
+            else ()
         )
-        if payload.get("dryRun"):
-            sys.stdout.write(f"To execute, rerun with --confirm \"{SQLITE_CACHE_REBUILD_CONFIRMATION}\"\n")
-        elif payload.get("backup"):
-            sys.stdout.write(f"Backup: {payload['backup'].get('backupDir')}\n")
+        backup = payload.get("backup") if isinstance(payload.get("backup"), dict) else {}
+        sys.stdout.write(
+            render_cli(
+                "Rebuild local data",
+                fields=(
+                    ("Status", "Ready to start" if payload.get("dryRun") else status_label(payload.get("status", "completed"))),
+                    ("Data folder", payload.get("runtime")),
+                    ("Backup", backup.get("backupDir")),
+                ),
+                next_steps=next_steps,
+            )
+        )
     return 0
 
 
@@ -1769,7 +1968,7 @@ def _foundation_approve_diary_metrics(args: argparse.Namespace) -> int:
             and args.confirmation_text is not None
             and str(args.confirmation_text or "") != DIARY_METRICS_APPROVAL_CONFIRMATION
         ):
-            sys.stderr.write(f"confirmationText must be exactly: {DIARY_METRICS_APPROVAL_CONFIRMATION}\n")
+            sys.stderr.write(f"Error: confirmation must exactly match: {DIARY_METRICS_APPROVAL_CONFIRMATION}\n")
             return 2
         if args.dry_run or str(args.confirmation_text or "") != DIARY_METRICS_APPROVAL_CONFIRMATION:
             payload = plan
@@ -1804,21 +2003,30 @@ def _foundation_approve_diary_metrics(args: argparse.Namespace) -> int:
                 },
             }
     except (ValueError, FileNotFoundError) as exc:
-        sys.stderr.write(f"{exc}\n")
+        sys.stderr.write(f"Error: {exc}\n")
         return 2
     if args.json:
         sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     else:
-        sys.stdout.write(
-            "Open Nova diary metrics approval "
-            + ("plan" if payload.get("dryRun") else payload.get("status", "approved"))
-            + f": date={payload.get('businessDate')} runtime={payload.get('runtime')}\n"
+        next_steps = (
+            (
+                "open-nova foundation approve-diary-metrics "
+                f"{payload.get('businessDate')} --confirm \"{DIARY_METRICS_APPROVAL_CONFIRMATION}\""
+            ,)
+            if payload.get("dryRun")
+            else ()
         )
-        digest = payload.get("differencesDigest")
-        if digest:
-            sys.stdout.write(f"Differences digest: {digest}\n")
-        if payload.get("dryRun"):
-            sys.stdout.write(f"To execute, rerun with --confirm \"{DIARY_METRICS_APPROVAL_CONFIRMATION}\"\n")
+        sys.stdout.write(
+            render_cli(
+                "Approve diary totals",
+                fields=(
+                    ("Status", "Ready to review" if payload.get("dryRun") else "Approved"),
+                    ("Date", payload.get("businessDate")),
+                    ("Data folder", payload.get("runtime")),
+                ),
+                next_steps=next_steps,
+            )
+        )
     return 0
 
 

@@ -36,6 +36,8 @@ class InstallerV2Tests(unittest.TestCase):
             "HOME": str(home),
             "NOVA_LOCATION_FILE": str(home / ".config" / "open-nova" / "location.json"),
             "NOVA_INSTALL_PLATFORM": "Darwin",
+            "NOVA_INSTALL_LANGUAGE": "zh-CN",
+            "NOVA_INSTALL_VERBOSE": "0",
         }
         env.pop("NOVA_HOME", None)
         env.pop("NOVA_INSTALL_RUNTIME", None)
@@ -573,8 +575,8 @@ exit 1
         self.assertIn("render_installer_header", script)
         self.assertIn("installer_version", script)
         self.assertIn("Open Nova ${version}", script)
-        self.assertIn("installer v2", script)
-        self.assertIn("████", script)
+        self.assertIn("installer_text setup_title", script)
+        self.assertIn("────────────────────────────────────────", script)
         self.assertIn("TTY_BLUE", script)
         self.assertIn('version = ', script)
 
@@ -585,8 +587,8 @@ exit 1
         self.assertIn('text_language="en-US"', script)
         self.assertIn('if [[ "$LANGUAGE_SET" != "1" && "$LANGUAGE_SELECTED" != "1" ]]; then', script)
         self.assertIn("LANGUAGE_SELECTED=1", script)
-        self.assertIn("Choose Open Nova language profile", script)
-        self.assertIn("Welcome to Open Nova. Core pipeline, Dashboard, and Nova-Task are installed by default.", script)
+        self.assertIn("Choose the Open Nova language", script)
+        self.assertIn("Welcome to Open Nova. Dashboard, diaries, daily runs, and Nova-Task are included by default.", script)
 
     def test_installer_declares_input_data_sensitivity_notice(self):
         script = INSTALLER.read_text(encoding="utf-8")
@@ -600,7 +602,7 @@ exit 1
         script = INSTALLER.read_text(encoding="utf-8")
 
         self.assertIn("prompt_rag_choice", script)
-        self.assertIn("Core pipeline, Dashboard, and Nova-Task are installed by default", script)
+        self.assertIn("Dashboard, diaries, daily runs, and Nova-Task are included by default", script)
         self.assertIn("installer_text rag_choice_prompt", script)
         self.assertIn("rag_not_now_label", script)
         self.assertIn("rag_local_label", script)
@@ -700,12 +702,12 @@ exit 1
 
         self.assertIn("wizard_core_dependency_gate", script)
         self.assertIn("installer_text core_dependency_title", script)
-        self.assertIn("Dashboard runtime packages", script)
-        self.assertIn("fastapi, uvicorn, PyYAML, and croniter", script)
+        self.assertIn("installer_text readiness_dashboard", script)
+        self.assertIn("installer_text readiness_components", script)
         self.assertIn("wizard_rag_dependency_gate", script)
         self.assertIn("installer_text rag_dependency_title", script)
-        self.assertIn("sentence-transformers, torch, numpy, and pydantic", script)
-        self.assertIn("missing allowlisted RAG packages", script)
+        self.assertIn("installer_text readiness_memory_model", script)
+        self.assertIn("installer_text readiness_memory_service", script)
         self.assertGreater(wizard.index("wizard_core_dependency_gate"), wizard.index('if [[ "$LANGUAGE_SET" != "1" ]]'))
         self.assertGreater(wizard.index("wizard_rag_dependency_gate"), wizard.index("prompt_rag_local_model"))
 
@@ -962,6 +964,7 @@ exit 1
                     **os.environ,
                     "HOME": str(home),
                     "NOVA_INSTALL_PLATFORM": "Darwin",
+                    "NOVA_INSTALL_LANGUAGE": "zh-CN",
                     "NOVA_INSTALL_LAUNCHCTL": str(fake_launchctl),
                     "NOVA_INSTALL_TEST_MODE": "1",
                     "NOVA_TEST_LAUNCHCTL_CALLS": str(calls),
@@ -975,6 +978,7 @@ exit 1
             )
 
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("Open Nova 文件已更新。", result.stdout + result.stderr)
             final_state = {
                 path.name: path.read_text(encoding="utf-8").strip()
                 for path in state_dir.iterdir()
@@ -1060,6 +1064,8 @@ exit 1
                         str(runtime),
                         "--source-root",
                         str(ROOT),
+                        "--language",
+                        "en-US",
                         "--python",
                         sys.executable,
                         "--result-json",
@@ -1093,10 +1099,8 @@ exit 1
                 )
                 envelope = json.loads(envelope_line.split("=", 1)[1])
                 self.assertEqual(result.returncode, 2, output)
-                self.assertIn(
-                    "Runtime dependency profile could not be read safely",
-                    output,
-                )
+                self.assertIn("Required software could not be prepared or verified.", output)
+                self.assertNotIn("Runtime dependency profile", output)
                 self.assertEqual(envelope["status"], "failed")
                 self.assertEqual(envelope["updateMode"], "not-evaluated")
                 self.assertEqual(envelope["reason"], "runtime-dependency-profile-untrusted")
@@ -1673,7 +1677,7 @@ exit 1
         self.assertIn('("torch", "torch>=2,<3", "nova-RAG local embeddings")', script)
         self.assertIn('source_root / "src" / "dashboard" / "app" / "static" / "index.html"', script)
         self.assertIn('importlib.import_module("app.main")', script)
-        self.assertIn("dependency remediation is forbidden outside the locked candidate build", script)
+        self.assertIn("installer_text step_failed", script)
         self.assertNotIn('run_cmd "${VENV_PY}" -m pip install "${missing_packages[@]}"', script)
 
     def test_enabled_cloud_rag_installs_base_server_dependency_extra(self):
@@ -2057,7 +2061,9 @@ exit 1
         self.assertIn("--upgrade requires an existing runtime", script)
         self.assertIn("Proceed with upgrade now?", script)
         self.assertIn("preserving runtime settings and secrets", script)
-        self.assertIn("Open Nova installer v2 upgrade complete", script)
+        self.assertIn("installer_text upgrade_complete", script)
+        self.assertIn("installer_text update_no_changes", script)
+        self.assertIn("installer_text source_update_complete", script)
         self.assertIn('if [[ "$UPGRADE" != "1" || "$LANGUAGE_SET" == "1" ]]; then', script)
         self.assertIn('first_install_or("NOVA_INSTALL_LLM_SET") and enable_llm', script)
         self.assertIn('first_install_or("NOVA_INSTALL_RAG_SET")', script)
@@ -2104,6 +2110,7 @@ exit 1
                 **os.environ,
                 "HOME": str(home),
                 "NOVA_INSTALL_PLATFORM": "Darwin",
+                "NOVA_INSTALL_LANGUAGE": "zh-CN",
                 "NOVA_LOCATION_FILE": str(home / ".config" / "open-nova" / "location.json"),
             }
             result = subprocess.run(
@@ -2132,6 +2139,8 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 0, output)
+        self.assertIn("Open Nova 文件更新计划已生成。", output)
+        self.assertIn("更新计划", output)
         self.assertNotIn("Staging source snapshot", output)
         self.assertNotIn("copy source snapshot", output)
         self.assertNotIn(".open-nova-runtime-source.json", output)
@@ -2599,8 +2608,8 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("Install summary", output)
-        self.assertIn("Useful commands:", output)
+        self.assertIn("Setup plan", output)
+        self.assertIn("Next steps", output)
         self.assertNotIn("language: en-US", output)
         self.assertFalse(runtime.exists())
 
@@ -2640,7 +2649,7 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("nova-RAG: local embeddings; model all-MiniLM-L6-v2; dimension 384", output)
+        self.assertIn("Memory and search · local · all-MiniLM-L6-v2", output)
         self.assertFalse(runtime.exists())
 
     def test_dry_run_english_rag_preserves_explicit_local_embedding_model(self):
@@ -2680,7 +2689,7 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("nova-RAG: local embeddings; model BAAI/bge-large-en-v1.5; dimension 1024", output)
+        self.assertIn("Memory and search · local · BAAI/bge-large-en-v1.5", output)
         self.assertFalse(runtime.exists())
 
     def test_installer_rejects_unknown_language_profile(self):
@@ -2710,7 +2719,8 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 2, output)
-        self.assertIn("--language must be zh-CN or en-US", output)
+        self.assertIn("安装语言请选择 zh-CN 或 en-US", output)
+        self.assertNotIn("--language must be", output)
         self.assertFalse(runtime.exists())
 
     def test_dry_run_defaults_to_dashboard_scheduler_and_base_dashboard_install(self):
@@ -2744,12 +2754,18 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("Preparing runtime directories", output)
-        self.assertIn("Staging source snapshot", output)
-        self.assertIn("Creating Python environment", output)
-        self.assertIn("Verifying runtime dependency gate", output)
-        self.assertIn("安装摘要", output)
-        self.assertIn(f"runtime source {runtime.resolve()}/app/source", output)
+        self.assertIn("准备 Open Nova 文件夹", output)
+        self.assertEqual(output.count("✓ 准备 Open Nova 文件夹"), 1)
+        self.assertIn("准备日记与报告文件夹", output)
+        self.assertIn("准备 Open Nova 文件", output)
+        self.assertIn("准备 Python 文件", output)
+        self.assertIn("创建 Python 环境", output)
+        self.assertIn("安装所需软件", output)
+        self.assertIn("保存已安装软件信息", output)
+        self.assertIn("确认已安装软件", output)
+        self.assertIn("检查所需软件", output)
+        self.assertIn("安装计划", output)
+        self.assertIn(f"Open Nova 文件夹 · {runtime.resolve()}", output)
         self.assertNotIn("mode: install", output)
         self.assertNotIn("preflight ok:", output)
         self.assertNotIn("copy source snapshot", output)
@@ -2758,15 +2774,15 @@ exit 1
         self.assertNotIn("-m pip install", output)
         self.assertNotIn("onboarding runtime-apply", output)
         self.assertNotIn("import-check dashboard dependencies", output)
-        self.assertIn("doctor --installer", output)
-        self.assertIn("doctor --pipeline", output)
-        self.assertIn("doctor --scheduler", output)
+        self.assertIn("检查 Open Nova 文件", output)
+        self.assertIn("检查日记创建", output)
+        self.assertIn("检查每日自动运行", output)
         self.assertNotIn("--select-active-runtime", output)
         self.assertNotIn("--scheduler-plist-apply", output)
         self.assertNotIn("--scheduler-register-apply", output)
         self.assertNotIn("install_dashboard_launch_agent", output)
-        self.assertIn("Creating open-nova CLI shim", output)
-        self.assertIn("bin/open-nova", output)
+        self.assertIn("安装 open-nova 命令", output)
+        self.assertIn("命令行 · 将会准备", output)
         self.assertNotIn("ln -s", output)
         self.assertNotIn(".zprofile", output)
         self.assertFalse(runtime.exists())
@@ -2811,7 +2827,7 @@ exit 1
 
         self.assertEqual(result.returncode, 0, output)
         self.assertNotIn("Dashboard port 3036 is in use; falling back to 8765", output)
-        self.assertIn("Dashboard: server enabled at http://127.0.0.1:8765/dashboard", output)
+        self.assertIn("Dashboard · http://127.0.0.1:8765/dashboard", output)
         self.assertNotIn("preflight ok:", output)
         self.assertNotIn("install_dashboard_launch_agent", output)
         self.assertFalse(runtime.exists())
@@ -2853,7 +2869,7 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 2, output)
-        self.assertIn("preflight error: python-command", output)
+        self.assertIn("无法使用 Python 3.11", output)
         self.assertNotIn("-m venv", output)
         self.assertFalse(runtime.exists())
 
@@ -2896,13 +2912,16 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("Planning managed Python 3.13.14 install", output)
+        self.assertIn("准备 Python 3.13.14", output)
         self.assertNotIn("cpython-3.13.14%2B20260623-aarch64-apple-darwin-install_only.tar.gz", output)
         self.assertNotIn("verify sha256 804c86c8665b18eb0df5070a79d828229018d145baea38a71a5c74c03f9b11d4", output)
         self.assertNotIn("preflight warn: python-bootstrap", output)
         self.assertNotIn("brew install", output)
         self.assertNotIn("preflight error: python-version", output)
         self.assertFalse(runtime.exists())
+        script = INSTALLER.read_text(encoding="utf-8")
+        self.assertIn("--silent --show-error", script)
+        self.assertNotIn('print -r -- "+ ${CURL_BIN}', script)
 
     def test_upgrade_dry_run_reports_upgrade_mode(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2954,11 +2973,11 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("Open Nova installer v2 upgrade dry-run complete", output)
+        self.assertIn("Open Nova 更新计划已生成", output)
         self.assertNotIn("mode: upgrade", output)
         self.assertNotIn("dry-run only", output)
         self.assertNotIn("Creating Python environment", output)
-        self.assertIn("Creating open-nova CLI shim", output)
+        self.assertIn("安装 open-nova 命令", output)
         self.assertEqual(source_target_after, source_target_before)
         self.assertEqual(venv_target_after, venv_target_before)
         self.assertEqual(protected_after, protected)
@@ -2991,6 +3010,8 @@ exit 1
                     str(runtime),
                     "--source-root",
                     str(ROOT),
+                    "--language",
+                    "en-US",
                     "--python",
                     str(fake_python),
                     "--no-scheduler",
@@ -3008,7 +3029,8 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 2, output)
-        self.assertIn("--upgrade requires an existing runtime", output)
+        self.assertIn("No existing Open Nova installation was found", output)
+        self.assertNotIn("--upgrade requires an existing runtime", output)
         self.assertNotIn("-m venv", log)
 
     def test_fresh_apply_rejects_existing_runtime_before_writes(self):
@@ -3035,6 +3057,8 @@ exit 1
                     str(runtime),
                     "--source-root",
                     str(ROOT),
+                    "--language",
+                    "en-US",
                     "--python",
                     str(fake_python),
                     "--no-scheduler",
@@ -3055,7 +3079,8 @@ exit 1
 
             output = result.stdout + result.stderr
             self.assertNotEqual(result.returncode, 0, output)
-            self.assertIn("existing Open Nova Runtime state requires --upgrade", output)
+            self.assertIn("Open Nova is already installed in this folder", output)
+            self.assertNotIn("existing Open Nova Runtime state", output)
             self.assertEqual(os.readlink(runtime / "app" / "source"), "releases/old")
             self.assertEqual(sentinel.read_text(encoding="utf-8"), "preserve\n")
             self.assertEqual(
@@ -3134,10 +3159,8 @@ exit 1
 
         self.assertEqual(result.returncode, 0, output)
         self.assertNotIn("dry-run only", output)
-        self.assertIn("Open Nova installer v2 dry-run complete", output)
-        self.assertIn("open-nova doctor --installer", output)
-        self.assertIn("open-nova doctor --pipeline", output)
-        self.assertIn("open-nova doctor --scheduler", output)
+        self.assertIn("Open Nova 安装计划已生成", output)
+        self.assertIn("open-nova doctor", output)
         self.assertNotIn("guided setup", output)
 
     def test_dry_run_summary_only_hides_command_noise(self):
@@ -3172,10 +3195,10 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("安装摘要", output)
-        self.assertIn("常用命令", output)
-        self.assertIn("Open Nova installer v2 dry-run complete", output)
-        self.assertIn("open-nova doctor --pipeline", output)
+        self.assertIn("安装计划", output)
+        self.assertIn("接下来", output)
+        self.assertIn("Open Nova 安装计划已生成", output)
+        self.assertIn("open-nova doctor", output)
         self.assertNotIn("+ mkdir", output)
         self.assertNotIn("Installer preflight", output)
         self.assertFalse(runtime.exists())
@@ -3214,9 +3237,9 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("Install summary", output)
-        self.assertIn("Useful commands:", output)
-        self.assertNotIn("安装摘要", output)
+        self.assertIn("Setup plan", output)
+        self.assertIn("Next steps", output)
+        self.assertNotIn("安装计划", output)
         self.assertFalse(runtime.exists())
 
     def test_dry_run_can_disable_scheduler_and_dashboard_server_without_disabling_nova_task(self):
@@ -3235,6 +3258,7 @@ exit 1
                     "zsh",
                     str(INSTALLER),
                     "--dry-run",
+                    "--summary-only",
                     "--runtime",
                     str(runtime),
                     "--source-root",
@@ -3254,6 +3278,8 @@ exit 1
         self.assertEqual(result.returncode, 0, output)
         self.assertNotIn("SSE server disabled", output)
         self.assertNotIn("Static snapshot pages such as AI Assets", output)
+        self.assertNotIn("已按你的选择关闭 Dashboard 后台服务", output)
+        self.assertNotIn("检查系统环境\n", output)
         self.assertNotIn("--scheduler-register-apply", output)
         self.assertNotIn("install_dashboard_launch_agent", output)
         self.assertFalse(runtime.exists())
@@ -3310,11 +3336,11 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn(f"diary artifacts: {diary.resolve()}", output)
+        self.assertIn(f"日记 · {diary.resolve()}", output)
         self.assertNotIn(f"reports output: {reports.resolve()}", output)
         self.assertNotIn(f"snapshots output: {snapshots.resolve()}", output)
         self.assertNotIn(f"archives/intermediate output: {archives.resolve()}", output)
-        self.assertIn("LLM generation: preset/openai-compatible; model example-model; key env NOVA_TEST_LLM_KEY", output)
+        self.assertIn("AI 生成 · example-model", output)
         self.assertNotIn("api key env:", output)
         self.assertNotIn("no secret values", output)
         self.assertFalse(runtime.exists())
@@ -3330,6 +3356,7 @@ exit 1
                 **os.environ,
                 "HOME": str(home),
                 "NOVA_INSTALL_PLATFORM": "Darwin",
+                "NOVA_INSTALL_LANGUAGE": "zh-CN",
             }
             result = subprocess.run(
                 [
@@ -3361,8 +3388,9 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 2, output)
-        self.assertIn("must look like LLM_API_KEY", output)
-        self.assertIn("do not paste the API key value", output)
+        self.assertIn("AI 密钥设置无效", output)
+        self.assertIn("请在 Dashboard 设置中保存密钥", output)
+        self.assertNotIn("environment variable", output)
         self.assertNotIn(secret_like, output)
         self.assertFalse(runtime.exists())
 
@@ -3397,7 +3425,8 @@ exit 1
 
         output = result.stdout + result.stderr
         self.assertEqual(result.returncode, 2, output)
-        self.assertIn("--no-dashboard is no longer supported", output)
+        self.assertIn("Dashboard is included with Open Nova", output)
+        self.assertNotIn("--no-dashboard is no longer supported", output)
         self.assertIn("--no-dashboard-server", output)
         self.assertFalse(runtime.exists())
 
@@ -3435,7 +3464,7 @@ exit 1
         deployed = runtime.resolve() / "app" / "source"
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn(f"runtime source {deployed}", output)
+        self.assertIn(f"Open Nova 文件夹 · {runtime.resolve()}", output)
         self.assertNotIn("install dependency spec:", output)
         self.assertNotIn("dev-test: enabled", output)
         self.assertNotIn(f"-m pip install {deployed}[dashboard,dev-test]", output)
@@ -3476,11 +3505,11 @@ exit 1
         deployed = runtime.resolve() / "app" / "source"
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn(f"runtime source {deployed}", output)
+        self.assertIn(f"Open Nova 文件夹 · {runtime.resolve()}", output)
         self.assertNotIn("install dependency spec:", output)
         self.assertNotIn(f"-m pip install {deployed}[dashboard,rag-local]", output)
-        self.assertIn("direct background start skipped", output)
-        self.assertIn("nova-RAG server LaunchAgent service registration", output)
+        self.assertIn("准备记忆与搜索", output)
+        self.assertIn("启动记忆与搜索", output)
         self.assertNotIn("install_rag_launch_agent", output)
         self.assertNotIn("deploy-embedding-server.sh", output)
         self.assertNotIn("nohup", output)
@@ -3521,9 +3550,9 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("nova-RAG server LaunchAgent service registration", output)
+        self.assertIn("启动记忆与搜索", output)
         self.assertNotIn("install_rag_launch_agent", output)
-        self.assertIn("direct background start skipped", output)
+        self.assertIn("准备记忆与搜索", output)
         self.assertNotIn("deploy-embedding-server.sh", output)
         self.assertFalse(runtime.exists())
 
@@ -3561,7 +3590,7 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("nova-RAG server LaunchAgent service registration", output)
+        self.assertIn("启动记忆与搜索", output)
         self.assertNotIn("install_rag_launch_agent", output)
         self.assertNotIn("Queueing background embedding server deployment", output)
         self.assertNotIn("deploy-embedding-server.sh", output)
@@ -3612,7 +3641,7 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("nova-RAG: cloud embeddings; provider example-cloud", output)
+        self.assertIn("记忆与搜索 · 云端 · embed-example", output)
         self.assertNotIn("nova-RAG embedding mode: cloud", output)
         self.assertNotIn("api key env=NOVA_TEST_EMBED_KEY", output)
         self.assertNotIn("Queueing background embedding server deployment", output)
@@ -3656,8 +3685,8 @@ exit 1
         deployed = runtime.resolve() / "app" / "source"
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn(f"runtime source {deployed}", output)
-        self.assertIn("nova-RAG: local embeddings; model intfloat/multilingual-e5-small; dimension 384", output)
+        self.assertIn(f"Open Nova 文件夹 · {runtime.resolve()}", output)
+        self.assertIn("记忆与搜索 · 本地 · intfloat/multilingual-e5-small", output)
         self.assertNotIn("nova-RAG embedding mode: local", output)
         self.assertFalse(runtime.exists())
 
@@ -3751,6 +3780,7 @@ exit 1
                 "HOME": str(home),
                 "NOVA_INSTALL_PLATFORM": "Darwin",
                 "NOVA_LOCATION_FILE": str(home / ".config" / "open-nova" / "location.json"),
+                "NOVA_INSTALL_LANGUAGE": "zh-CN",
             }
             result = subprocess.run(
                 [
@@ -3762,6 +3792,7 @@ exit 1
                     str(ROOT),
                     "--python",
                     str(fake_python),
+                    "--summary-only",
                     "--no-scheduler",
                     "--no-dashboard-server",
                 ],
@@ -3810,6 +3841,13 @@ exit 1
         self.assertIn("doctor --scheduler", log)
         self.assertNotIn("--scheduler-register-apply", log)
         self.assertNotIn("install_dashboard_launch_agent", log)
+        self.assertIn("安装摘要", output)
+        self.assertIn("接下来", output)
+        self.assertNotIn("安装助手", output)
+        self.assertNotIn("────────────────────────────────────────", output)
+        self.assertNotIn("检查系统环境\n", output)
+        self.assertNotIn("准备 Open Nova\n", output)
+        self.assertNotIn("安装 Open Nova\n", output)
 
     def test_installer_stores_wizard_llm_api_key_via_stdin_without_echoing_secret(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -3861,7 +3899,7 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("Storing LLM API key in secret store", output)
+        self.assertIn("安全保存 AI 密钥", output)
         self.assertIn("model key --value-stdin", log)
         self.assertIn("open-nova model key --value-stdin", installer_log)
         self.assertNotIn(secret_value, output)
@@ -3913,9 +3951,34 @@ exit 1
         self.assertEqual(result.returncode, 1, output)
         self.assertNotIn("Installing missing runtime dependencies detected by dependency gate: fastapi>=0.110,<1", output)
         self.assertNotIn("dependency gate ok: fake remediation passed", output)
-        self.assertIn("dependency remediation is forbidden outside the locked candidate build", output)
+        self.assertIn("这个步骤未能完成", output)
         self.assertNotIn("-m pip install fastapi>=0.110,<1", log)
         self.assertFalse(marker_exists)
+
+    def test_bootstrap_missing_option_values_use_localized_help(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "Home"
+            home.mkdir()
+            env = self._fresh_bootstrap_env(home)
+            commands = (
+                ["zsh", str(BOOTSTRAP), "--source-root"],
+                ["zsh", str(BOOTSTRAP), "--dry-run", "--source-root", str(ROOT), "--", "--runtime"],
+            )
+
+            for command in commands:
+                with self.subTest(command=command):
+                    result = subprocess.run(
+                        command,
+                        cwd=ROOT,
+                        env=env,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                    output = result.stdout + result.stderr
+                    self.assertEqual(result.returncode, 2, output)
+                    self.assertIn("一个安装选项缺少内容", output)
+                    self.assertNotIn("requires a value", output)
 
     def test_bootstrap_dry_run_uses_local_source_root_and_forwards_installer_options(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -3946,9 +4009,9 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("Running installer from source root", output)
-        self.assertIn("install/install.sh --source-root", output)
-        self.assertIn("--no-scheduler --no-dashboard-server", output)
+        self.assertIn("启动 Open Nova 安装", output)
+        self.assertNotIn("install/install.sh --source-root", output)
+        self.assertNotIn("--no-scheduler --no-dashboard-server", output)
         self.assertNotIn("dry-run only", output)
         self.assertNotIn("-m pip install", output)
         self.assertNotIn("Scheduler registration skipped by --no-scheduler", output)
@@ -4079,7 +4142,7 @@ exit 1
 
         output = result.stdout + result.stderr
         self.assertEqual(result.returncode, 2, output)
-        self.assertIn("Offline source acquisition requires --source-root or an explicit full --ref", output)
+        self.assertIn("离线状态下缺少所需 Open Nova 文件", output)
         self.assertFalse(cache.exists())
         self.assertFalse(git_log.exists(), output)
         self.assertFalse(curl_log.exists(), output)
@@ -4127,7 +4190,8 @@ exit 1
 
         output = result.stdout + result.stderr
         self.assertEqual(result.returncode, 2, output)
-        self.assertIn(f"Offline source cache is missing: {(cache / 'source').resolve()}", output)
+        self.assertIn("离线状态下缺少所需 Open Nova 文件", output)
+        self.assertNotIn(str((cache / "source").resolve()), output)
         self.assertFalse(cache.exists())
         self.assertFalse(git_log.exists(), output)
         self.assertFalse(curl_log.exists(), output)
@@ -4186,7 +4250,7 @@ exit 1
 
         output = result.stdout + result.stderr
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("without fetch", output)
+        self.assertIn("已准备此前下载的文件", output)
         self.assertFalse(curl_log.exists(), output)
         self.assertFalse(
             any(re.search(r"(^|\s)(fetch|clone|ls-remote)(\s|$)", call) for call in git_calls),
@@ -4320,7 +4384,7 @@ exit 1
 
             output = result.stdout + result.stderr
             self.assertEqual(result.returncode, 2, output)
-            self.assertIn("Offline source cache is incomplete", output)
+            self.assertIn("离线状态下缺少所需 Open Nova 文件", output)
             self.assertFalse(tripwire_marker.exists(), output)
             self.assertEqual((source / ".git" / "config").read_bytes(), config_before)
             self.assertFalse((source / "install" / "install.sh").exists())
@@ -4457,7 +4521,7 @@ exit 1
 
             output = result.stdout + result.stderr
             self.assertEqual(result.returncode, 0, output)
-            self.assertIn("without fetch", output)
+            self.assertIn("已准备此前下载的文件", output)
             self.assertFalse(tripwire_marker.exists(), output)
             self.assertIn("--offline", installer_log.read_text(encoding="utf-8"))
             self.assertEqual(git("rev-parse", "HEAD", cwd=source).stdout.strip(), commit)
@@ -4524,7 +4588,7 @@ exit 1
 
         output = result.stdout + result.stderr
         self.assertEqual(result.returncode, 2, output)
-        self.assertIn("Resolved source object is not the required commit", output)
+        self.assertIn("未能确认所选 Open Nova 版本", output)
         self.assertFalse(installer_log.exists())
         self.assertFalse(curl_log.exists(), output)
         self.assertFalse(
@@ -4563,13 +4627,54 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("git clone --filter=blob:none --sparse --no-checkout https://example.invalid/open-nova.git", output)
-        self.assertIn("sparse-checkout init --no-cone", output)
-        self.assertIn("sparse-checkout set /pyproject.toml /MANIFEST.in /LICENSE /config.py /install /advanced /src", output)
-        self.assertIn("git -C", output)
-        self.assertIn(f"checkout --detach {IMMUTABLE_TEST_COMMIT}", output)
-        self.assertIn("install/install.sh --source-root", output)
+        self.assertIn("下载 Open Nova", output)
+        self.assertIn("准备安装文件", output)
+        self.assertIn("启动 Open Nova 安装", output)
+        self.assertNotIn("sparse-checkout", output)
+        self.assertNotIn(f"checkout --detach {IMMUTABLE_TEST_COMMIT}", output)
+        self.assertNotIn("install/install.sh --source-root", output)
         self.assertFalse(cache.exists())
+
+    def test_bootstrap_preserves_download_failure_status_without_raw_command_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "Home"
+            cache = root / "Cache"
+            bin_dir = root / "bin"
+            fake_git = bin_dir / "git"
+            git_log = root / "git.log"
+            home.mkdir()
+            bin_dir.mkdir()
+            self._write_bootstrap_command_tripwire(fake_git, git_log)
+
+            result = subprocess.run(
+                [
+                    "zsh",
+                    str(BOOTSTRAP),
+                    "--source-url",
+                    "https://credential@example.invalid/open-nova.git",
+                    "--ref",
+                    IMMUTABLE_TEST_COMMIT,
+                    "--cache-root",
+                    str(cache),
+                    "--git",
+                    str(fake_git),
+                    "--",
+                    "--dry-run",
+                ],
+                cwd=root,
+                env=self._fresh_bootstrap_env(home),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            bootstrap_log = (cache / "bootstrap.log").read_text(encoding="utf-8")
+
+        output = result.stdout + result.stderr
+        self.assertEqual(result.returncode, 97, output)
+        self.assertIn("未能准备 Open Nova", output)
+        self.assertNotIn("credential@example.invalid", output)
+        self.assertNotIn("credential@example.invalid", bootstrap_log)
 
     def test_bootstrap_fake_git_smoke_acquires_source_and_runs_installer_dry_run(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -4607,6 +4712,9 @@ exit 1
                 check=False,
             )
             log = log_path.read_text(encoding="utf-8")
+            bootstrap_log_path = cache / "bootstrap.log"
+            bootstrap_log = bootstrap_log_path.read_text(encoding="utf-8")
+            bootstrap_log_mode = bootstrap_log_path.stat().st_mode & 0o777
 
         output = result.stdout + result.stderr
 
@@ -4618,6 +4726,8 @@ exit 1
         self.assertIn(f"checkout --detach {IMMUTABLE_TEST_COMMIT}", log)
         self.assertIn(f"reset --hard {IMMUTABLE_TEST_COMMIT}", log)
         self.assertNotIn("dry-run only", output)
+        self.assertEqual(bootstrap_log_mode, 0o600)
+        self.assertNotIn("https://example.invalid/open-nova.git", bootstrap_log)
 
     def test_bootstrap_stdin_style_with_source_url_does_not_depend_on_script_path(self):
         with tempfile.TemporaryDirectory() as tmp:

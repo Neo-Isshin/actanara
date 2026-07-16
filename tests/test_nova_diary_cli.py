@@ -60,20 +60,22 @@ class OpenNovaCliTests(unittest.TestCase):
 
         text = output.getvalue()
         self.assertEqual(code, 0)
-        self.assertIn("Open Nova CLI", text)
+        self.assertIn("Open Nova", text)
+        self.assertIn("Start here:", text)
+        self.assertIn("Create and find:", text)
         self.assertIn("open-nova doctor", text)
         self.assertIn("open-nova pipeline [YYMMDD|YYYY-MM-DD]", text)
         self.assertIn("open-nova rag-update", text)
         self.assertIn("open-nova search \"query\"", text)
-        self.assertIn("open-nova rag search-memory", text)
         self.assertIn("open-nova dashboard restart", text)
+        self.assertNotIn("service boundaries", text)
 
     def test_doctor_top_level_uses_settings_status(self):
         cli = _load_cli_module()
         payload = {"summary": {"errors": 0}}
         with (
             patch.object(cli, "nova_settings_status", return_value=payload) as status,
-            patch.object(cli, "format_nova_settings_status", return_value="Nova settings status:\n") as formatter,
+            patch.object(cli, "format_nova_settings_status", return_value="Open Nova · System status\n") as formatter,
             redirect_stdout(io.StringIO()) as output,
         ):
             code = cli.main(["doctor"])
@@ -81,7 +83,15 @@ class OpenNovaCliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         status.assert_called_once_with(None, doctor_profile="all")
         formatter.assert_called_once_with(payload)
-        self.assertIn("Nova settings status:", output.getvalue())
+        self.assertIn("Open Nova · System status", output.getvalue())
+
+    def test_bare_product_groups_keep_their_default_actions(self):
+        cli = _load_cli_module()
+        parser = cli._parser()
+
+        self.assertIs(parser.parse_args(["model"]).handler, cli._model_show)
+        self.assertIs(parser.parse_args(["onboard"]).handler, cli._onboarding_doctor)
+        self.assertIs(parser.parse_args(["config"]).handler, cli._config_show)
 
     def test_model_show_prints_llm_provider(self):
         cli = _load_cli_module()
@@ -97,7 +107,9 @@ class OpenNovaCliTests(unittest.TestCase):
 
         self.assertEqual(code, 0)
         provider.assert_called_once_with(None, persist_defaults=False)
-        self.assertIn("openai-compatible / daily-model", output.getvalue())
+        self.assertIn("Open Nova · AI model", output.getvalue())
+        self.assertIn("openai-compatible", output.getvalue())
+        self.assertIn("daily-model", output.getvalue())
 
     def test_model_list_prints_provider_catalog(self):
         cli = _load_cli_module()
@@ -151,7 +163,9 @@ class OpenNovaCliTests(unittest.TestCase):
             },
             None,
         )
-        self.assertIn("custom / m", output.getvalue())
+        self.assertIn("Open Nova · AI model updated", output.getvalue())
+        self.assertIn("custom", output.getvalue())
+        self.assertIn("Model    m", output.getvalue())
 
     def test_model_set_switches_an_explicit_catalog_provider_from_custom_to_preset(self):
         cli = _load_cli_module()
@@ -241,7 +255,8 @@ class OpenNovaCliTests(unittest.TestCase):
 
         self.assertEqual(code, 0)
         run.assert_called_once_with("2026-04-06", paths=None)
-        self.assertIn("date=2026-04-06", output.getvalue())
+        self.assertIn("Open Nova · Daily diary", output.getvalue())
+        self.assertIn("2026-04-06", output.getvalue())
 
     def test_pipeline_short_command_accepts_runtime(self):
         cli = _load_cli_module()
@@ -292,7 +307,8 @@ class OpenNovaCliTests(unittest.TestCase):
             trigger="manual-regeneration-frozen",
             reuse_foundation_inputs=True,
         )
-        self.assertIn("date=2026-04-06", output.getvalue())
+        self.assertIn("Open Nova · Daily diary", output.getvalue())
+        self.assertIn("2026-04-06", output.getvalue())
 
     def test_dashboard_restart_uses_launch_agent_boundary(self):
         cli = _load_cli_module()
@@ -306,7 +322,8 @@ class OpenNovaCliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         defaults.assert_called_once()
         restart.assert_called_once_with("com.open-nova.dashboard")
-        self.assertIn("Dashboard restart requested", output.getvalue())
+        self.assertIn("Open Nova · Dashboard", output.getvalue())
+        self.assertIn("Restarted", output.getvalue())
 
     def test_pipeline_rejects_positional_run_with_date_flag(self):
         cli = _load_cli_module()
@@ -318,7 +335,7 @@ class OpenNovaCliTests(unittest.TestCase):
 
         self.assertEqual(code, 2)
         run.assert_not_called()
-        self.assertIn("either a positional date or --date", error.getvalue())
+        self.assertIn("provide the date once", error.getvalue())
 
     def test_pipeline_rejects_invalid_yymmdd_date(self):
         cli = _load_cli_module()
@@ -343,7 +360,7 @@ class OpenNovaCliTests(unittest.TestCase):
 
         self.assertEqual(code, 0)
         reconcile.assert_called_once()
-        self.assertIn("requires user confirmation", output.getvalue())
+        self.assertIn("Review the missed dates", output.getvalue())
 
     def test_task_counts_use_nova_task_authority(self):
         cli = _load_cli_module()
@@ -410,7 +427,8 @@ class OpenNovaCliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         resolve.assert_called_once_with(None)
         sync.assert_called_once_with(rag_settings, requested_by="open-nova-cli-rag-update", promote=True)
-        self.assertIn("promoted", output.getvalue())
+        self.assertIn("Open Nova · Memory refreshed", output.getvalue())
+        self.assertIn("Ready", output.getvalue())
 
     def test_rag_update_confirm_honors_runtime_argument(self):
         cli = _load_cli_module()
@@ -450,7 +468,7 @@ class OpenNovaCliTests(unittest.TestCase):
         self.assertEqual(code, 2)
         planner.assert_not_called()
         sync.assert_not_called()
-        self.assertIn("confirmationText must be exactly", error.getvalue())
+        self.assertIn("confirmation must exactly match", error.getvalue())
 
     def test_update_defaults_to_plan_without_running_bootstrap(self):
         cli = _load_cli_module()
@@ -499,16 +517,11 @@ class OpenNovaCliTests(unittest.TestCase):
 
         self.assertEqual(raised.exception.code, 0)
         text = output.getvalue()
-        self.assertIn("latest stable Release", text)
-        self.assertIn("pins its full commit", text)
-        self.assertIn("full 40- or 64-character", text)
-        self.assertIn("hexadecimal object ID", text)
+        self.assertIn("latest stable release", text)
+        self.assertIn("exact 40- or 64-character version ID", " ".join(text.split()))
         normalized = " ".join(text.split())
-        self.assertIn(
-            "Requires --source-root PATH or a full --ref already present in the installer source cache",
-            normalized,
-        )
-        self.assertIn("trusted dependency cache", normalized)
+        self.assertIn("Requires --source-root PATH or an exact --ref already downloaded", normalized)
+        self.assertIn("previously downloaded software", normalized)
 
     def test_update_dry_run_invokes_bootstrap_without_mutation(self):
         cli = _load_cli_module()
@@ -789,9 +802,10 @@ class OpenNovaCliTests(unittest.TestCase):
         self.assertEqual(code, 70)
         self.assertIn("installer progress", output.getvalue())
         self.assertNotIn("OPEN_NOVA_UPDATE_RESULT_JSON=", output.getvalue())
-        self.assertIn("source updated=unknown", error.getvalue())
-        self.assertIn("Final pointer/service normalization state is uncertain", error.getvalue())
-        self.assertIn("Reason: update-rollback-incomplete", error.getvalue())
+        self.assertIn("Open Nova · Update failed", error.getvalue())
+        self.assertIn("could not confirm that recovery finished", error.getvalue())
+        self.assertIn("open-nova doctor --installer", error.getvalue())
+        self.assertNotIn("update-rollback-incomplete", error.getvalue())
 
     def test_update_apply_validates_rag_profile_without_configuration_flags(self):
         cli = _load_cli_module()
@@ -848,12 +862,12 @@ class OpenNovaCliTests(unittest.TestCase):
         self.assertNotIn("--rag-embedding-mode", command)
         self.assertNotIn("--register-rag-skills", command)
         human_output = output.getvalue()
-        self.assertIn("Running Open Nova update:", human_output)
+        self.assertIn("Open Nova · Update", human_output)
         self.assertIn("installer progress", human_output)
-        self.assertIn("mode=reuse-existing-venv", human_output)
-        self.assertIn("dependencies installed=no", human_output)
-        self.assertIn("Runtime venv reused=yes", human_output)
-        self.assertIn("source updated=yes", human_output)
+        self.assertIn("Open Nova · Update complete", human_output)
+        self.assertNotIn("reuse-existing-venv", human_output)
+        self.assertNotIn("dependencies installed=", human_output)
+        self.assertNotIn("source updated=", human_output)
         self.assertNotIn("OPEN_NOVA_UPDATE_RESULT_JSON=", human_output)
 
     def test_update_fails_closed_when_runtime_dependency_profile_cannot_be_read(self):
@@ -931,8 +945,8 @@ class OpenNovaCliTests(unittest.TestCase):
 
         self.assertEqual(code, 2)
         run.assert_not_called()
-        self.assertIn("Open Nova update blocked", error.getvalue())
-        self.assertIn("--source-root cannot be combined with --ref", error.getvalue())
+        self.assertIn("choose either a local copy or a version", error.getvalue())
+        self.assertNotIn("--source-root cannot be combined", error.getvalue())
 
     def test_update_offline_requires_local_source_or_cached_full_ref_before_bootstrap(self):
         cli = _load_cli_module()
@@ -944,8 +958,8 @@ class OpenNovaCliTests(unittest.TestCase):
 
             self.assertEqual(code, 2)
             run.assert_not_called()
-            self.assertIn("Open Nova update blocked", error.getvalue())
-            self.assertIn("--offline requires --source-root PATH or an explicit full commit", error.getvalue())
+            self.assertIn("offline update needs a local copy", error.getvalue())
+            self.assertNotIn("installer source cache", error.getvalue())
 
     def test_update_remote_ref_requires_full_hex_commit(self):
         cli = _load_cli_module()
@@ -956,7 +970,7 @@ class OpenNovaCliTests(unittest.TestCase):
 
             self.assertEqual(code, 2)
             run.assert_not_called()
-            self.assertIn("full 40- or 64-character hexadecimal commit ID", error.getvalue())
+            self.assertIn("version ID must contain exactly 40 or 64 hexadecimal characters", error.getvalue())
 
         for ref in ("a" * 40, "B" * 64):
             with self.subTest(ref=ref), patch.object(cli.shutil, "which", return_value="/bin/zsh"):
@@ -979,7 +993,7 @@ class OpenNovaCliTests(unittest.TestCase):
 
         self.assertEqual(code, 2)
         run.assert_not_called()
-        self.assertIn("custom --source-url requires an explicit full commit", error.getvalue())
+        self.assertIn("choose an exact version", error.getvalue())
 
     def test_update_missing_bootstrap_fails_closed_without_subprocess(self):
         cli = _load_cli_module()
@@ -996,8 +1010,8 @@ class OpenNovaCliTests(unittest.TestCase):
 
         self.assertEqual(code, 2)
         run.assert_not_called()
-        self.assertIn("Open Nova update blocked", error.getvalue())
-        self.assertIn("active Runtime app/source", error.getvalue())
+        self.assertIn("Open Nova's update files are missing", error.getvalue())
+        self.assertNotIn("installer bootstrap", error.getvalue())
 
     def test_update_from_installed_package_uses_active_runtime_bootstrap(self):
         cli = _load_cli_module()
@@ -1167,7 +1181,7 @@ class OpenNovaCliTests(unittest.TestCase):
         self.assertEqual(code, 2)
         approve.assert_not_called()
         readiness.assert_not_called()
-        self.assertIn("confirmationText must be exactly", error.getvalue())
+        self.assertIn("confirmation must exactly match", error.getvalue())
 
     def test_secrets_set_llm_api_key_reads_stdin_without_plaintext_settings(self):
         cli = _load_cli_module()
@@ -1275,7 +1289,7 @@ class OpenNovaCliTests(unittest.TestCase):
         payload = {"summary": {"errors": 0}}
         with (
             patch.object(cli, "nova_settings_status", return_value=payload) as status,
-            patch.object(cli, "format_nova_settings_status", return_value="Nova settings status:\n") as formatter,
+            patch.object(cli, "format_nova_settings_status", return_value="Open Nova · System status\n") as formatter,
             redirect_stdout(io.StringIO()) as output,
         ):
             code = cli.main(["settings", "status"])
@@ -1283,7 +1297,7 @@ class OpenNovaCliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         status.assert_called_once_with(None, doctor_profile="all")
         formatter.assert_called_once_with(payload)
-        self.assertIn("Nova settings status:", output.getvalue())
+        self.assertIn("Open Nova · System status", output.getvalue())
 
     def test_settings_doctor_json_returns_nonzero_for_errors(self):
         cli = _load_cli_module()
@@ -1329,7 +1343,7 @@ class OpenNovaCliTests(unittest.TestCase):
         payload = {"readiness": {"status": "warn"}}
         with (
             patch.object(cli, "nova_onboarding_status", return_value=payload) as status,
-            patch.object(cli, "format_nova_onboarding_status", return_value="Nova onboarding status:\n") as formatter,
+            patch.object(cli, "format_nova_onboarding_status", return_value="Open Nova · Setup status\n") as formatter,
             redirect_stdout(io.StringIO()) as output,
         ):
             code = cli.main(["onboarding", "doctor"])
@@ -1337,7 +1351,7 @@ class OpenNovaCliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         status.assert_called_once_with(None, selected_profiles=None)
         formatter.assert_called_once_with(payload)
-        self.assertIn("Nova onboarding status:", output.getvalue())
+        self.assertIn("Open Nova · Setup status", output.getvalue())
 
     def test_onboarding_doctor_json_returns_nonzero_for_errors(self):
         cli = _load_cli_module()
@@ -1357,7 +1371,7 @@ class OpenNovaCliTests(unittest.TestCase):
         payload = {"summary": {"status": "ready"}}
         with (
             patch.object(cli, "onboarding_subsystem_plan", return_value=payload) as plan,
-            patch.object(cli, "format_onboarding_subsystem_plan", return_value="Nova onboarding plan:\n") as formatter,
+            patch.object(cli, "format_onboarding_subsystem_plan", return_value="Open Nova · Setup preview\n") as formatter,
             redirect_stdout(io.StringIO()) as output,
         ):
             code = cli.main(["onboarding", "plan", "--profile", "dashboard", "--profile", "nova-rag"])
@@ -1365,7 +1379,7 @@ class OpenNovaCliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         plan.assert_called_once_with(["dashboard", "nova-rag"], None)
         formatter.assert_called_once_with(payload)
-        self.assertIn("Nova onboarding plan:", output.getvalue())
+        self.assertIn("Open Nova · Setup preview", output.getvalue())
 
     def test_onboarding_plan_unknown_profile_returns_usage_error(self):
         cli = _load_cli_module()
@@ -1383,7 +1397,7 @@ class OpenNovaCliTests(unittest.TestCase):
         payload = {"summary": {"status": "ready"}}
         with (
             patch.object(cli, "onboarding_one_liner_dry_run", return_value=payload) as dry_run,
-            patch.object(cli, "format_onboarding_one_liner_dry_run", return_value="Nova onboarding runtime dry-run:\n") as formatter,
+            patch.object(cli, "format_onboarding_one_liner_dry_run", return_value="Open Nova · Setup preview\n") as formatter,
             redirect_stdout(io.StringIO()) as output,
         ):
             code = cli.main(["onboarding", "runtime-dry-run", "--profile", "nova-rag"])
@@ -1391,7 +1405,7 @@ class OpenNovaCliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         dry_run.assert_called_once_with(["nova-rag"], None)
         formatter.assert_called_once_with(payload)
-        self.assertIn("Nova onboarding runtime dry-run:", output.getvalue())
+        self.assertIn("Open Nova · Setup preview", output.getvalue())
 
     def test_onboarding_one_liner_dry_run_json_returns_usage_error_for_unknown_profile(self):
         cli = _load_cli_module()
@@ -1409,7 +1423,7 @@ class OpenNovaCliTests(unittest.TestCase):
         payload = {"status": "blocked", "selectedProfiles": ["open-nova"], "summary": {"passed": 3, "blocked": 2, "failed": 0}, "blockingGates": ["apply-preflight"]}
         with (
             patch.object(cli, "onboarding_release_gate", return_value=payload) as release_gate,
-            patch.object(cli, "format_onboarding_release_gate", return_value="Nova onboarding release gate: blocked\n") as formatter,
+            patch.object(cli, "format_onboarding_release_gate", return_value="Open Nova · Setup readiness\n") as formatter,
             redirect_stdout(io.StringIO()) as output,
         ):
             code = cli.main(["onboarding", "release-gate", "--profile", "nova-rag", "--confirmation-text", "APPLY OPEN NOVA ONBOARDING"])
@@ -1417,7 +1431,7 @@ class OpenNovaCliTests(unittest.TestCase):
         self.assertEqual(code, 1)
         release_gate.assert_called_once_with(["nova-rag"], None, confirmation_text="APPLY OPEN NOVA ONBOARDING")
         formatter.assert_called_once_with(payload)
-        self.assertIn("Nova onboarding release gate:", output.getvalue())
+        self.assertIn("Open Nova · Setup readiness", output.getvalue())
 
     def test_onboarding_release_gate_json_is_readonly_and_blocked(self):
         cli = _load_cli_module()
@@ -1472,7 +1486,7 @@ class OpenNovaCliTests(unittest.TestCase):
         }
         with (
             patch.object(cli, "onboarding_approval_packet", return_value=payload) as approval_packet,
-            patch.object(cli, "format_onboarding_approval_packet", return_value="Nova onboarding approval packet: approval-required\n") as formatter,
+            patch.object(cli, "format_onboarding_approval_packet", return_value="Open Nova · Setup confirmation\n") as formatter,
             redirect_stdout(io.StringIO()) as output,
         ):
             code = cli.main(["onboarding", "approval-checklist", "--profile", "nova-rag", "--confirmation-text", "APPLY OPEN NOVA ONBOARDING"])
@@ -1480,7 +1494,7 @@ class OpenNovaCliTests(unittest.TestCase):
         self.assertEqual(code, 1)
         approval_packet.assert_called_once_with(["nova-rag"], None, confirmation_text="APPLY OPEN NOVA ONBOARDING")
         formatter.assert_called_once_with(payload)
-        self.assertIn("Nova onboarding approval packet:", output.getvalue())
+        self.assertIn("Open Nova · Setup confirmation", output.getvalue())
 
     def test_onboarding_approval_checklist_json_is_readonly(self):
         cli = _load_cli_module()
@@ -1519,10 +1533,10 @@ class OpenNovaCliTests(unittest.TestCase):
             code = cli.main(["onboarding", "apply", "--profile", "nova-rag"])
 
         self.assertEqual(code, 1)
-        self.assertIn("apply-not-implemented", output.getvalue())
-        self.assertIn("writesSettings=False", output.getvalue())
-        self.assertIn("registersScheduler=False", output.getvalue())
-        self.assertIn("callsLaunchctl=False", output.getvalue())
+        self.assertIn("Open Nova · Setup", output.getvalue())
+        self.assertIn("Needs attention", output.getvalue())
+        self.assertIn("Setup was not changed", output.getvalue())
+        self.assertNotIn("writesSettings", output.getvalue())
 
     def test_onboarding_apply_json_has_no_side_effect_policy(self):
         cli = _load_cli_module()
@@ -2038,10 +2052,10 @@ class OpenNovaCliTests(unittest.TestCase):
 
         self.assertEqual(code, 0)
         text = output.getvalue()
-        self.assertIn("scheduler registration was not requested", text)
-        self.assertIn("Requires: explicit confirmation accepted", text)
-        self.assertIn("writesSettings=True", text)
-        self.assertIn("registersScheduler=False", text)
+        self.assertIn("Open Nova is ready", text)
+        self.assertIn("Automatic daily runs were left off", text)
+        self.assertIn("Settings were saved", text)
+        self.assertIn("Automatic daily runs were not changed", text)
 
     def test_onboarding_one_liner_apply_with_scheduler_requires_scheduler_confirmation(self):
         cli = _load_cli_module()
@@ -2193,7 +2207,7 @@ class OpenNovaCliTests(unittest.TestCase):
 
         self.assertEqual(code, 2)
         run.assert_not_called()
-        self.assertIn("either a positional date or --date", error.getvalue())
+        self.assertIn("provide the date once", error.getvalue())
 
 
 if __name__ == "__main__":

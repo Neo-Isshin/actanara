@@ -89,6 +89,66 @@ class StepExecutionResult:
     stdout: str = ""
 
 
+_STEP_DISPLAY_NAMES = {
+    "unified_source_collector.py": "Collect activity",
+    "narrative_pass.py": "Generate diary · Daily story",
+    "technical_pass.py": "Generate diary · Technical notes",
+    "learning_pass.py": "Generate diary · Lessons learned",
+    "rag_v2_sync.py": "Update search memory",
+}
+
+
+def _print_pipeline_status(marker: str, label: str, detail: str | None = None) -> None:
+    message = f"{marker} {label}"
+    if detail:
+        message += f" — {' '.join(str(detail).split())}"
+    print(message)
+
+
+def _pipeline_step_display_name(step: PipelineStep) -> str:
+    return _STEP_DISPLAY_NAMES.get(step.script.name, _pipeline_stage_display_name(step.name))
+
+
+def _pipeline_stage_display_name(name: str) -> str:
+    normalized = str(name or "").casefold()
+    if "rag" in normalized or "search memory" in normalized:
+        return "Update search memory"
+    if "nova-task" in normalized or "task" in normalized:
+        return "Refresh tasks"
+    if "source" in normalized or "collect" in normalized:
+        return "Collect activity"
+    if any(token in normalized for token in ("narrative", "technical", "learning")):
+        return "Generate diary"
+    if any(token in normalized for token in ("foundation", "materialization", "inputs")):
+        return "Prepare diary"
+    if "artifact" in normalized or "terminal" in normalized:
+        return "Finish diary"
+    if "pipeline" in normalized:
+        return "Daily diary"
+    return "Daily diary"
+
+
+def _subprocess_failure_detail(output: str) -> str:
+    normalized = str(output or "").casefold()
+    if any(token in normalized for token in ("usage limit", "rate limit", "quota", "http 403")):
+        return "The model usage limit was reached."
+    if any(token in normalized for token in ("unauthorized", "invalid api key", "http 401")):
+        return "Model credentials were rejected."
+    if any(token in normalized for token in ("connection refused", "network is unreachable", "timed out")):
+        return "A required service could not be reached."
+    return "The step could not finish."
+
+
+def _exception_failure_detail(exc: Exception) -> str:
+    if isinstance(exc, PermissionError):
+        return "Permission was denied."
+    if isinstance(exc, FileNotFoundError):
+        return "A required file is missing."
+    if isinstance(exc, TimeoutError):
+        return "The step timed out."
+    return "An unexpected error occurred."
+
+
 ZH_PRODUCTION_STEPS = (
     PipelineStep(
         "0. 全域 AI 资产智慧收集 (Unified-Collect)",
@@ -479,14 +539,14 @@ def _run_step(
     *,
     timeout_override: float | None = None,
 ) -> StepExecutionResult:
-    print(f"\n>>> RUNNING: {step.name}")
+    display_name = _pipeline_step_display_name(step)
     if not step.script.exists():
-        print(f"❌ ERROR: Script not found at {step.script}")
+        _print_pipeline_status("[X]", display_name, "A required component is missing.")
         return StepExecutionResult(False, "script-not-found")
     if _is_blank_day_passthrough_step(step):
         llm_reason = _llm_provider_blocking_reason(paths)
         if llm_reason:
-            print(f"❌ ERROR: {llm_reason}")
+            _print_pipeline_status("[X]", display_name, "Check model settings and credentials.")
             return StepExecutionResult(False, llm_reason)
     args = [argument.replace("{date}", date_str) for argument in step.args]
     command = [sys.executable, str(step.script), *args]
@@ -506,26 +566,25 @@ def _run_step(
         )
     except subprocess.TimeoutExpired:
         timeout_text = _format_timeout_seconds(timeout)
-        print(f"⏱ TIMEOUT: {step.name} exceeded {timeout_text}s")
+        _print_pipeline_status("[X]", display_name, f"Timed out after {timeout_text}s.")
         return StepExecutionResult(False, f"timeout after {timeout_text}s")
     except Exception as exc:
-        print(f"⚠ EXCEPTION in {step.name}: {exc}")
+        _print_pipeline_status("[X]", display_name, _exception_failure_detail(exc))
         return StepExecutionResult(False, str(exc))
     if result.returncode != 0:
-        print(f"❌ FAILED: {step.name}")
-        print(f"   Error Log:\n{result.stderr or result.stdout}")
         rag_reason = _rag_sync_failure_reason(step, result.stdout or "")
+        detail = (
+            "Search memory could not be updated."
+            if rag_reason
+            else _subprocess_failure_detail(result.stderr or result.stdout or "")
+        )
+        _print_pipeline_status("[X]", display_name, detail)
         return StepExecutionResult(False, rag_reason or f"exit {result.returncode}", result.stderr or result.stdout or "")
     rag_reason = _rag_sync_failure_reason(step, result.stdout or "")
     if rag_reason:
-        print(f"❌ FAILED: {step.name}")
-        print(f"   Reason: {rag_reason}")
+        _print_pipeline_status("[X]", display_name, "Search memory could not be updated.")
         return StepExecutionResult(False, rag_reason, result.stdout or "")
-    print(f"✅ SUCCESS: {step.name}")
-    if result.stdout:
-        lines = [line for line in result.stdout.strip().split("\n") if line.strip()]
-        if lines:
-            print(f"   Log: {lines[-1]}")
+    _print_pipeline_status("[OK]", display_name)
     return StepExecutionResult(True, stdout=result.stdout or "")
 
 
@@ -667,20 +726,18 @@ def materialize_blank_day_narrative(date_str: str, paths: RuntimePaths | None = 
     selected = paths or load_paths()
     pipeline = resolve_pipeline_settings(selected)
     language_profile = str(pipeline.get("languageProfile") or "zh").lower()
-    print("\n>>> PREPARING: Blank Day Narrative")
     try:
         if language_profile == "en":
             from diary_generator.en import narrative_pass
 
-            out_file = narrative_pass.write_blank_day_report(date_str, selected.diary_dir)
+            narrative_pass.write_blank_day_report(date_str, selected.diary_dir)
         else:
             from diary_generator import narrative_pass
 
-            out_file = narrative_pass.write_blank_day_report(date_str, selected.diary_dir)
-        print(f"✅ SUCCESS: Blank day narrative ready: {out_file}")
+            narrative_pass.write_blank_day_report(date_str, selected.diary_dir)
         return True
-    except Exception as exc:
-        print(f"❌ FAILED: Blank day narrative generation raised {exc}")
+    except Exception:
+        _print_pipeline_status("[X]", "Generate diary", "The no-activity diary could not be created.")
         return False
 
 
@@ -688,7 +745,6 @@ def prepare_blank_day_foundation_inputs(date_str: str, paths: RuntimePaths | Non
     """Create the minimum Foundation metric marker needed for a no-activity diary."""
     target = date.fromisoformat(date_str)
     selected = paths or load_paths()
-    print("\n>>> PREPARING: Blank Day Foundation Inputs")
     run_id = None
     try:
         migrate(selected)
@@ -704,12 +760,11 @@ def prepare_blank_day_foundation_inputs(date_str: str, paths: RuntimePaths | Non
         )
         refresh_daily_usage(selected, target, run_id)
         finish_ingestion_run(selected, run_id, status="completed")
-        print(f"✅ SUCCESS: Blank day Foundation inputs ready for {date_str} (runId={run_id})")
         return True
     except Exception as exc:
         if run_id is not None:
             finish_ingestion_run(selected, run_id, status="failed", error_summary=str(exc))
-        print(f"❌ FAILED: Blank day Foundation inputs raised {exc}")
+        _print_pipeline_status("[X]", "Prepare diary", "The no-activity diary could not be prepared.")
         return False
 
 
@@ -723,8 +778,8 @@ def _skip_final_rag_reason(paths: RuntimePaths | None = None) -> str | None:
                 if rag_product_disabled_reason is not None:
                     return rag_product_disabled_reason(paths=paths) or "nova-RAG subsystem is disabled by settings."
                 return "nova-RAG subsystem is disabled by settings."
-        except Exception as exc:
-            print(f"⚠ RAG skip preflight failed: {exc}; continuing final RAG step.")
+        except Exception:
+            _print_pipeline_status("[!]", "Update search memory", "Readiness could not be checked; continuing.")
     return None
 
 
@@ -765,13 +820,12 @@ def materialize_nova_task_outputs(date_str: str, paths: RuntimePaths | None = No
     """Run Nova-Task work-graph reconciliation after technical pass and export projection."""
     target = date.fromisoformat(date_str)
     selected = paths or load_paths()
-    print("\n>>> PREPARING: Nova-Task Work Graph")
     try:
         report_path = _technical_report_path(date_str, selected)
         if not report_path.exists():
-            print(f"⚠ SKIPPED: technical report missing for Nova-Task reconciliation: {report_path}")
+            _print_pipeline_status("[!]", "Refresh tasks", "Diary details are not ready.")
             return False
-        anchors = reconcile_workspace_project_anchors(selected)
+        reconcile_workspace_project_anchors(selected)
         result = run_work_graph_reconciliation(
             selected,
             business_date=target,
@@ -780,26 +834,12 @@ def materialize_nova_task_outputs(date_str: str, paths: RuntimePaths | None = No
             technical_report_path=report_path,
         )
         if getattr(result, "response_malformed", False):
-            print(f"⚠ FAILED: Nova-Task work graph response was malformed (artifact={result.artifact_path})")
+            _print_pipeline_status("[!]", "Refresh tasks", "Generated task updates could not be read.")
             return False
-        export = export_task_board_markdown(selected)
-        evidence_events = getattr(result, "evidence_ledger_event_count", result.event_count)
-        project_graph_writes = getattr(result, "project_graph_write_count", result.auto_confirmed_count)
-        planning_proposals = getattr(result, "planning_overlay_proposal_count", result.candidate_count)
-        print(
-            "✅ SUCCESS: Nova-Task work graph ready "
-            f"(evidenceEvents={evidence_events}, "
-            f"projectGraphWrites={project_graph_writes}, "
-            f"planningProposals={planning_proposals}, "
-            f"legacyActions={result.action_count}, "
-            f"attached={result.attached_count}, rejected={result.rejected_count}, deferred={result.deferred_count}, "
-            f"merged={getattr(result, 'merged_count', 0)}, superseded={getattr(result, 'superseded_count', 0)}, "
-            f"anchorCandidates={anchors.candidate_count}, "
-            f"pending={result.pending_after}, export={export.content_sha256[:12]})"
-        )
+        export_task_board_markdown(selected)
         return True
-    except Exception as exc:
-        print(f"⚠ FAILED: Nova-Task v2 materialization raised {exc}")
+    except Exception:
+        _print_pipeline_status("[!]", "Refresh tasks", "Task updates could not be refreshed.")
         return False
 
 
@@ -807,7 +847,6 @@ def prepare_diary_foundation_inputs(date_str: str, paths: RuntimePaths | None = 
     """Materialize and gate selected diary Foundation readers before narrative assembly."""
     target = date.fromisoformat(date_str)
     selected = paths or load_paths()
-    print("\n>>> PREPARING: Foundation Diary Inputs")
     try:
         result = run_shadow_ingestion(
             selected,
@@ -816,18 +855,14 @@ def prepare_diary_foundation_inputs(date_str: str, paths: RuntimePaths | None = 
             observe_assets=False,
         )
         if result.errors:
-            print(f"❌ FAILED: Foundation diary ingestion reported {result.errors} error(s).")
+            _print_pipeline_status("[X]", "Prepare diary", "Activity data could not be prepared.")
             return False
-        workspace_catalog = materialize_workspace_attribution_catalog(selected)
-        print(
-            "✅ SUCCESS: Workspace attribution catalog ready "
-            f"(projects={workspace_catalog.get('counts', {}).get('projects', 0)})"
-        )
+        materialize_workspace_attribution_catalog(selected)
         if resolve_runtime_source("DIARY_MEMORY_SOURCE", selected) == "foundation":
             materialize_diary_memory_snapshot(selected, target, result.run_id)
             memory = write_diary_memory_readiness_report(selected, target)
             if not memory["canEnable"]["diaryMemorySourceFoundation"]:
-                print(f"❌ FAILED: Foundation diary memory readiness is {memory['status']}.")
+                _print_pipeline_status("[X]", "Prepare diary", "Activity history is not ready.")
                 return False
         if resolve_runtime_source("DIARY_METRICS_SOURCE", selected) == "foundation":
             metrics = write_diary_metrics_readiness_report(
@@ -838,12 +873,9 @@ def prepare_diary_foundation_inputs(date_str: str, paths: RuntimePaths | None = 
             )
             if not metrics["canEnable"]["diaryMetricsSourceFoundation"]:
                 if _is_soft_diary_metrics_readiness_failure(metrics):
-                    print(
-                        "⚠ WARNING: Foundation diary metrics readiness is "
-                        f"{metrics['status']}; continuing diary generation with Foundation inputs."
-                    )
+                    _print_pipeline_status("[!]", "Prepare diary", "Some activity totals may be incomplete.")
                 else:
-                    print(f"❌ FAILED: Foundation diary metrics readiness is {metrics['status']}.")
+                    _print_pipeline_status("[X]", "Prepare diary", "Activity totals are not ready.")
                     return False
         if resolve_runtime_source("DIARY_TASKS_SOURCE", selected) == "foundation":
             materialize_diary_tasks_snapshot(
@@ -857,12 +889,11 @@ def prepare_diary_foundation_inputs(date_str: str, paths: RuntimePaths | None = 
                 approve_checkbox_normalization=True,
             )
             if not tasks["canEnable"]["diaryTasksSourceFoundation"]:
-                print(f"❌ FAILED: Foundation diary tasks readiness is {tasks['status']}.")
+                _print_pipeline_status("[X]", "Prepare diary", "Task data is not ready.")
                 return False
-        print(f"✅ SUCCESS: Foundation diary inputs ready for {date_str} (runId={result.run_id})")
         return True
-    except Exception as exc:
-        print(f"❌ FAILED: Foundation diary preparation raised {exc}")
+    except Exception:
+        _print_pipeline_status("[X]", "Prepare diary", "Diary data could not be prepared.")
         return False
 
 
@@ -870,22 +901,17 @@ def prepare_existing_diary_foundation_inputs(date_str: str, paths: RuntimePaths 
     """Gate already-materialized Foundation diary inputs without re-reading source facts."""
     target = date.fromisoformat(date_str)
     selected = paths or load_paths()
-    print("\n>>> PREPARING: Existing Foundation Diary Inputs")
     try:
         migrate(selected)
         metrics_ready = daily_diary_usage_metrics(selected, target)
         if metrics_ready is None:
-            print(f"❌ FAILED: Existing Foundation diary metrics are missing for {date_str}.")
+            _print_pipeline_status("[X]", "Prepare diary", "Saved activity totals are missing.")
             return False
-        workspace_catalog = materialize_workspace_attribution_catalog(selected)
-        print(
-            "✅ SUCCESS: Existing workspace attribution catalog ready "
-            f"(projects={workspace_catalog.get('counts', {}).get('projects', 0)})"
-        )
+        materialize_workspace_attribution_catalog(selected)
         if resolve_runtime_source("DIARY_MEMORY_SOURCE", selected) == "foundation":
             memory = write_diary_memory_readiness_report(selected, target)
             if not memory["canEnable"]["diaryMemorySourceFoundation"]:
-                print(f"❌ FAILED: Existing Foundation diary memory readiness is {memory['status']}.")
+                _print_pipeline_status("[X]", "Prepare diary", "Saved activity history is not ready.")
                 return False
         if resolve_runtime_source("DIARY_METRICS_SOURCE", selected) == "foundation":
             metrics = write_diary_metrics_readiness_report(
@@ -896,12 +922,9 @@ def prepare_existing_diary_foundation_inputs(date_str: str, paths: RuntimePaths 
             )
             if not metrics["canEnable"]["diaryMetricsSourceFoundation"]:
                 if _is_soft_diary_metrics_readiness_failure(metrics):
-                    print(
-                        "⚠ WARNING: Existing Foundation diary metrics readiness is "
-                        f"{metrics['status']}; continuing diary regeneration with frozen Foundation inputs."
-                    )
+                    _print_pipeline_status("[!]", "Prepare diary", "Some saved activity totals may be incomplete.")
                 else:
-                    print(f"❌ FAILED: Existing Foundation diary metrics readiness is {metrics['status']}.")
+                    _print_pipeline_status("[X]", "Prepare diary", "Saved activity totals are not ready.")
                     return False
         if resolve_runtime_source("DIARY_TASKS_SOURCE", selected) == "foundation":
             tasks = write_diary_tasks_readiness_report(
@@ -910,12 +933,11 @@ def prepare_existing_diary_foundation_inputs(date_str: str, paths: RuntimePaths 
                 approve_checkbox_normalization=True,
             )
             if not tasks["canEnable"]["diaryTasksSourceFoundation"]:
-                print(f"❌ FAILED: Existing Foundation diary tasks readiness is {tasks['status']}.")
+                _print_pipeline_status("[X]", "Prepare diary", "Saved task data is not ready.")
                 return False
-        print(f"✅ SUCCESS: Existing Foundation diary inputs ready for {date_str}")
         return True
-    except Exception as exc:
-        print(f"❌ FAILED: Existing Foundation diary preparation raised {exc}")
+    except Exception:
+        _print_pipeline_status("[X]", "Prepare diary", "Saved diary data could not be prepared.")
         return False
 
 
@@ -928,23 +950,11 @@ def materialize_pipeline_foundation_outputs(date_str: str, paths: RuntimePaths |
     """Materialize Dashboard/Foundation read models after generated Markdown exists."""
     target = date.fromisoformat(date_str)
     selected = paths or load_paths()
-    print("\n>>> PREPARING: Pipeline-Owned Foundation Materialization")
     try:
-        result = run_pipeline_daily_materialization(selected, target)
-        completed_summaries = result.get("completedPeriodSummaries") or []
-        summary_status = (
-            ", completedSummaries="
-            + ",".join(f"{item['label']}:{item['status']}" for item in completed_summaries)
-            if completed_summaries
-            else ", completedSummaries=none"
-        )
-        print(
-            "✅ SUCCESS: Foundation materialization ready for "
-            f"{date_str} (runId={result['runId']}, diaryDocs={result['diaryMarkdownDocuments']}{summary_status})"
-        )
+        run_pipeline_daily_materialization(selected, target)
         return True
-    except Exception as exc:
-        print(f"❌ FAILED: Pipeline-owned Foundation materialization raised {exc}")
+    except Exception:
+        _print_pipeline_status("[X]", "Prepare diary", "Diary views could not be refreshed.")
         return False
 
 
@@ -952,16 +962,11 @@ def materialize_blank_day_pipeline_outputs(date_str: str, paths: RuntimePaths | 
     """Materialize only daily read models for no-activity days."""
     target = date.fromisoformat(date_str)
     selected = paths or load_paths()
-    print("\n>>> PREPARING: Blank-Day Foundation Materialization")
     try:
-        result = run_pipeline_blank_day_materialization(selected, target)
-        print(
-            "✅ SUCCESS: Blank-day Foundation materialization ready for "
-            f"{date_str} (runId={result['runId']}, diaryDocs={result['diaryMarkdownDocuments']})"
-        )
+        run_pipeline_blank_day_materialization(selected, target)
         return True
-    except Exception as exc:
-        print(f"❌ FAILED: Blank-day Foundation materialization raised {exc}")
+    except Exception:
+        _print_pipeline_status("[X]", "Prepare diary", "Diary views could not be refreshed.")
         return False
 
 
@@ -1021,9 +1026,11 @@ def run_daily_pipeline(
         step_contract=step_contract,
         pipeline_contract_hash=pipeline_contract_hash,
     )
+    print(f"Open Nova · Daily diary · {target_date}")
     language_block_reason = _pipeline_language_blocking_reason(pipeline_settings)
     if language_block_reason:
-        print(f"❌ FAILED: {language_block_reason}")
+        _print_pipeline_status("[X]", "Generate diary", "English output is not enabled.")
+        _print_pipeline_status("[X]", "Daily diary stopped", "Check language settings.")
         record_pipeline_failure(
             selected,
             business_date=target_date,
@@ -1033,7 +1040,7 @@ def run_daily_pipeline(
         return PipelineRunResult(target_date, 0, len(active_steps), False, "Pipeline Language Profile")
     lock_handle = _acquire_daily_pipeline_lock(selected, target_date)
     if lock_handle is None:
-        print(f"❌ FAILED: Daily pipeline already running for {target_date}.")
+        _print_pipeline_status("[X]", "Daily diary", "A run for this date is already in progress.")
         record_pipeline_failure(selected, business_date=target_date, failed_step="Pipeline Run Lock")
         return PipelineRunResult(target_date, 0, len(active_steps), False, "Pipeline Run Lock")
     ledger_run_id: int | None = None
@@ -1120,7 +1127,7 @@ def run_daily_pipeline(
                 return False
             reused_stage_proofs[stage_id] = proofs
             reason = f"reusing committed stage from pipeline run {retry_of_run_id}"
-            print(f"↷ SKIPPED: {name} ({reason})")
+            _print_pipeline_status("[-]", _pipeline_stage_display_name(name), "Reused from the previous attempt.")
             append_stage(
                 name=name,
                 stage_id=stage_id,
@@ -1170,19 +1177,16 @@ def run_daily_pipeline(
                     "durationSeconds": execution_context.elapsed_seconds(),
                 },
             )
+            display_name = _pipeline_stage_display_name(failed_step)
+            _print_pipeline_status("[X]", "Daily diary stopped", f"{display_name} could not finish.")
             return PipelineRunResult(target_date, succeeded, len(active_steps), False, failed_step)
 
         execution_context.checkpoint("pipeline-start")
-        print("==========================================")
-        print("🚀 OPEN-NOVA PIPELINE [V2.0] START")
-        print(f"📅 Target Date: {target_date}")
-        print(f"⏰ Execution: {datetime.now(resolve_timezone(selected)).strftime('%Y-%m-%d %H:%M:%S')}")
-        print("==========================================")
         for step in active_steps:
             stage_id = _pipeline_step_id(step)
             execution_context.checkpoint(f"{stage_id}:before")
             if reuse_foundation_inputs and _is_source_collection_step(step):
-                print(f"↷ SKIPPED: {step.name} (reusing frozen Foundation inputs)")
+                _print_pipeline_status("[-]", "Collect activity", "Using saved activity.")
                 append_stage(
                     name=step.name,
                     stage_id=stage_id,
@@ -1200,7 +1204,8 @@ def run_daily_pipeline(
                 input_stage_id = "blank-inputs" if blank_day_fast_path else "foundation-inputs"
                 input_name = "Blank Day Foundation Inputs" if blank_day_fast_path else "Foundation Diary Inputs"
                 execution_context.checkpoint(f"{input_stage_id}:before")
-                if reuse_stage(input_stage_id, input_name):
+                inputs_reused = reuse_stage(input_stage_id, input_name)
+                if inputs_reused:
                     inputs_ready = True
                 else:
                     input_materializer = prepare_blank_day_foundation_inputs if blank_day_fast_path else foundation_preparer
@@ -1220,16 +1225,19 @@ def run_daily_pipeline(
                     )
                 execution_context.checkpoint(f"{input_stage_id}:after")
                 if not inputs_ready:
-                    print(f"\n‼ PIPELINE HALTED BEFORE STEP {succeeded + 1}.")
                     return fail_run(
                         failed_step="Foundation Diary Inputs",
                         failure_class="data_missing",
                         stage_id=input_stage_id,
                         append_outcome=False,
                     )
+                if not inputs_reused:
+                    detail = "No activity found." if blank_day_fast_path else None
+                    _print_pipeline_status("[OK]", "Prepare diary", detail)
                 if blank_day_fast_path:
                     execution_context.checkpoint("blank-narrative:before")
-                    if reuse_stage("blank-narrative", "Blank Day Narrative"):
+                    blank_narrative_reused = reuse_stage("blank-narrative", "Blank Day Narrative")
+                    if blank_narrative_reused:
                         blank_narrative_ready = True
                     else:
                         blank_narrative_artifacts_before = artifact_proof_map()
@@ -1253,16 +1261,16 @@ def run_daily_pipeline(
                         )
                     execution_context.checkpoint("blank-narrative:after")
                     if not blank_narrative_ready:
-                        print(f"\n‼ PIPELINE HALTED BEFORE STEP {succeeded + 1}.")
                         return fail_run(
                             failed_step="Blank Day Narrative",
                             failure_class="blank_day_policy",
                             stage_id="blank-narrative",
                             append_outcome=False,
                         )
-                    print("↷ SKIPPED: Narrative/Technical/Learning passes (blank day fast path).")
+                    if not blank_narrative_reused:
+                        _print_pipeline_status("[OK]", "Generate diary", "No activity to summarize.")
+                    _print_pipeline_status("[-]", "Refresh tasks", "No activity to update.")
             if blank_day_fast_path and _is_blank_day_passthrough_step(step):
-                print(f"↷ SKIPPED: {step.name} (blank day fast path)")
                 append_stage(
                     name=step.name,
                     stage_id=stage_id,
@@ -1297,7 +1305,6 @@ def run_daily_pipeline(
                     )
                 execution_context.checkpoint(f"{post_stage_id}:after")
                 if not post_ready:
-                    print(f"\n‼ PIPELINE HALTED BEFORE STEP {succeeded + 1}.")
                     return fail_run(
                         failed_step="Pipeline Foundation Materialization",
                         failure_class="internal_error",
@@ -1305,7 +1312,7 @@ def run_daily_pipeline(
                         append_outcome=False,
                     )
                 if blank_day_fast_path:
-                    print(f"↷ SKIPPED: {step.name} (blank day fast path)")
+                    _print_pipeline_status("[-]", "Update search memory", "No new activity to index.")
                     append_stage(
                         name=step.name,
                         stage_id=stage_id,
@@ -1319,7 +1326,8 @@ def run_daily_pipeline(
                 skip_reason = _skip_final_rag_reason(selected)
                 execution_context.checkpoint("rag-skip-readiness:after")
                 if skip_reason:
-                    print(f"↷ SKIPPED: {step.name} ({skip_reason})")
+                    skip_detail = "Not enabled." if "disabled" in skip_reason.casefold() else "Skipped by settings."
+                    _print_pipeline_status("[-]", "Update search memory", skip_detail)
                     append_stage(
                         name=step.name,
                         stage_id=stage_id,
@@ -1344,8 +1352,7 @@ def run_daily_pipeline(
                     )
                 execution_context.checkpoint("final-rag-readiness:after")
                 if readiness_reason:
-                    print(f"\n‼ PIPELINE HALTED BEFORE STEP {succeeded + 1}.")
-                    print(f"❌ FAILED: Final RAG sync readiness: {readiness_reason}")
+                    _print_pipeline_status("[X]", "Update search memory", "Search memory is not ready.")
                     return fail_run(
                         failed_step="Final RAG Sync Readiness",
                         failure_class=classify_pipeline_failure(readiness_reason),
@@ -1377,7 +1384,6 @@ def run_daily_pipeline(
                 )
                 execution_context.checkpoint(f"{stage_id}:after")
                 if not step_result.success:
-                    print(f"\n‼ PIPELINE HALTED AT STEP {succeeded + 1}.")
                     failure_text = " ".join(part for part in (step_result.reason, step_result.stdout) if part)
                     return fail_run(
                         failed_step=step.name,
@@ -1391,10 +1397,11 @@ def run_daily_pipeline(
                 source_collection_completed = True
             if _is_technical_step(step):
                 execution_context.checkpoint("nova-task:before")
-                if reuse_stage("nova-task", "Nova-Task Work Graph"):
+                nova_task_reused = reuse_stage("nova-task", "Nova-Task Work Graph")
+                if nova_task_reused:
                     nova_task_ready = True
                 elif not nova_task_enabled:
-                    print("↷ SKIPPED: Nova-Task v2 materialization (Nova-Task subsystem is disabled by settings.)")
+                    _print_pipeline_status("[-]", "Refresh tasks", "Not enabled.")
                     append_stage(
                         name="Nova-Task Work Graph",
                         stage_id="nova-task",
@@ -1425,8 +1432,10 @@ def run_daily_pipeline(
                         ),
                     )
                 execution_context.checkpoint("nova-task:after")
-                if not nova_task_ready:
-                    print("⚠ Nova-Task v2 materialization did not complete; continuing diary pipeline.")
+                if nova_task_ready and nova_task_enabled and not nova_task_reused:
+                    _print_pipeline_status("[OK]", "Refresh tasks")
+                elif not nova_task_ready:
+                    _print_pipeline_status("[!]", "Refresh tasks", "Continuing without task updates.")
         completed_artifacts = artifact_paths()
         current_artifact_proofs = artifact_proof_map()
         invalid_reused_stages = sorted(
@@ -1456,7 +1465,7 @@ def run_daily_pipeline(
         if not finalized:
             terminal = pipeline_run_by_id(selected, ledger_run_id)
             if terminal is None or terminal.get("status") not in {"completed", "skipped"}:
-                print("‼ PIPELINE TERMINAL STATE LOST: another terminal transition won the ledger CAS.")
+                _print_pipeline_status("[X]", "Daily diary stopped", "The final status could not be saved.")
                 return PipelineRunResult(
                     target_date,
                     succeeded,
@@ -1464,16 +1473,14 @@ def run_daily_pipeline(
                     False,
                     "Pipeline Terminal State",
                 )
-        print("\n==========================================")
-        print(f"🏁 ALL SYSTEMS OPERATIONAL: {succeeded}/{len(active_steps)} steps.")
-        print(f"⏱ Total Latency: {duration:.1f}s")
-        print("==========================================")
+        _print_pipeline_status("[OK]", "Daily diary complete", f"{duration:.1f}s")
         return PipelineRunResult(target_date, succeeded, len(active_steps), True)
     except PipelineExecutionBoundary as boundary:
         if ledger_run_id is None or execution_context is None:
             raise
         failed_step = "Daily Pipeline Cancellation" if boundary.failure_class == "cancelled" else "Daily Pipeline Timeout"
-        print(f"\n‼ PIPELINE HALTED: {boundary.reason} (checkpoint={boundary.checkpoint}).")
+        boundary_detail = "The run was cancelled." if boundary.failure_class == "cancelled" else "The run timed out."
+        _print_pipeline_status("[X]", "Daily diary", boundary_detail)
         return fail_run(
             failed_step=failed_step,
             failure_class=boundary.failure_class,

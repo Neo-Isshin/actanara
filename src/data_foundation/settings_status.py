@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from .cli_output import friendly_name, render_cli, status_item, status_label
 from .dependency_profiles import dependency_profiles_status
 from .network import RAG_SERVER_NON_LOOPBACK_ISSUE_CODE, is_loopback_host
 from .paths import RuntimePaths, load_paths, validate_home
@@ -173,74 +174,90 @@ def format_nova_settings_status(payload: dict[str, Any]) -> str:
     summary = payload.get("summary") or {}
     profile = str(payload.get("doctorProfile") or "all")
     checks = payload.get("checks") or []
-    sources = payload.get("sources") or {}
-    general = payload.get("general") or {}
-    pipeline = payload.get("pipeline") or {}
     dashboard = payload.get("dashboard") or {}
     provider = payload.get("llmProvider") or {}
-    resource_profile = payload.get("resourceProfile") or {}
     runtime_source = payload.get("runtimeSource") or {}
-    dependency_profiles = payload.get("dependencyProfiles") or {}
-    scheduler_registration = payload.get("schedulerRegistration") or {}
-    audit_summary = ((payload.get("settingsAudit") or {}).get("summary") or {})
-    residual_summary = ((payload.get("settingsAudit") or {}).get("residualRisks") or {})
-    lines = [
-        (
-            f"Nova settings status: {summary.get('status', 'unknown')}"
-            if profile == "all"
-            else f"Nova doctor ({profile}): {summary.get('status', 'unknown')}"
-        ),
-        f"General: {general.get('appName', '-')} / {general.get('environment', '-')} / {general.get('timezone', '-')}",
-        f"Runtime: {runtime.get('novaHome', '-')}",
-        f"Settings: {runtime.get('settingsPath', '-')}",
-        f"Database: {runtime.get('database', '-')}",
-        f"Pipeline: {pipeline.get('stableCommand', '-')}",
-        f"Dashboard: {dashboard.get('url', '-')}",
-        (
-            "Resource profile: "
-            f"dashboard={((resource_profile.get('dashboard') or {}).get('expectedResidentProcesses', '-'))} "
-            f"rag={((resource_profile.get('rag') or {}).get('expectedResidentProcesses', '-'))} "
-            f"ragStatus={((resource_profile.get('rag') or {}).get('status', '-'))}"
-        ),
-        (
-            "Runtime source: "
-            f"{runtime_source.get('status', 'unknown')} "
-            f"manifest={'present' if runtime_source.get('manifestExists') else 'missing'} "
-            f"version={runtime_source.get('sourceVersion') or 'unknown'} "
-            f"versionAuthority={runtime_source.get('productVersionAuthority', 'unknown')} "
-            f"locator={((runtime_source.get('sourceLocator') or {}).get('kind') or 'unknown')}"
-        ),
-        (
-            "Dependencies: "
-            f"profiles={((dependency_profiles.get('summary') or {}).get('profiles', '-'))} "
-            f"missingRequired={((dependency_profiles.get('summary') or {}).get('missingRequired', '-'))}"
-        ),
-        (
-            "Scheduler: "
-            f"{scheduler_registration.get('status', 'unknown')} "
-            f"desired={scheduler_registration.get('expectedActualState', 'unknown')} "
-            f"actual={scheduler_registration.get('actualState', 'unknown')}"
-        ),
-        f"Sources: {', '.join(f'{key}={value}' for key, value in sorted(sources.items()))}",
-        (
-            "LLM: "
-            f"{provider.get('provider', '-')} / {provider.get('model', '-')} "
-            f"apiKey={'set' if provider.get('hasApiKey') else 'missing'} "
-            f"gate={provider.get('pipelineGateTokens', '-')}"
-        ),
-        (
-            "Settings audit: "
-            f"{audit_summary.get('status', 'unknown')} "
-            f"attention={audit_summary.get('attention', 0)}/{audit_summary.get('total', 0)} "
-            f"residual={residual_summary.get('attention', 0)}/{residual_summary.get('total', 0)}"
-        ),
-        f"Checks ({profile}):",
+    title = {
+        "all": "System status",
+        "installer": "Installation check",
+        "pipeline": "Daily diary check",
+        "scheduler": "Schedule check",
+        "rag": "Memory check",
+    }.get(profile, "System check")
+    next_steps = [
+        str(action.get("command"))
+        for action in runtime_source.get("recommendedActions") or []
+        if action.get("command")
     ]
-    for action in runtime_source.get("recommendedActions") or []:
-        lines.append(f"Runtime source action: {action.get('label', action.get('id', '-'))}: {action.get('command', '-')}")
-    for check in checks:
-        lines.append(f"- {check.get('status', 'unknown')}: {check.get('id', '-')}: {check.get('message', '')}")
-    return "\n".join(lines) + "\n"
+    by_id = {str(check.get("id") or ""): check for check in checks}
+    if "llm-provider" in by_id and by_id["llm-provider"].get("status") != "ok":
+        next_steps.append("open-nova model set --help")
+    if "llm-api-key" in by_id and by_id["llm-api-key"].get("status") != "ok":
+        next_steps.append("open-nova model key --value-stdin")
+    return render_cli(
+        title,
+        fields=(
+            ("Status", status_label(summary.get("status"))),
+            ("Data folder", runtime.get("novaHome", "—")),
+            ("Dashboard", dashboard.get("url", "—")),
+            ("AI model", f"{provider.get('provider') or 'Not set'} / {provider.get('model') or 'Not set'}"),
+            ("API key", "Ready" if provider.get("hasApiKey") else "Needs setup"),
+        ),
+        sections=(("Checks", [_friendly_settings_check(check) for check in checks]),),
+        next_steps=_dedupe_text(next_steps),
+    )
+
+
+def _friendly_settings_check(check: dict[str, Any]) -> str:
+    check_id = str(check.get("id") or "")
+    status = check.get("status", "unknown")
+    labels = {
+        "runtime-home": ("Data folder is ready", "Data folder needs setup"),
+        "settings-file": ("Settings are available", "Settings are missing"),
+        "database-file": ("Local data is available", "Local data needs attention"),
+        "llm-provider": ("AI model is configured", "AI model needs setup"),
+        "llm-api-key": ("AI model key is ready", "AI model key is missing"),
+        "llm-launchd-secret-visibility": (
+            "AI model key is available to scheduled runs",
+            "Scheduled runs cannot access the AI model key",
+        ),
+        "settings-hardcode-audit": ("Settings look healthy", "Settings need attention"),
+        "runtime-source-provenance": ("Installed app files are current", "Installed app files need an update"),
+        "runtime-source-checkout-dirty": ("App files are ready", "App files include unsaved changes"),
+        "runtime-source-launchagent-alignment": (
+            "Background services use the current app files",
+            "Background services need to be refreshed",
+        ),
+        "rag-server-loopback-boundary": ("Memory service is local-only", "Memory service network settings are unsafe"),
+        "rag-internal-encode-authorization": ("Memory service access is ready", "Memory service access needs attention"),
+        "scheduler-provider": ("Automatic daily runs are supported", "Automatic daily runs are not available"),
+        "scheduler-timezone-boundary": ("Schedule timezone is ready", "Schedule timezone needs attention"),
+        "scheduler-handoff-transaction": ("Schedule changes are complete", "A schedule change needs recovery"),
+        "scheduler-settings-registration": ("Schedule settings are current", "Schedule settings need attention"),
+        "scheduler-desired-actual": ("Automatic daily runs match your settings", "Automatic daily runs do not match your settings"),
+    }
+    if check_id.startswith("launchagent-registration:"):
+        service = check_id.split(":", 1)[1]
+        name = "Memory service" if "rag" in service or "embedding" in service else "Dashboard service"
+        return status_item(status, f"{name} is ready", f"{name} needs attention")
+    if check_id.startswith("scheduler-job:"):
+        kind = check_id.split(":", 1)[1]
+        name = "Daily diary schedule" if "pipeline" in kind else "Dashboard refresh schedule"
+        return status_item(status, f"{name} is ready", f"{name} needs attention")
+    if check_id.startswith("external-tool:"):
+        source = check_id.split(":", 1)[1].split(".", 1)[0]
+        name = friendly_name(source, fallback="Activity source")
+        return status_item(status, f"{name} activity is available", f"{name} activity is unavailable")
+    ready, attention = labels.get(check_id, ("Open Nova check passed", "Open Nova needs attention"))
+    return status_item(status, ready, attention)
+
+
+def _dedupe_text(values: list[str]) -> list[str]:
+    result: list[str] = []
+    for value in values:
+        if value and value not in result:
+            result.append(value)
+    return result
 
 
 def dump_nova_settings_status_json(payload: dict[str, Any]) -> str:

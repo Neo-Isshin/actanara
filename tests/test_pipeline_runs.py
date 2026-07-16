@@ -1,9 +1,11 @@
+import io
 import json
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -58,6 +60,107 @@ class PipelineRunsTests(unittest.TestCase):
         self.assertEqual(run["requestedBy"], "cli")
         self.assertEqual(run["steps"][0]["name"], "fixture")
         self.assertEqual(run["steps"][0]["status"], "completed")
+
+    def test_daily_pipeline_prints_compact_product_progress_without_child_logs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = initialize_home(root / "OpenNova", legacy_diary_root=root / "Diary")
+            step_specs = (
+                ("0. Unified collection", "unified_source_collector.py"),
+                ("2. Narrative pass", "narrative_pass.py"),
+                ("4. Technical pass", "technical_pass.py"),
+                ("7. Learning pass", "learning_pass.py"),
+                ("8. RAG sync", "rag_v2_sync.py"),
+            )
+            steps = []
+            for index, (name, filename) in enumerate(step_specs):
+                script = root / f"step-{index}" / filename
+                script.parent.mkdir()
+                script.write_text("# fixture\n", encoding="utf-8")
+                steps.append(PipelineStep(name, script))
+
+            def runner(command, **_kwargs):
+                return subprocess.CompletedProcess(command, 0, "child detail\nLog: }\n", "")
+
+            with (
+                patch("data_foundation.pipeline._diary_foundation_enabled", return_value=True),
+                patch("data_foundation.pipeline._is_blank_day_after_collect", return_value=False),
+                patch("data_foundation.pipeline.is_nova_task_enabled", return_value=True),
+                patch("data_foundation.pipeline._skip_final_rag_reason", return_value=None),
+                patch("data_foundation.pipeline._final_rag_readiness_blocking_reason", return_value=None),
+                redirect_stdout(io.StringIO()) as output,
+            ):
+                result = run_daily_pipeline(
+                    "2026-06-22",
+                    paths=paths,
+                    steps=steps,
+                    runner=runner,
+                    pre_materializer=lambda *_args, **_kwargs: True,
+                    nova_task_materializer=lambda *_args, **_kwargs: True,
+                    post_materializer=lambda *_args, **_kwargs: True,
+                )
+
+        text = output.getvalue()
+        self.assertTrue(result.success)
+        for expected in (
+            "Open Nova · Daily diary · 2026-06-22",
+            "[OK] Collect activity",
+            "[OK] Prepare diary",
+            "[OK] Generate diary · Daily story",
+            "[OK] Generate diary · Technical notes",
+            "[OK] Generate diary · Lessons learned",
+            "[OK] Refresh tasks",
+            "[OK] Update search memory",
+            "[OK] Daily diary complete",
+        ):
+            self.assertIn(expected, text)
+        for hidden in (
+            "V2.0",
+            "RUNNING",
+            "PREPARING",
+            "Foundation",
+            "materialization",
+            "runId",
+            "artifact",
+            "digest",
+            "ALL SYSTEMS OPERATIONAL",
+            "child detail",
+            "Log: }",
+        ):
+            self.assertNotIn(hidden, text)
+
+    def test_daily_pipeline_failure_is_concise_and_does_not_echo_stderr(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = initialize_home(root / "OpenNova", legacy_diary_root=root / "Diary")
+            script = root / "unified_source_collector.py"
+            script.write_text("# fixture\n", encoding="utf-8")
+
+            def runner(command, **_kwargs):
+                return subprocess.CompletedProcess(
+                    command,
+                    1,
+                    "",
+                    "HTTP 403 usage limit\nVERY_SECRET_DIAGNOSTIC\nLog: }\n",
+                )
+
+            with redirect_stdout(io.StringIO()) as output:
+                result = run_daily_pipeline(
+                    "2026-06-23",
+                    paths=paths,
+                    steps=[PipelineStep("0. Unified collection", script)],
+                    runner=runner,
+                )
+            run = latest_pipeline_run_for_date(paths, "2026-06-23")
+
+        text = output.getvalue()
+        self.assertFalse(result.success)
+        self.assertEqual(run["errorSummary"], "exit 1")
+        self.assertIn("[X] Collect activity — The model usage limit was reached.", text)
+        self.assertIn("[X] Daily diary stopped — Collect activity could not finish.", text)
+        self.assertNotIn("HTTP 403", text)
+        self.assertNotIn("VERY_SECRET_DIAGNOSTIC", text)
+        self.assertNotIn("Log: }", text)
 
     def test_daily_pipeline_records_failed_step_and_failure_class(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -10,31 +10,35 @@ from .external_agent_memory import DEFAULT_SEARCH_TIMEOUT_SECONDS, compact_memor
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="open-nova")
+    parser = argparse.ArgumentParser(
+        prog="open-nova",
+        description="Search your Open Nova memory.",
+    )
     subcommands = parser.add_subparsers(dest="command")
 
-    rag = subcommands.add_parser("rag", help="RAG read-only memory helpers")
+    rag = subcommands.add_parser("rag", help="Detailed memory-search commands")
     rag_subcommands = rag.add_subparsers(dest="rag_command")
+    rag.set_defaults(rag_parser=rag)
     search = rag_subcommands.add_parser(
         "search-memory",
-        help="Search nova-RAG memory through the external read-only Dashboard facade.",
+        help="Search your Open Nova memory.",
     )
-    search.add_argument("query", help="Search query")
-    search.add_argument("--top-k", type=int, default=5, help="Maximum results, capped at 20")
-    search.add_argument("--dashboard-url", default=None, help="Dashboard base URL; defaults to active Runtime settings")
+    search.add_argument("query", help="Words or question to search for")
+    search.add_argument("--top-k", type=int, default=5, help="Maximum number of results, up to 20")
+    search.add_argument("--dashboard-url", default=None, help="Use a specific Dashboard URL")
     search.add_argument(
         "--timeout",
         type=float,
         default=DEFAULT_SEARCH_TIMEOUT_SECONDS,
-        help="HTTP timeout in seconds (default: server budget plus transport grace)",
+        help="Seconds to wait for results",
     )
-    search.add_argument("--date", default="", help="Optional single business date filter")
-    search.add_argument("--date-from", default="", help="Optional date range start")
-    search.add_argument("--date-to", default="", help="Optional date range end")
-    search.add_argument("--project", default="", help="Optional project filter")
-    search.add_argument("--role", default="", help="Optional role/agent filter")
-    search.add_argument("--source-set", action="append", default=[], help="Optional sourceSet filter; may repeat")
-    search.add_argument("--json", action="store_true", help="Print raw JSON response")
+    search.add_argument("--date", default="", help="Search one date")
+    search.add_argument("--date-from", default="", help="Search from this date")
+    search.add_argument("--date-to", default="", help="Search through this date")
+    search.add_argument("--project", default="", help="Search one project")
+    search.add_argument("--role", default="", help="Search one assistant or role")
+    search.add_argument("--source-set", action="append", default=[], help="Search one kind of memory; may be repeated")
+    search.add_argument("--json", action="store_true", help="Print JSON for scripts and automation")
     return parser
 
 
@@ -64,13 +68,16 @@ def main(argv: list[str] | None = None) -> int:
                 filters=filters,
             )
         except Exception as exc:
-            print(str(exc), file=sys.stderr)
+            print(f"Error: {exc}", file=sys.stderr)
             return 2
         if args.json:
             print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
         else:
             print(compact_memory_results(result, max_results=args.top_k))
         return 0
+    if args.command == "rag":
+        args.rag_parser.print_help()
+        return 1
     parser.print_help()
     return 1
 

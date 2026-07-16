@@ -19,6 +19,8 @@ DRY_RUN=0
 OFFLINE=0
 INSTALL_ARGS=()
 CACHE_SOURCE=0
+BOOTSTRAP_LOG_FILE=""
+BOOTSTRAP_LANGUAGE="${NOVA_INSTALL_LANGUAGE:-zh-CN}"
 SPARSE_PATHS=(
   "/pyproject.toml"
   "/MANIFEST.in"
@@ -40,36 +42,153 @@ OFFLINE_SOURCE_PATHS=(
 
 usage() {
   cat <<'EOF'
-Open Nova installer bootstrap
+Open Nova setup
 
 Usage:
   install/bootstrap.sh [bootstrap-options] [-- installer-options]
 
-Bootstrap options:
-  --source-root PATH       Use an existing local checkout.
-  --source-url URL         Clone source from URL when no local checkout is supplied.
+Preparation options:
+  --source-root PATH       Use an existing local copy of Open Nova.
+  --source-url URL         Download Open Nova from this URL.
                           Default: https://github.com/Neo-Isshin/open-nova.git
-  --ref COMMIT            Checkout an explicit full 40/64-hex commit after cloning/fetching.
-                          With the default remote, omitting --ref selects the latest stable release.
-  --cache-root PATH        Source acquisition cache root. Default: ~/.cache/open-nova/installer
-  --git PATH              Git binary. Default: git
-  --offline               Forbid source network access and require a local source or a cached explicit commit.
-  --dry-run               Print source acquisition and installer plan without writes.
+  --ref VERSION           Use an exact 40- or 64-character version ID.
+                          Omit it to use the latest stable release.
+  --cache-root PATH        Download cache folder. Default: ~/.cache/open-nova/installer
+  --git PATH              Git executable. Default: git
+  --offline               Use local or previously downloaded files only.
+  --dry-run               Preview preparation and setup without writing files.
   -h, --help              Show this help.
 
-Installer options after -- are forwarded to install/install.sh.
+Options after -- are passed to the main setup.
 EOF
 }
 
+bootstrap_text() {
+  local key="$1"
+  case "$BOOTSTRAP_LANGUAGE" in
+    en|en-US|en_US)
+      case "$key" in
+        preparing_folder) print -r -- "Preparing the download folder" ;;
+        downloading) print -r -- "Downloading Open Nova" ;;
+        checking_updates) print -r -- "Checking the selected Open Nova version" ;;
+        preparing_files) print -r -- "Preparing installation files" ;;
+        latest_ready) print -r -- "Latest stable version selected" ;;
+        cache_ready) print -r -- "Previously downloaded files are ready" ;;
+        starting) print -r -- "Starting Open Nova setup" ;;
+        step_failed) print -r -- "Could not prepare Open Nova. Run again with NOVA_INSTALL_VERBOSE=1 for details." ;;
+        options_conflict) print -r -- "Some preparation options cannot be used together. Run with --help." ;;
+        existing_install) print -r -- "Open Nova is already installed. Run open-nova doctor, then open-nova update --apply." ;;
+        location_invalid) print -r -- "The saved Open Nova location could not be read safely." ;;
+        version_unavailable) print -r -- "The selected Open Nova version could not be verified." ;;
+        version_invalid) print -r -- "Choose an exact Open Nova version ID." ;;
+        offline_missing) print -r -- "The required Open Nova files are not available offline." ;;
+        cache_mismatch) print -r -- "This download folder belongs to a different Open Nova source. Choose another folder." ;;
+        git_missing) print -r -- "Git is required to download Open Nova." ;;
+        files_missing) print -r -- "Required Open Nova installation files are missing." ;;
+        shell_missing) print -r -- "zsh is required to start Open Nova setup." ;;
+        option_value_missing) print -r -- "One setup option is missing its value. Run with --help." ;;
+        *) print -r -- "$key" ;;
+      esac
+      ;;
+    *)
+      case "$key" in
+        preparing_folder) print -r -- "准备下载文件夹" ;;
+        downloading) print -r -- "下载 Open Nova" ;;
+        checking_updates) print -r -- "检查所选 Open Nova 版本" ;;
+        preparing_files) print -r -- "准备安装文件" ;;
+        latest_ready) print -r -- "已选择最新稳定版本" ;;
+        cache_ready) print -r -- "已准备此前下载的文件" ;;
+        starting) print -r -- "启动 Open Nova 安装" ;;
+        step_failed) print -r -- "未能准备 Open Nova，可设置 NOVA_INSTALL_VERBOSE=1 后重试以查看详情。" ;;
+        options_conflict) print -r -- "部分准备选项不能同时使用，请通过 --help 查看用法。" ;;
+        existing_install) print -r -- "检测到已安装的 Open Nova；请先运行 open-nova doctor，再运行 open-nova update --apply。" ;;
+        location_invalid) print -r -- "无法安全读取已保存的 Open Nova 位置。" ;;
+        version_unavailable) print -r -- "未能确认所选 Open Nova 版本。" ;;
+        version_invalid) print -r -- "请选择完整、准确的 Open Nova 版本 ID。" ;;
+        offline_missing) print -r -- "离线状态下缺少所需 Open Nova 文件。" ;;
+        cache_mismatch) print -r -- "此下载文件夹属于其他 Open Nova 来源，请选择另一文件夹。" ;;
+        git_missing) print -r -- "下载 Open Nova 需要 Git。" ;;
+        files_missing) print -r -- "缺少 Open Nova 安装所需文件。" ;;
+        shell_missing) print -r -- "启动 Open Nova 安装需要 zsh。" ;;
+        option_value_missing) print -r -- "一个安装选项缺少内容，请通过 --help 查看用法。" ;;
+        *) print -r -- "$key" ;;
+      esac
+      ;;
+  esac
+}
+
+bootstrap_command_label() {
+  case "$*" in
+    mkdir\ -p*) bootstrap_text preparing_folder ;;
+    *" clone "*|clone\ *) bootstrap_text downloading ;;
+    *" fetch "*|fetch\ *) bootstrap_text checking_updates ;;
+    *) bootstrap_text preparing_files ;;
+  esac
+}
+
+bootstrap_ok() {
+  print -r -- "  ✓ $*"
+}
+
+bootstrap_fail() {
+  print -r -- "  ✕ $(bootstrap_text step_failed)" >&2
+}
+
+bootstrap_problem() {
+  local key="$1"
+  local technical_message="$2"
+  if [[ -n "$BOOTSTRAP_LOG_FILE" && -d "${BOOTSTRAP_LOG_FILE:h}" ]]; then
+    print -r -- "ERROR: ${technical_message}" >> "$BOOTSTRAP_LOG_FILE"
+  fi
+  if [[ "${NOVA_INSTALL_VERBOSE:-0}" == "1" ]]; then
+    print -r -- "ERROR: ${technical_message}" >&2
+  else
+    print -r -- "  ✕ $(bootstrap_text "$key")" >&2
+  fi
+}
+
+prepare_bootstrap_log() {
+  local cache_root="$1"
+  /bin/chmod 700 "$cache_root"
+  : > "$BOOTSTRAP_LOG_FILE"
+  /bin/chmod 600 "$BOOTSTRAP_LOG_FILE"
+}
+
 log() {
-  print -r -- "==> $*"
+  if [[ -n "$BOOTSTRAP_LOG_FILE" && -d "${BOOTSTRAP_LOG_FILE:h}" ]]; then
+    print -r -- "==> $*" >> "$BOOTSTRAP_LOG_FILE"
+  fi
+  if [[ "${NOVA_INSTALL_VERBOSE:-0}" == "1" ]]; then
+    print -r -- "==> $*"
+  fi
 }
 
 run_cmd() {
-  print -r -- "+ $*"
-  if [[ "$DRY_RUN" != "1" ]]; then
-    "$@"
+  local label="$(bootstrap_command_label "$@")"
+  if [[ "${NOVA_INSTALL_VERBOSE:-0}" == "1" ]]; then
+    print -r -- "+ ${label}"
   fi
+  if [[ "$DRY_RUN" == "1" ]]; then
+    bootstrap_ok "$label"
+    return 0
+  fi
+  local rc=0
+  if [[ -n "$BOOTSTRAP_LOG_FILE" && -d "${BOOTSTRAP_LOG_FILE:h}" ]]; then
+    print -r -- "## ${label}" >> "$BOOTSTRAP_LOG_FILE"
+    "$@" >/dev/null 2>&1 || {
+      rc=$?
+      print -r -- "ERROR: step exited with status ${rc}" >> "$BOOTSTRAP_LOG_FILE"
+      bootstrap_fail
+      return "$rc"
+    }
+  else
+    "$@" >/dev/null 2>&1 || {
+      rc=$?
+      bootstrap_fail
+      return "$rc"
+    }
+  fi
+  bootstrap_ok "$label"
 }
 
 git_exec() {
@@ -95,10 +214,31 @@ git_exec() {
 }
 
 run_git_cmd() {
-  print -r -- "+ ${GIT_BIN} $*"
-  if [[ "$DRY_RUN" != "1" ]]; then
-    git_exec "$@"
+  local label="$(bootstrap_command_label "$@")"
+  if [[ "${NOVA_INSTALL_VERBOSE:-0}" == "1" ]]; then
+    print -r -- "+ ${label}"
   fi
+  if [[ "$DRY_RUN" == "1" ]]; then
+    bootstrap_ok "$label"
+    return 0
+  fi
+  local rc=0
+  if [[ -n "$BOOTSTRAP_LOG_FILE" && -d "${BOOTSTRAP_LOG_FILE:h}" ]]; then
+    print -r -- "## ${label}" >> "$BOOTSTRAP_LOG_FILE"
+    git_exec "$@" >/dev/null 2>&1 || {
+      rc=$?
+      print -r -- "ERROR: download step exited with status ${rc}" >> "$BOOTSTRAP_LOG_FILE"
+      bootstrap_fail
+      return "$rc"
+    }
+  else
+    git_exec "$@" >/dev/null 2>&1 || {
+      rc=$?
+      bootstrap_fail
+      return "$rc"
+    }
+  fi
+  bootstrap_ok "$label"
 }
 
 configure_sparse_checkout() {
@@ -129,7 +269,7 @@ verify_offline_source_cache() {
   resolved_object="$(git_exec -C "${root}" rev-parse --verify "${ref}^{commit}" 2>/dev/null || true)"
   resolved_object="${resolved_object:l}"
   if [[ "$resolved_object" != "$ref" ]]; then
-    print -r -- "Resolved source object is not the required commit ${ref}; refusing mutable HEAD fallback." >&2
+    bootstrap_problem version_unavailable "resolved source object does not match required commit ${ref}"
     return 2
   fi
 
@@ -141,19 +281,19 @@ verify_offline_source_cache() {
   local required_path=""
   for required_path in "${OFFLINE_SOURCE_PATHS[@]}"; do
     if ! git_exec -C "${root}" cat-file -e "${ref}:${required_path}" 2>/dev/null; then
-      print -r -- "Offline source cache is incomplete for commit ${ref}; reconnect and refresh this installer cache before retrying offline." >&2
+      bootstrap_problem offline_missing "offline source cache is incomplete for commit ${ref}"
       return 2
     fi
   done
 
   local inventory_file=""
   inventory_file="$(mktemp "${TMPDIR:-/tmp}/open-nova-offline-cache.XXXXXXXX")" || {
-    print -r -- "Unable to create a private offline source inventory." >&2
+    bootstrap_problem offline_missing "unable to create a private offline source inventory"
     return 2
   }
   if ! git_exec -C "${root}" ls-tree -r -z --full-tree "${ref}" -- "${OFFLINE_SOURCE_PATHS[@]}" > "${inventory_file}"; then
     rm -f "${inventory_file}"
-    print -r -- "Offline source cache is incomplete for commit ${ref}; reconnect and refresh this installer cache before retrying offline." >&2
+    bootstrap_problem offline_missing "offline source cache inventory is incomplete for commit ${ref}"
     return 2
   fi
 
@@ -192,7 +332,7 @@ verify_offline_source_cache() {
   done < "${inventory_file}"
   rm -f "${inventory_file}"
   if [[ "$inventory_invalid" == "1" || "$object_count" -eq 0 ]]; then
-    print -r -- "Offline source cache is incomplete for commit ${ref}; reconnect and refresh this installer cache before retrying offline." >&2
+    bootstrap_problem offline_missing "offline source cache content is incomplete for commit ${ref}"
     return 2
   fi
 }
@@ -201,7 +341,7 @@ require_value() {
   local option="$1"
   local value="${2:-}"
   if [[ -z "$value" || "$value" == --* ]]; then
-    print -r -- "${option} requires a value" >&2
+    bootstrap_problem option_value_missing "${option} requires a value"
     exit 2
   fi
 }
@@ -441,13 +581,13 @@ parse_installer_safety_args() {
         ;;
       --runtime)
         if (( index >= ${#INSTALL_ARGS[@]} )); then
-          print -r -- "--runtime requires a value" >&2
+          bootstrap_problem option_value_missing "--runtime requires a value"
           return 2
         fi
         index=$(( index + 1 ))
         value="${INSTALL_ARGS[$index]}"
         if [[ -z "$value" || "$value" == --* ]]; then
-          print -r -- "--runtime requires a path value" >&2
+          bootstrap_problem option_value_missing "--runtime requires a path value"
           return 2
         fi
         INSTALLER_RUNTIME="$value"
@@ -498,12 +638,11 @@ reject_existing_runtime_candidate() {
   local raw_candidate="$2"
   local candidate=""
   if ! candidate="$(normalize_runtime_candidate "$raw_candidate")"; then
-    print -r -- "Cannot safely resolve ${label} Runtime path; use the existing Runtime's open-nova update command." >&2
+    bootstrap_problem location_invalid "cannot safely resolve ${label} Open Nova folder"
     return 2
   fi
   if runtime_has_open_nova_marker "$candidate"; then
-    print -r -- "Existing Open Nova Runtime detected at ${candidate}; fresh install refused." >&2
-    print -r -- "Use the existing Runtime's 'open-nova update --apply' command (and 'open-nova doctor' first if needed)." >&2
+    bootstrap_problem existing_install "existing Open Nova installation detected at ${candidate}"
     return 2
   fi
 }
@@ -524,29 +663,27 @@ guard_fresh_install_before_source_writes() {
   local location_payload=""
   local pointed_runtime=""
   if ! location_file="$(normalize_runtime_candidate "$location_file")"; then
-    print -r -- "Cannot safely resolve the Open Nova Runtime pointer path; fresh install refused." >&2
+    bootstrap_problem location_invalid "cannot safely resolve the saved Open Nova location"
     return 2
   fi
   if [[ -e "$location_file" || -L "$location_file" ]]; then
     if [[ ! -f "$location_file" || -L "$location_file" ]]; then
-      print -r -- "Cannot safely parse Open Nova Runtime pointer: ${location_file}; fresh install refused." >&2
-      print -r -- "Use the existing Runtime's 'open-nova update' or 'open-nova doctor' command." >&2
+      bootstrap_problem location_invalid "saved Open Nova location is not a regular file: ${location_file}"
       return 2
     fi
     local location_size=""
     location_size="$(/usr/bin/wc -c < "$location_file" | /usr/bin/tr -d '[:space:]')" || return 2
     if [[ ! "$location_size" =~ "^[0-9]+$" ]] || (( location_size > 65536 )); then
-      print -r -- "Cannot safely parse Open Nova Runtime pointer: ${location_file}; fresh install refused." >&2
+      bootstrap_problem location_invalid "saved Open Nova location is invalid: ${location_file}"
       return 2
     fi
     location_payload="$(<"$location_file")" || return 2
     if ! pointed_runtime="$(extract_json_string "$location_payload" "novaHome")"; then
-      print -r -- "Cannot safely parse Open Nova Runtime pointer: ${location_file}; fresh install refused." >&2
-      print -r -- "Use the existing Runtime's 'open-nova update' or 'open-nova doctor' command." >&2
+      bootstrap_problem location_invalid "saved Open Nova location could not be parsed: ${location_file}"
       return 2
     fi
     if [[ "$pointed_runtime" != /* || "$pointed_runtime" == *$'\n'* || "$pointed_runtime" == *$'\r'* ]]; then
-      print -r -- "Runtime pointer novaHome is not a safe absolute path: ${location_file}; fresh install refused." >&2
+      bootstrap_problem location_invalid "saved Open Nova location is not an absolute path: ${location_file}"
       return 2
     fi
     reject_existing_runtime_candidate "location pointer" "$pointed_runtime" || return $?
@@ -555,8 +692,7 @@ guard_fresh_install_before_source_writes() {
   local launch_agent=""
   for launch_agent in "$HOME"/Library/LaunchAgents/com.open-nova*.plist(N); do
     if [[ -e "$launch_agent" || -L "$launch_agent" ]]; then
-      print -r -- "Existing Open Nova LaunchAgent detected; fresh install refused: ${launch_agent}" >&2
-      print -r -- "Use the existing Runtime's 'open-nova update' command after 'open-nova doctor'." >&2
+      bootstrap_problem existing_install "existing Open Nova background service detected: ${launch_agent}"
       return 2
     fi
   done
@@ -564,12 +700,12 @@ guard_fresh_install_before_source_writes() {
 
 resolve_latest_stable_commit() {
   if ! command -v "$CURL_BIN" >/dev/null 2>&1 && [[ ! -x "$CURL_BIN" ]]; then
-    print -r -- "curl binary not found: ${CURL_BIN}" >&2
+    bootstrap_problem version_unavailable "curl executable not found: ${CURL_BIN}"
     return 2
   fi
   local payload=""
   if ! payload="$("$CURL_BIN" -fsSL --proto '=https' --tlsv1.2 --connect-timeout 10 --max-time 30 "$DEFAULT_LATEST_RELEASE_API")"; then
-    print -r -- "No stable Open Nova release could be read from the default GitHub Release API; refusing mutable HEAD." >&2
+    bootstrap_problem version_unavailable "latest stable Open Nova release could not be read"
     return 2
   fi
   local release_tag=""
@@ -578,12 +714,12 @@ resolve_latest_stable_commit() {
   local release_draft=""
   local release_prerelease=""
   if ! release_metadata="$(parse_latest_release_json "$payload")"; then
-    print -r -- "The default GitHub latest-release response is invalid; refusing mutable HEAD." >&2
+    bootstrap_problem version_unavailable "latest stable Open Nova release response is invalid"
     return 2
   fi
   IFS=$'\t' read -r release_tag release_draft release_prerelease release_name_status <<< "$release_metadata"
   if [[ "$release_draft" != "false" || "$release_prerelease" != "false" ]]; then
-    print -r -- "The default GitHub Release is draft or prerelease; a stable release is required." >&2
+    bootstrap_problem version_unavailable "latest Open Nova release is not stable"
     return 2
   fi
   # GitHub immutable Releases may still have their human-facing title and
@@ -591,18 +727,18 @@ resolve_latest_stable_commit() {
   # distribution stop even though GitHub's /releases/latest endpoint continues
   # to classify the object as published, non-draft, and non-prerelease.
   if [[ "$release_name_status" == "withdrawn" ]]; then
-    print -r -- "The default GitHub Release is explicitly withdrawn; refusing source acquisition." >&2
+    bootstrap_problem version_unavailable "latest Open Nova release was withdrawn"
     return 2
   fi
   if [[ ! "$release_tag" =~ "^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$" ]] \
     || [[ "$release_tag" == *..* || "$release_tag" == *'@{'* || "$release_tag" == *. ]]; then
-    print -r -- "The default GitHub Release returned an unsafe tag; refusing source acquisition." >&2
+    bootstrap_problem version_unavailable "latest Open Nova release returned an invalid version tag"
     return 2
   fi
 
   local remote_rows=""
   if ! remote_rows="$("$GIT_BIN" ls-remote --tags "$DEFAULT_SOURCE_URL" "refs/tags/${release_tag}" "refs/tags/${release_tag}^{}")"; then
-    print -r -- "Unable to resolve stable release tag ${release_tag} from the default GitHub remote." >&2
+    bootstrap_problem version_unavailable "stable release tag ${release_tag} could not be resolved"
     return 2
   fi
   local direct_commit=""
@@ -618,10 +754,11 @@ resolve_latest_stable_commit() {
   done <<< "$remote_rows"
   local resolved_commit="${peeled_commit:-$direct_commit}"
   if [[ -z "$resolved_commit" ]]; then
-    print -r -- "Stable release tag ${release_tag} did not peel to a full commit; refusing mutable HEAD." >&2
+    bootstrap_problem version_unavailable "stable release tag ${release_tag} did not resolve to an exact version"
     return 2
   fi
   log "Selected latest stable release tag: ${release_tag} (${resolved_commit})" >&2
+  bootstrap_ok "$(bootstrap_text latest_ready)" >&2
   print -rn -- "$resolved_commit"
 }
 
@@ -683,6 +820,13 @@ if [[ "$OFFLINE" == "1" ]] && ! installer_arg_present "--offline"; then
   INSTALL_ARGS+=("--offline")
 fi
 
+for (( bootstrap_index = 1; bootstrap_index <= ${#INSTALL_ARGS[@]}; bootstrap_index++ )); do
+  if [[ "${INSTALL_ARGS[$bootstrap_index]}" == "--language" ]] && (( bootstrap_index < ${#INSTALL_ARGS[@]} )); then
+    BOOTSTRAP_LANGUAGE="${INSTALL_ARGS[$((bootstrap_index + 1))]}"
+    break
+  fi
+done
+
 if [[ -z "$SOURCE_ROOT" && -z "$SOURCE_URL" ]]; then
   checkout_candidate="${BOOTSTRAP_DIR:h}"
   # Only a bootstrap executed from a real file may infer its adjacent checkout.
@@ -693,7 +837,7 @@ if [[ -z "$SOURCE_ROOT" && -z "$SOURCE_URL" ]]; then
 fi
 
 if [[ -n "$SOURCE_ROOT" && -n "$SOURCE_REF" ]]; then
-  print -r -- "--source-root and --ref cannot be combined; refusing to checkout or mutate a user-provided source tree." >&2
+  bootstrap_problem options_conflict "--source-root and --ref cannot be combined"
   exit 2
 fi
 
@@ -706,32 +850,36 @@ if [[ -z "$SOURCE_ROOT" ]]; then
     SOURCE_URL="$DEFAULT_SOURCE_URL"
   fi
   if ! command -v "$GIT_BIN" >/dev/null 2>&1 && [[ ! -x "$GIT_BIN" ]]; then
-    print -r -- "Git binary not found: ${GIT_BIN}" >&2
+    bootstrap_problem git_missing "Git executable not found: ${GIT_BIN}"
     exit 2
   fi
   if [[ -z "$SOURCE_REF" ]]; then
     if [[ "$OFFLINE" == "1" ]]; then
-      print -r -- "Offline source acquisition requires --source-root or an explicit full --ref already present in the installer cache." >&2
+      bootstrap_problem offline_missing "offline setup requires a local source or exact cached version"
       exit 2
     fi
     if [[ "$SOURCE_URL" != "$DEFAULT_SOURCE_URL" ]]; then
-      print -r -- "A custom --source-url requires an explicit full 40/64-hex --ref commit; refusing mutable HEAD." >&2
+      bootstrap_problem version_invalid "custom source URL requires an exact version ID"
       exit 2
     fi
     SOURCE_REF="$(resolve_latest_stable_commit)" || exit $?
   elif ! is_full_commit_id "$SOURCE_REF"; then
-    print -r -- "Remote --ref must be a full 40/64-hex commit; branches, tags, and abbreviated commits are refused." >&2
+    bootstrap_problem version_invalid "remote version must be a full 40- or 64-character commit ID"
     exit 2
   else
     SOURCE_REF="${SOURCE_REF:l}"
   fi
   cache_root="${DEFAULT_CACHE_ROOT:A}"
   SOURCE_ROOT="${cache_root}/source"
+  BOOTSTRAP_LOG_FILE="${cache_root}/bootstrap.log"
   CACHE_SOURCE=1
+  if [[ "$DRY_RUN" != "1" && -d "$cache_root" ]]; then
+    prepare_bootstrap_log "$cache_root"
+  fi
   if [[ -d "${SOURCE_ROOT}/.git" ]]; then
     existing_source_url="$(git_exec -C "${SOURCE_ROOT}" remote get-url origin 2>/dev/null || true)"
     if [[ "$existing_source_url" != "$SOURCE_URL" ]]; then
-      print -r -- "Installer cache origin does not match requested source URL; choose a different --cache-root." >&2
+      bootstrap_problem cache_mismatch "download cache source does not match requested source"
       exit 2
     fi
     log "Updating existing source checkout: ${SOURCE_ROOT}"
@@ -742,14 +890,18 @@ if [[ -z "$SOURCE_ROOT" ]]; then
       verify_offline_source_cache "${SOURCE_ROOT}" "${SOURCE_REF}" || exit $?
       configure_sparse_checkout "${SOURCE_ROOT}"
       log "Offline mode: using the existing installer-owned source cache without fetch"
+      bootstrap_ok "$(bootstrap_text cache_ready)"
     fi
   else
     if [[ "$OFFLINE" == "1" ]]; then
-      print -r -- "Offline source cache is missing: ${SOURCE_ROOT}" >&2
+      bootstrap_problem offline_missing "offline source cache is missing: ${SOURCE_ROOT}"
       exit 2
     fi
-    log "Cloning source: ${SOURCE_URL}"
+    log "Downloading the selected Open Nova version"
     run_cmd mkdir -p "${cache_root}"
+    if [[ "$DRY_RUN" != "1" ]]; then
+      prepare_bootstrap_log "$cache_root"
+    fi
     run_git_cmd clone --filter=blob:none --sparse --no-checkout "${SOURCE_URL}" "${SOURCE_ROOT}"
     configure_sparse_checkout "${SOURCE_ROOT}"
   fi
@@ -763,7 +915,7 @@ if [[ "$CACHE_SOURCE" == "1" ]]; then
     resolved_object="$(git_exec -C "${SOURCE_ROOT}" rev-parse --verify "${SOURCE_REF}^{commit}" 2>/dev/null || true)"
     resolved_object="${resolved_object:l}"
     if [[ "$resolved_object" != "$SOURCE_REF" ]]; then
-      print -r -- "Resolved source object is not the required commit ${SOURCE_REF}; refusing mutable HEAD fallback." >&2
+      bootstrap_problem version_unavailable "resolved source object does not match required commit ${SOURCE_REF}"
       exit 2
     fi
   fi
@@ -782,7 +934,7 @@ fi
 if [[ "$DRY_RUN" == "1" && ! -f "${SOURCE_ROOT}/install/install.sh" ]]; then
   log "Dry-run assumes cloned source will contain install/install.sh"
 elif [[ ! -f "${SOURCE_ROOT}/install/install.sh" ]]; then
-  print -r -- "install/install.sh not found under source root: ${SOURCE_ROOT}" >&2
+  bootstrap_problem files_missing "main setup script not found under source root: ${SOURCE_ROOT}"
   exit 2
 fi
 
@@ -794,10 +946,13 @@ if [[ -z "$ZSH_BIN" && -x "/bin/zsh" ]]; then
   ZSH_BIN="/bin/zsh"
 fi
 if [[ -z "$ZSH_BIN" ]]; then
-  print -r -- "zsh not found; cannot run installer" >&2
+  bootstrap_problem shell_missing "zsh executable not found"
   exit 2
 fi
-print -r -- "+ ${ZSH_BIN} ${SOURCE_ROOT}/install/install.sh --source-root ${SOURCE_ROOT} ${INSTALL_ARGS[*]}"
+if [[ "${NOVA_INSTALL_VERBOSE:-0}" == "1" ]]; then
+  print -r -- "+ $(bootstrap_text starting)"
+fi
+bootstrap_ok "$(bootstrap_text starting)"
 if [[ "$DRY_RUN" == "1" ]]; then
   if [[ -f "${SOURCE_ROOT}/install/install.sh" ]]; then
     "$ZSH_BIN" "${SOURCE_ROOT}/install/install.sh" --source-root "${SOURCE_ROOT}" "${INSTALL_ARGS[@]}"

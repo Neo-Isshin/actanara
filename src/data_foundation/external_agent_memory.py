@@ -9,6 +9,8 @@ import urllib.error
 import urllib.request
 from typing import Any, Callable
 
+from .cli_output import friendly_name, render_cli
+
 
 DEFAULT_DASHBOARD_URL = "http://127.0.0.1:3036"
 DEFAULT_SEARCH_TIMEOUT_SECONDS = 65.0
@@ -305,12 +307,16 @@ def _active_runtime_dashboard_url() -> str:
 
 
 def compact_memory_results(result: dict[str, Any], *, max_results: int = 5) -> str:
-    """Render a compact, evidence-oriented text view for CLI consumers."""
+    """Render a compact product-facing text view for CLI consumers."""
     if not result.get("available", True):
-        return f"RAG unavailable: {result.get('reason') or 'unknown'}"
+        return render_cli(
+            "Memory search",
+            fields=(("Status", "Unavailable"), ("Reason", _friendly_memory_reason(result.get("reason")))),
+            next_steps=("open-nova doctor --rag",),
+        ).rstrip()
     rows = result.get("results") if isinstance(result.get("results"), list) else []
     if not rows:
-        return "No RAG memory results."
+        return render_cli("Memory search", fields=(("Status", "No matches"),)).rstrip()
     lines: list[str] = []
     for index, row in enumerate(rows[:max_results], start=1):
         if not isinstance(row, dict):
@@ -318,13 +324,31 @@ def compact_memory_results(result: dict[str, Any], *, max_results: int = 5) -> s
         source = row.get("sourceSet") or row.get("source") or "unknown-source"
         date = row.get("date") or row.get("createdAt") or ""
         score = row.get("score")
-        prefix = f"{index}. [{source}]"
+        prefix = f"{index}. {friendly_name(source, fallback='Memory')}"
         if date:
-            prefix += f" {date}"
+            prefix += f" · {date}"
         if score is not None:
-            prefix += f" score={score}"
+            prefix += f" · relevance {score}"
         text = row.get("textPreview") or row.get("text") or row.get("content") or ""
-        lines.append(prefix)
+        entry = prefix
         if text:
-            lines.append(f"   {str(text).strip()}")
-    return "\n".join(lines) if lines else "No RAG memory results."
+            entry += f"\n   {str(text).strip()}"
+        lines.append(entry)
+    if not lines:
+        return render_cli("Memory search", fields=(("Status", "No matches"),)).rstrip()
+    return render_cli(
+        "Memory search",
+        fields=(("Status", "Ready"), ("Results", len(lines))),
+        sections=(("Matches", lines),),
+    ).rstrip()
+
+
+def _friendly_memory_reason(value: object) -> str:
+    reason = str(value or "").strip().lower()
+    if "budget" in reason or "timeout" in reason:
+        return "The search took too long"
+    if "encoding" in reason or "schema" in reason or "response" in reason:
+        return "The memory service returned an unreadable response"
+    if "unavailable" in reason or "server" in reason or "connection" in reason:
+        return "The memory service is not responding"
+    return "The memory service could not complete the search"

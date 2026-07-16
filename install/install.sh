@@ -150,6 +150,7 @@ CLI_SHIM=""
 USER_CLI_SHIM="${NOVA_INSTALL_USER_CLI_SHIM:-$HOME/.local/bin/open-nova}"
 SHELL_PATH_FILE="${NOVA_INSTALL_SHELL_PATH_FILE:-}"
 INSTALLER_LOG_FILE=""
+INSTALLER_LOG_ACTIVE=0
 STAGED_RELEASE_ID=""
 STAGED_RELEASE_TARGET=""
 UPDATE_TRANSACTION_ACTIVE=0
@@ -176,70 +177,68 @@ RUNTIME_DEPENDENCY_LOCK="${SOURCE_ROOT}/install/runtime-dependencies.lock.json"
 
 usage() {
   cat <<'EOF'
-Open Nova installer v2
+Open Nova setup
 
 Usage:
   install/install.sh [options]
 
 Options:
-  --runtime PATH              Runtime/install target. Default: ~/.open-nova
-  --diary-output PATH         Generated diary output path. Default: <runtime>/artifacts/diary
-  --desktop-diary-link PATH   Desktop symlink target. Default: ~/Desktop/Open Nova
-  --no-desktop-diary-link     Do not create a Desktop symlink to generated diaries.
-  --no-shell-path             Do not add the user CLI shim directory to shell PATH.
-  --shell-path-file PATH      Shell profile file for PATH setup. Default: ~/.zprofile on macOS/zsh.
-  --reports-output PATH       Report output path. Default: <runtime>/artifacts/reports
-  --snapshots-output PATH     Snapshot output path. Default: <runtime>/snapshots
-  --archives-output PATH      Archive/intermediate output path. Default: <runtime>/sources/archives
-  --source-root PATH          Local Open Nova source checkout. Default: script parent
-  --python PATH               Python used to create the runtime venv. Default: python3
-  --no-python-auto-install    Do not install managed standalone Python when Python >=3.11 is missing.
-  --no-scheduler              Do not register scheduled launchd jobs.
-  --no-dashboard              Deprecated: Dashboard is required; use --no-dashboard-server to skip the service.
-  --no-dashboard-server       Do not install/start the SSE server service.
-  --dashboard-host HOST       Dashboard/SSE server host. Default: 127.0.0.1.
-  --dashboard-port PORT       Preferred Dashboard/SSE server port. Default: 3036.
-  --dashboard-port-auto       Auto-select a fallback port when the preferred port is in use. Default.
-  --no-dashboard-port-auto    Fail preflight instead of selecting a fallback Dashboard port.
-  --enable-rag                Enable nova-RAG install choices.
-  --register-rag-skills       Register the read-only nova-RAG skill into installer-selected external tools.
-  --enable-dev-test           Advanced: install developer/test optional dependencies.
-  --rag-embedding-mode MODE   nova-RAG embedding mode: local or cloud. Default: local
-  --rag-local-model MODEL     Local nova-RAG embedding model.
-  --rag-local-dimension N     Local nova-RAG embedding dimension.
-  --deploy-embedding-server   Queue local embedding server deployment in the background.
-                              Default when nova-RAG local mode is enabled.
+  --runtime PATH              Open Nova folder. Default: ~/.open-nova
+  --diary-output PATH         Diary folder. Default: <Open Nova folder>/artifacts/diary
+  --desktop-diary-link PATH   Desktop diary shortcut. Default: ~/Desktop/Open Nova
+  --no-desktop-diary-link     Do not create the Desktop diary shortcut.
+  --no-shell-path             Do not make open-nova available in new Terminal sessions.
+  --shell-path-file PATH      Terminal profile to update. Default: ~/.zprofile on macOS/zsh.
+  --reports-output PATH       Report folder. Default: <Open Nova folder>/artifacts/reports
+  --snapshots-output PATH     Snapshot folder. Default: <Open Nova folder>/snapshots
+  --archives-output PATH      Imported-source folder. Default: <Open Nova folder>/sources/archives
+  --source-root PATH          Use an existing local copy of Open Nova.
+  --python PATH               Python command for Open Nova. Default: python3
+  --no-python-auto-install    Do not prepare Python automatically when Python 3.11+ is missing.
+  --no-scheduler              Do not run Open Nova automatically each day.
+  --no-dashboard              Deprecated: use --no-dashboard-server.
+  --no-dashboard-server       Install Dashboard without its background service.
+  --dashboard-host HOST       Dashboard address. Default: 127.0.0.1.
+  --dashboard-port PORT       Preferred Dashboard port. Default: 3036.
+  --dashboard-port-auto       Choose another port when the preferred port is in use. Default.
+  --no-dashboard-port-auto    Stop if the preferred Dashboard port is unavailable.
+  --enable-rag                Enable memory and search.
+  --register-rag-skills       Connect memory and search to selected external apps.
+  --enable-dev-test           Advanced: include developer and test software.
+  --rag-embedding-mode MODE   Memory model location: local or cloud. Default: local
+  --rag-local-model MODEL     Local memory model.
+  --rag-local-dimension N     Local memory model dimension.
+  --deploy-embedding-server   Prepare local memory and search in the background.
+                              Default when local memory and search is enabled.
   --no-deploy-embedding-server
-                              Do not queue local embedding server deployment.
-  --llm-provider NAME         LLM provider id/preset for non-secret settings.
-  --llm-endpoint URL          LLM endpoint for non-secret settings.
-  --llm-model MODEL           LLM model for non-secret settings.
-  --llm-api-key-env NAME      Environment variable that contains the LLM API key.
-  --rag-cloud-provider NAME   Cloud embedding provider id/preset.
-  --rag-cloud-endpoint URL    Cloud embedding endpoint URL.
-  --rag-cloud-model MODEL     Cloud embedding model.
-  --rag-cloud-dimension N     Cloud embedding dimension.
+                              Do not prepare local memory and search in the background.
+  --llm-provider NAME         AI service.
+  --llm-endpoint URL          AI service URL.
+  --llm-model MODEL           AI model.
+  --llm-api-key-env NAME      Environment variable that contains the AI API key.
+  --rag-cloud-provider NAME   Cloud memory service.
+  --rag-cloud-endpoint URL    Cloud memory service URL.
+  --rag-cloud-model MODEL     Cloud memory model.
+  --rag-cloud-dimension N     Cloud memory model dimension.
   --rag-cloud-api-key-env NAME
-                              Environment variable that contains the embedding API key.
-  --language LOCALE           Install-time language profile: zh-CN or en-US. Default: zh-CN.
+                              Environment variable that contains the cloud memory API key.
+  --language LOCALE           Setup language: zh-CN or en-US. Default: zh-CN.
   --dry-run                   Print the plan without writing files or running commands.
-  --upgrade                   Upgrade an existing runtime while preserving settings and secrets.
-  --source-only               Require source-only deployment with a compatible active Runtime venv.
-  --force-rebuild             Force a new candidate Runtime venv during an upgrade.
-  --offline                   Forbid source/dependency network access; require trusted caches.
-  --result-json               Emit one final OPEN_NOVA_UPDATE_RESULT_JSON result envelope.
-  --wizard                    Force interactive guided setup.
-  --no-wizard                 Disable interactive guided setup.
+  --upgrade                   Update an existing Open Nova installation.
+  --source-only               Update Open Nova files without changing installed software.
+  --force-rebuild             Reinstall required software during an update.
+  --offline                   Install using previously downloaded files only.
+  --result-json               Print one final JSON update result for automation.
+  --wizard                    Always use guided setup.
+  --no-wizard                 Skip guided setup.
   --yes                       Skip final interactive confirmation.
-  --summary-only              Print only the installer summary and useful commands.
+  --summary-only              Print only the summary and next steps.
   -h, --help                  Show this help.
 
-Notice:
-  Open Nova processes local diaries, agent/tool history, and user-selected
-  source material. If those inputs already contain secrets or sensitive
-  personal data, generated diaries, reports, snapshots, and indexes may
-  faithfully preserve that information. The installer stores secret references
-  or environment variable names, not secret values.
+Privacy:
+  Open Nova reads the local activity and files you select to create diaries,
+  reports, and search memory. Sensitive information in those sources may also
+  appear in generated content. API keys are stored securely and never printed.
 EOF
 }
 
@@ -290,57 +289,162 @@ emit_update_result() {
 }
 
 warn() {
+  local technical_message="$*"
   if [[ "$SUMMARY_ONLY" == "1" ]]; then
     return 0
   fi
   local log_file=""
   log_file="$(installer_log_file)"
   if [[ -d "${log_file:h}" ]]; then
-    print -r -- "WARN: $*" >> "$log_file"
+    print -r -- "WARN: ${technical_message}" >> "$log_file"
   fi
   if [[ "${NOVA_INSTALL_VERBOSE:-0}" == "1" ]]; then
-    print -r -- "WARN: $*" >&2
+    print -r -- "WARN: ${technical_message}" >&2
+    return 0
+  fi
+  local friendly_message=""
+  case "$technical_message" in
+    *"Desktop diary shortcut"*) friendly_message="$(installer_text warning_diary_shortcut)" ;;
+    *"PATH shim"*|*"Shell PATH"*) friendly_message="$(installer_text warning_terminal_command)" ;;
+    *"Dashboard port"*|*"lsof"*) friendly_message="$(installer_text warning_dashboard_port)" ;;
+    *"standalone Python"*|*"Python >=3.11"*) friendly_message="$(installer_text warning_python)" ;;
+    *"external nova-RAG skill registration"*) friendly_message="$(installer_text warning_tool_connection)" ;;
+    *"SSE server disabled"*) friendly_message="$(installer_text warning_dashboard_service_disabled)" ;;
+    *"Static snapshot pages"*) friendly_message="" ;;
+    *"failed; continuing"*) friendly_message="$(installer_text warning_optional_step)" ;;
+    *) friendly_message="$(installer_text warning_generic)" ;;
+  esac
+  if [[ -n "$friendly_message" ]]; then
+    print -r -- "  ${TTY_YELLOW}!${TTY_RESET} ${friendly_message}" >&2
+  fi
+}
+
+error() {
+  local technical_message="$*"
+  local log_file=""
+  local friendly_key="error_setup"
+  log_file="$(installer_log_file)"
+  if [[ "$INSTALLER_LOG_ACTIVE" == "1" && -d "${log_file:h}" ]]; then
+    print -r -- "ERROR: ${technical_message}" >> "$log_file"
+  fi
+  if [[ "${NOVA_INSTALL_VERBOSE:-0}" == "1" ]]; then
+    print -r -- "ERROR: ${technical_message}" >&2
+  else
+    case "$technical_message" in
+      *"CLI shim"*) friendly_key="error_terminal_command" ;;
+      *"existing Open Nova Runtime state"*) friendly_key="error_existing_install" ;;
+      *"upgrade requires an existing runtime"*) friendly_key="error_update_missing" ;;
+      *"language must"*) friendly_key="error_language" ;;
+      *"Interactive wizard"*) friendly_key="error_terminal" ;;
+      *"credential rotation"*) friendly_key="error_ai_key" ;;
+      *"LLM API key environment variable name"*) friendly_key="error_ai_key_setting" ;;
+      *"Dashboard is required"*) friendly_key="error_dashboard_required" ;;
+      *"Unknown option"*|*"mutually exclusive"*|*"requires --upgrade"*|*"must be local or cloud"*) friendly_key="error_options" ;;
+      *"pyproject.toml"*|*"source root"*|*"source staging"*|*"source release"*) friendly_key="error_source_files" ;;
+      *"dependency"*|*"wheelhouse"*) friendly_key="error_software" ;;
+      *"Python"*|*"venv"*) friendly_key="error_python" ;;
+      *"RAG"*|*"embedding"*) friendly_key="error_memory" ;;
+      *"Dashboard"*"port"*) friendly_key="error_dashboard" ;;
+      *"rollback"*|*"transaction"*|*"promotion"*) friendly_key="error_recovery" ;;
+    esac
+    progress_fail "$(installer_text "$friendly_key")"
   fi
 }
 
 progress_label() {
   local cmd="$1"
   shift || true
-  case "$cmd $*" in
+  local command_line="$cmd $*"
+  case "$command_line" in
     "mkdir -p "*)
-      print -r -- "Preparing runtime directories"
+      case "$command_line" in
+        *"/app/venvs"*) installer_text step_prepare_python_files ;;
+        *"/artifacts/diary"*|*"/artifacts/reports"*|*"/snapshots"*|*"/sources/archives"*) installer_text step_prepare_output_folders ;;
+        *) installer_text step_prepare_folder ;;
+      esac
       ;;
     *" -m venv "*)
-      print -r -- "Creating Python environment"
+      installer_text step_create_python
       ;;
     *" -m pip install --upgrade pip"*)
-      print -r -- "Updating package installer"
+      installer_text step_prepare_components
       ;;
     *" -m pip install "*)
-      print -r -- "Installing runtime dependencies"
+      installer_text step_install_components
+      ;;
+    *"dependency_contract.py cache-status "*)
+      installer_text step_check_components
+      ;;
+    *"dependency_contract.py materialize-cache "*)
+      installer_text step_prepare_components
+      ;;
+    *"dependency_contract.py install "*)
+      installer_text step_install_components
+      ;;
+    *"dependency_contract.py write-marker "*)
+      installer_text step_save_components
+      ;;
+    *"dependency_contract.py verify-marker "*)
+      installer_text step_verify_components
+      ;;
+    *"dependency_contract.py"*)
+      installer_text step_finish_components
       ;;
     *)
-      print -r -- "$cmd"
+      installer_text step_continue_setup
       ;;
   esac
 }
 
+friendly_step_label() {
+  local technical_label="$1"
+  case "$technical_label" in
+    "Runtime bootstrap apply") installer_text step_set_up_open_nova ;;
+    "Runtime status doctor") installer_text step_check_files ;;
+    "Installer doctor") installer_text step_check_components ;;
+    "Pipeline doctor") installer_text step_check_diary ;;
+    "Scheduler doctor") installer_text step_check_daily ;;
+    "nova-RAG doctor") installer_text step_check_memory ;;
+    "Scheduler LaunchAgent plist write") installer_text step_prepare_daily ;;
+    "Scheduler LaunchAgent registration") installer_text step_enable_daily ;;
+    "SSE server LaunchAgent service registration") installer_text step_start_dashboard ;;
+    "nova-RAG server LaunchAgent service registration") installer_text step_start_memory ;;
+    "Candidate installer doctor") installer_text step_check_update ;;
+    *) print -r -- "$technical_label" ;;
+  esac
+}
+
+PROGRESS_ACTIVE=0
+
 progress_start() {
-  if [[ "$SUMMARY_ONLY" == "1" && "$DRY_RUN" == "1" ]]; then
+  if [[ "$SUMMARY_ONLY" == "1" ]]; then
     return 0
   fi
-  print -r -- "  ◐ $*"
+  if [[ -t 1 ]]; then
+    print -n -- "\r\033[2K  ${TTY_BLUE}●${TTY_RESET} $*"
+    PROGRESS_ACTIVE=1
+  fi
 }
 
 progress_ok() {
-  if [[ "$SUMMARY_ONLY" == "1" && "$DRY_RUN" == "1" ]]; then
+  if [[ "$SUMMARY_ONLY" == "1" ]]; then
     return 0
   fi
-  print -r -- "  ✓ $*"
+  if [[ -t 1 && "$PROGRESS_ACTIVE" == "1" ]]; then
+    print -r -- "\r\033[2K  ${TTY_GREEN}✓${TTY_RESET} $*"
+  else
+    print -r -- "  ${TTY_GREEN}✓${TTY_RESET} $*"
+  fi
+  PROGRESS_ACTIVE=0
 }
 
 progress_fail() {
-  print -r -- "  x $*" >&2
+  if [[ -t 2 && "$PROGRESS_ACTIVE" == "1" ]]; then
+    print -r -- "\r\033[2K  ${TTY_RED}✕${TTY_RESET} $*" >&2
+  else
+    print -r -- "  ${TTY_RED}✕${TTY_RESET} $*" >&2
+  fi
+  PROGRESS_ACTIVE=0
 }
 
 run_cmd() {
@@ -357,7 +461,7 @@ run_cmd() {
     print -r -- "" >> "$log_file"
     print -r -- "## ${label}: $*" >> "$log_file"
     if ! "$@" >> "$log_file" 2>&1; then
-      progress_fail "${label} failed; see ${log_file}"
+      progress_fail "$(installer_text step_failed) ${log_file}"
       return 1
     fi
   fi
@@ -365,12 +469,14 @@ run_cmd() {
 }
 
 run_optional_cmd() {
-  local label="$1"
+  local technical_label="$1"
   shift
+  local label=""
   local log_file=""
   if [[ "$SUMMARY_ONLY" == "1" && "$DRY_RUN" == "1" ]]; then
     return 0
   fi
+  label="$(friendly_step_label "$technical_label")"
   progress_start "$label"
   if [[ "$DRY_RUN" == "1" ]]; then
     progress_ok "$label"
@@ -379,9 +485,9 @@ run_optional_cmd() {
   log_file="$(installer_log_file)"
   mkdir -p "${log_file:h}"
   print -r -- "" >> "$log_file"
-  print -r -- "## ${label}: $*" >> "$log_file"
+  print -r -- "## ${technical_label}: $*" >> "$log_file"
   if ! "$@" >> "$log_file" 2>&1; then
-    warn "${label} failed; continuing because this is not required for core runtime install"
+    warn "${technical_label} failed; continuing because this is not required for core runtime install"
     return 0
   fi
   progress_ok "$label"
@@ -396,12 +502,14 @@ installer_log_file() {
 }
 
 run_json_cmd() {
-  local label="$1"
+  local technical_label="$1"
   shift
+  local label=""
   local log_file=""
   if [[ "$SUMMARY_ONLY" == "1" && "$DRY_RUN" == "1" ]]; then
     return 0
   fi
+  label="$(friendly_step_label "$technical_label")"
   progress_start "$label"
   if [[ "$DRY_RUN" == "1" ]]; then
     progress_ok "$label"
@@ -410,21 +518,23 @@ run_json_cmd() {
   log_file="$(installer_log_file)"
   mkdir -p "${log_file:h}"
   print -r -- "" >> "$log_file"
-  print -r -- "## ${label}: $*" >> "$log_file"
+  print -r -- "## ${technical_label}: $*" >> "$log_file"
   if ! "$@" >> "$log_file" 2>&1; then
-    progress_fail "${label} failed; see ${log_file}"
+    progress_fail "$(installer_text step_failed) ${log_file}"
     return 1
   fi
   progress_ok "$label"
 }
 
 run_optional_json_cmd() {
-  local label="$1"
+  local technical_label="$1"
   shift
+  local label=""
   local log_file=""
   if [[ "$SUMMARY_ONLY" == "1" && "$DRY_RUN" == "1" ]]; then
     return 0
   fi
+  label="$(friendly_step_label "$technical_label")"
   progress_start "$label"
   if [[ "$DRY_RUN" == "1" ]]; then
     progress_ok "$label"
@@ -433,9 +543,9 @@ run_optional_json_cmd() {
   log_file="$(installer_log_file)"
   mkdir -p "${log_file:h}"
   print -r -- "" >> "$log_file"
-  print -r -- "## ${label}: $*" >> "$log_file"
+  print -r -- "## ${technical_label}: $*" >> "$log_file"
   if ! "$@" >> "$log_file" 2>&1; then
-    warn "${label} failed; continuing because this is not required for core runtime install. See ${log_file}"
+    warn "${technical_label} failed; continuing because this is not required for core runtime install. See ${log_file}"
     return 0
   fi
   progress_ok "$label"
@@ -443,19 +553,21 @@ run_optional_json_cmd() {
 
 TTY_CLEAR=$'\033[2J\033[H'
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
-  TTY_BLUE=$'\033[34m'
+  TTY_BLUE=$'\033[36m'
+  TTY_GREEN=$'\033[32m'
   TTY_YELLOW=$'\033[33m'
   TTY_RED=$'\033[31m'
+  TTY_DIM=$'\033[2m'
   TTY_RESET=$'\033[0m'
 else
   TTY_BLUE=""
+  TTY_GREEN=""
   TTY_YELLOW=""
   TTY_RED=""
+  TTY_DIM=""
   TTY_RESET=""
 fi
-TTY_GREEN="$TTY_BLUE"
 TTY_DEEP_BLUE="$TTY_BLUE"
-TTY_DIM=""
 
 installer_version() {
   local version=""
@@ -466,11 +578,28 @@ installer_version() {
 render_installer_header() {
   local version=""
   version="$(installer_version)"
-  print -r -- "${TTY_BLUE}  ████╗ ████╗ ████╗ █  █╗    █  █╗  ███╗ █   █╗ ███╗ ${TTY_RESET}  Open Nova ${version}" > /dev/tty
-  print -r -- "${TTY_BLUE} █╔══█║ █╔═█║ █▂▂▂  ██ █║    ██ █║ █╔═█║ █   █║ █╔═█║${TTY_RESET}  installer v2" > /dev/tty
-  print -r -- "${TTY_BLUE} █║  █║ ████╔╝█▔▔▔  █ ██║    █ ██║ █║ █║ ╚█ █╔╝ ████║${TTY_RESET}  runtime: ${RUNTIME_HOME}" > /dev/tty
-  print -r -- "${TTY_BLUE}  ████╔╝█║    ████╗ █  █║    █  █║  ███╔╝ ╚█╔╝  █║ █║${TTY_RESET}" > /dev/tty
-  print -r -- "────────────────────────────────────────────────────────────" > /dev/tty
+  print -r -- "${TTY_BLUE}Open Nova ${version}${TTY_RESET}" > /dev/tty
+  print -r -- "$(installer_text setup_title)" > /dev/tty
+  print -r -- "────────────────────────────────────────" > /dev/tty
+}
+
+render_console_header() {
+  if [[ "$SUMMARY_ONLY" == "1" ]]; then
+    return 0
+  fi
+  local version=""
+  version="$(installer_version)"
+  print -r -- "${TTY_BLUE}Open Nova ${version}${TTY_RESET}"
+  print -r -- "$(installer_text setup_title)"
+  print -r -- "────────────────────────────────────────"
+}
+
+print_phase() {
+  if [[ "$SUMMARY_ONLY" == "1" ]]; then
+    return 0
+  fi
+  print -r -- ""
+  print -r -- "${TTY_DEEP_BLUE}$(installer_text "$1")${TTY_RESET}"
 }
 
 print_installer_data_notice() {
@@ -491,17 +620,131 @@ installer_text() {
         nav) print -r -- "Use Up/Down or j/k, then Return." ;;
         yes_recommended) print -r -- "Yes (recommended)" ;;
         no) print -r -- "No" ;;
+        setup_title) print -r -- "Setup" ;;
+        phase_checking) print -r -- "Checking your system" ;;
+        phase_preparing) print -r -- "Preparing Open Nova" ;;
+        phase_installing) print -r -- "Installing Open Nova" ;;
+        phase_configuring) print -r -- "Setting up your features" ;;
+        phase_verifying) print -r -- "Finishing up" ;;
+        step_prepare_folder) print -r -- "Preparing the Open Nova folder" ;;
+        step_prepare_output_folders) print -r -- "Preparing diaries and reports" ;;
+        step_prepare_python_files) print -r -- "Preparing Python files" ;;
+        step_prepare_python) print -r -- "Preparing Python" ;;
+        step_create_python) print -r -- "Creating the Python environment" ;;
+        step_prepare_components) print -r -- "Preparing required software" ;;
+        step_install_components) print -r -- "Installing required software" ;;
+        step_save_components) print -r -- "Saving installed software details" ;;
+        step_verify_components) print -r -- "Confirming installed software" ;;
+        step_check_components) print -r -- "Checking required software" ;;
+        step_finish_components) print -r -- "Finishing software setup" ;;
+        step_continue_setup) print -r -- "Continuing setup" ;;
+        step_save_choices) print -r -- "Saving your choices" ;;
+        step_save_ai_key) print -r -- "Saving your AI key securely" ;;
+        step_diary_shortcut) print -r -- "Creating the Desktop diary shortcut" ;;
+        step_install_command) print -r -- "Installing the open-nova command" ;;
+        step_terminal_command) print -r -- "Making open-nova available in Terminal" ;;
+        step_prepare_files) print -r -- "Preparing Open Nova files" ;;
+        step_activate_files) print -r -- "Activating Open Nova files" ;;
+        step_finish_install) print -r -- "Finishing the installation" ;;
+        step_check_install) print -r -- "Checking the installation" ;;
+        step_check_files) print -r -- "Checking Open Nova files" ;;
+        step_check_diary) print -r -- "Checking diary creation" ;;
+        step_start_dashboard) print -r -- "Starting Dashboard" ;;
+        step_start_memory) print -r -- "Starting memory and search" ;;
+        step_connect_tools) print -r -- "Connecting selected tools" ;;
+        step_check_update) print -r -- "Checking the update" ;;
+        step_prepare_memory) print -r -- "Preparing memory and search" ;;
+        step_set_up_open_nova) print -r -- "Setting up Open Nova" ;;
+        step_set_up_daily) print -r -- "Setting up daily runs" ;;
+        step_prepare_daily) print -r -- "Preparing daily runs" ;;
+        step_enable_daily) print -r -- "Enabling daily runs" ;;
+        step_check_daily) print -r -- "Checking daily runs" ;;
+        step_check_memory) print -r -- "Checking memory and search" ;;
+        step_failed) print -r -- "This step did not finish. See the setup log:" ;;
+        update_needs_full_install) print -r -- "This update also needs component changes; run a full update instead." ;;
+        warning_diary_shortcut) print -r -- "The Desktop diary shortcut was not changed; Open Nova can still be used normally." ;;
+        warning_terminal_command) print -r -- "The open-nova command could not be added to new Terminal sessions automatically." ;;
+        warning_dashboard_port) print -r -- "Dashboard will use the best available local address." ;;
+        warning_python) print -r -- "Python could not be prepared safely; setup cannot continue." ;;
+        warning_tool_connection) print -r -- "One selected tool could not be connected; you can retry from Dashboard Settings." ;;
+        warning_dashboard_service_disabled) print -r -- "The Dashboard background service is turned off by your setup choices." ;;
+        warning_optional_step) print -r -- "An optional step was not completed; core Open Nova features are still available." ;;
+        warning_generic) print -r -- "Setup needs your attention. See the setup log for details." ;;
+        error_terminal_command) print -r -- "The open-nova command could not be installed." ;;
+        error_options) print -r -- "Some setup options cannot be used together. Run the setup with --help." ;;
+        error_existing_install) print -r -- "Open Nova is already installed in this folder. Use: open-nova update --apply" ;;
+        error_source_files) print -r -- "Required Open Nova files are missing or unreadable." ;;
+        error_update_missing) print -r -- "No existing Open Nova installation was found in the selected folder." ;;
+        error_software) print -r -- "Required software could not be prepared or verified." ;;
+        error_python) print -r -- "Python could not be prepared safely." ;;
+        error_memory) print -r -- "Memory and search settings need attention before setup can continue." ;;
+        error_dashboard) print -r -- "The selected Dashboard address is not available." ;;
+        error_language) print -r -- "Choose setup language zh-CN or en-US." ;;
+        error_terminal) print -r -- "Interactive setup needs a Terminal. For automation, use --no-wizard." ;;
+        error_ai_key) print -r -- "The AI key is not changed during an update. Save it after the update finishes." ;;
+        error_ai_key_setting) print -r -- "The AI key setting is not valid." ;;
+        error_dashboard_required) print -r -- "Dashboard is included with Open Nova. Use --no-dashboard-server to leave its background service off." ;;
+        error_recovery) print -r -- "The update did not finish cleanly. Your previous installation was kept; see the setup log." ;;
+        error_setup) print -r -- "Setup could not finish safely. See the setup log for details." ;;
+        next_steps) print -r -- "Next steps" ;;
+        plan_summary) print -r -- "Setup plan" ;;
+        install_complete) print -r -- "Open Nova is ready." ;;
+        dry_run_complete) print -r -- "Your Open Nova setup plan is ready." ;;
+        upgrade_complete) print -r -- "Open Nova is up to date." ;;
+        upgrade_plan_complete) print -r -- "Your Open Nova update plan is ready." ;;
+        update_no_changes) print -r -- "Open Nova is already up to date." ;;
+        source_update_complete) print -r -- "Open Nova files are up to date." ;;
+        source_update_plan_complete) print -r -- "Your Open Nova file update plan is ready." ;;
+        update_plan_summary) print -r -- "Update plan" ;;
+        update_summary) print -r -- "Update summary" ;;
+        label_command) print -r -- "Command line" ;;
+        label_folder) print -r -- "Open Nova folder" ;;
+        label_diary) print -r -- "Diaries" ;;
+        label_dashboard) print -r -- "Dashboard" ;;
+        label_daily) print -r -- "Daily runs" ;;
+        label_ai) print -r -- "AI generation" ;;
+        label_memory) print -r -- "Memory and search" ;;
+        label_tools) print -r -- "Connected tools" ;;
+        detail_planned) print -r -- "will be prepared" ;;
+        detail_ready) print -r -- "ready" ;;
+        detail_disabled) print -r -- "not enabled" ;;
+        detail_dashboard_app) print -r -- "installed; background service is off" ;;
+        detail_daily_on) print -r -- "enabled" ;;
+        detail_daily_off) print -r -- "not enabled" ;;
+        detail_ai_needs_setup) print -r -- "finish setup in Dashboard Settings" ;;
+        detail_local) print -r -- "local" ;;
+        detail_cloud) print -r -- "cloud" ;;
+        detail_none) print -r -- "none" ;;
+        details_log) print -r -- "Setup log" ;;
+        readiness_python) print -r -- "Python" ;;
+        readiness_dashboard) print -r -- "Dashboard" ;;
+        readiness_components) print -r -- "Required software" ;;
+        readiness_memory_model) print -r -- "Memory model" ;;
+        readiness_memory_service) print -r -- "Memory and search" ;;
+        readiness_ready) print -r -- "ready" ;;
+        readiness_will_prepare) print -r -- "will be prepared during setup" ;;
+        readiness_missing_python) print -r -- "Python 3.11 or newer was not found" ;;
+        readiness_python_unverified) print -r -- "could not confirm Python 3.11 or newer" ;;
+        readiness_dashboard_missing) print -r -- "required Dashboard files are missing" ;;
+        readiness_cloud_ready) print -r -- "cloud settings are ready" ;;
+        readiness_cloud_later) print -r -- "finish cloud settings before the first sync" ;;
+        check_source_failed) print -r -- "required Open Nova files are missing" ;;
+        check_python_failed) print -r -- "Python 3.11 or newer is unavailable" ;;
+        check_folder_failed) print -r -- "a selected folder is not writable" ;;
+        check_dashboard_failed) print -r -- "the selected Dashboard port is unavailable" ;;
+        check_failed) print -r -- "Setup cannot continue until the item above is resolved." ;;
         welcome)
-          print -r -- "Welcome to Open Nova. Core pipeline, Dashboard, and Nova-Task are installed by default."
-          print -r -- "Continue only if you understand that enabled workflows process local data and may create small LLM token usage."
+          print -r -- "Welcome to Open Nova. Dashboard, diaries, daily runs, and Nova-Task are included by default."
+          print -r -- "Continue only if you understand that enabled features process local data and may use a small amount of your AI service allowance."
           ;;
         welcome_cancelled) print -r -- "Install cancelled from welcome screen" ;;
-        language_prompt) print -r -- "Choose Open Nova language profile" ;;
+        language_prompt) print -r -- "Choose the Open Nova language" ;;
         invalid_env) print -r -- "Invalid environment variable name. Press Return to try again." ;;
-        core_dependency_title) print -r -- "Core dependency check" ;;
-        core_dependency_action) print -r -- "checking non-RAG runtime dependencies" ;;
-        rag_dependency_title) print -r -- "nova-RAG dependency check" ;;
-        rag_dependency_action) print -r -- "checking RAG-specific dependencies" ;;
+        ai_key_next_step) print -r -- "Save the key in Dashboard Settings, or run: open-nova model key --value-stdin" ;;
+        core_dependency_title) print -r -- "Ready to install" ;;
+        core_dependency_action) print -r -- "checking your system" ;;
+        rag_dependency_title) print -r -- "Memory and search" ;;
+        rag_dependency_action) print -r -- "checking your memory and search choices" ;;
         press_return) print -r -- "Press Return to continue." ;;
         detecting_tools) print -r -- "Detecting tools... just a minute" ;;
         detected_tools) print -r -- "Detected tools" ;;
@@ -512,34 +755,36 @@ installer_text() {
         no_tools) print -r -- "No known tool paths were detected. Choose manual to add one." ;;
         manual_tool_name) print -r -- "Manual tool name" ;;
         manual_tool_path) print -r -- "Manual tool path" ;;
-        rag_choice_prompt) print -r -- "Choose nova-RAG memory/search setup" ;;
+        manual_add) print -r -- "Add manually" ;;
+        manual_add_help) print -r -- "Enter a tool name and folder" ;;
+        rag_choice_prompt) print -r -- "Choose how memory and search will work" ;;
         rag_not_now) print -r -- "Not now" ;;
-        rag_local) print -r -- "Local embedding" ;;
-        rag_cloud) print -r -- "Cloud embedding" ;;
-        rag_local_model_prompt) print -r -- "Choose local nova-RAG embedding model" ;;
-        llm_provider_prompt) print -r -- "Select LLM provider" ;;
-        llm_provider_help) print -r -- "A small, fast model is sufficient for Open Nova's harness workflow; stronger models may improve quality." ;;
-        llm_model_prompt) print -r -- "Select LLM model" ;;
+        rag_local) print -r -- "On this Mac" ;;
+        rag_cloud) print -r -- "Cloud service" ;;
+        rag_local_model_prompt) print -r -- "Choose the local memory model" ;;
+        llm_provider_prompt) print -r -- "Choose an AI provider" ;;
+        llm_provider_help) print -r -- "A small, fast model works well for daily use; larger models may improve writing quality." ;;
+        llm_model_prompt) print -r -- "Choose an AI model" ;;
         custom_input) print -r -- "custom input" ;;
-        custom_llm_endpoint) print -r -- "Custom LLM endpoint URL" ;;
-        custom_llm_model) print -r -- "Custom LLM model id" ;;
-        llm_model_id) print -r -- "LLM model id" ;;
-        llm_api_key_value_prompt) print -r -- "Paste LLM API key value (stored in local secret store; leave blank to configure later)" ;;
-        llm_api_key_env_prompt) print -r -- "LLM API key environment variable name (for example LLM_API_KEY; do not paste the secret value)" ;;
-        cloud_provider) print -r -- "Cloud embedding provider id/preset" ;;
-        cloud_endpoint) print -r -- "Cloud embedding endpoint URL" ;;
-        cloud_model) print -r -- "Cloud embedding model" ;;
-        cloud_dimension) print -r -- "Cloud embedding dimension" ;;
-        cloud_key_env) print -r -- "Cloud embedding API key environment variable name (secret value is not stored)" ;;
+        custom_llm_endpoint) print -r -- "Custom AI service URL" ;;
+        custom_llm_model) print -r -- "Custom AI model name" ;;
+        llm_model_id) print -r -- "AI model name" ;;
+        llm_api_key_value_prompt) print -r -- "Paste the AI API key (stored securely on this Mac; leave blank to configure later)" ;;
+        llm_api_key_env_prompt) print -r -- "AI API key environment variable (for example LLM_API_KEY; do not paste the key itself)" ;;
+        cloud_provider) print -r -- "Cloud memory provider" ;;
+        cloud_endpoint) print -r -- "Cloud memory service URL" ;;
+        cloud_model) print -r -- "Cloud memory model" ;;
+        cloud_dimension) print -r -- "Cloud memory model dimension" ;;
+        cloud_key_env) print -r -- "Cloud memory API key environment variable (the key itself is not stored here)" ;;
         useful_commands) print -r -- "Useful commands:" ;;
         install_summary) print -r -- "Install summary" ;;
         proceed_upgrade)
           print -r -- "Proceed with upgrade now?"
-          print -r -- "Dependencies and managed services will be updated while preserving runtime settings and secrets."
+          print -r -- "Open Nova will keep your settings and data."
           ;;
         proceed_install)
           print -r -- "Proceed with install now?"
-          print -r -- "The installer will create runtime files and may register managed services."
+          print -r -- "Open Nova will create its folder and set up your selected features."
           ;;
         upgrade_cancelled) print -r -- "Upgrade cancelled before making changes" ;;
         install_cancelled) print -r -- "Install cancelled before making changes" ;;
@@ -551,17 +796,131 @@ installer_text() {
         nav) print -r -- "使用方向键或 j/k 选择，然后按 Return。" ;;
         yes_recommended) print -r -- "是（推荐）" ;;
         no) print -r -- "否" ;;
+        setup_title) print -r -- "安装助手" ;;
+        phase_checking) print -r -- "检查系统环境" ;;
+        phase_preparing) print -r -- "准备 Open Nova" ;;
+        phase_installing) print -r -- "安装 Open Nova" ;;
+        phase_configuring) print -r -- "配置所选功能" ;;
+        phase_verifying) print -r -- "完成最后检查" ;;
+        step_prepare_folder) print -r -- "准备 Open Nova 文件夹" ;;
+        step_prepare_output_folders) print -r -- "准备日记与报告文件夹" ;;
+        step_prepare_python_files) print -r -- "准备 Python 文件" ;;
+        step_prepare_python) print -r -- "准备 Python" ;;
+        step_create_python) print -r -- "创建 Python 环境" ;;
+        step_prepare_components) print -r -- "准备所需软件" ;;
+        step_install_components) print -r -- "安装所需软件" ;;
+        step_save_components) print -r -- "保存已安装软件信息" ;;
+        step_verify_components) print -r -- "确认已安装软件" ;;
+        step_check_components) print -r -- "检查所需软件" ;;
+        step_finish_components) print -r -- "完成软件配置" ;;
+        step_continue_setup) print -r -- "继续安装" ;;
+        step_save_choices) print -r -- "保存你的选择" ;;
+        step_save_ai_key) print -r -- "安全保存 AI 密钥" ;;
+        step_diary_shortcut) print -r -- "创建桌面日记快捷方式" ;;
+        step_install_command) print -r -- "安装 open-nova 命令" ;;
+        step_terminal_command) print -r -- "让新终端可以使用 open-nova" ;;
+        step_prepare_files) print -r -- "准备 Open Nova 文件" ;;
+        step_activate_files) print -r -- "启用 Open Nova 文件" ;;
+        step_finish_install) print -r -- "完成安装" ;;
+        step_check_install) print -r -- "检查安装结果" ;;
+        step_check_files) print -r -- "检查 Open Nova 文件" ;;
+        step_check_diary) print -r -- "检查日记创建" ;;
+        step_start_dashboard) print -r -- "启动 Dashboard" ;;
+        step_start_memory) print -r -- "启动记忆与搜索" ;;
+        step_connect_tools) print -r -- "连接所选工具" ;;
+        step_check_update) print -r -- "检查更新结果" ;;
+        step_prepare_memory) print -r -- "准备记忆与搜索" ;;
+        step_set_up_open_nova) print -r -- "配置 Open Nova" ;;
+        step_set_up_daily) print -r -- "配置每日自动运行" ;;
+        step_prepare_daily) print -r -- "准备每日自动运行" ;;
+        step_enable_daily) print -r -- "启用每日自动运行" ;;
+        step_check_daily) print -r -- "检查每日自动运行" ;;
+        step_check_memory) print -r -- "检查记忆与搜索" ;;
+        step_failed) print -r -- "这个步骤未能完成，请查看安装日志：" ;;
+        update_needs_full_install) print -r -- "本次更新还需要更新组件，请改用完整更新。" ;;
+        warning_diary_shortcut) print -r -- "桌面日记快捷方式未更改，Open Nova 仍可正常使用。" ;;
+        warning_terminal_command) print -r -- "未能自动让新终端识别 open-nova 命令。" ;;
+        warning_dashboard_port) print -r -- "Dashboard 将使用当前可用的本地地址。" ;;
+        warning_python) print -r -- "无法安全准备 Python，安装不能继续。" ;;
+        warning_tool_connection) print -r -- "一个所选工具未能连接，可稍后在 Dashboard 设置中重试。" ;;
+        warning_dashboard_service_disabled) print -r -- "已按你的选择关闭 Dashboard 后台服务。" ;;
+        warning_optional_step) print -r -- "一个可选步骤未完成，Open Nova 核心功能仍可使用。" ;;
+        warning_generic) print -r -- "安装需要你留意，请查看安装日志了解详情。" ;;
+        error_terminal_command) print -r -- "未能安装 open-nova 命令。" ;;
+        error_options) print -r -- "部分安装选项不能同时使用，请通过 --help 查看用法。" ;;
+        error_existing_install) print -r -- "此文件夹中已安装 Open Nova，请运行：open-nova update --apply" ;;
+        error_source_files) print -r -- "缺少 Open Nova 所需文件，或文件无法读取。" ;;
+        error_update_missing) print -r -- "所选文件夹中未找到可更新的 Open Nova。" ;;
+        error_software) print -r -- "未能准备或确认 Open Nova 所需软件。" ;;
+        error_python) print -r -- "未能安全准备 Python。" ;;
+        error_memory) print -r -- "记忆与搜索设置需要先处理，安装才能继续。" ;;
+        error_dashboard) print -r -- "所选 Dashboard 地址不可用。" ;;
+        error_language) print -r -- "安装语言请选择 zh-CN 或 en-US。" ;;
+        error_terminal) print -r -- "交互式安装需要终端；自动化运行请使用 --no-wizard。" ;;
+        error_ai_key) print -r -- "更新期间不会更改 AI 密钥；请在更新完成后保存密钥。" ;;
+        error_ai_key_setting) print -r -- "AI 密钥设置无效。" ;;
+        error_dashboard_required) print -r -- "Dashboard 是 Open Nova 的内置功能；如不需要后台服务，请使用 --no-dashboard-server。" ;;
+        error_recovery) print -r -- "更新未能完整结束；原安装已保留，请查看安装日志。" ;;
+        error_setup) print -r -- "安装未能安全完成，请查看安装日志了解详情。" ;;
+        next_steps) print -r -- "接下来" ;;
+        plan_summary) print -r -- "安装计划" ;;
+        install_complete) print -r -- "Open Nova 已准备就绪。" ;;
+        dry_run_complete) print -r -- "Open Nova 安装计划已生成。" ;;
+        upgrade_complete) print -r -- "Open Nova 已更新完成。" ;;
+        upgrade_plan_complete) print -r -- "Open Nova 更新计划已生成。" ;;
+        update_no_changes) print -r -- "Open Nova 已是最新状态。" ;;
+        source_update_complete) print -r -- "Open Nova 文件已更新。" ;;
+        source_update_plan_complete) print -r -- "Open Nova 文件更新计划已生成。" ;;
+        update_plan_summary) print -r -- "更新计划" ;;
+        update_summary) print -r -- "更新摘要" ;;
+        label_command) print -r -- "命令行" ;;
+        label_folder) print -r -- "Open Nova 文件夹" ;;
+        label_diary) print -r -- "日记" ;;
+        label_dashboard) print -r -- "Dashboard" ;;
+        label_daily) print -r -- "每日自动运行" ;;
+        label_ai) print -r -- "AI 生成" ;;
+        label_memory) print -r -- "记忆与搜索" ;;
+        label_tools) print -r -- "已连接工具" ;;
+        detail_planned) print -r -- "将会准备" ;;
+        detail_ready) print -r -- "已就绪" ;;
+        detail_disabled) print -r -- "未启用" ;;
+        detail_dashboard_app) print -r -- "已安装，后台服务未启用" ;;
+        detail_daily_on) print -r -- "已启用" ;;
+        detail_daily_off) print -r -- "未启用" ;;
+        detail_ai_needs_setup) print -r -- "请在 Dashboard 设置中完成配置" ;;
+        detail_local) print -r -- "本地" ;;
+        detail_cloud) print -r -- "云端" ;;
+        detail_none) print -r -- "无" ;;
+        details_log) print -r -- "安装日志" ;;
+        readiness_python) print -r -- "Python" ;;
+        readiness_dashboard) print -r -- "Dashboard" ;;
+        readiness_components) print -r -- "所需软件" ;;
+        readiness_memory_model) print -r -- "记忆模型" ;;
+        readiness_memory_service) print -r -- "记忆与搜索" ;;
+        readiness_ready) print -r -- "已就绪" ;;
+        readiness_will_prepare) print -r -- "将在安装时准备" ;;
+        readiness_missing_python) print -r -- "未找到 Python 3.11 或更高版本" ;;
+        readiness_python_unverified) print -r -- "无法确认 Python 是否满足要求" ;;
+        readiness_dashboard_missing) print -r -- "缺少 Dashboard 所需文件" ;;
+        readiness_cloud_ready) print -r -- "云端设置已就绪" ;;
+        readiness_cloud_later) print -r -- "请在首次同步前补全云端设置" ;;
+        check_source_failed) print -r -- "缺少 Open Nova 所需文件" ;;
+        check_python_failed) print -r -- "无法使用 Python 3.11 或更高版本" ;;
+        check_folder_failed) print -r -- "一个所选文件夹不可写" ;;
+        check_dashboard_failed) print -r -- "所选 Dashboard 端口不可用" ;;
+        check_failed) print -r -- "请解决上方问题后重新运行安装。" ;;
         welcome)
-          print -r -- "欢迎使用 Open Nova。核心管线、Dashboard 和 Nova-Task 默认安装。"
-          print -r -- "请确认你理解：启用的工作流会处理本地数据，并可能产生少量 LLM token 用量。"
+          print -r -- "欢迎使用 Open Nova。Dashboard、日记、每日自动运行和 Nova-Task 默认安装。"
+          print -r -- "请确认你理解：启用的功能会处理本地数据，并可能产生少量 AI 模型用量。"
           ;;
         welcome_cancelled) print -r -- "已在欢迎页取消安装" ;;
         language_prompt) print -r -- "选择 Open Nova 界面语言" ;;
         invalid_env) print -r -- "环境变量名无效。按 Return 后重试。" ;;
-        core_dependency_title) print -r -- "核心依赖检查" ;;
-        core_dependency_action) print -r -- "正在检查非 RAG 运行时依赖" ;;
-        rag_dependency_title) print -r -- "nova-RAG 依赖检查" ;;
-        rag_dependency_action) print -r -- "正在检查 RAG 专用依赖" ;;
+        ai_key_next_step) print -r -- "请在 Dashboard 设置中保存密钥，或运行：open-nova model key --value-stdin" ;;
+        core_dependency_title) print -r -- "安装准备" ;;
+        core_dependency_action) print -r -- "正在检查系统环境" ;;
+        rag_dependency_title) print -r -- "记忆与搜索" ;;
+        rag_dependency_action) print -r -- "正在检查记忆与搜索设置" ;;
         press_return) print -r -- "按 Return 继续。" ;;
         detecting_tools) print -r -- "正在检测工具……请稍候" ;;
         detected_tools) print -r -- "已检测到的工具" ;;
@@ -569,37 +928,39 @@ installer_text() {
           print -r -- "选中的工具会纳入 Open Nova 覆盖范围；未选中的工具不会被采集。"
           print -r -- "使用方向键或 j/k 移动，空格切换，按 Return 继续。"
           ;;
-        no_tools) print -r -- "未检测到已知工具路径。选择 manual 可手动添加。" ;;
+        no_tools) print -r -- "未检测到已知工具，可选择“手动添加”。" ;;
         manual_tool_name) print -r -- "手动工具名称" ;;
         manual_tool_path) print -r -- "手动工具路径" ;;
-        rag_choice_prompt) print -r -- "选择 nova-RAG 记忆/搜索配置" ;;
+        manual_add) print -r -- "手动添加" ;;
+        manual_add_help) print -r -- "输入工具名称和文件夹" ;;
+        rag_choice_prompt) print -r -- "选择记忆与搜索方式" ;;
         rag_not_now) print -r -- "暂不启用" ;;
-        rag_local) print -r -- "本地 embedding" ;;
-        rag_cloud) print -r -- "云端 embedding" ;;
-        rag_local_model_prompt) print -r -- "选择本地 nova-RAG embedding 模型" ;;
-        llm_provider_prompt) print -r -- "选择 LLM provider" ;;
-        llm_provider_help) print -r -- "基于我们的 harness 工程，小型、快速的模型即可承担系统要求；更强模型可能提升质量。" ;;
-        llm_model_prompt) print -r -- "选择 LLM 模型" ;;
+        rag_local) print -r -- "本地处理" ;;
+        rag_cloud) print -r -- "云端处理" ;;
+        rag_local_model_prompt) print -r -- "选择本地记忆模型" ;;
+        llm_provider_prompt) print -r -- "选择 AI 服务商" ;;
+        llm_provider_help) print -r -- "日常使用选择小型快速模型即可；更大的模型可能提升文字质量。" ;;
+        llm_model_prompt) print -r -- "选择 AI 模型" ;;
         custom_input) print -r -- "自定义输入" ;;
-        custom_llm_endpoint) print -r -- "自定义 LLM endpoint URL" ;;
-        custom_llm_model) print -r -- "自定义 LLM model id" ;;
-        llm_model_id) print -r -- "LLM model id" ;;
-        llm_api_key_value_prompt) print -r -- "粘贴 LLM API key 值（会写入本机 secret-store；留空则稍后配置）" ;;
-        llm_api_key_env_prompt) print -r -- "LLM API key 环境变量名（例如 LLM_API_KEY；不要粘贴密钥值）" ;;
-        cloud_provider) print -r -- "云端 embedding provider id/preset" ;;
-        cloud_endpoint) print -r -- "云端 embedding endpoint URL" ;;
-        cloud_model) print -r -- "云端 embedding 模型" ;;
-        cloud_dimension) print -r -- "云端 embedding 维度" ;;
-        cloud_key_env) print -r -- "云端 embedding API key 环境变量名（不会存储密钥值）" ;;
+        custom_llm_endpoint) print -r -- "自定义 AI 服务地址" ;;
+        custom_llm_model) print -r -- "自定义 AI 模型名称" ;;
+        llm_model_id) print -r -- "AI 模型名称" ;;
+        llm_api_key_value_prompt) print -r -- "粘贴 AI 密钥（会安全保存在本机；留空则稍后配置）" ;;
+        llm_api_key_env_prompt) print -r -- "AI 密钥环境变量名（例如 LLM_API_KEY；不要在这里粘贴密钥）" ;;
+        cloud_provider) print -r -- "云端记忆服务商" ;;
+        cloud_endpoint) print -r -- "云端记忆服务地址" ;;
+        cloud_model) print -r -- "云端记忆模型" ;;
+        cloud_dimension) print -r -- "云端记忆模型维度" ;;
+        cloud_key_env) print -r -- "云端记忆密钥环境变量名（不会存储密钥值）" ;;
         useful_commands) print -r -- "常用命令：" ;;
         install_summary) print -r -- "安装摘要" ;;
         proceed_upgrade)
           print -r -- "现在继续升级吗？"
-          print -r -- "升级会更新依赖和托管服务，同时保留 runtime settings 和 secrets。"
+          print -r -- "Open Nova 会保留你的设置和数据。"
           ;;
         proceed_install)
           print -r -- "现在继续安装吗？"
-          print -r -- "安装器会创建 runtime 文件，并可能注册托管服务。"
+          print -r -- "Open Nova 会创建自己的文件夹，并配置你选择的功能。"
           ;;
         upgrade_cancelled) print -r -- "升级已取消，尚未修改文件" ;;
         install_cancelled) print -r -- "安装已取消，尚未修改文件" ;;
@@ -690,8 +1051,8 @@ safe_env_var_label() {
 }
 
 llm_api_key_env_error() {
-  print -r -- "LLM API key environment variable name must look like LLM_API_KEY; do not paste the API key value." >&2
-  print -r -- "To store an API key, use Dashboard Settings or run: open-nova model key --value-stdin" >&2
+  error "LLM API key environment variable name is invalid"
+  print -r -- "  $(installer_text ai_key_next_step)" >&2
 }
 
 validate_llm_api_key_env() {
@@ -871,7 +1232,7 @@ apply_language_profile() {
       fi
       ;;
     *)
-      print -r -- "--language must be zh-CN or en-US" >&2
+      error "language must be zh-CN or en-US"
       exit 2
       ;;
   esac
@@ -1131,9 +1492,9 @@ prompt_external_tools() {
     selected+=(1)
   done
   keys+=("manual")
-  labels+=("manual")
+  labels+=("$(installer_text manual_add)")
   emojis+=("✍️")
-  paths+=("Enter tool name and path manually")
+  paths+=("$(installer_text manual_add_help)")
   selected+=(0)
 
   while true; do
@@ -1307,21 +1668,19 @@ wizard_core_dependency_gate() {
     python_status=$?
     set -e
     if [[ "$python_status" == "0" && -n "$python_probe" ]]; then
-      rows+=("ok|Python runtime|${PYTHON_BIN} reports Python ${python_probe}")
+      rows+=("ok|$(installer_text readiness_python)|Python ${python_probe} · $(installer_text readiness_ready)")
     else
-      rows+=("error|Python runtime|${PYTHON_BIN} version could not be verified as Python >=3.11")
+      rows+=("error|$(installer_text readiness_python)|$(installer_text readiness_python_unverified)")
     fi
     if "$PYTHON_BIN" -c "import venv" >/dev/null 2>&1; then
-      rows+=("ok|Python venv|virtual environments are available")
+      true
     else
-      rows+=("error|Python venv|python -m venv is unavailable")
+      rows+=("error|$(installer_text readiness_components)|$(installer_text readiness_python_unverified)")
     fi
   elif [[ "$DRY_RUN" == "1" && "$PYTHON_INSTALL_PLANNED" == "1" ]]; then
-    rows+=("pending|Python runtime|managed Python ${PYTHON_STANDALONE_VERSION} will be installed")
-    rows+=("pending|Python venv|will be verified after managed Python is available")
+    rows+=("pending|$(installer_text readiness_python)|Python ${PYTHON_STANDALONE_VERSION} · $(installer_text readiness_will_prepare)")
   else
-    rows+=("error|Python runtime|Python >=3.11 was not found")
-    rows+=("error|Python venv|cannot verify venv before Python is available")
+    rows+=("error|$(installer_text readiness_python)|$(installer_text readiness_missing_python)")
   fi
 
   for asset in "${static_assets[@]}"; do
@@ -1330,13 +1689,12 @@ wizard_core_dependency_gate() {
     fi
   done
   if [[ "$static_missing" == "0" ]]; then
-    rows+=("ok|Dashboard static UI|index.html, style.css, and app.js are present")
+    rows+=("ok|$(installer_text readiness_dashboard)|$(installer_text readiness_ready)")
   else
-    rows+=("error|Dashboard static UI|${static_missing} required asset(s) are missing from source")
+    rows+=("error|$(installer_text readiness_dashboard)|$(installer_text readiness_dashboard_missing)")
   fi
 
-  rows+=("pending|Dashboard runtime packages|fastapi, uvicorn, PyYAML, and croniter will be installed and import-checked in the runtime venv")
-  rows+=("pending|Dependency remediation|missing allowlisted packages will be installed automatically, then rechecked")
+  rows+=("pending|$(installer_text readiness_components)|$(installer_text readiness_will_prepare)")
   wizard_dependency_page "$(installer_text core_dependency_title)" "$(installer_text core_dependency_action)" "${rows[@]}"
 }
 
@@ -1347,19 +1705,16 @@ wizard_rag_dependency_gate() {
 
   local rows=()
   if [[ "$RAG_EMBEDDING_MODE" == "local" ]]; then
-    rows+=("ok|Embedding model|${RAG_LOCAL_MODEL} (${RAG_LOCAL_DIMENSION:-unknown} dimensions)")
-    rows+=("pending|nova-RAG local packages|sentence-transformers, torch, numpy, and pydantic will be installed and import-checked")
-    rows+=("pending|Embedding server|LaunchAgent and background warmup will be prepared for local mode")
+    rows+=("ok|$(installer_text readiness_memory_model)|${RAG_LOCAL_MODEL}")
+    rows+=("pending|$(installer_text readiness_memory_service)|$(installer_text readiness_will_prepare)")
   elif [[ "$RAG_EMBEDDING_MODE" == "cloud" ]]; then
-    rows+=("ok|Embedding mode|cloud provider ${RAG_CLOUD_PROVIDER}")
+    rows+=("ok|$(installer_text readiness_memory_service)|$(installer_text detail_cloud)")
     if [[ -n "$RAG_CLOUD_ENDPOINT" && -n "$RAG_CLOUD_MODEL" && -n "$RAG_CLOUD_DIMENSION" ]]; then
-      rows+=("ok|Cloud embedding config|endpoint, model, dimension, and key env are configured")
+      rows+=("ok|$(installer_text readiness_memory_model)|$(installer_text readiness_cloud_ready)")
     else
-      rows+=("pending|Cloud embedding config|missing fields can be completed in settings before RAG sync")
+      rows+=("pending|$(installer_text readiness_memory_model)|$(installer_text readiness_cloud_later)")
     fi
-    rows+=("ok|nova-RAG local packages|local embedding packages are not required in cloud mode")
   fi
-  rows+=("pending|Dependency remediation|missing allowlisted RAG packages will be installed automatically when required")
   wizard_dependency_page "$(installer_text rag_dependency_title)" "$(installer_text rag_dependency_action)" "${rows[@]}"
 }
 
@@ -1376,7 +1731,7 @@ wizard_enabled() {
       return $?
       ;;
     *)
-      print -r -- "Invalid NOVA_INSTALL_WIZARD value: ${WIZARD_MODE}" >&2
+      error "Invalid NOVA_INSTALL_WIZARD value: ${WIZARD_MODE}"
       exit 2
       ;;
   esac
@@ -1384,15 +1739,16 @@ wizard_enabled() {
 
 apply_installer_settings_overlay() {
   local log_file=""
+  local display_label="$(installer_text step_save_choices)"
   log "Applying installer settings overlay"
   if [[ "$DRY_RUN" == "1" ]]; then
-    progress_start "Applying runtime settings"
-    progress_ok "Applying runtime settings"
+    progress_start "$display_label"
+    progress_ok "$display_label"
     return 0
   fi
   log_file="$(installer_log_file)"
   mkdir -p "${log_file:h}"
-  progress_start "Applying runtime settings"
+  progress_start "$display_label"
   if ! {
   NOVA_INSTALL_SOURCE_ROOT="${SOURCE_ROOT}" \
   NOVA_INSTALL_DEPLOY_SOURCE_ROOT="${DEPLOY_SOURCE_ROOT}" \
@@ -1709,14 +2065,15 @@ if first_install_or("NOVA_INSTALL_LLM_SET") and enable_llm:
 write_settings(update, paths)
 PY
   } >> "$log_file" 2>&1; then
-    progress_fail "Applying runtime settings failed; see ${log_file}"
+    progress_fail "$(installer_text step_failed) ${log_file}"
     return 1
   fi
-  progress_ok "Applying runtime settings"
+  progress_ok "$display_label"
 }
 
 store_installer_llm_api_key_secret() {
-  local label="Storing LLM API key in secret store"
+  local technical_label="Storing LLM API key in secret store"
+  local label="$(installer_text step_save_ai_key)"
   local log_file=""
   if [[ "$ENABLE_LLM_GENERATION" != "1" || -z "$LLM_API_KEY_VALUE" ]]; then
     return 0
@@ -1730,13 +2087,13 @@ store_installer_llm_api_key_secret() {
   mkdir -p "${log_file:h}"
   progress_start "$label"
   print -r -- "" >> "$log_file"
-  print -r -- "## ${label}: open-nova model key --value-stdin --runtime ${RUNTIME_HOME}" >> "$log_file"
+  print -r -- "## ${technical_label}: open-nova model key --value-stdin --runtime ${RUNTIME_HOME}" >> "$log_file"
   if ! print -r -- "$LLM_API_KEY_VALUE" | "${VENV_PY}" -m data_foundation.cli \
     model key \
     --value-stdin \
     --runtime "${RUNTIME_HOME}" \
     --json >> "$log_file" 2>&1; then
-    progress_fail "${label} failed; see ${log_file}"
+    progress_fail "$(installer_text step_failed) ${log_file}"
     return 1
   fi
   LLM_API_KEY_VALUE=""
@@ -1750,8 +2107,8 @@ create_desktop_diary_link() {
   fi
   log "Creating Desktop diary shortcut"
   if [[ "$DRY_RUN" == "1" ]]; then
-    progress_start "Creating Desktop diary shortcut"
-    progress_ok "Creating Desktop diary shortcut"
+    progress_start "$(installer_text step_diary_shortcut)"
+    progress_ok "$(installer_text step_diary_shortcut)"
     return 0
   fi
   if ! mkdir -p "${DESKTOP_DIARY_LINK:h}"; then
@@ -1780,8 +2137,8 @@ create_desktop_diary_link() {
 create_cli_shim() {
   log "Creating open-nova CLI shim"
   if [[ "$DRY_RUN" == "1" ]]; then
-    progress_start "Creating open-nova CLI shim"
-    progress_ok "Creating open-nova CLI shim"
+    progress_start "$(installer_text step_install_command)"
+    progress_ok "$(installer_text step_install_command)"
     return 0
   fi
   mkdir -p "${CLI_SHIM:h}"
@@ -1847,8 +2204,8 @@ ensure_cli_on_shell_path() {
     path_expr="${shim_dir}"
   fi
   if [[ "$DRY_RUN" == "1" ]]; then
-    progress_start "Updating shell PATH"
-    progress_ok "Updating shell PATH"
+    progress_start "$(installer_text step_terminal_command)"
+    progress_ok "$(installer_text step_terminal_command)"
     return 0
   fi
   if [[ -f "$profile_path" ]] && grep -Fq "$marker_start" "$profile_path"; then
@@ -1885,8 +2242,8 @@ stage_runtime_source() {
   STAGED_RELEASE_ID=""
   STAGED_RELEASE_TARGET=""
   if [[ "$DRY_RUN" == "1" ]]; then
-    progress_start "Staging source snapshot"
-    progress_ok "Staging source snapshot"
+    progress_start "$(installer_text step_prepare_files)"
+    progress_ok "$(installer_text step_prepare_files)"
     return 0
   fi
   local app_root="${DEPLOY_SOURCE_ROOT:h}"
@@ -1901,7 +2258,7 @@ stage_runtime_source() {
       --state "${UPDATE_TRANSACTION_JOURNAL}" \
       --kind source-temp)"
     if [[ "$release_tmp" != "${releases_root}/.tmp-${release_id}" ]]; then
-      print -r -- "transaction source reservation returned an unexpected path" >&2
+      error "transaction source reservation returned an unexpected path"
       return 1
     fi
     transaction_owned_stage=1
@@ -2327,14 +2684,14 @@ PY
     if [[ "$transaction_owned_stage" != "1" ]]; then
       rm -rf "${release_tmp}"
     fi
-    print -r -- "runtime source staging failed before source pointer switch" >&2
+    error "runtime source staging failed before source pointer switch"
     return 1
   fi
   if [[ ! -f "${release_tmp}/.open-nova-runtime-source.json" || ! -f "${release_tmp}/pyproject.toml" ]]; then
     if [[ "$transaction_owned_stage" != "1" ]]; then
       rm -rf "${release_tmp}"
     fi
-    print -r -- "runtime source release failed validation before switch" >&2
+    error "runtime source release failed validation before switch"
     return 1
   fi
   if ! PYTHONDONTWRITEBYTECODE=1 "${PYTHON_BIN}" - "${release_tmp}/.open-nova-runtime-source.json" "${release_id}" <<'PY'
@@ -2549,7 +2906,7 @@ PY
     if [[ "$transaction_owned_stage" != "1" ]]; then
       rm -rf "${release_tmp}"
     fi
-    print -r -- "runtime source release failed clean-scan manifest validation before switch" >&2
+    error "runtime source release failed clean-scan manifest validation before switch"
     return 1
   fi
   if [[ "$transaction_owned_stage" == "1" ]]; then
@@ -2557,7 +2914,7 @@ PY
     promoted_source="$(update_transaction_command promote-source-artifact \
       --state "${UPDATE_TRANSACTION_JOURNAL}")"
     if [[ "$promoted_source" != "$release_target" ]]; then
-      print -r -- "transaction source promotion returned an unexpected path" >&2
+      error "transaction source promotion returned an unexpected path"
       return 1
     fi
   else
@@ -2621,12 +2978,12 @@ PY
 
 promote_staged_runtime_source() {
   if [[ "$DRY_RUN" == "1" ]]; then
-    progress_start "Promoting staged source snapshot"
-    progress_ok "Promoting staged source snapshot"
+    progress_start "$(installer_text step_activate_files)"
+    progress_ok "$(installer_text step_activate_files)"
     return 0
   fi
   if [[ -z "$STAGED_RELEASE_TARGET" ]]; then
-    print -r -- "runtime source promotion requested without a staged release" >&2
+    error "runtime source promotion requested without a staged release"
     return 1
   fi
   if [[ "${STAGED_RELEASE_TARGET:A}" == "${DEPLOY_SOURCE_ROOT:A}" ]]; then
@@ -2634,7 +2991,7 @@ promote_staged_runtime_source() {
   fi
   local release_target="${STAGED_RELEASE_TARGET}"
   if [[ -e "${DEPLOY_SOURCE_ROOT}" || -L "${DEPLOY_SOURCE_ROOT}" ]]; then
-    print -r -- "runtime source already exists; use --upgrade for an existing Open Nova Runtime" >&2
+    error "runtime source already exists; use --upgrade for an existing Open Nova Runtime"
     return 1
   fi
   if ! promote_fresh_runtime_pointer \
@@ -2645,7 +3002,7 @@ promote_staged_runtime_source() {
     return 1
   fi
   if [[ ! -f "${DEPLOY_SOURCE_ROOT}/.open-nova-runtime-source.json" ]]; then
-    print -r -- "runtime source release switch failed validation; the no-clobber pointer was preserved for operator inspection" >&2
+    error "runtime source release switch failed validation; existing files were preserved"
     return 1
   fi
 }
@@ -2783,15 +3140,15 @@ create_fresh_runtime_venv() {
   local venv_store="${RUNTIME_HOME}/app/venvs"
   local venv_target="${venv_store}/${generation}"
   if [[ "$DRY_RUN" != "1" && -z "$STAGED_RELEASE_ID" ]]; then
-    print -r -- "runtime venv creation requested without a staged source generation" >&2
+    error "runtime venv creation requested without a staged source generation"
     return 1
   fi
   if [[ "$DRY_RUN" != "1" && ( -e "$VENV_DIR" || -L "$VENV_DIR" ) ]]; then
-    print -r -- "runtime venv pointer already exists; use --upgrade for an existing Open Nova Runtime" >&2
+    error "runtime venv pointer already exists; use --upgrade for an existing Open Nova Runtime"
     return 1
   fi
   if [[ "$DRY_RUN" != "1" && ( -e "$venv_target" || -L "$venv_target" ) ]]; then
-    print -r -- "runtime venv generation already exists; refusing to overwrite it" >&2
+    error "runtime venv generation already exists; refusing to overwrite it"
     return 1
   fi
   run_cmd mkdir -p "${venv_store}"
@@ -2801,7 +3158,7 @@ create_fresh_runtime_venv() {
     return 0
   fi
   if [[ ! -f "${venv_target}/bin/python" ]]; then
-    print -r -- "runtime venv generation failed validation before pointer promotion" >&2
+    error "runtime venv generation failed validation before pointer promotion"
     return 1
   fi
   VENV_DIR="${venv_target}"
@@ -2813,7 +3170,7 @@ promote_fresh_runtime_artifacts() {
     return 0
   fi
   if [[ -z "$STAGED_RELEASE_TARGET" || -z "$FRESH_STAGED_VENV" ]]; then
-    print -r -- "fresh Runtime promotion requires validated source and venv candidates" >&2
+    error "fresh Runtime promotion requires validated source and venv candidates"
     return 1
   fi
   local stable_venv="${RUNTIME_HOME}/.venv"
@@ -2842,7 +3199,7 @@ try:
 except (OSError, RuntimeError):
     raise SystemExit(1)
 PY
-    print -r -- "runtime venv pointer promotion failed; the newly created source pointer was removed and both candidates were preserved for operator inspection" >&2
+    error "runtime venv pointer promotion failed; existing files were preserved"
     return 1
   fi
   VENV_DIR="${stable_venv}"
@@ -2862,6 +3219,28 @@ format_selected_external_tools() {
     fields=("${(@ps:|:)item}")
     if [[ "${#fields[@]}" -ge 3 ]]; then
       labels+=("${fields[2]}=${fields[3]}")
+    fi
+  done
+  if [[ "${#labels[@]}" -eq 0 ]]; then
+    print -r -- "none"
+  else
+    print -r -- "${(j:, :)labels}"
+  fi
+}
+
+format_connected_tools() {
+  if [[ -z "$SELECTED_EXTERNAL_TOOLS" ]]; then
+    print -r -- "none"
+    return 0
+  fi
+  local items=("${(@ps:;;:)SELECTED_EXTERNAL_TOOLS}")
+  local item=""
+  local fields=()
+  local labels=()
+  for item in "${items[@]}"; do
+    fields=("${(@ps:|:)item}")
+    if [[ "${#fields[@]}" -ge 2 ]]; then
+      labels+=("${fields[2]}")
     fi
   done
   if [[ "${#labels[@]}" -eq 0 ]]; then
@@ -2891,7 +3270,13 @@ preflight_check() {
     print -r -- "preflight ${check_status}: ${check_id}: ${message}" >> "$log_file"
   fi
   if [[ "$check_status" != "ok" && "$severity" == "error" ]]; then
-    print -r -- "preflight ${check_status}: ${check_id}: ${message}" >&2
+    case "$check_id" in
+      source-file) progress_fail "$(installer_text check_source_failed)" ;;
+      python-*) progress_fail "$(installer_text check_python_failed)" ;;
+      writable-target) progress_fail "$(installer_text check_folder_failed)" ;;
+      dashboard-port) progress_fail "$(installer_text check_dashboard_failed)" ;;
+      *) progress_fail "$(installer_text check_failed)" ;;
+    esac
   fi
   if [[ "$check_status" != "ok" && "$severity" == "error" ]]; then
     return 1
@@ -3200,6 +3585,8 @@ install_managed_standalone_python() {
   local extract_dir=""
   local archive=""
   local broken_dir=""
+  local label=""
+  local log_file=""
 
   if [[ "$PYTHON_SET" == "1" || "$PYTHON_AUTO_INSTALL" != "1" ]]; then
     return 1
@@ -3222,8 +3609,8 @@ install_managed_standalone_python() {
   expected_sha="$(standalone_python_sha256 "$target_arch" || true)"
   if [[ "$DRY_RUN" == "1" ]]; then
     if [[ "$PYTHON_INSTALL_PLANNED" != "1" ]]; then
-      progress_start "Planning managed Python ${PYTHON_STANDALONE_VERSION} install"
-      progress_ok "Planning managed Python ${PYTHON_STANDALONE_VERSION} install"
+      progress_start "$(installer_text step_prepare_python) ${PYTHON_STANDALONE_VERSION}"
+      progress_ok "$(installer_text step_prepare_python) ${PYTHON_STANDALONE_VERSION}"
     fi
     PYTHON_INSTALL_PLANNED=1
     return 1
@@ -3241,43 +3628,42 @@ install_managed_standalone_python() {
   tmp_dir="${RUNTIME_HOME}/state/tmp/python-standalone.$$"
   extract_dir="${tmp_dir}/extract"
   archive="${tmp_dir}/python.tar.gz"
-  print -r -- "+ mkdir -p ${extract_dir} ${install_dir:h}"
-  /bin/mkdir -p "$extract_dir" "${install_dir:h}"
-  print -r -- "+ ${CURL_BIN} -fL --retry 3 --retry-delay 1 -o ${archive} ${url}"
-  if ! "$CURL_BIN" -fL --retry 3 --retry-delay 1 -o "$archive" "$url"; then
+  label="$(installer_text step_prepare_python) ${PYTHON_STANDALONE_VERSION}"
+  log_file="$(installer_log_file)"
+  progress_start "$label"
+  /bin/mkdir -p "${log_file:h}" || {
+    progress_fail "$(installer_text step_failed) ${log_file}"
+    return 1
+  }
+  : >> "$log_file"
+  /bin/chmod 600 "$log_file"
+  if ! (
+    set -e
+    print -r -- "## Preparing Python ${PYTHON_STANDALONE_VERSION} for ${target_arch}"
+    /bin/mkdir -p "$extract_dir" "${install_dir:h}"
+    "$CURL_BIN" --silent --show-error -fL --retry 3 --retry-delay 1 -o "$archive" "$url"
+    verify_sha256_file "$archive" "$expected_sha"
+    "$TAR_BIN" -xzf "$archive" -C "$extract_dir"
+    [[ -x "${extract_dir}/python/bin/python3" ]]
+    if [[ -e "$install_dir" ]]; then
+      broken_dir="${install_dir}.broken.$(/bin/date +%Y%m%d%H%M%S)"
+      /bin/mv "$install_dir" "$broken_dir"
+    fi
+    /bin/mv "${extract_dir}/python" "$install_dir"
     /bin/rm -rf "$tmp_dir"
+  ) >> "$log_file" 2>&1; then
+    /bin/rm -rf "$tmp_dir"
+    progress_fail "$(installer_text step_failed) ${log_file}"
     return 1
   fi
-  print -r -- "+ verify sha256 ${archive}"
-  if ! verify_sha256_file "$archive" "$expected_sha"; then
-    /bin/rm -rf "$tmp_dir"
+  if ! python_meets_minimum_version "$python_bin"; then
+    print -r -- "ERROR: prepared Python did not meet the minimum version" >> "$log_file"
+    progress_fail "$(installer_text step_failed) ${log_file}"
     return 1
   fi
-  print -r -- "+ ${TAR_BIN} -xzf ${archive} -C ${extract_dir}"
-  if ! "$TAR_BIN" -xzf "$archive" -C "$extract_dir"; then
-    /bin/rm -rf "$tmp_dir"
-    return 1
-  fi
-  if [[ ! -x "${extract_dir}/python/bin/python3" ]]; then
-    warn "Managed standalone Python archive did not contain python/bin/python3"
-    /bin/rm -rf "$tmp_dir"
-    return 1
-  fi
-  if [[ -e "$install_dir" ]]; then
-    broken_dir="${install_dir}.broken.$(/bin/date +%Y%m%d%H%M%S)"
-    print -r -- "+ mv ${install_dir} ${broken_dir}"
-    /bin/mv "$install_dir" "$broken_dir"
-  fi
-  print -r -- "+ mv ${extract_dir}/python ${install_dir}"
-  /bin/mv "${extract_dir}/python" "$install_dir"
-  print -r -- "+ rm -rf ${tmp_dir}"
-  /bin/rm -rf "$tmp_dir"
-  if python_meets_minimum_version "$python_bin"; then
-    PYTHON_BIN="$python_bin"
-    return 0
-  fi
-  warn "Managed standalone Python was installed but did not report Python >=3.11: ${python_bin}"
-  return 1
+  PYTHON_BIN="$python_bin"
+  progress_ok "$label"
+  return 0
 }
 
 maybe_install_python_runtime() {
@@ -3316,7 +3702,7 @@ select_dashboard_port() {
     return 0
   fi
   if ! valid_tcp_port "$DASHBOARD_PORT"; then
-    print -r -- "--dashboard-port must be between 1 and 65535" >&2
+    error "Dashboard port must be between 1 and 65535"
     exit 2
   fi
   if [[ "$DASHBOARD_PORT_AUTO" != "1" ]]; then
@@ -3353,7 +3739,7 @@ require_fresh_runtime_empty() {
     return 0
   fi
   if [[ -L "${RUNTIME_HOME}/app" || ( -e "${RUNTIME_HOME}/app" && ! -d "${RUNTIME_HOME}/app" ) ]]; then
-    print -r -- "existing Open Nova Runtime state requires --upgrade: ${RUNTIME_HOME}" >&2
+    error "existing Open Nova Runtime state requires --upgrade: ${RUNTIME_HOME}"
     return 2
   fi
   local marker=""
@@ -3369,7 +3755,7 @@ require_fresh_runtime_empty() {
     "${RUNTIME_HOME}/data/nova_data.sqlite3" \
     "${RUNTIME_HOME}/bin/open-nova"; do
     if [[ -e "$marker" || -L "$marker" ]]; then
-      print -r -- "existing Open Nova Runtime state requires --upgrade: ${RUNTIME_HOME}" >&2
+      error "existing Open Nova Runtime state requires --upgrade: ${RUNTIME_HOME}"
       return 2
     fi
   done
@@ -3523,7 +3909,7 @@ run_installer_preflight() {
   preflight_check ok warn "pip-network" "pip network access is deferred to dependency installation; failures will be reported with the pip command" || true
 
   if [[ "$errors" -gt 0 ]]; then
-    print -r -- "Installer preflight failed with ${errors} error(s)." >&2
+    print -r -- "$(installer_text check_failed)" >&2
     exit 2
   fi
 }
@@ -3563,12 +3949,12 @@ cleanup_runtime_source_artifacts() {
   if [[ "$DRY_RUN" == "1" || ! -e "${DEPLOY_SOURCE_ROOT}" ]]; then
     return 0
   fi
-  progress_start "Cleaning runtime source artifacts"
+  progress_start "$(installer_text step_finish_install)"
   rm -rf "${DEPLOY_SOURCE_ROOT}/build" "${DEPLOY_SOURCE_ROOT}/dist"
   find -H "${DEPLOY_SOURCE_ROOT}" \
     \( -type d -name "__pycache__" -o -type d -name "*.egg-info" \) \
     -prune -exec rm -rf {} + 2>/dev/null || true
-  progress_ok "Cleaning runtime source artifacts"
+  progress_ok "$(installer_text step_finish_install)"
 }
 
 run_runtime_dependency_check() {
@@ -3689,7 +4075,8 @@ PY
 }
 
 run_runtime_dependency_gate() {
-  local label="Verifying runtime dependency gate"
+  local technical_label="Verifying runtime dependency gate"
+  local label="$(installer_text step_check_components)"
   local log_file=""
   log "Verifying runtime Dashboard dependency gate"
   log "Dependency gate: Dashboard dependencies (fastapi, uvicorn, PyYAML, croniter) and static UI assets"
@@ -3713,12 +4100,12 @@ run_runtime_dependency_gate() {
   mkdir -p "${log_file:h}"
   progress_start "$label"
   print -r -- "" >> "$log_file"
-  print -r -- "## ${label}" >> "$log_file"
+  print -r -- "## ${technical_label}" >> "$log_file"
   if run_runtime_dependency_check "${missing_file}" >> "$log_file" 2>&1; then
     progress_ok "$label"
     return 0
   fi
-  progress_fail "${label} failed; dependency remediation is forbidden outside the locked candidate build; see ${log_file}"
+  progress_fail "$(installer_text step_failed) ${log_file}"
   return 1
 }
 
@@ -3743,7 +4130,8 @@ run_rag_service_launch_agent_apply() {
 }
 
 run_external_rag_skill_registration_apply() {
-  local label="Registering nova-RAG skill for selected external tools"
+  local technical_label="Registering nova-RAG skill for selected external tools"
+  local label="$(installer_text step_connect_tools)"
   local log_file=""
   if [[ "$ENABLE_RAG" != "1" || "$ENABLE_SKILL_REGISTRATION" != "1" ]]; then
     return 0
@@ -3756,7 +4144,7 @@ run_external_rag_skill_registration_apply() {
   log_file="$(installer_log_file)"
   progress_start "$label"
   print -r -- "" >> "$log_file"
-  print -r -- "## ${label}" >> "$log_file"
+  print -r -- "## ${technical_label}" >> "$log_file"
   if NOVA_HOME="${RUNTIME_HOME}" \
     NOVA_LOCATION_FILE="${LOCATION_FILE}" \
     PYTHONPATH="${DEPLOY_SOURCE_ROOT}:${DEPLOY_SOURCE_ROOT}/src:${DEPLOY_SOURCE_ROOT}/src/dashboard" \
@@ -3799,7 +4187,7 @@ PY
   then
     progress_ok "$label"
   else
-    progress_fail "${label} failed; see ${log_file}"
+    progress_fail "$(installer_text step_failed) ${log_file}"
     warn "Open Nova installation completed, but external nova-RAG skill registration failed; retry from Dashboard Settings."
   fi
 }
@@ -3846,7 +4234,7 @@ inherit_upgrade_dependency_profiles() {
     return 0
   fi
   if [[ "$RAG_DETAIL_SET" == "1" ]]; then
-    print -r -- "upgrade cannot change detailed RAG configuration; update Runtime Settings separately" >&2
+    error "upgrade cannot change detailed RAG configuration; update Runtime Settings separately"
     return 2
   fi
   local profile_json=""
@@ -3942,12 +4330,12 @@ print("\t".join((
     inherited_mode=""
   fi
   if [[ "$RAG_ENABLE_SET" == "1" && "$inherited_enabled" != "$ENABLE_RAG" ]]; then
-    print -r -- "upgrade RAG enablement arguments conflict with Runtime Settings" >&2
+    error "upgrade RAG enablement arguments conflict with Runtime Settings"
     return 2
   fi
   if [[ "$RAG_EMBEDDING_MODE_SET" == "1" && \
     ( "$inherited_enabled" != "1" || "$inherited_mode" != "$RAG_EMBEDDING_MODE" ) ]]; then
-    print -r -- "upgrade RAG embedding mode argument conflicts with Runtime Settings" >&2
+    error "upgrade RAG embedding mode argument conflicts with Runtime Settings"
     return 2
   fi
   case "${inherited_enabled}|${inherited_mode}" in
@@ -4126,7 +4514,7 @@ run_dependency_update_plan() {
         UPDATE_PLANNED_DEPENDENCIES_INSTALL=0
         DEPENDENCY_PLAN_CACHE_HIT=0
         DEPENDENCY_PLAN_FAIL_BEFORE_STOP=1
-        print -r -- "runtime dependency plan blocked before service stop: ${error_code}" >&2
+        error "runtime dependency plan blocked before service stop: ${error_code}"
         return "$plan_rc"
       fi
       UPDATE_MODE="rebuild-candidate-venv"
@@ -4240,11 +4628,11 @@ if status not in {"hit", "miss"}:
     raise SystemExit(2)
 print(status)
 ')" || {
-    print -r -- "runtime dependency cache status returned an invalid result" >&2
+    error "runtime dependency cache status returned an invalid result"
     return 70
   }
   if [[ "$OFFLINE" == "1" && "$cache_status" != "hit" ]]; then
-    print -r -- "offline fresh install requires a complete trusted runtime dependency wheelhouse" >&2
+    error "offline fresh install requires a complete trusted runtime dependency wheelhouse"
     return 3
   fi
   if [[ "$DRY_RUN" == "1" ]]; then
@@ -4324,7 +4712,7 @@ prepare_update_validation_runtime() {
     --state "${UPDATE_TRANSACTION_JOURNAL}" \
     --kind validation-runtime)"
   if [[ "$reserved" != "$UPDATE_VALIDATION_RUNTIME" ]]; then
-    print -r -- "transaction validation Runtime reservation returned an unexpected path" >&2
+    error "transaction validation Runtime reservation returned an unexpected path"
     return 1
   fi
   mkdir -p \
@@ -4351,7 +4739,7 @@ update_exit_handler() {
       UPDATE_STATE_CERTAIN=0
       UPDATE_SOURCE_UPDATED=-1
       UPDATE_PLISTS_NORMALIZED=-1
-      print -r -- "Open Nova update rollback was incomplete; inspect the preserved transaction journal: ${UPDATE_TRANSACTION_JOURNAL}" >&2
+      error "Open Nova update rollback was incomplete; inspect the preserved transaction journal: ${UPDATE_TRANSACTION_JOURNAL}"
       original_rc=70
     else
       UPDATE_SOURCE_UPDATED=0
@@ -4359,7 +4747,7 @@ update_exit_handler() {
       UPDATE_ROLLBACK_COMPLETE=1
       UPDATE_REASON="update-failed-rolled-back"
       UPDATE_RESULT_STAGE="rollback-complete"
-      print -r -- "Open Nova update failed; the prior source, venv, protected control files, and service state were restored. Live SQLite databases passed integrity checks and were not rewound." >&2
+      error "Open Nova update failed; rollback restored the prior source, venv, control files, and services"
     fi
   fi
   # zsh does not reliably invoke the outer EXIT trap when this handler exits
@@ -4382,13 +4770,13 @@ begin_update_transaction() {
   if [[ "$PLATFORM" == "Darwin" ]]; then
     resolve_launchctl_bin
     if [[ -z "$LAUNCHCTL_BIN" ]]; then
-      print -r -- "launchctl not found; guarded update cannot capture managed service state" >&2
+      error "launchctl not found; update transaction cannot capture managed service state"
       return 1
     fi
     launchctl_path="$LAUNCHCTL_BIN"
     uid="$("$ID_BIN" -u 2>/dev/null || print -r -- "")"
     if [[ -z "$uid" ]]; then
-      print -r -- "current uid could not be determined; guarded update cannot capture managed service state" >&2
+      error "current uid could not be determined; update transaction cannot capture managed service state"
       return 1
     fi
   fi
@@ -4447,7 +4835,7 @@ stage_update_candidate_venv() {
     --state "${UPDATE_TRANSACTION_JOURNAL}" \
     --kind venv)"
   if [[ "$UPDATE_STAGED_VENV" != "${candidate_root}/${UPDATE_TRANSACTION_ID}" ]]; then
-    print -r -- "transaction venv reservation returned an unexpected path" >&2
+    error "transaction venv reservation returned an unexpected path"
     return 1
   fi
   run_update_candidate_cmd candidate-venv-create \
@@ -4498,19 +4886,19 @@ PY
     return 1
   fi
   if [[ ! -x "$VENV_PY" ]]; then
-    print -r -- "source-only update requires the existing runtime venv: ${VENV_PY}" >&2
+    error "source-only update requires the existing runtime venv: ${VENV_PY}"
     return 1
   fi
   DEPLOY_SOURCE_ROOT="${STAGED_RELEASE_TARGET}"
   mkdir -p "${log_file:h}"
-  progress_start "Verifying source-only candidate against existing dependencies"
+  progress_start "$(installer_text step_check_update)"
   if ! run_runtime_dependency_check "$missing_file" >> "$log_file" 2>&1; then
     DEPLOY_SOURCE_ROOT="${active_source}"
-    progress_fail "Source-only candidate requires dependency changes; use a full upgrade"
+    progress_fail "$(installer_text update_needs_full_install)"
     return 1
   fi
   DEPLOY_SOURCE_ROOT="${active_source}"
-  progress_ok "Verifying source-only candidate against existing dependencies"
+  progress_ok "$(installer_text step_check_update)"
 }
 
 run_update_candidate_doctor() {
@@ -4648,7 +5036,7 @@ run_guarded_update_transaction() {
     return 0
   fi
   if [[ -n "$LLM_API_KEY_VALUE" ]]; then
-    print -r -- "credential rotation is not part of an atomic upgrade; update the model key after the upgrade succeeds" >&2
+    error "credential rotation is not part of an atomic upgrade"
     return 2
   fi
   if ! materialize_update_dependency_cache "${SOURCE_ROOT}"; then
@@ -4731,18 +5119,24 @@ run_guarded_update_transaction() {
 }
 
 print_useful_commands() {
-  print -r -- "$(installer_text useful_commands)"
-  print -r -- "  open-nova onboarding runtime-status --runtime \"${RUNTIME_HOME}\""
-  print -r -- "  open-nova doctor --installer --runtime \"${RUNTIME_HOME}\""
-  print -r -- "  open-nova doctor --pipeline --runtime \"${RUNTIME_HOME}\""
-  print -r -- "  open-nova doctor --scheduler --runtime \"${RUNTIME_HOME}\""
-  if [[ "$ENABLE_RAG" == "1" ]]; then
-    print -r -- "  open-nova doctor --rag --runtime \"${RUNTIME_HOME}\""
-  fi
-  print -r -- "  open-nova onboarding rollback-plan --runtime \"${RUNTIME_HOME}\""
+  print -r -- "$(installer_text next_steps)"
+  print -r -- "  open-nova"
+  print -r -- "  open-nova doctor"
   if [[ "$NO_DASHBOARD_SERVER" != "1" ]]; then
     print -r -- "  open-nova dashboard restart"
   fi
+  print -r -- "  open-nova update --dry-run"
+}
+
+print_completion() {
+  if [[ "$SUMMARY_ONLY" == "1" && -t 1 && -r /dev/tty ]]; then
+    clear_tty_menu
+  fi
+  print -r -- ""
+  print -r -- "${TTY_GREEN}✓${TTY_RESET} ${COMPLETION_TEXT}"
+  print_install_summary
+  print -r -- ""
+  print_useful_commands
 }
 
 summary_line() {
@@ -4760,12 +5154,20 @@ summary_line() {
       mark="!"
       color="$TTY_YELLOW"
       ;;
+    off)
+      mark="–"
+      color="$TTY_DIM"
+      ;;
     error)
-      mark="x"
+      mark="✕"
       color="$TTY_RED"
       ;;
+    plan)
+      mark="•"
+      color="$TTY_BLUE"
+      ;;
   esac
-  print -r -- "  ${color}${mark}${TTY_RESET} ${label}: ${detail}"
+  print -r -- "  ${color}${mark}${TTY_RESET} ${label} · ${detail}"
 }
 
 effective_dashboard_url() {
@@ -4811,22 +5213,15 @@ if features.get("llmGeneration") is False:
     print("warn\tdisabled")
     raise SystemExit
 provider = settings.get("llmProvider") if isinstance(settings.get("llmProvider"), dict) else {}
-mode = str(provider.get("mode") or "custom")
-provider_id = str(provider.get("provider") or provider.get("presetProvider") or "custom")
 model = str(provider.get("model") or "")
 endpoint = str(provider.get("endpoint") or "")
-api_key_env = str(provider.get("apiKeyEnv") or "LLM_API_KEY")
-safe_key_env = api_key_env if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", api_key_env) else "<redacted-invalid-env>"
 secret_ref = provider.get("secretRef") if isinstance(provider.get("secretRef"), dict) else {}
 secret_backend = str(secret_ref.get("backend") or "").strip()
-secret_suffix = f"; key store {secret_backend}" if secret_backend else f"; key env {safe_key_env}"
 if endpoint and model:
     status = "warn" if secret_backend == "memory" else "ok"
-    if secret_backend == "memory":
-        secret_suffix += " (not pipeline-visible)"
-    print(f"{status}\t{mode}/{provider_id}; model {model}{secret_suffix}")
+    print(f"{status}\t{model}")
 else:
-    print(f"warn\t{mode}/{provider_id}; model {model or 'unset'}; endpoint {endpoint or 'unset'}; key env {safe_key_env}")
+    print(f"warn\t{model}")
 PY
 )"
       if [[ -n "$configured_summary" ]]; then
@@ -4836,11 +5231,11 @@ PY
     fi
   fi
   if [[ "$ENABLE_LLM_GENERATION" != "1" ]]; then
-    print -r -- "warn	disabled"
+	print -r -- "warn	disabled"
   elif [[ -n "$LLM_ENDPOINT" && -n "$LLM_MODEL" ]]; then
-    print -r -- "ok	${LLM_PROVIDER_MODE}/${LLM_PROVIDER}; model ${LLM_MODEL}; key env $(safe_env_var_label "$LLM_API_KEY_ENV")"
+	print -r -- "ok	${LLM_MODEL}"
   else
-    print -r -- "warn	${LLM_PROVIDER_MODE}/${LLM_PROVIDER}; model ${LLM_MODEL:-unset}; endpoint ${LLM_ENDPOINT:-unset}; key env $(safe_env_var_label "$LLM_API_KEY_ENV")"
+	print -r -- "warn	${LLM_MODEL}"
   fi
 }
 
@@ -4862,9 +5257,8 @@ for item in selected:
     if not isinstance(item, dict):
         continue
     name = str(item.get("name") or item.get("key") or "").strip()
-    path = str(item.get("path") or "").strip()
-    if name and path:
-        items.append(f"{name}={path}")
+    if name:
+        items.append(name)
 if not items:
     fallback_labels = {
         "openclaw": "OpenClaw",
@@ -4876,7 +5270,7 @@ if not items:
     for key, label in fallback_labels.items():
         value = external.get(key)
         if isinstance(value, dict) and value.get("home"):
-            items.append(f"{label}={value['home']}")
+            items.append(label)
 print(", ".join(items) if items else "none")
 PY
 )"
@@ -4886,7 +5280,7 @@ PY
       fi
     fi
   fi
-  format_selected_external_tools
+  format_connected_tools
 }
 
 print_install_summary() {
@@ -4895,64 +5289,79 @@ print_install_summary() {
   local llm_detail=""
   local llm_status=""
   local rag_detail=""
-  local dependency_detail=""
+  local summary_status="ok"
+  local command_detail="open-nova"
+  local connected_tools=""
 
   print -r -- ""
-  print -r -- "$(installer_text install_summary)"
-  summary_line ok "CLI" "$([[ "$DRY_RUN" == "1" ]] && print "planned at ${CLI_SHIM}" || print "installed at ${CLI_SHIM}")"
-  summary_line ok "foundation" "runtime source ${DEPLOY_SOURCE_ROOT}"
-  summary_line ok "settings" "runtime ${RUNTIME_HOME}; location pointer ${LOCATION_FILE}"
-  summary_line ok "diary artifacts" "${DIARY_OUTPUT_DIR}"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    if [[ "$UPGRADE" == "1" ]]; then
+      print -r -- "$(installer_text update_plan_summary)"
+    else
+      print -r -- "$(installer_text plan_summary)"
+    fi
+    summary_status="plan"
+    command_detail="$(installer_text detail_planned)"
+  elif [[ "$UPGRADE" == "1" ]]; then
+    print -r -- "$(installer_text update_summary)"
+  else
+    print -r -- "$(installer_text install_summary)"
+  fi
+  summary_line "$summary_status" "$(installer_text label_command)" "$command_detail"
+  summary_line "$summary_status" "$(installer_text label_folder)" "${RUNTIME_HOME}"
+  summary_line "$summary_status" "$(installer_text label_diary)" "${DIARY_OUTPUT_DIR}"
 
   if [[ "$NO_DASHBOARD_SERVER" == "1" ]]; then
-    dashboard_detail="Dashboard UI installed; server service skipped"
-    summary_line warn "Dashboard" "$dashboard_detail"
+    dashboard_detail="$(installer_text detail_dashboard_app)"
+    summary_line off "$(installer_text label_dashboard)" "$dashboard_detail"
   else
-    dashboard_detail="server enabled at $(effective_dashboard_url)"
-    summary_line ok "Dashboard" "$dashboard_detail"
+    dashboard_detail="$(effective_dashboard_url)"
+    summary_line "$summary_status" "$(installer_text label_dashboard)" "$dashboard_detail"
   fi
 
   if [[ "$PLATFORM" == "Darwin" && "$NO_SCHEDULER" != "1" ]]; then
-    scheduler_detail="managed launchd jobs enabled"
-    summary_line ok "scheduler" "$scheduler_detail"
+    scheduler_detail="$(installer_text detail_daily_on)"
+    summary_line "$summary_status" "$(installer_text label_daily)" "$scheduler_detail"
   elif [[ "$NO_SCHEDULER" == "1" ]]; then
-    scheduler_detail="disabled by option"
-    summary_line warn "scheduler" "$scheduler_detail"
+    scheduler_detail="$(installer_text detail_daily_off)"
+    summary_line off "$(installer_text label_daily)" "$scheduler_detail"
   else
-    scheduler_detail="skipped on ${PLATFORM}"
-    summary_line warn "scheduler" "$scheduler_detail"
+    scheduler_detail="$(installer_text detail_daily_off)"
+    summary_line off "$(installer_text label_daily)" "$scheduler_detail"
   fi
-
-  summary_line ok "Nova-Task" "$([[ "$ENABLE_NOVA_TASK" == "1" ]] && print enabled || print disabled)"
 
   IFS=$'\t' read -r llm_status llm_detail <<<"$(effective_llm_summary)"
-  summary_line "${llm_status:-warn}" "LLM generation" "${llm_detail:-unknown}"
+  if [[ "$llm_detail" == "disabled" ]]; then
+    llm_detail="$(installer_text detail_disabled)"
+  elif [[ -z "$llm_detail" ]]; then
+    llm_detail="$(installer_text detail_ai_needs_setup)"
+  fi
+  summary_line "${llm_status:-warn}" "$(installer_text label_ai)" "$llm_detail"
 
   if [[ "$ENABLE_RAG" != "1" ]]; then
-    summary_line warn "nova-RAG" "not installed now"
+    summary_line off "$(installer_text label_memory)" "$(installer_text detail_disabled)"
   elif [[ "$RAG_EMBEDDING_MODE" == "local" ]]; then
-    rag_detail="local embeddings; model ${RAG_LOCAL_MODEL}; dimension ${RAG_LOCAL_DIMENSION:-unset}"
-    summary_line ok "nova-RAG" "$rag_detail"
+    rag_detail="$(installer_text detail_local) · ${RAG_LOCAL_MODEL}"
+    summary_line "$summary_status" "$(installer_text label_memory)" "$rag_detail"
   else
-    rag_detail="cloud embeddings; provider ${RAG_CLOUD_PROVIDER}; model ${RAG_CLOUD_MODEL:-unset}; dimension ${RAG_CLOUD_DIMENSION:-unset}"
-    summary_line ok "nova-RAG" "$rag_detail"
+    rag_detail="$(installer_text detail_cloud) · ${RAG_CLOUD_MODEL:-${RAG_CLOUD_PROVIDER}}"
+    summary_line "$summary_status" "$(installer_text label_memory)" "$rag_detail"
   fi
 
-  summary_line ok "external tools" "$(effective_external_tools_summary)"
+  connected_tools="$(effective_external_tools_summary)"
+  if [[ "$connected_tools" == "none" ]]; then
+    connected_tools="$(installer_text detail_none)"
+  fi
+  summary_line "$summary_status" "$(installer_text label_tools)" "$connected_tools"
   if [[ "$DRY_RUN" != "1" ]]; then
-    summary_line ok "installer log" "${INSTALLER_LOG_FILE}"
+    print -r -- ""
+    print -r -- "${TTY_DIM}$(installer_text details_log): ${INSTALLER_LOG_FILE}${TTY_RESET}"
   fi
-
-  dependency_detail="Dashboard API dependencies and static assets"
-  if [[ "$ENABLE_RAG" == "1" && "$RAG_EMBEDDING_MODE" == "local" ]]; then
-    dependency_detail="${dependency_detail}; nova-RAG local embedding dependencies"
-  fi
-  summary_line ok "dependency gate" "$([[ "$DRY_RUN" == "1" ]] && print "planned: ${dependency_detail}" || print "verified: ${dependency_detail}")"
 }
 
 run_wizard() {
   if [[ ! -r /dev/tty ]]; then
-    print -r -- "Interactive wizard requires /dev/tty. Use --no-wizard for non-interactive runs." >&2
+    error "Interactive wizard requires a terminal"
     exit 2
   fi
   local default_diary_output=""
@@ -5087,7 +5496,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --no-dashboard)
-      print -r -- "--no-dashboard is no longer supported because Dashboard is required. Use --no-dashboard-server to skip service installation." >&2
+      error "--no-dashboard is no longer supported because Dashboard is required"
       exit 2
       ;;
     --no-dashboard-server)
@@ -5296,7 +5705,7 @@ while [[ $# -gt 0 ]]; do
       exit 0
       ;;
     *)
-      print -r -- "Unknown option: $1" >&2
+      error "Unknown option: $1"
       usage >&2
       exit 2
       ;;
@@ -5308,13 +5717,13 @@ trap 'emit_update_result $?' EXIT
 if [[ "$SOURCE_ONLY" == "1" && "$FORCE_REBUILD" == "1" ]]; then
   UPDATE_RESULT_STAGE="argument-validation"
   UPDATE_REASON="source-only-and-force-rebuild-are-mutually-exclusive"
-  print -r -- "--source-only and --force-rebuild are mutually exclusive" >&2
+  error "--source-only and --force-rebuild are mutually exclusive"
   exit 2
 fi
 if [[ "$FORCE_REBUILD" == "1" && "$UPGRADE" != "1" ]]; then
   UPDATE_RESULT_STAGE="argument-validation"
   UPDATE_REASON="force-rebuild-requires-upgrade"
-  print -r -- "--force-rebuild requires --upgrade" >&2
+  error "--force-rebuild requires --upgrade"
   exit 2
 fi
 if [[ "$OFFLINE" == "1" ]]; then
@@ -5323,7 +5732,7 @@ fi
 
 SOURCE_ROOT="${SOURCE_ROOT:A}"
 if [[ ! -f "${SOURCE_ROOT}/pyproject.toml" ]]; then
-  print -r -- "pyproject.toml not found under source root: ${SOURCE_ROOT}" >&2
+  error "pyproject.toml not found under source root: ${SOURCE_ROOT}"
   exit 2
 fi
 RUNTIME_DEPENDENCY_LOCK="${SOURCE_ROOT}/install/runtime-dependencies.lock.json"
@@ -5357,14 +5766,14 @@ DEPLOY_SOURCE_ROOT="${RUNTIME_HOME}/app/source"
 INSTALLER_LOG_FILE="${RUNTIME_HOME}/state/logs/installer-v2.log"
 LOCATION_FILE="${NOVA_LOCATION_FILE:-$HOME/.config/open-nova/location.json}"
 if [[ "$UPGRADE" == "1" && ! -d "$RUNTIME_HOME" && "$DRY_RUN" != "1" ]]; then
-  print -r -- "--upgrade requires an existing runtime: ${RUNTIME_HOME}" >&2
+  error "--upgrade requires an existing runtime: ${RUNTIME_HOME}"
   exit 2
 fi
 if [[ "$UPGRADE" == "1" ]]; then
   UPDATE_RESULT_STAGE="dependency-profile"
   if ! inherit_upgrade_dependency_profiles; then
     UPDATE_REASON="runtime-dependency-profile-untrusted"
-    print -r -- "Runtime dependency profile could not be read safely; update blocked before service changes" >&2
+    error "Runtime dependency profile could not be read safely; update blocked before service changes"
     emit_update_result 2
     exit 2
   fi
@@ -5392,14 +5801,18 @@ fi
 case "$RAG_EMBEDDING_MODE" in
   local|cloud) ;;
   *)
-    print -r -- "--rag-embedding-mode must be local or cloud" >&2
+    error "--rag-embedding-mode must be local or cloud"
     exit 2
     ;;
 esac
 
 require_fresh_runtime_empty || exit 2
+INSTALLER_LOG_ACTIVE=1
 log "Open Nova installer v2"
 print_installer_data_notice
+if [[ "$WIZARD_CONFIRMED" != "1" || ! -t 1 ]]; then
+  render_console_header
+fi
 log "mode: $([[ "$SOURCE_ONLY" == "1" ]] && print source-only || ([[ "$UPGRADE" == "1" ]] && print upgrade || print install))"
 log "source root: ${SOURCE_ROOT}"
 log "runtime: ${RUNTIME_HOME}"
@@ -5443,6 +5856,7 @@ if [[ "$NO_DASHBOARD_SERVER" == "1" ]]; then
   warn "Static snapshot pages such as AI Assets, other Dashboard pages, and Nova-Task remain available."
 fi
 
+print_phase phase_checking
 run_installer_preflight
 
 if [[ "$UPGRADE" == "1" ]]; then
@@ -5472,9 +5886,12 @@ elif wizard_enabled && [[ "$YES" != "1" && "$WIZARD_CONFIRMED" != "1" ]]; then
 fi
 
 if [[ "$UPGRADE" == "1" ]]; then
+  print_phase phase_installing
   run_guarded_update_transaction
   if [[ "$UPDATE_NOOP" == "1" ]]; then
     log "Open Nova update is a no-op; source payload and dependency contract are already active"
+    COMPLETION_TEXT="$(installer_text update_no_changes)"
+    print_completion
     exit 0
   fi
   UPDATE_RESULT_STAGE="cli-shim"
@@ -5487,33 +5904,34 @@ if [[ "$UPGRADE" == "1" ]]; then
   if [[ "$SOURCE_ONLY" == "1" ]]; then
     if [[ "$DRY_RUN" == "1" ]]; then
       log "source-only dry-run complete; no source pointer, settings, dependencies, LaunchAgents, or RAG manifests were changed"
+      COMPLETION_TEXT="$(installer_text source_update_plan_complete)"
     else
       log "Open Nova runtime source-only sync complete; the prior managed service state was restored"
       log "Settings, dependencies, Keychain references, and user data were not changed; legacy Python LaunchAgents may receive cache-suppression environment metadata"
+      COMPLETION_TEXT="$(installer_text source_update_complete)"
     fi
+    print_completion
     exit 0
   fi
   if [[ "$DRY_RUN" == "1" ]]; then
-    COMPLETION_TEXT="Open Nova installer v2 upgrade dry-run complete."
+    COMPLETION_TEXT="$(installer_text upgrade_plan_complete)"
   else
-    COMPLETION_TEXT="Open Nova installer v2 atomic upgrade complete."
+    COMPLETION_TEXT="$(installer_text upgrade_complete)"
     log "Upgrade preserved Settings, runtime manifest, location pointer, live SQLite state without rewind, service loaded/running state, and configured Dashboard port; legacy Python LaunchAgents were transactionally normalized when required"
     log "Credential rotation, external Skill registration, and background embedding deployment were not performed inside the update transaction"
   fi
-  print_install_summary
-  print -r -- ""
-  print -r -- "${COMPLETION_TEXT}"
-  print -r -- ""
-  print_useful_commands
+  print_completion
   exit 0
 fi
 
+print_phase phase_preparing
 prepare_fresh_dependency_cache "${SOURCE_ROOT}"
 run_cmd mkdir -p "${RUNTIME_HOME}"
 run_cmd mkdir -p "${DIARY_OUTPUT_DIR}" "${REPORTS_OUTPUT_DIR}" "${SNAPSHOTS_OUTPUT_DIR}" "${ARCHIVES_OUTPUT_DIR}"
 create_desktop_diary_link
 stage_runtime_source
 create_fresh_runtime_venv
+print_phase phase_installing
 stable_source_root="${DEPLOY_SOURCE_ROOT}"
 DEPLOY_SOURCE_ROOT="${STAGED_RELEASE_TARGET:-${SOURCE_ROOT}}"
 install_fresh_locked_dependencies "${DEPLOY_SOURCE_ROOT}" "${FRESH_STAGED_VENV:-${VENV_DIR}}"
@@ -5523,6 +5941,7 @@ promote_fresh_runtime_artifacts
 create_cli_shim
 ensure_cli_on_shell_path
 
+print_phase phase_configuring
 log "Applying runtime bootstrap and active runtime pointer"
 export_runtime_environment
 runtime_apply_args=(
@@ -5600,16 +6019,16 @@ fi
 
 if [[ "$DEPLOY_EMBEDDING_SERVER" == "1" && "$PLATFORM" == "Darwin" && "$ENABLE_RAG" == "1" ]]; then
   log "nova-RAG embedding server lifecycle is managed by its LaunchAgent; direct background start skipped"
-  progress_start "nova-RAG LaunchAgent owns the embedding server; direct background start skipped"
-  progress_ok "nova-RAG LaunchAgent owns the embedding server; direct background start skipped"
+  progress_start "$(installer_text step_prepare_memory)"
+  progress_ok "$(installer_text step_prepare_memory)"
 elif [[ "$DEPLOY_EMBEDDING_SERVER" == "1" ]]; then
   JOB_DIR="${RUNTIME_HOME}/state/jobs"
   JOB_SCRIPT="${JOB_DIR}/deploy-embedding-server.sh"
   JOB_LOG="${RUNTIME_HOME}/state/logs/embedding-server-deploy.log"
   log "Queueing background embedding server deployment"
   if [[ "$DRY_RUN" == "1" ]]; then
-    progress_start "Queueing background embedding server deployment"
-    progress_ok "Queueing background embedding server deployment"
+    progress_start "$(installer_text step_prepare_memory)"
+    progress_ok "$(installer_text step_prepare_memory)"
   else
     mkdir -p "${JOB_DIR}" "${RUNTIME_HOME}/state/logs"
     cat > "${JOB_SCRIPT}" <<EOF
@@ -5629,24 +6048,16 @@ EOF
   fi
 fi
 
+print_phase phase_verifying
 run_post_install_doctor
 cleanup_runtime_source_artifacts
 
 if [[ "$DRY_RUN" == "1" ]]; then
-  COMPLETION_TEXT="Open Nova installer v2 dry-run complete."
+  COMPLETION_TEXT="$(installer_text dry_run_complete)"
 elif [[ "$UPGRADE" == "1" ]]; then
-  COMPLETION_TEXT="Open Nova installer v2 upgrade complete."
+  COMPLETION_TEXT="$(installer_text upgrade_complete)"
 else
-  COMPLETION_TEXT="Open Nova installer v2 complete."
+  COMPLETION_TEXT="$(installer_text install_complete)"
 fi
 
-if [[ "$SUMMARY_ONLY" == "1" && -t 1 && -r /dev/tty ]]; then
-  clear_tty_menu
-fi
-
-print_install_summary
-
-print -r -- ""
-print -r -- "${COMPLETION_TEXT}"
-print -r -- ""
-print_useful_commands
+print_completion

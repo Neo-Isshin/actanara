@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .cli_output import render_cli, status_item, status_label
 from .dependency_profiles import dependency_profiles_status
 from .paths import RuntimePaths, default_oneliner_runtime_home, initialize_home, load_paths, persist_runtime_selection
 from .scheduler_preview import preview_system_timer
@@ -3411,38 +3412,19 @@ def format_onboarding_subsystem_plan(payload: dict[str, Any]) -> str:
     summary = payload.get("summary") or {}
     scheduler = payload.get("scheduler") or {}
     required_inputs = payload.get("requiredInputs") or []
-    packaging_plan = payload.get("packagingPlan") or {}
-    lines = [
-        f"Nova onboarding plan: {summary.get('status', 'unknown')}",
-        f"Selected profiles: {', '.join(payload.get('selectedProfiles') or [])}",
-        (
-            "Dependencies: "
-            f"missingRequired={summary.get('missingRequired', 0)} "
-            f"profiles={summary.get('profiles', 0)}"
+    pending_inputs = len([item for item in required_inputs if item.get("required") and item.get("status") == "pending"])
+    return render_cli(
+        "Setup preview",
+        fields=(
+            ("Status", status_label(summary.get("status"))),
+            ("Features", ", ".join(_selected_profile_labels(payload))),
+            ("Setup choices", "Complete" if not pending_inputs else f"{pending_inputs} remaining"),
+            ("Required software", "Ready" if not summary.get("missingRequired") else f"{summary.get('missingRequired')} missing"),
+            ("Automatic runs", "Available" if scheduler.get("supported") else "Not available"),
         ),
-        (
-            "Requirement sets: "
-            f"selected={summary.get('requirementSets', 0)} "
-            f"pendingInput={summary.get('pendingRequirementSets', 0)}"
-        ),
-        (
-            "Packaging: "
-            f"groups={((packaging_plan.get('summary') or {}).get('groups', 0))} "
-            f"pendingProviderDerived={((packaging_plan.get('summary') or {}).get('pendingProviderDerivedGroups', 0))} "
-            f"packageManager={packaging_plan.get('packageManager', 'undecided')}"
-        ),
-        f"Required inputs: {len([item for item in required_inputs if item.get('required')])}",
-        (
-            "Scheduler: "
-            f"{scheduler.get('provider', '-')} "
-            f"selected={scheduler.get('selected', False)} "
-            f"registrationImplemented={scheduler.get('registrationImplemented', False)}"
-        ),
-        "Planned actions:",
-    ]
-    for action in payload.get("actions") or []:
-        lines.append(f"- {action.get('mode', 'plan')}: {action.get('id', '-')}: {action.get('description', '')}")
-    return "\n".join(lines) + "\n"
+        sections=(("What Open Nova will do", [_friendly_setup_action(item.get("id")) for item in payload.get("actions") or []]),),
+        next_steps=("open-nova onboarding runtime-dry-run",),
+    )
 
 
 def dump_onboarding_subsystem_plan_json(payload: dict[str, Any]) -> str:
@@ -3452,35 +3434,17 @@ def dump_onboarding_subsystem_plan_json(payload: dict[str, Any]) -> str:
 def format_onboarding_one_liner_dry_run(payload: dict[str, Any]) -> str:
     summary = payload.get("summary") or {}
     command_draft = payload.get("commandDraft") or {}
-    execution_policy = payload.get("executionPolicy") or {}
-    lines = [
-        f"Nova onboarding runtime dry-run: {summary.get('status', 'unknown')}",
-        f"Selected profiles: {', '.join(payload.get('selectedProfiles') or [])}",
-        f"Command draft: {command_draft.get('display', '-')}",
-        (
-            "Execution: "
-            f"allowed={execution_policy.get('allowed', False)} "
-            f"applyImplemented={payload.get('applyImplemented', False)} "
-            f"installerImplemented={payload.get('installerImplemented', False)}"
+    steps = [_friendly_setup_action(step.get("id")) for step in payload.get("dryRunSteps") or []]
+    return render_cli(
+        "Setup preview",
+        fields=(
+            ("Status", status_label(summary.get("status"))),
+            ("Features", ", ".join(_selected_profile_labels(payload))),
+            ("Steps", len(steps)),
         ),
-        (
-            "Plan: "
-            f"dependencyGroups={summary.get('dependencyGroups', 0)} "
-            f"requirementSets={summary.get('requirementSets', 0)} "
-            f"packagingGroups={summary.get('packagingGroups', 0)} "
-            f"requiredInputs={summary.get('requiredInputs', 0)} "
-            f"dryRunSteps={summary.get('dryRunSteps', 0)}"
-        ),
-        "Dry-run steps:",
-    ]
-    for step in payload.get("dryRunSteps") or []:
-        lines.append(
-            "- "
-            f"{step.get('mode', 'plan')}: {step.get('id', '-')}: "
-            f"executesShell={step.get('executesShell', False)} "
-            f"wouldWrite={step.get('wouldWrite', False)}"
-        )
-    return "\n".join(lines) + "\n"
+        sections=(("What Open Nova will do", steps),),
+        next_steps=((command_draft.get("display"),) if command_draft.get("display") else ()),
+    )
 
 
 def dump_onboarding_one_liner_dry_run_json(payload: dict[str, Any]) -> str:
@@ -3497,46 +3461,34 @@ def format_onboarding_apply_blocked(payload: dict[str, Any]) -> str:
             runtime_policy["writesLaunchdPlist"] = bool(scheduler_policy.get("writesLaunchdPlist"))
             runtime_policy["callsLaunchctl"] = bool(scheduler_policy.get("callsLaunchctl"))
             policy = runtime_policy
-    preflight = payload.get("applyPreflight") or {}
-    message = payload.get("message")
-    if not message and payload.get("sandboxApply"):
-        message = "Open Nova onboarding apply sandbox wrote only to the explicit runtime path."
-    if not message and payload.get("runtimeBootstrapApply"):
-        message = "Open Nova onboarding runtime bootstrap wrote only to the selected runtime path."
-    if not message and payload.get("schedulerSandboxApply"):
-        message = "Open Nova scheduler sandbox wrote managed plists only under the fake scheduler HOME."
-    if not message and payload.get("schedulerPlistApply"):
-        message = "Open Nova scheduler plist apply wrote managed LaunchAgent plists but did not call launchctl."
-    if not message and payload.get("schedulerRegisterApply"):
-        message = "Open Nova scheduler register apply called launchctl for existing managed LaunchAgent plists."
-    if not message and payload.get("schedulerUnregisterApply"):
-        message = "Open Nova scheduler unregister apply called launchctl bootout for managed LaunchAgent plists."
-    if not message and payload.get("oneLinerApply"):
-        if policy.get("registersScheduler") or policy.get("callsLaunchctl"):
-            message = "Open Nova runtime bootstrap applied and registered managed scheduler jobs."
-        else:
-            message = "Open Nova runtime bootstrap applied; scheduler registration was not requested."
-    requires = payload.get("requiresApproval")
-    if not requires and payload.get("exitCode") == 0 and not payload.get("readOnly"):
-        requires = "explicit confirmation accepted"
-    lines = [
-        f"Nova onboarding apply: {payload.get('status', 'apply-not-implemented')}",
-        str(message or "Open Nova onboarding apply is blocked."),
-        f"Requires: {requires or 'future approval'}",
-        (
-            "Preflight: "
-            f"confirmationAccepted={preflight.get('confirmationAccepted', False)} "
-            f"blockingReasons={len(preflight.get('blockingReasons') or [])}"
+    status = payload.get("status", "blocked")
+    changes = [
+        status_item(
+            "ready" if policy.get("writesSettings") else "skipped",
+            "Settings were saved",
+            "Settings were not changed",
         ),
-        (
-            "Side effects: "
-            f"writesSettings={policy.get('writesSettings', False)} "
-            f"registersScheduler={policy.get('registersScheduler', False)} "
-            f"installsDependencies={policy.get('installsDependencies', False)} "
-            f"callsLaunchctl={policy.get('callsLaunchctl', False)}"
+        status_item(
+            "ready" if policy.get("registersScheduler") or policy.get("callsLaunchctl") else "skipped",
+            "Automatic daily runs were enabled",
+            "Automatic daily runs were not changed",
+        ),
+        status_item(
+            "ready" if policy.get("installsDependencies") else "skipped",
+            "Required software was installed",
+            "No software was installed",
         ),
     ]
-    return "\n".join(lines) + "\n"
+    succeeded = int(payload.get("exitCode", 1)) == 0
+    return render_cli(
+        "Setup",
+        fields=(("Status", status_label(status)),),
+        sections=(
+            ("Result", (_friendly_apply_message(payload, policy),)),
+            ("Changes", changes),
+        ),
+        next_steps=(("open-nova doctor",) if succeeded else ("open-nova onboard status",)),
+    )
 
 
 def dump_onboarding_apply_blocked_json(payload: dict[str, Any]) -> str:
@@ -3546,20 +3498,17 @@ def dump_onboarding_apply_blocked_json(payload: dict[str, Any]) -> str:
 def format_onboarding_one_liner_status(payload: dict[str, Any]) -> str:
     summary = payload.get("summary") or {}
     runtime = payload.get("runtime") or {}
-    lines = [
-        f"Nova onboarding runtime status: {payload.get('status', 'unknown')}",
-        f"Runtime: {runtime.get('novaHome', '-')}",
-        (
-            "Artifacts: "
-            f"present={summary.get('present', 0)} "
-            f"hasAudit={summary.get('hasAudit', False)} "
-            f"hasRollbackPlan={summary.get('hasRollbackPlan', False)}"
+    commands = [str(step.get("command")) for step in payload.get("nextSteps") or [] if step.get("command")]
+    return render_cli(
+        "Setup status",
+        fields=(
+            ("Status", status_label(payload.get("status"))),
+            ("Data folder", runtime.get("novaHome", "—")),
+            ("Setup files", f"{summary.get('present', 0)} available"),
+            ("Recovery", "Available" if summary.get("hasRollbackPlan") else "Not available"),
         ),
-        "Next steps:",
-    ]
-    for step in payload.get("nextSteps") or []:
-        lines.append(f"- {step.get('status', '-')}: {step.get('id', '-')}: {step.get('command', '-')}")
-    return "\n".join(lines) + "\n"
+        next_steps=commands,
+    )
 
 
 def dump_onboarding_one_liner_status_json(payload: dict[str, Any]) -> str:
@@ -3568,22 +3517,20 @@ def dump_onboarding_one_liner_status_json(payload: dict[str, Any]) -> str:
 
 def format_onboarding_rollback_plan_status(payload: dict[str, Any]) -> str:
     summary = payload.get("summary") or {}
-    lines = [
-        f"Nova onboarding rollback plan: {payload.get('status', 'unknown')}",
-        (
-            "Plans: "
-            f"available={summary.get('available', 0)} "
-            f"operations={summary.get('operations', 0)} "
-            f"executable={summary.get('executableRollbackImplemented', False)}"
-        ),
-    ]
+    available = []
     for plan in payload.get("plans") or []:
-        lines.append(
-            "- "
-            f"{plan.get('id', '-')}: exists={plan.get('exists', False)} "
-            f"operations={plan.get('operationCount', 0)} path={plan.get('path', '-')}"
-        )
-    return "\n".join(lines) + "\n"
+        if plan.get("exists"):
+            available.append(f"{_friendly_recovery_name(plan.get('id'))}: {plan.get('path', '—')}")
+    return render_cli(
+        "Recovery",
+        fields=(
+            ("Status", status_label(payload.get("status"))),
+            ("Recovery plans", summary.get("available", 0)),
+            ("Available actions", summary.get("operations", 0)),
+        ),
+        sections=(("Recovery files", available),),
+        next_steps=(() if available else ("open-nova onboard status",)),
+    )
 
 
 def dump_onboarding_rollback_plan_status_json(payload: dict[str, Any]) -> str:
@@ -3592,24 +3539,18 @@ def dump_onboarding_rollback_plan_status_json(payload: dict[str, Any]) -> str:
 
 def format_onboarding_release_gate(payload: dict[str, Any]) -> str:
     summary = payload.get("summary") or {}
-    lines = [
-        f"Nova onboarding release gate: {payload.get('status', 'unknown')}",
-        f"Selected profiles: {', '.join(payload.get('selectedProfiles') or [])}",
-        (
-            "Gates: "
-            f"passed={summary.get('passed', 0)} "
-            f"blocked={summary.get('blocked', 0)} "
-            f"failed={summary.get('failed', 0)}"
-        ),
-        "Blocking gates:",
-    ]
     blocking = payload.get("blockingGates") or []
-    if not blocking:
-        lines.append("- none")
-    else:
-        for gate_id in blocking:
-            lines.append(f"- {gate_id}")
-    return "\n".join(lines) + "\n"
+    return render_cli(
+        "Setup readiness",
+        fields=(
+            ("Status", status_label(payload.get("status"))),
+            ("Features", ", ".join(_selected_profile_labels(payload))),
+            ("Checks passed", summary.get("passed", 0)),
+            ("Needs attention", int(summary.get("blocked", 0)) + int(summary.get("failed", 0))),
+        ),
+        sections=(("Before continuing", [_friendly_gate(gate_id) for gate_id in blocking]),),
+        next_steps=(() if not blocking else ("open-nova onboard status",)),
+    )
 
 
 def dump_onboarding_release_gate_json(payload: dict[str, Any]) -> str:
@@ -3618,22 +3559,25 @@ def dump_onboarding_release_gate_json(payload: dict[str, Any]) -> str:
 
 def format_onboarding_one_liner_validation_matrix(payload: dict[str, Any]) -> str:
     summary = payload.get("summary") or {}
-    lines = [
-        f"Nova onboarding runtime validation matrix: {payload.get('status', 'unknown')}",
-        (
-            "Cases: "
-            f"passed={summary.get('passed', 0)} "
-            f"failed={summary.get('failed', 0)}"
-        ),
-    ]
+    cases = []
     for case in payload.get("cases") or []:
-        observed = case.get("observed") or {}
-        lines.append(
-            "- "
-            f"{case.get('status', 'unknown')}: {case.get('id', '-')}: "
-            f"observed={observed.get('status', '-')} exit={observed.get('exitCode', '-')}"
+        cases.append(
+            status_item(
+                case.get("status"),
+                _friendly_validation_case(case.get("id")),
+                f"{_friendly_validation_case(case.get('id'))} needs attention",
+            )
         )
-    return "\n".join(lines) + "\n"
+    return render_cli(
+        "Setup verification",
+        fields=(
+            ("Status", status_label(payload.get("status"))),
+            ("Passed", summary.get("passed", 0)),
+            ("Failed", summary.get("failed", 0)),
+        ),
+        sections=(("Checks", cases),),
+        next_steps=(() if not summary.get("failed") else ("open-nova onboard status",)),
+    )
 
 
 def dump_onboarding_one_liner_validation_matrix_json(payload: dict[str, Any]) -> str:
@@ -3642,23 +3586,113 @@ def dump_onboarding_one_liner_validation_matrix_json(payload: dict[str, Any]) ->
 
 def format_onboarding_approval_packet(payload: dict[str, Any]) -> str:
     summary = payload.get("summary") or {}
-    lines = [
-        f"Nova onboarding approval packet: {payload.get('status', 'unknown')}",
-        f"Selected profiles: {', '.join(payload.get('selectedProfiles') or [])}",
-        (
-            "Approval items: "
-            f"required={summary.get('requiredBeforeImplementation', 0)} "
-            f"blockingGates={summary.get('blockingGates', 0)}"
+    items = [str(item.get("label")) for item in payload.get("operatorApprovalItems") or [] if item.get("label")]
+    return render_cli(
+        "Setup confirmation",
+        fields=(
+            ("Status", status_label(payload.get("status"))),
+            ("Features", ", ".join(_selected_profile_labels(payload))),
+            ("Confirmations", summary.get("requiredBeforeImplementation", len(items))),
+            ("Checks remaining", summary.get("blockingGates", 0)),
         ),
-        "Pending approvals:",
-    ]
-    for item in payload.get("operatorApprovalItems") or []:
-        lines.append(f"- {item.get('id')}: {item.get('label')}")
-    return "\n".join(lines) + "\n"
+        sections=(("Before continuing", items),),
+        next_steps=("open-nova onboarding apply --help",),
+    )
 
 
 def dump_onboarding_approval_packet_json(payload: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+
+
+def _selected_profile_labels(payload: dict[str, Any]) -> list[str]:
+    labels = {
+        "open-nova": "Daily diary",
+        "dashboard": "Dashboard",
+        "nova-rag": "Memory search",
+        "nova-task": "Tasks",
+        "dev-test": "Developer tools",
+    }
+    return [labels.get(str(value), str(value)) for value in payload.get("selectedProfiles") or []]
+
+
+def _friendly_setup_action(value: object) -> str:
+    actions = {
+        "select-output-path": "Choose where Open Nova stores its data",
+        "create-runtime-home": "Prepare the Open Nova data folder",
+        "create-python-venv": "Prepare required components",
+        "install-open-nova-requirements": "Install the software Open Nova needs",
+        "configure-llm-provider": "Choose an AI model and add its API key",
+        "install-dashboard-requirements": "Prepare Dashboard",
+        "start-dashboard": "Start Dashboard when setup is complete",
+        "select-rag-provider": "Choose local or cloud memory search",
+        "derive-rag-requirements": "Prepare memory search",
+        "enable-rag-pipeline-step": "Update memory after each diary",
+        "skip-rag-pipeline-step": "Leave memory search turned off",
+        "enable-nova-task-authority": "Prepare Open Nova tasks",
+        "skip-nova-task-materialization": "Leave Open Nova tasks turned off",
+        "derive-scheduler-provider": "Check whether automatic daily runs are available",
+        "install-dev-test-tools": "Install optional developer tools",
+        "run-onboarding-doctor": "Check that setup finished successfully",
+        "linux-scheduler-registration-blocked": "Leave automatic daily runs off on this system",
+    }
+    return actions.get(str(value or ""), "Prepare the selected Open Nova feature")
+
+
+def _friendly_apply_message(payload: dict[str, Any], policy: dict[str, Any]) -> str:
+    if int(payload.get("exitCode", 1)) != 0:
+        return "Setup was not changed. Review the remaining step and try again."
+    if payload.get("oneLinerApply"):
+        if policy.get("registersScheduler") or policy.get("callsLaunchctl"):
+            return "Open Nova is ready, including automatic daily runs."
+        return "Open Nova is ready. Automatic daily runs were left off."
+    if payload.get("schedulerRegisterApply"):
+        return "Automatic daily runs are enabled."
+    if payload.get("schedulerUnregisterApply"):
+        return "Automatic daily runs are disabled."
+    if payload.get("schedulerPlistApply") or payload.get("schedulerSandboxApply"):
+        return "Automatic daily-run files are ready."
+    if payload.get("sandboxApply"):
+        return "The test setup completed in the selected folder."
+    return "Open Nova is ready in the selected data folder."
+
+
+def _friendly_recovery_name(value: object) -> str:
+    text = str(value or "")
+    if "scheduler" in text:
+        return "Automatic daily runs"
+    if "runtime" in text or "bootstrap" in text:
+        return "Open Nova data folder"
+    return "Open Nova setup"
+
+
+def _friendly_gate(value: object) -> str:
+    text = str(value or "").lower()
+    if "rag" in text:
+        return "Choose how memory search should work"
+    if "scheduler" in text or "launch" in text:
+        return "Finish automatic daily-run setup"
+    if "confirmation" in text or "preflight" in text:
+        return "Provide the exact confirmation phrase"
+    if "dependency" in text or "package" in text:
+        return "Install the required software"
+    if "runtime" in text or "default" in text:
+        return "Choose and prepare the Open Nova data folder"
+    if "clean" in text:
+        return "Remove files that should not be included"
+    return "Finish the remaining setup check"
+
+
+def _friendly_validation_case(value: object) -> str:
+    text = str(value or "").lower()
+    if "scheduler" in text:
+        return "Automatic daily-run setup"
+    if "rag" in text:
+        return "Memory-search setup"
+    if "default" in text or "runtime" in text:
+        return "Open Nova data-folder setup"
+    if "clean" in text:
+        return "Clean installation"
+    return "Setup behavior"
 
 
 def _allowlist_write_plan(selected_profiles: list[str], scheduler_plan: dict[str, Any]) -> dict[str, Any]:

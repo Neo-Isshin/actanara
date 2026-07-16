@@ -1220,7 +1220,8 @@ class InstallerFullUpgradeTests(unittest.TestCase):
     ) -> None:
         output = result.stdout + result.stderr
         self.assertNotEqual(result.returncode, 0, output)
-        self.assertNotIn("atomic upgrade complete", output)
+        self.assertNotIn("Open Nova 已更新完成", output)
+        self.assertNotIn("Open Nova is up to date", output)
         journals = self._journal_paths(fixture)
         self.assertEqual(len(journals), 1, journals)
         journal_path = journals[0]
@@ -1445,8 +1446,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                     "doctor",
                 )
                 output = result.stdout + result.stderr
-                self.assertIn("Candidate installer doctor", output)
-                self.assertIn("failed", output)
+                self.assertIn("这个步骤未能完成", output)
                 self._assert_failure_then_recovery(
                     fixture,
                     result,
@@ -1542,7 +1542,8 @@ class InstallerFullUpgradeTests(unittest.TestCase):
 
             output = result.stdout + result.stderr
             self.assertNotEqual(result.returncode, 0, output)
-            self.assertNotIn("atomic upgrade complete", output)
+            self.assertNotIn("Open Nova 已更新完成", output)
+            self.assertNotIn("Open Nova is up to date", output)
             journals = self._journal_paths(fixture)
             self.assertEqual(len(journals), 1, journals)
             state = json.loads(journals[0].read_text(encoding="utf-8"))

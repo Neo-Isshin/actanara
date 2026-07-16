@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .cli_output import render_cli, status_item, status_label
 from .dependency_profiles import dependency_profiles_status
 from .onboarding_plan import (
     default_onboarding_profiles,
@@ -19,6 +20,9 @@ from .onboarding_plan import (
 from .paths import RuntimePaths, load_paths
 from .scheduler_preview import preview_system_timer
 from .settings_status import nova_settings_status
+
+
+_MODEL_KEY_STEP = "open-nova model key --value-stdin"
 
 
 def nova_onboarding_status(paths: RuntimePaths | None = None, selected_profiles: list[str] | None = None) -> dict[str, Any]:
@@ -73,53 +77,64 @@ def format_nova_onboarding_status(payload: dict[str, Any]) -> str:
     runtime = payload.get("runtime") or {}
     general = payload.get("general") or {}
     readiness = payload.get("readiness") or {}
-    dependencies = payload.get("dependencyProfiles") or {}
-    dependency_groups = payload.get("dependencyGroups") or []
-    requirement_sets = payload.get("requirementSets") or []
-    packaging_plan = payload.get("packagingPlan") or {}
     scheduler = payload.get("scheduler") or {}
-    resource_profile = payload.get("resourceProfile") or {}
     rag = payload.get("rag") or {}
-    lines = [
-        f"Nova onboarding status: {readiness.get('status', 'unknown')}",
-        f"Runtime: {runtime.get('novaHome', '-')}",
-        f"Settings: {runtime.get('settingsPath', '-')}",
-        f"General: {general.get('appName', '-')} / {general.get('environment', '-')} / {general.get('timezone', '-')}",
-        (
-            "Dependencies: "
-            f"profiles={((dependencies.get('summary') or {}).get('profiles', '-'))} "
-            f"missingRequired={((dependencies.get('summary') or {}).get('missingRequired', '-'))}"
-        ),
-        f"Dependency groups: {len([item for item in dependency_groups if item.get('selected')])}",
-        f"Requirement sets: {len([item for item in requirement_sets if item.get('selected')])}",
-        (
-            "Packaging: "
-            f"groups={((packaging_plan.get('summary') or {}).get('groups', 0))} "
-            f"pendingProviderDerived={((packaging_plan.get('summary') or {}).get('pendingProviderDerivedGroups', 0))} "
-            f"packageManager={packaging_plan.get('packageManager', 'undecided')}"
-        ),
-        (
-            "Resources: "
-            f"dashboard={((resource_profile.get('dashboard') or {}).get('expectedResidentProcesses', '-'))} "
-            f"rag={((resource_profile.get('rag') or {}).get('expectedResidentProcesses', '-'))}"
-        ),
-        (
-            "RAG: "
-            f"enabled={rag.get('enabled', '-')} "
-            f"mode={rag.get('mode', '-')} "
-            f"server={rag.get('serverEnabled', '-')}"
-        ),
-        (
-            "Scheduler: "
-            f"{scheduler.get('provider', '-')} "
-            f"supported={scheduler.get('supported', '-')} "
-            f"registered={scheduler.get('registered', '-')}"
-        ),
-        "Readiness checks:",
+    selected = [_profile_label(value) for value in payload.get("selectedDependencyProfiles") or []]
+    pending = [
+        item
+        for item in payload.get("requiredInputs") or []
+        if item.get("required") and item.get("status") == "pending"
     ]
-    for check in readiness.get("checks") or []:
-        lines.append(f"- {check.get('status', 'unknown')}: {check.get('id', '-')}: {check.get('message', '')}")
-    return "\n".join(lines) + "\n"
+    return render_cli(
+        "Setup status",
+        fields=(
+            ("Status", status_label(readiness.get("status"))),
+            ("Data folder", runtime.get("novaHome", "—")),
+            ("Features", ", ".join(selected) or "Open Nova"),
+            ("Timezone", general.get("timezone", "—")),
+            ("Memory search", "Included" if rag.get("enabled") else "Off"),
+            ("Automatic runs", "Enabled" if scheduler.get("registered") else "Not enabled"),
+        ),
+        sections=(("Checks", [_friendly_onboarding_check(check) for check in readiness.get("checks") or []]),),
+        next_steps=[_pending_input_step(item.get("id")) for item in pending],
+    )
+
+
+def _profile_label(value: object) -> str:
+    return {
+        "open-nova": "Daily diary",
+        "dashboard": "Dashboard",
+        "nova-rag": "Memory search",
+        "nova-task": "Tasks",
+        "dev-test": "Developer tools",
+    }.get(str(value or ""), str(value or "Open Nova"))
+
+
+def _friendly_onboarding_check(check: dict[str, Any]) -> str:
+    check_id = str(check.get("id") or "")
+    status = check.get("status", "unknown")
+    labels = {
+        "runtime-home": ("Data folder is ready", "Choose a data folder"),
+        "settings-file": ("Settings are ready", "Settings need setup"),
+        "dependencies": ("Required software is ready", "Some required software is missing"),
+        "dashboard-resource-profile": ("Dashboard is ready", "Dashboard needs attention"),
+        "rag-product-state": ("Memory search choice is ready", "Memory search needs a choice"),
+        "scheduler-preview": ("Automatic daily runs are available", "Automatic daily runs are unavailable"),
+        "selected-profiles": ("Selected features are ready", "Choose at least one feature"),
+        "required-inputs": ("Required choices are complete", "Some required choices are missing"),
+    }
+    ready, attention = labels.get(check_id, ("Setup check passed", "Setup check needs attention"))
+    return status_item(status, ready, attention)
+
+
+def _pending_input_step(value: object) -> str:
+    return {
+        "output-path": "Choose where Open Nova stores its data",
+        "llm-provider": "open-nova model set --help",
+        "llm-api-key": _MODEL_KEY_STEP,
+        "rag-provider": "Choose local or cloud memory search in Dashboard settings",
+        "rag-embedding-model": "Choose a model for memory search in Dashboard settings",
+    }.get(str(value or ""), "Finish the remaining setup choice")
 
 
 def dump_nova_onboarding_status_json(payload: dict[str, Any]) -> str:
