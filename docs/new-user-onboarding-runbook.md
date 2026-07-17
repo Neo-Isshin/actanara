@@ -18,23 +18,21 @@ the active virtual environment, Settings, SQLite data, logs, generated assets,
 and rollback state below that Runtime. The installer records the active Runtime
 in `~/.config/open-nova/location.json`.
 
-## Stable one-line install
+## One-line install or refresh
 
-Run the version-independent stable-channel installer:
+Run the public installer:
 
 ```bash
-curl -fsSL https://github.com/Neo-Isshin/open-nova/releases/latest/download/install.sh | zsh
+curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/open-nova/main/install/bootstrap.sh | zsh
 ```
 
-GitHub resolves `install.sh` from the latest stable Release. The launcher
-rejects draft, prerelease, or explicitly WITHDRAWN releases, peels the selected
-tag to a full commit, clones that exact commit into a detached source cache,
-and invokes the installer. It never tracks `main`, `HEAD`, or a symbolic remote
-ref.
+GitHub serves the maintained bootstrap from `main`. The launcher resolves the
+official `origin/main` to a full commit, checks out that exact commit in a
+detached source cache, and invokes the installer.
 
-The hosted bootstrap is fresh-install-only. It fails before cloning when it
-detects an existing Open Nova Runtime or managed service. Use `open-nova update`
-for an existing installation.
+The hosted bootstrap supports both new and existing Runtimes. It updates a
+current installation in place, or asks before rebuilding managed code and
+dependencies for an older layout. User Settings and data remain in place.
 
 ## Install from a checkout
 

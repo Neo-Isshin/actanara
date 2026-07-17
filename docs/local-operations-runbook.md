@@ -20,11 +20,11 @@ In this guide, an **agent runtime** means an AI tool environment with its own se
 
 - GitHub is the only public release and installation source. Private development archives are not part of the public installation path.
 - Published tags, Releases, and artifacts remain immutable.
-- The fresh-install command selects only GitHub's latest stable Release, whose tag is resolved to an exact full source commit.
+- The public one-liner fetches the bootstrap from `main`, then resolves official `origin/main` to an exact full source commit.
 - `v1.0.0` has been withdrawn and remains available for audit only. It should not be installed or recommended.
 
 > [!IMPORTANT]
-> Each stable Release carries the exact Runtime dependency lock for supported Python ABIs and macOS architectures. The installer never resolves application source from `main`, `HEAD`, or a symbolic branch.
+> The selected source commit carries the exact Runtime dependency lock for supported Python ABIs and macOS architectures. Each installation transaction is pinned to that resolved commit.
 
 ## 3. Pre-install Checks
 
@@ -48,26 +48,26 @@ python3 --version 2>/dev/null || true
 
 The installer detects supported agent-runtime paths and asks the operator which tools to connect during the guided setup.
 
-## 4. Fresh Installation of the Latest Stable Release
+## 4. Install or Refresh from the Latest Main Commit
 
-Use the public stable-channel one-liner:
+Use the public one-liner:
 
 ```bash
-curl -fsSL https://github.com/Neo-Isshin/open-nova/releases/latest/download/install.sh | zsh
+curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/open-nova/main/install/bootstrap.sh | zsh
 ```
 
-The command keeps source selection safe while hiding release plumbing from the user:
+The command keeps source selection exact while hiding source plumbing from the user:
 
-1. GitHub resolves `install.sh` from the latest stable Release;
-2. The launcher rejects draft, prerelease, and explicitly `WITHDRAWN` releases;
-3. It peels the selected tag to a full commit;
-4. It installs that detached commit and never follows `main`, `HEAD`, or a symbolic branch.
+1. GitHub serves the maintained bootstrap from `main`;
+2. The bootstrap fetches the official repository;
+3. It resolves official `origin/main` to a full commit;
+4. It installs that detached commit.
 
 > [!NOTE]
-> Every stable Release publishes the same asset name, so this command advances only when a new stable Release is formally published.
+> The entrypoint follows `main`, but each run records and installs one exact commit rather than a moving symbolic ref.
 
 > [!WARNING]
-> This command is for a fresh installation only. If the bootstrap detects an existing Open Nova runtime, an active runtime pointer, or a managed LaunchAgent, it stops before writing to the installation source cache. For an existing installation, run `open-nova update` or `open-nova update --dry-run` to review the plan, then use `open-nova update --apply` to perform the update.
+> The same command supports new and existing Runtimes. Current installations are updated in place. Older layouts require confirmation before managed code and dependencies are rebuilt; user Settings, databases, secrets, logs, and generated assets remain in place.
 
 The installation wizard covers, in order:
 
@@ -297,8 +297,8 @@ open-nova update --apply
 - `--dry-run` runs a bootstrap and installer preview and reports whether the active venv can be reused or a locked candidate rebuild is required; a cold remote source cache can still limit the preview to source acquisition;
 - Only `--apply` performs the real update transaction.
 
-The stable-channel installer and updater use the same dependency contract and
-exact Runtime lock. Unreleased `main` code is never selected by this channel.
+The one-liner installer and updater use the same dependency contract and exact
+Runtime lock from the selected `main` commit.
 
 The default apply mode reuses the active venv only when its immutable dependency
 marker, environment identity, selected profiles, exact Runtime lock, and live

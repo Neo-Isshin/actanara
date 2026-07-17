@@ -141,7 +141,7 @@ test("release page copy CTA writes the exact visible hosted install command", as
   await expect(page.getByRole("status")).toHaveText("安装命令已复制。");
   expect(await page.evaluate(() => window.__openNovaCopiedText)).toBe(command);
   expect(command).toBe(
-    "curl -fsSL https://github.com/Neo-Isshin/open-nova/releases/latest/download/install.sh | zsh",
+    "curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/open-nova/main/install/bootstrap.sh | zsh",
   );
 });
 

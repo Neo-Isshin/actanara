@@ -777,7 +777,7 @@ exit 1
         self.assertGreater(wizard.index("wizard_core_dependency_gate"), wizard.index('if [[ "$LANGUAGE_SET" != "1" ]]'))
         self.assertGreater(wizard.index("wizard_rag_dependency_gate"), wizard.index("prompt_rag_local_model"))
 
-    def test_installation_guide_documents_current_stable_workflow(self):
+    def test_installation_guide_documents_current_workflow(self):
         runbook = (ROOT / "docs" / "new-user-onboarding-runbook.md").read_text(encoding="utf-8")
 
         for token in (
@@ -788,7 +788,7 @@ exit 1
             "~/.open-nova/bin/open-nova",
             "--upgrade",
             "https://github.com/Neo-Isshin/open-nova",
-            "https://github.com/Neo-Isshin/open-nova/releases/latest/download/install.sh",
+            "https://raw.githubusercontent.com/Neo-Isshin/open-nova/main/install/bootstrap.sh",
         ):
             with self.subTest(token=token):
                 self.assertIn(token, runbook)

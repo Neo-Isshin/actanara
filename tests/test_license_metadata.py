@@ -50,10 +50,14 @@ class LicenseMetadataTests(unittest.TestCase):
                 self.assertIn("GPL-3.0-or-later", content)
                 self.assertIn("](LICENSE)", content)
 
-    def test_public_entrypoints_use_the_version_independent_stable_channel(self):
-        stable_install_command = (
-            "curl -fsSL https://github.com/Neo-Isshin/open-nova/"
-            "releases/latest/download/install.sh | zsh"
+    def test_public_entrypoints_use_the_main_bootstrap_channel(self):
+        install_command = (
+            "curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/open-nova/"
+            "main/install/bootstrap.sh | zsh"
+        )
+        obsolete_release_command = (
+            "https://github.com/Neo-Isshin/open-nova/"
+            "releases/latest/download/install.sh"
         )
         for name in (
             "README.md",
@@ -65,7 +69,8 @@ class LicenseMetadataTests(unittest.TestCase):
         ):
             with self.subTest(name=name):
                 content = (ROOT / name).read_text(encoding="utf-8")
-                self.assertIn(stable_install_command, content)
+                self.assertIn(install_command, content)
+                self.assertNotIn(obsolete_release_command, content)
                 self.assertNotIn("raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.1", content)
                 self.assertNotIn("git" + "ea", content.lower())
 

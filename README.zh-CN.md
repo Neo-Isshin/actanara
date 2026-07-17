@@ -46,13 +46,13 @@
 | **本地事实来源** | Session、用量、生成资产、任务证据和索引保留在用户掌控的本地存储中，集成边界清晰可见。 |
 
 <a id="install-open-nova"></a>
-## 安装最新稳定版
+## 安装或刷新 Open Nova
 
 ```bash
-curl -fsSL https://github.com/Neo-Isshin/open-nova/releases/latest/download/install.sh | zsh
+curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/open-nova/main/install/bootstrap.sh | zsh
 ```
 
-稳定版安装器面向本地 macOS 环境，无需 `sudo`，并且只安装不可变的 GitHub Release，不会跟随 `main`。第一次了解 Open Nova？可以先体验[在线 Dashboard Demo](https://neo-isshin.github.io/open-nova/dashboard-demo/)，再决定是否安装。
+one-liner 面向本地 macOS 环境，无需 `sudo`，每次安装都会固定到当前官方 `main` 的精确 commit。它既可创建新 Runtime，也可在不丢失用户数据的前提下刷新旧 Runtime。第一次了解 Open Nova？可以先体验[在线 Dashboard Demo](https://neo-isshin.github.io/open-nova/dashboard-demo/)，再决定是否安装。
 
 Open Nova 是一个结构化、本地优先的 AI 资产运维系统。LLM 参与总结、任务提取、学习资产生成和知识组织；数据采集、解析、归因、调度、持久化和安全边界则由确定性组件控制。
 
@@ -127,7 +127,7 @@ Open Nova 的托管安装优先面向本地 macOS 用户环境：
 - 🛠️ **基础工具**：安装前需确认 `zsh`、`git` 和 `curl` 可用，无需 `sudo`。
 - 🐍 **Python**：运行需要 Python `>=3.11`。受支持的 Apple Silicon 与 Intel Mac 如果缺少兼容 Python，安装器会自动下载并校验托管 Python。
 - 🌐 **网络和磁盘**：安装期间需要访问 GitHub、Python 包索引及你选择的模型服务。启用本地 `nova-RAG` 时，首次运行可能下载 `torch`、`sentence-transformers` 和模型权重。
-- 🐧 **Linux 与 Windows**：不是稳定通道一行安装和托管服务的一等支持目标；高级用户可从源码手动运行部分组件。
+- 🐧 **Linux 与 Windows**：不是一行安装和托管服务的一等支持目标；高级用户可从源码手动运行部分组件。
 
 ### 当前支持的 Agent Runtime
 
@@ -147,19 +147,19 @@ Open Nova 的托管安装优先面向本地 macOS 用户环境：
 > [!TIP]
 > **一行部署，然后静等繁荣。**
 
-### 1. 安装最新稳定版
+### 1. 安装或刷新 Open Nova
 
-下面这条简短 one-liner 会安装 GitHub 上最新的稳定 Release，绝不追踪 `main`、`HEAD`、draft 或 prerelease：
+下面这条 one-liner 会获取持续维护的 bootstrap，并安装 `main` 上最新的 Open Nova：
 
 ```bash
-curl -fsSL https://github.com/Neo-Isshin/open-nova/releases/latest/download/install.sh | zsh
+curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/open-nova/main/install/bootstrap.sh | zsh
 ```
 
 > [!NOTE]
-> GitHub 会将这个 URL 解析到最新稳定 Release 附带的 `install.sh` asset。launcher 会拒绝 draft、prerelease 或明确标记为 `WITHDRAWN` 的 Release，将选中的 tag peel 为完整 commit，再安装该 detached commit，永远不会跟随 `main`。
+> bootstrap 会把当前官方 `origin/main` 解析为完整 commit，再安装该 detached commit。one-liner 始终从当前公开入口启动，但实际安装的源码仍固定到精确 commit。
 
 > [!IMPORTANT]
-> 这条命令仅用于全新安装。如果 bootstrap 发现已有 Open Nova Runtime、活动 Runtime 指针或托管 LaunchAgent，会在写入源码缓存前安全终止。已有安装应先运行 `open-nova update` 或 `open-nova update --dry-run` 检查计划，再用 `open-nova update --apply` 执行更新。
+> 同一条命令既可全新安装，也可处理已有 Runtime。当前版本会直接原位更新；旧布局会先询问，再重建托管源码与依赖，同时保留 Settings、数据库、密钥、日志和生成资产。
 
 <details>
 <summary><strong>历史版本说明：v1.0.0 已撤回</strong></summary>
@@ -370,7 +370,7 @@ open-nova update --apply
 - `--apply` 才会执行实际的受保护更新事务。
 - 依赖 fingerprint 一致时会复用 active venv，且不运行 pip；否则从精确、带 hash 的 Runtime lock 构建独立 candidate venv。运维可用 `--source-only` 强制只复用、用 `--force-rebuild` 强制重建，或用 `--offline` 禁止源码与依赖网络访问。离线选择源码时必须同时提供 `--source-root PATH`，或提供已存在于 installer source cache 中的完整 `--ref`。
 
-> 只有上述工作流被纳入正式发布的稳定 Release 后，稳定通道 one-liner 才会安装它；该入口绝不安装尚未发布的 `main` 代码。
+> one-liner 与 updater 会在执行时解析官方 `main` 的最新 commit，再将安装事务固定到该精确 commit。
 
 Open Nova 当前尚未提供产品级一键卸载器。请不要仅删除 `~/.open-nova`；这会遗留 LaunchAgent、CLI shim、Runtime 指针、Shell `PATH` 区块、桌面链接和安装缓存。
 

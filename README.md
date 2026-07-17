@@ -46,13 +46,13 @@
 | **A local source of truth** | Sessions, usage, generated assets, task evidence, and indexes remain in user-controlled local storage with explicit integration boundaries. |
 
 <a id="install-open-nova"></a>
-## Install the latest stable release
+## Install or refresh Open Nova
 
 ```bash
-curl -fsSL https://github.com/Neo-Isshin/open-nova/releases/latest/download/install.sh | zsh
+curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/open-nova/main/install/bootstrap.sh | zsh
 ```
 
-The stable installer targets local macOS environments, requires no `sudo`, and installs an immutable GitHub Release rather than following `main`. New here? You can explore the [interactive Dashboard demo](https://neo-isshin.github.io/open-nova/dashboard-demo/) before installing.
+The one-liner targets local macOS environments, requires no `sudo`, and pins each installation to the current official `main` commit. It can install a new Runtime or refresh an existing one without discarding user data. New here? You can explore the [interactive Dashboard demo](https://neo-isshin.github.io/open-nova/dashboard-demo/) before installing.
 
 Open Nova is a structured, local-first AI asset operations system. LLMs participate in summarization, task extraction, learning-asset generation, and knowledge organization, while deterministic components control data collection, parsing, attribution, scheduling, persistence, and security boundaries.
 
@@ -127,7 +127,7 @@ The hosted Open Nova installation path is designed first for local macOS user en
 - 🛠️ **Base tools:** Verify that `zsh`, `git`, and `curl` are available before installation. `sudo` is not required.
 - 🐍 **Python:** Python `>=3.11` is required. On supported Apple Silicon and Intel Macs, the installer downloads and verifies a managed Python when no compatible version is available.
 - 🌐 **Network and storage:** Installation needs access to GitHub, the Python package index, and your selected model services. The first local `nova-RAG` run may download `torch`, `sentence-transformers`, and model weights.
-- 🐧 **Linux and Windows:** They are not first-class targets for the stable-channel one-liner or managed services. Advanced users can run some components manually from source.
+- 🐧 **Linux and Windows:** They are not first-class targets for the one-liner or managed services. Advanced users can run some components manually from source.
 
 ### Currently Supported Agent Runtimes
 
@@ -147,19 +147,19 @@ The available data depends on whether compatible logs, sessions, or usage record
 > [!TIP]
 > **Deploy with one command, then let prosperity follow.**
 
-### 1. Install the Latest Stable Release
+### 1. Install or Refresh Open Nova
 
-This short one-liner installs the latest stable GitHub Release. It never tracks `main`, `HEAD`, a draft, or a prerelease:
+This one-liner fetches the maintained bootstrap and installs the latest Open Nova code from `main`:
 
 ```bash
-curl -fsSL https://github.com/Neo-Isshin/open-nova/releases/latest/download/install.sh | zsh
+curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/open-nova/main/install/bootstrap.sh | zsh
 ```
 
 > [!NOTE]
-> GitHub resolves this URL to the `install.sh` asset attached to the latest stable Release. The launcher rejects draft, prerelease, or explicitly `WITHDRAWN` releases, peels the selected tag to a full commit, and installs that detached commit without ever following `main`.
+> The bootstrap resolves the current official `origin/main` to a full commit and installs that detached commit. The selected source is exact even though the one-liner always starts from the current public entrypoint.
 
 > [!IMPORTANT]
-> This command is for a fresh installation only. If the bootstrap detects an existing Open Nova runtime, an active runtime pointer, or a managed LaunchAgent, it stops safely before writing to the source cache. For an existing installation, run `open-nova update` or `open-nova update --dry-run` to review the plan, then use `open-nova update --apply` to perform the update.
+> You can use the same command for a new installation or an existing Runtime. Current installations are updated in place. Older layouts ask before rebuilding managed code and dependencies while preserving Settings, databases, secrets, logs, and generated assets.
 
 <details>
 <summary><strong>Historical release notice: v1.0.0 was withdrawn</strong></summary>
@@ -368,7 +368,7 @@ open-nova update --apply
 - Only `--apply` executes the protected update transaction.
 - Matching dependency fingerprints reuse the active venv with zero pip work; otherwise Open Nova builds a separate candidate venv from its exact hash-verified Runtime lock. Operators can require `--source-only`, require `--force-rebuild`, or prohibit source/dependency network access with `--offline`. Offline source selection requires either `--source-root PATH` or a full `--ref` already present in the installer source cache.
 
-> The stable-channel one-liner installs this workflow only after it is included in a published stable Release; it never installs unreleased `main` code.
+> The one-liner and updater resolve the latest official `main` commit at execution time, then pin the installation transaction to that exact commit.
 
 Open Nova does not yet include a product-level one-command uninstaller. Do not remove only `~/.open-nova`; doing so leaves LaunchAgents, the CLI shim, runtime pointer, shell `PATH` block, desktop shortcut, and installation cache behind.
 
