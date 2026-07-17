@@ -401,16 +401,6 @@ class RuntimeDependencyProfileTests(unittest.TestCase):
                 },
             ),
             (
-                "conflicting-enabled-flags",
-                {
-                    "features": {"rag": True},
-                    "rag": {
-                        "enabled": False,
-                        "embedding": {"provider": "local"},
-                    },
-                },
-            ),
-            (
                 "non-boolean-enabled-flag",
                 {
                     "features": {"rag": 1},
@@ -440,6 +430,73 @@ class RuntimeDependencyProfileTests(unittest.TestCase):
                         runtime,
                         allow_untrusted_active_venv=True,
                         allow_legacy_settings=True,
+                    )
+
+    def test_repair_reconciles_pre_github_feature_flag_to_explicit_rag_setting(self):
+        cases = (
+            (
+                "explicitly-disabled",
+                {
+                    "features": {"rag": True, "custom": True},
+                    "rag": {
+                        "enabled": False,
+                        "embedding": {"provider": "local"},
+                    },
+                    "userSection": {"answer": 42},
+                },
+                ["dashboard"],
+                {"enabled": False, "embeddingMode": None},
+            ),
+            (
+                "explicitly-enabled",
+                {
+                    "features": {"rag": False, "custom": True},
+                    "rag": {
+                        "enabled": True,
+                        "embedding": {"provider": "cohere", "model": "user-model"},
+                    },
+                    "userSection": {"answer": 42},
+                },
+                ["dashboard", "rag-server"],
+                {"enabled": True, "embeddingMode": "cloud"},
+            ),
+        )
+        for label, settings_payload, expected_profiles, expected_rag in cases:
+            with self.subTest(case=label), tempfile.TemporaryDirectory(
+                dir=SECURE_TEMP_PARENT
+            ) as temporary:
+                runtime, settings_path = self._write_settings(
+                    Path(temporary), settings_payload
+                )
+
+                with self.assertRaises(contract.ContractError):
+                    contract.runtime_dependency_profiles(runtime)
+
+                profile = contract.runtime_dependency_profiles(
+                    runtime,
+                    allow_untrusted_active_venv=True,
+                    allow_legacy_settings=True,
+                )
+                result = contract.migrate_legacy_runtime_settings(runtime)
+                migrated = json.loads(settings_path.read_text(encoding="utf-8"))
+
+                self.assertEqual(profile["profiles"], expected_profiles)
+                self.assertEqual(profile["rag"], expected_rag)
+                self.assertTrue(result["settingsMigrated"])
+                self.assertIs(
+                    migrated["features"]["rag"],
+                    settings_payload["rag"]["enabled"],
+                )
+                self.assertIs(migrated["rag"]["enabled"], expected_rag["enabled"])
+                self.assertTrue(migrated["features"]["custom"])
+                self.assertEqual(migrated["userSection"], {"answer": 42})
+                if expected_rag["enabled"]:
+                    self.assertEqual(migrated["rag"]["embedding"]["mode"], "cloud")
+                    self.assertEqual(
+                        migrated["rag"]["embedding"]["providerId"], "cohere"
+                    )
+                    self.assertEqual(
+                        migrated["rag"]["embedding"]["model"], "user-model"
                     )
 
     def test_repair_migrates_only_pre_github_embedding_mode(self):

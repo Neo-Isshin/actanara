@@ -5162,6 +5162,22 @@ def resolve_desired(values, fallback):
     return fallback
 
 
+def resolve_preferred(values, fallback):
+    for value in values:
+        if type(value) is bool:
+            return value
+    return fallback
+
+
+rag_product_enabled = resolve_preferred(
+    [
+        explicit_bool(rag, "enabled"),
+        explicit_bool(features, "rag"),
+    ],
+    loaded["rag"],
+)
+
+
 desired = {
     "scheduler": resolve_desired(
         [explicit_bool(schedule, "enabled")],
@@ -5174,13 +5190,11 @@ desired = {
         ],
         loaded["dashboard"],
     ),
-    "rag": resolve_desired(
+    "rag": resolve_preferred(
         [
-            explicit_bool(features, "rag"),
-            explicit_bool(rag, "enabled"),
             explicit_bool(rag_server, "enabled"),
         ],
-        loaded["rag"],
+        rag_product_enabled,
     ),
 }
 print("\t".join("1" if desired[key] else "0" for key in ("scheduler", "dashboard", "rag")))

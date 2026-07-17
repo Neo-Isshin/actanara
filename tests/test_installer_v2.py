@@ -3273,6 +3273,92 @@ exit 1
                     [("before-full-upgrade",)],
                 )
 
+    def test_repair_existing_reconciles_conflicting_legacy_rag_flags(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            harness, fixture, prior = self._legacy_repair_fixture(Path(tmp))
+            settings = prior["settings"]
+            payload = json.loads(settings.read_text(encoding="utf-8"))
+            payload["features"]["rag"] = False
+            payload["rag"]["enabled"] = True
+            payload["rag"]["embedding"] = {
+                "provider": "cohere",
+                "model": "user-model",
+            }
+            settings.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
+            fixture["protected_hashes"][settings] = hashlib.sha256(
+                settings.read_bytes()
+            ).hexdigest()
+            fixture["protected_bytes"][settings] = settings.read_bytes()
+
+            result = harness._run_update(fixture)
+
+            output = result.stdout + result.stderr
+            self.assertEqual(result.returncode, 0, output)
+            migrated = json.loads(settings.read_text(encoding="utf-8"))
+            self.assertIs(migrated["features"]["rag"], True)
+            self.assertIs(migrated["rag"]["enabled"], True)
+            self.assertEqual(migrated["rag"]["embedding"]["mode"], "cloud")
+            self.assertEqual(migrated["rag"]["embedding"]["providerId"], "cohere")
+            self.assertEqual(migrated["rag"]["embedding"]["model"], "user-model")
+            self.assertEqual(prior["database"].read_bytes(), prior["database_bytes"])
+            self.assertEqual(
+                prior["user_sentinel"].read_bytes(), prior["user_sentinel_bytes"]
+            )
+
+    def test_repair_service_intent_prefers_explicit_rag_fields(self):
+        script = INSTALLER.read_text(encoding="utf-8")
+        function = script.split("inherit_repair_service_state() {", 1)[1].split(
+            "\n}\n\nrecord_services_stopped_result()", 1
+        )[0]
+        resolver = function.split("<<'PY'\n", 1)[1].split("\nPY\n", 1)[0]
+        cases = (
+            ({"features": {"rag": True}, "rag": {"enabled": False}}, False),
+            ({"features": {"rag": False}, "rag": {"enabled": True}}, True),
+            (
+                {
+                    "features": {"rag": False},
+                    "rag": {"enabled": True, "server": {"enabled": False}},
+                },
+                False,
+            ),
+        )
+        for settings_payload, expected in cases:
+            with self.subTest(settings=settings_payload), tempfile.TemporaryDirectory() as tmp:
+                runtime = Path(tmp) / "runtime"
+                settings = runtime / "config" / "settings.json"
+                settings.parent.mkdir(parents=True)
+                settings.write_text(
+                    json.dumps(settings_payload, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+                journal = Path(tmp) / "journal.json"
+                journal.write_text(
+                    json.dumps(
+                        {
+                            "mode": "repair",
+                            "status": "committed",
+                            "runtime": str(runtime),
+                            "services": [],
+                        },
+                        sort_keys=True,
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+
+                result = subprocess.run(
+                    [sys.executable, "-", str(journal)],
+                    input=resolver,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+
+                self.assertEqual(result.returncode, 0, result.stderr)
+                fields = result.stdout.strip().split("\t")
+                self.assertEqual(len(fields), 3)
+                self.assertEqual(fields[2], "1" if expected else "0")
+
     def test_repair_existing_failure_restores_legacy_components_and_user_state(self):
         with tempfile.TemporaryDirectory() as tmp:
             harness, fixture, prior = self._legacy_repair_fixture(Path(tmp))

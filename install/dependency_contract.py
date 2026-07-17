@@ -331,17 +331,16 @@ def runtime_dependency_profiles(
                 "settings-profile-untrusted",
                 "Runtime Settings contain an ambiguous RAG dependency profile",
             )
-        known_flags = [
-            value
-            for value in (feature_enabled, rag_enabled_value)
-            if type(value) is bool
-        ]
-        if len(set(known_flags)) > 1:
-            raise _error(
-                "settings-profile-untrusted",
-                "Runtime Settings contain conflicting RAG dependency profile flags",
-            )
-        rag_enabled = known_flags[0] if known_flags else False
+        # Pre-GitHub Settings may contain a stale top-level feature mirror.
+        # The Runtime itself treats rag.enabled as the explicit value and uses
+        # features.rag only as its default, so repair must preserve that same
+        # precedence before synchronizing the mirror during migration.
+        if type(rag_enabled_value) is bool:
+            rag_enabled = rag_enabled_value
+        elif type(feature_enabled) is bool:
+            rag_enabled = feature_enabled
+        else:
+            rag_enabled = False
     else:
         if type(feature_enabled) is not bool or type(rag_enabled_value) is not bool:
             raise _error(
@@ -349,7 +348,11 @@ def runtime_dependency_profiles(
                 "Runtime Settings contain an ambiguous RAG dependency profile",
             )
         rag_enabled = rag_enabled_value
-    if type(feature_enabled) is bool and feature_enabled != rag_enabled:
+    if (
+        not allow_legacy_settings
+        and type(feature_enabled) is bool
+        and feature_enabled != rag_enabled
+    ):
         raise _error(
             "settings-profile-untrusted",
             "Runtime Settings contain conflicting RAG dependency profile flags",
@@ -516,7 +519,7 @@ def migrate_legacy_runtime_settings(
         settings["rag"] = rag
         changed = True
     enabled = profile["rag"]["enabled"] is True
-    if "rag" not in features:
+    if features.get("rag") is not enabled:
         features["rag"] = enabled
         changed = True
     if "enabled" not in rag:
