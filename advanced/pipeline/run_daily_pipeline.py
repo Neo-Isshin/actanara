@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""Stable command wrapper for the Open Nova daily production pipeline."""
+"""Stable command wrapper for the Actanara daily production pipeline."""
 
 import os
 import sys

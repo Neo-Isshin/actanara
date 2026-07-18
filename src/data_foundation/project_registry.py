@@ -29,7 +29,7 @@ def project_registry_status(paths: RuntimePaths | None = None) -> dict[str, Any]
     issues.extend(_overlap_issues(enabled))
     db_projects = _db_projects(selected)
     return {
-        "novaHome": str(selected.home),
+        "actanaraHome": str(selected.home),
         "registryPath": str(registry_path),
         "exists": registry_path.exists(),
         "status": "ok" if not issues else "attention",

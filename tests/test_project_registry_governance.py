@@ -34,7 +34,7 @@ class ProjectRegistryGovernanceTests(unittest.TestCase):
             nested = root / "TokenClock" / "plugin"
             token_clock.mkdir()
             nested.mkdir(parents=True)
-            paths = initialize_home(root / "NovaDiary")
+            paths = initialize_home(root / "Actanara")
             migrate(paths)
             registry = {
                 "version": 1,
@@ -78,7 +78,7 @@ class ProjectRegistryGovernanceTests(unittest.TestCase):
 
     def test_missing_registry_is_attention_without_writes(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             (paths.config_dir / "projects-registry.json").unlink()
 
             status = project_registry_status(paths)
@@ -97,7 +97,7 @@ class ProjectRegistryGovernanceTests(unittest.TestCase):
             candidate.mkdir(parents=True)
             transient.mkdir(parents=True)
             (root / "candidate" / ".git").mkdir()
-            paths = initialize_home(root / "NovaDiary")
+            paths = initialize_home(root / "Actanara")
             migrate(paths)
             (paths.config_dir / "projects-registry.json").write_text(
                 json.dumps(
@@ -134,7 +134,7 @@ class ProjectRegistryGovernanceTests(unittest.TestCase):
             candidate_root = root / "new-project"
             candidate_root.mkdir()
             (candidate_root / "package.json").write_text("{}", encoding="utf-8")
-            paths = initialize_home(root / "NovaDiary")
+            paths = initialize_home(root / "Actanara")
             migrate(paths)
             _insert_session(paths, "codex", str(candidate_root))
             candidates = discover_project_candidates(paths)
@@ -175,7 +175,7 @@ class ProjectRegistryGovernanceTests(unittest.TestCase):
             root = Path(tmp)
             candidate_root = root / "scratch"
             candidate_root.mkdir()
-            paths = initialize_home(root / "NovaDiary")
+            paths = initialize_home(root / "Actanara")
             migrate(paths)
             _insert_session(paths, "codex", str(candidate_root))
             created = write_project_candidates(paths, discover_project_candidates(paths), operator="tester")

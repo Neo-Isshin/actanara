@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-os.environ["OPEN_NOVA_SECRET_BACKEND"] = "memory"
+os.environ["ACTANARA_SECRET_BACKEND"] = "memory"
 
 from data_foundation.paths import initialize_home
 from data_foundation.secret_store import (
@@ -26,13 +26,13 @@ from data_foundation.secret_store import (
 )
 from data_foundation.settings import MASKED_SECRET, read_llm_provider, read_settings, resolve_llm_provider, write_llm_api_key_secret, write_llm_provider, write_settings
 from data_foundation.llm_provider_test import check_llm_provider_availability
-from data_foundation.settings_status import nova_settings_status
+from data_foundation.settings_status import actanara_settings_status
 
 
 class LlmProviderSecretIsolationTests(unittest.TestCase):
     def test_runtime_file_is_default_and_ref_does_not_persist_runtime_path(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("OPEN_NOVA_SECRET_BACKEND", None)
+            os.environ.pop("ACTANARA_SECRET_BACKEND", None)
             ref = llm_api_key_ref(str(Path(tmp) / "Private Runtime"), name="llm-provider-api-key-glm")
             self.assertEqual(default_secret_backend(), "runtime-file")
 
@@ -43,7 +43,7 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
     def test_runtime_file_crud_permissions_and_cross_runtime_isolation(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(
             os.environ,
-            {"OPEN_NOVA_SECRET_BACKEND": "runtime-file"},
+            {"ACTANARA_SECRET_BACKEND": "runtime-file"},
         ):
             first = initialize_home(Path(tmp) / "First")
             second = initialize_home(Path(tmp) / "Second")
@@ -71,7 +71,7 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
     def test_runtime_file_concurrent_writes_remain_atomic(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(
             os.environ,
-            {"OPEN_NOVA_SECRET_BACKEND": "runtime-file"},
+            {"ACTANARA_SECRET_BACKEND": "runtime-file"},
         ):
             paths = initialize_home(Path(tmp) / "Runtime")
             ref = llm_api_key_ref(str(paths.home), name="llm-provider-api-key-glm")
@@ -98,7 +98,7 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
     def test_runtime_file_rejects_wide_mode_symlink_and_hardlink(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(
             os.environ,
-            {"OPEN_NOVA_SECRET_BACKEND": "runtime-file"},
+            {"ACTANARA_SECRET_BACKEND": "runtime-file"},
         ):
             paths = initialize_home(Path(tmp) / "Runtime")
             ref = llm_api_key_ref(str(paths.home), name="llm-provider-api-key-glm")
@@ -133,7 +133,7 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
         value = "synthetic-cloud-embedding-value"
         with tempfile.TemporaryDirectory() as tmp, patch.dict(
             os.environ,
-            {"OPEN_NOVA_SECRET_BACKEND": "runtime-file"},
+            {"ACTANARA_SECRET_BACKEND": "runtime-file"},
         ):
             paths = initialize_home(Path(tmp) / "Runtime")
             saved = write_settings(
@@ -164,7 +164,7 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
         value = "synthetic-legacy-keychain-value"
         with tempfile.TemporaryDirectory() as tmp, patch.dict(
             os.environ,
-            {"OPEN_NOVA_SECRET_BACKEND": "runtime-file"},
+            {"ACTANARA_SECRET_BACKEND": "runtime-file"},
         ):
             paths = initialize_home(Path(tmp) / "Runtime")
             read_settings(paths, redact_secrets=False)
@@ -172,7 +172,7 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
             raw = json.loads(settings_path.read_text(encoding="utf-8"))
             legacy_ref = {
                 "backend": "macos-keychain",
-                "service": "open-nova",
+                "service": "actanara",
                 "account": f"{paths.home}:llm-provider-api-key-glm",
             }
             raw["llmProvider"].update({"provider": "glm", "model": "glm-5.1", "secretRef": legacy_ref})
@@ -207,7 +207,7 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
     def test_unreadable_legacy_keychain_ref_is_retained_for_reentry(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(
             os.environ,
-            {"OPEN_NOVA_SECRET_BACKEND": "runtime-file"},
+            {"ACTANARA_SECRET_BACKEND": "runtime-file"},
         ):
             paths = initialize_home(Path(tmp) / "Runtime")
             read_settings(paths, redact_secrets=False)
@@ -215,7 +215,7 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
             raw = json.loads(settings_path.read_text(encoding="utf-8"))
             legacy_ref = {
                 "backend": "macos-keychain",
-                "service": "open-nova",
+                "service": "actanara",
                 "account": f"{paths.home}:llm-provider-api-key-glm",
             }
             raw["llmProvider"].update({"provider": "glm", "model": "glm-5.1", "secretRef": legacy_ref})
@@ -247,7 +247,7 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
     def test_installer_doctor_does_not_migrate_or_probe_legacy_keychain_refs(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(
             os.environ,
-            {"OPEN_NOVA_SECRET_BACKEND": "runtime-file"},
+            {"ACTANARA_SECRET_BACKEND": "runtime-file"},
         ):
             paths = initialize_home(Path(tmp) / "Runtime")
             read_settings(paths, redact_secrets=False)
@@ -255,7 +255,7 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
             raw = json.loads(settings_path.read_text(encoding="utf-8"))
             legacy_ref = {
                 "backend": "macos-keychain",
-                "service": "open-nova",
+                "service": "actanara",
                 "account": f"{paths.home}:llm-provider-api-key-minimax-cn",
             }
             raw["llmProvider"].update(
@@ -270,7 +270,7 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
             before = settings_path.read_bytes()
 
             with patch("data_foundation.settings.read_secret") as secret_read:
-                status = nova_settings_status(paths, doctor_profile="installer")
+                status = actanara_settings_status(paths, doctor_profile="installer")
 
             self.assertTrue(status["readOnly"])
             self.assertEqual(status["summary"]["errors"], 0)
@@ -281,7 +281,7 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
         value = "synthetic-provider-switch-migration"
         with tempfile.TemporaryDirectory() as tmp, patch.dict(
             os.environ,
-            {"OPEN_NOVA_SECRET_BACKEND": "runtime-file"},
+            {"ACTANARA_SECRET_BACKEND": "runtime-file"},
         ):
             paths = initialize_home(Path(tmp) / "Runtime")
             read_settings(paths, redact_secrets=False)
@@ -289,7 +289,7 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
             raw = json.loads(settings_path.read_text(encoding="utf-8"))
             legacy_ref = {
                 "backend": "macos-keychain",
-                "service": "open-nova",
+                "service": "actanara",
                 "account": f"{paths.home}:llm-provider-api-key-minimax-cn",
             }
             raw["llmProviderSecrets"] = {"minimax-cn": legacy_ref}
@@ -320,14 +320,14 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
 
     def test_macos_keychain_store_keeps_secret_out_of_process_arguments(self):
         secret = "synthetic-" + "key-that-must-not-enter-argv"
-        ref = SecretRef(backend="macos-keychain", service="open-nova", account="test-account")
+        ref = SecretRef(backend="macos-keychain", service="actanara", account="test-account")
         with (
             patch("data_foundation.secret_store._store_macos_keychain_secret") as secure_store,
             patch("data_foundation.secret_store.subprocess.run") as run,
         ):
             store_secret(ref, secret)
 
-        secure_store.assert_called_once_with("open-nova", "test-account", secret)
+        secure_store.assert_called_once_with("actanara", "test-account", secret)
         run.assert_not_called()
 
     def test_macos_keychain_store_uses_tty_prompt_without_secret_argv(self):
@@ -348,7 +348,7 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
             executable.chmod(0o755)
 
             _store_macos_keychain_secret(
-                "open-nova",
+                "actanara",
                 "test-account",
                 expected,
                 executable=str(executable),
@@ -374,7 +374,7 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
             executable.chmod(0o755)
 
             _store_macos_keychain_secret(
-                "open-nova",
+                "actanara",
                 "test-account",
                 expected,
                 executable=str(executable),
@@ -399,7 +399,7 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
                 "import signal\n"
                 "import time\n"
                 "signal.signal(signal.SIGHUP, signal.SIG_IGN)\n"
-                "with open(os.environ['NOVA_TEST_CHILD_PID_FILE'], 'w', encoding='utf-8') as handle:\n"
+                "with open(os.environ['ACTANARA_TEST_CHILD_PID_FILE'], 'w', encoding='utf-8') as handle:\n"
                 "    handle.write(str(os.getpid()))\n"
                 "time.sleep(10)\n",
                 TimeoutError,
@@ -414,10 +414,10 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
                     executable.chmod(0o755)
                     child_pid_file = Path(tmp) / f"{name}.pid"
 
-                    with patch.dict(os.environ, {"NOVA_TEST_CHILD_PID_FILE": str(child_pid_file)}):
+                    with patch.dict(os.environ, {"ACTANARA_TEST_CHILD_PID_FILE": str(child_pid_file)}):
                         with self.assertRaises(error_type) as raised:
                             _store_macos_keychain_secret(
-                                "open-nova",
+                                "actanara",
                                 "test-account",
                                 secret,
                                 executable=str(executable),
@@ -440,10 +440,10 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
         for value, message in (("bad\x03value", "control characters"), ("x" * 1024, "too large")):
             with self.subTest(message=message):
                 with self.assertRaisesRegex(ValueError, message):
-                    _store_macos_keychain_secret("open-nova", "test-account", value)
+                    _store_macos_keychain_secret("actanara", "test-account", value)
 
     def test_macos_keychain_read_and_delete_use_fixed_binary_and_sanitized_timeout(self):
-        ref = SecretRef(backend="macos-keychain", service="open-nova", account="test-account")
+        ref = SecretRef(backend="macos-keychain", service="actanara", account="test-account")
         leaked_output = "synthetic-value-that-must-not-escape"
         timeout = subprocess.TimeoutExpired(
             ["/usr/bin/security"],
@@ -463,7 +463,7 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
 
     def test_switching_provider_without_key_does_not_reuse_previous_provider_secret(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "OpenNova", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_llm_provider({"mode": "preset", "provider": "glm", "model": "glm-5.1", "apiKey": "glm-secret"}, paths)
 
             saved = write_llm_provider({"mode": "preset", "provider": "minimax-cn", "model": "MiniMax-M3", "apiKey": ""}, paths)
@@ -480,7 +480,7 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
 
     def test_provider_switch_restores_that_provider_saved_secret_only(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "OpenNova", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_llm_provider({"mode": "preset", "provider": "minimax-cn", "model": "MiniMax-M3", "apiKey": "mini-secret"}, paths)
             write_llm_provider({"mode": "preset", "provider": "glm", "model": "glm-5.1", "apiKey": "glm-secret"}, paths)
 
@@ -498,7 +498,7 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
 
     def test_model_key_secret_uses_active_provider_slot(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "OpenNova", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_llm_provider({"mode": "preset", "provider": "glm", "model": "glm-5.1", "apiKey": ""}, paths)
             write_llm_api_key_secret("glm-secret", paths)
             raw = read_settings(paths, redact_secrets=False)
@@ -511,7 +511,7 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
 
     def test_legacy_global_secret_ref_is_migrated_to_active_provider_slot(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "OpenNova", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_llm_provider({"mode": "preset", "provider": "minimax-cn", "model": "MiniMax-M3", "apiKey": "mini-secret"}, paths)
             raw_path = paths.config_dir / "settings.json"
             raw = json.loads(raw_path.read_text(encoding="utf-8"))
@@ -528,7 +528,7 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
 
     def test_candidate_probe_uses_candidate_provider_saved_secret_not_active_provider_secret(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "OpenNova", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_llm_provider({"mode": "preset", "provider": "minimax-cn", "model": "MiniMax-M3", "apiKey": "mini-secret"}, paths)
             write_llm_provider({"mode": "preset", "provider": "glm", "model": "glm-5.1", "apiKey": "glm-secret"}, paths)
             write_llm_provider({"mode": "preset", "provider": "minimax-cn", "model": "MiniMax-M3", "apiKey": MASKED_SECRET}, paths)
@@ -550,7 +550,7 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
 
     def test_candidate_probe_does_not_reuse_active_secret_for_unsaved_provider(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "OpenNova", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_llm_provider({"mode": "preset", "provider": "glm", "model": "glm-5.1", "apiKey": "glm-secret"}, paths)
 
             result = check_llm_provider_availability(

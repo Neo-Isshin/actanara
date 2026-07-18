@@ -11,9 +11,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-DEFAULT_NOVA_HOME = Path.home() / ".open-nova"
-DEFAULT_LEGACY_DIARY_ROOT = DEFAULT_NOVA_HOME / "artifacts" / "diary"
-DEFAULT_BOOTSTRAP_PATH = Path("~/.config/open-nova/location.json").expanduser()
+DEFAULT_ACTANARA_HOME = Path.home() / ".actanara"
+DEFAULT_LEGACY_DIARY_ROOT = DEFAULT_ACTANARA_HOME / "artifacts" / "diary"
+DEFAULT_BOOTSTRAP_PATH = Path("~/.config/actanara/location.json").expanduser()
 RUNTIME_SCHEMA_VERSION = 1
 
 
@@ -56,7 +56,7 @@ def _absolute(candidate: Path) -> Path:
 
 
 def _bootstrap_path() -> Path:
-    return _absolute(Path(os.getenv("NOVA_LOCATION_FILE", str(DEFAULT_BOOTSTRAP_PATH))))
+    return _absolute(Path(os.getenv("ACTANARA_LOCATION_FILE", str(DEFAULT_BOOTSTRAP_PATH))))
 
 
 def _read_json(path: Path) -> dict:
@@ -83,7 +83,7 @@ def _runtime_paths(home: Path, manifest: dict | None = None) -> RuntimePaths:
     return RuntimePaths(
         home=home,
         config_dir=home / "config",
-        db_path=_absolute(Path(db_value)) if db_value else home / "data" / "nova_data.sqlite3",
+        db_path=_absolute(Path(db_value)) if db_value else home / "data" / "actanara_data.sqlite3",
         archives_dir=_absolute(Path(archives_value)) if archives_value else home / "sources" / "archives",
         diary_dir=diary_dir,
         reports_dir=_absolute(Path(reports_value)) if reports_value else home / "artifacts" / "reports",
@@ -98,12 +98,12 @@ def _runtime_paths(home: Path, manifest: dict | None = None) -> RuntimePaths:
 
 def load_paths() -> RuntimePaths:
     """Resolve the selected instance without creating directories."""
-    env_home = os.getenv("NOVA_HOME")
+    env_home = os.getenv("ACTANARA_HOME")
     if env_home:
         return _runtime_paths(Path(env_home))
     bootstrap = _read_json(_bootstrap_path())
-    selected = bootstrap.get("novaHome")
-    return _runtime_paths(Path(selected) if selected else DEFAULT_NOVA_HOME)
+    selected = bootstrap.get("actanaraHome")
+    return _runtime_paths(Path(selected) if selected else DEFAULT_ACTANARA_HOME)
 
 
 def runtime_paths_for_home(candidate: Path, *, legacy_diary_root: Path | None = None) -> RuntimePaths:
@@ -120,7 +120,7 @@ def runtime_paths_for_home(candidate: Path, *, legacy_diary_root: Path | None = 
 
 def default_oneliner_runtime_home() -> Path:
     """Return the user-facing one-liner default runtime home."""
-    return _absolute(Path("~/.open-nova"))
+    return _absolute(Path("~/.actanara"))
 
 
 def validate_home(candidate: Path) -> PathValidation:
@@ -279,7 +279,7 @@ def _persist_selection(paths: RuntimePaths) -> None:
     _write_json_atomic(
         _bootstrap_path(),
         {
-            "novaHome": str(paths.home),
+            "actanaraHome": str(paths.home),
             "selectedAt": datetime.now().astimezone().isoformat(),
             "version": RUNTIME_SCHEMA_VERSION,
         },
@@ -291,7 +291,7 @@ def persist_runtime_selection(paths: RuntimePaths) -> dict:
     _persist_selection(paths)
     return {
         "bootstrapPath": str(_bootstrap_path()),
-        "novaHome": str(paths.home),
+        "actanaraHome": str(paths.home),
         "selectedAt": datetime.now().astimezone().isoformat(),
         "version": RUNTIME_SCHEMA_VERSION,
     }
@@ -303,7 +303,7 @@ def select_home(
     if mode == "use":
         check = validate_home(candidate)
         if not check.valid or not check.initialized:
-            raise ValueError(f"invalid initialized NOVA_HOME: {', '.join(check.issues) or 'runtime manifest missing'}")
+            raise ValueError(f"invalid initialized ACTANARA_HOME: {', '.join(check.issues) or 'runtime manifest missing'}")
         paths = _runtime_paths(candidate)
     elif mode in {"initialize", "import_legacy"}:
         paths = initialize_home(candidate)

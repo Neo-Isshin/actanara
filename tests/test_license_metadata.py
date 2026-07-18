@@ -28,9 +28,9 @@ class LicenseMetadataTests(unittest.TestCase):
         self.assertEqual(
             metadata["project"]["urls"],
             {
-                "Homepage": "https://github.com/Neo-Isshin/open-nova",
-                "Repository": "https://github.com/Neo-Isshin/open-nova",
-                "Issues": "https://github.com/Neo-Isshin/open-nova/issues",
+                "Homepage": "https://github.com/Neo-Isshin/actanara",
+                "Repository": "https://github.com/Neo-Isshin/actanara",
+                "Issues": "https://github.com/Neo-Isshin/actanara/issues",
             },
         )
         self.assertEqual(
@@ -52,11 +52,11 @@ class LicenseMetadataTests(unittest.TestCase):
 
     def test_public_entrypoints_use_the_main_bootstrap_channel(self):
         install_command = (
-            "curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/open-nova/"
+            "curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/actanara/"
             "main/install/bootstrap.sh | zsh"
         )
         obsolete_release_command = (
-            "https://github.com/Neo-Isshin/open-nova/"
+            "https://github.com/Neo-Isshin/actanara/"
             "releases/latest/download/install.sh"
         )
         for name in (
@@ -71,7 +71,7 @@ class LicenseMetadataTests(unittest.TestCase):
                 content = (ROOT / name).read_text(encoding="utf-8")
                 self.assertIn(install_command, content)
                 self.assertNotIn(obsolete_release_command, content)
-                self.assertNotIn("raw.githubusercontent.com/Neo-Isshin/open-nova/v1.0.1", content)
+                self.assertNotIn("raw.githubusercontent.com/Neo-Isshin/actanara/v1.0.1", content)
                 self.assertNotIn("git" + "ea", content.lower())
 
 

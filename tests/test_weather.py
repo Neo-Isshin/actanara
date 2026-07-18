@@ -56,7 +56,7 @@ class WeatherTests(unittest.TestCase):
             return _Response(weather_payload)
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             settings = {"enabled": True, "locationMode": "auto-ip", "cacheTtlHours": 24}
             first = weather.fetch_weather_for_date(
                 "2026-06-05",
@@ -89,7 +89,7 @@ class WeatherTests(unittest.TestCase):
             raise OSError("network unavailable")
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             result = weather.fetch_weather_for_date(
                 "2026-06-05",
                 paths=paths,

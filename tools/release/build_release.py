@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build deterministic, privacy-safe Open Nova release artifacts.
+"""Build deterministic, privacy-safe Actanara release artifacts.
 
 The builder reads a clean Git working tree, copies tracked source into a private
 temporary directory for Python package construction, and writes only beneath the
@@ -864,7 +864,7 @@ def build_python_packages(
     source_date_epoch: int,
     python: str,
 ) -> tuple[Path, Path]:
-    with tempfile.TemporaryDirectory(prefix="open-nova-release-build-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="actanara-release-build-") as temporary:
         temporary_root = Path(temporary)
         build_root = temporary_root / "source"
         package_output = temporary_root / "dist"
@@ -1051,12 +1051,12 @@ def build_release(
     }
     _write_json(summary_path, summary)
 
-    runtime_archive = output / f"open-nova-{source.version}-runtime.tar.gz"
+    runtime_archive = output / f"actanara-{source.version}-runtime.tar.gz"
     build_runtime_archive(
         source.root,
         payload,
         runtime_archive,
-        prefix=f"open-nova-{source.version}",
+        prefix=f"actanara-{source.version}",
         source_date_epoch=source_date_epoch,
     )
     wheel, sdist = build_python_packages(
@@ -1083,7 +1083,7 @@ def build_release(
     provenance_path = output / "release-provenance.json"
     provenance = {
         "schemaVersion": SCHEMA_VERSION,
-        "product": "open-nova",
+        "product": "actanara",
         "version": source.version,
         "sourceGitCommit": source.commit,
         "sourceDateEpoch": source_date_epoch,

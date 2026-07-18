@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "src" / "dashboard"))
-os.environ["OPEN_NOVA_SECRET_BACKEND"] = "memory"
+os.environ["ACTANARA_SECRET_BACKEND"] = "memory"
 
 from app.services import diary
 from data_foundation.paths import initialize_home
@@ -54,7 +54,7 @@ class DashboardDiaryLlmProviderTests(unittest.TestCase):
             return _Response()
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_llm_provider(
                 {
                     "provider": "openai-compatible",
@@ -67,7 +67,7 @@ class DashboardDiaryLlmProviderTests(unittest.TestCase):
                 paths,
             )
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch("urllib.request.urlopen", side_effect=fake_urlopen),
                 patch.object(diary, "_llm_cache_load", return_value=None),
                 patch.object(diary, "_llm_cache_save"),
@@ -107,7 +107,7 @@ class DashboardDiaryLlmProviderTests(unittest.TestCase):
             return _AnthropicResponse()
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_llm_provider(
                 {
                     "provider": "minimax",
@@ -120,7 +120,7 @@ class DashboardDiaryLlmProviderTests(unittest.TestCase):
                 paths,
             )
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch("urllib.request.urlopen", side_effect=fake_urlopen),
                 patch.object(diary, "_llm_cache_load", return_value=None),
                 patch.object(diary, "_llm_cache_save"),
@@ -159,10 +159,10 @@ class DashboardDiaryLlmProviderTests(unittest.TestCase):
 
     def test_hour_from_iso_uses_configured_timezone(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings({"general": {"timezone": "UTC"}}, paths)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 hour = diary._hour_from_iso("2026-05-20T03:30:00Z")
 
         self.assertEqual(hour, 3)
@@ -170,7 +170,7 @@ class DashboardDiaryLlmProviderTests(unittest.TestCase):
     def test_hermes_hourly_scan_uses_configured_timezone_business_day(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             hermes_db = root / "hermes" / "state.db"
             hermes_db.parent.mkdir(parents=True)
             with closing(sqlite3.connect(hermes_db)) as connection:
@@ -190,7 +190,7 @@ class DashboardDiaryLlmProviderTests(unittest.TestCase):
                 paths,
             )
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 hourly = diary._scan_hermes_for_date("2026-05-19")
 
         self.assertEqual(hourly[3], 15)

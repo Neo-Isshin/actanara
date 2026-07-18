@@ -1,4 +1,4 @@
-# Open Nova v1.0.1 Release Assurance
+# Actanara v1.0.1 Release Assurance
 
 ## Scope
 

@@ -23,7 +23,7 @@ from data_foundation.paths import initialize_home
 class InfrastructureGraphTests(unittest.TestCase):
     def test_apply_updates_merges_entities_and_redacts_secrets(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             migrate(paths)
 
             result = apply_infrastructure_updates(
@@ -69,7 +69,7 @@ class InfrastructureGraphTests(unittest.TestCase):
 
     def test_dashboard_payload_groups_services_and_exposes_recent_activity(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             migrate(paths)
             apply_infrastructure_updates(
                 paths,
@@ -99,7 +99,7 @@ class InfrastructureGraphTests(unittest.TestCase):
 
     def test_graph_context_is_redacted_and_prefers_existing_ids(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             migrate(paths)
             apply_infrastructure_updates(
                 paths,
@@ -125,7 +125,7 @@ class InfrastructureGraphTests(unittest.TestCase):
 
     def test_same_service_name_on_different_hosts_does_not_alias_merge(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             migrate(paths)
 
             result = apply_infrastructure_updates(
@@ -156,7 +156,7 @@ class InfrastructureGraphTests(unittest.TestCase):
 
     def test_empty_graph_context_mentions_new_entities_not_candidates(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             migrate(paths)
 
             context = render_infrastructure_graph_context(paths)
@@ -174,7 +174,7 @@ class InfrastructureGraphTests(unittest.TestCase):
 
     def test_raw_event_audit_payload_is_redacted_by_field_semantics(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             migrate(paths)
 
             apply_infrastructure_updates(

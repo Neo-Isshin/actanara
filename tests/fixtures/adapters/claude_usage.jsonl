@@ -1,1 +1,1 @@
-{"type":"assistant","timestamp":"2026-05-19T01:00:00Z","sessionId":"claude-session","cwd":"/workspace/example/open-nova","message":{"model":"claude-model","usage":{"input_tokens":20,"output_tokens":4,"cache_read_input_tokens":6,"cache_creation_input_tokens":700}}}
+{"type":"assistant","timestamp":"2026-05-19T01:00:00Z","sessionId":"claude-session","cwd":"/workspace/example/actanara","message":{"model":"claude-model","usage":{"input_tokens":20,"output_tokens":4,"cache_read_input_tokens":6,"cache_creation_input_tokens":700}}}

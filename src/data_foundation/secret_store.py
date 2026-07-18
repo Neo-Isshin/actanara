@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-SERVICE = "open-nova"
+SERVICE = "actanara"
 _MEMORY_SECRETS: dict[tuple[str, str], str] = {}
 
 
@@ -143,7 +143,7 @@ def delete_secret(
 
 
 def _default_backend() -> str:
-    forced = os.getenv("OPEN_NOVA_SECRET_BACKEND")
+    forced = os.getenv("ACTANARA_SECRET_BACKEND")
     if forced:
         return forced
     return "runtime-file"
@@ -445,8 +445,8 @@ def _store_macos_keychain_secret(
         "/dev/null",
         "/bin/sh",
         "-c",
-        'printf "OPEN_NOVA_SECURITY_PID=%s\\n" "$$"; exec "$@"',
-        "open-nova-keychain-store",
+        'printf "ACTANARA_SECURITY_PID=%s\\n" "$$"; exec "$@"',
+        "actanara-keychain-store",
         executable,
         "add-generic-password",
         "-a",
@@ -475,7 +475,7 @@ def _store_macos_keychain_secret(
     prompt_output = bytearray()
     prompt_marker = b"password data for new item:"
     retype_prompt_marker = b"retype password for new item:"
-    pid_pattern = re.compile(rb"OPEN_NOVA_SECURITY_PID=(\d+)")
+    pid_pattern = re.compile(rb"ACTANARA_SECURITY_PID=(\d+)")
     command_pid: int | None = None
     try:
         os.set_blocking(stdin_fd, False)

@@ -21,7 +21,7 @@ class DashboardSkillsSettingsTests(unittest.TestCase):
     def test_skills_service_uses_configured_openclaw_skill_roots(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             custom_root = root / "configured-tools" / "openclaw" / "workspace" / "skills"
             system_root = root / "configured-tools" / "openclaw" / "skills"
             _write_skill(custom_root / "custom-one", "custom description")
@@ -40,7 +40,7 @@ class DashboardSkillsSettingsTests(unittest.TestCase):
 
             skills.CUSTOM_SKILLS_DIR = skills._DEFAULT_CUSTOM_SKILLS_DIR
             skills.SYSTEM_SKILLS_DIR = skills._DEFAULT_SYSTEM_SKILLS_DIR
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 payload = skills.get_all_skills()
 
         self.assertEqual([item["id"] for item in payload["custom"]], ["custom-one"])
@@ -53,11 +53,11 @@ class DashboardSettingsBundleRegressionTests(unittest.TestCase):
     def test_general_only_bundle_preserves_fresh_llm_groups_and_skips_readiness(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             read_settings(paths, redact_secrets=False)
             raw_before = _read_raw_settings(paths)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=True):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=True):
                 with patch.object(
                     dashboard_settings,
                     "_raise_if_llm_provider_not_pipeline_ready",
@@ -76,11 +76,11 @@ class DashboardSettingsBundleRegressionTests(unittest.TestCase):
     def test_explicit_incomplete_llm_provider_fails_without_writing(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             read_settings(paths, redact_secrets=False)
             raw_before = _read_raw_settings(paths)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=True):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=True):
                 with self.assertRaises(ValueError):
                     dashboard_settings.update_settings_bundle(
                         {

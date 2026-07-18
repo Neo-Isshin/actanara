@@ -29,7 +29,7 @@ class DashboardAiAssetsFilePolicyTests(unittest.TestCase):
     def test_file_policy_uses_configured_external_tool_home_without_unblocking_jsonl(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             codex_home = root / "configured-tools" / "codex"
             codex_home.mkdir(parents=True)
             readable = codex_home / "AGENTS.md"
@@ -38,7 +38,7 @@ class DashboardAiAssetsFilePolicyTests(unittest.TestCase):
             blocked.write_text("{}\n", encoding="utf-8")
             write_settings({"externalTools": {"codex": {"home": str(codex_home)}}}, paths)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 ok = ai_assets.read_file_content(str(readable))
                 denied = ai_assets.read_file_content(str(blocked))
 
@@ -48,7 +48,7 @@ class DashboardAiAssetsFilePolicyTests(unittest.TestCase):
     def test_file_policy_rejects_sibling_path_prefix_escape(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             codex_home = root / "configured-tools" / "codex"
             sibling = root / "configured-tools" / "codex-evil"
             codex_home.mkdir(parents=True)
@@ -57,7 +57,7 @@ class DashboardAiAssetsFilePolicyTests(unittest.TestCase):
             escaped.write_text("escaped\n", encoding="utf-8")
             write_settings({"externalTools": {"codex": {"home": str(codex_home)}}}, paths)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 denied = ai_assets.read_file_content(str(escaped))
 
         self.assertEqual(denied["status"], 403)
@@ -66,7 +66,7 @@ class DashboardAiAssetsFilePolicyTests(unittest.TestCase):
     def test_ai_assets_key_file_cards_use_configured_external_tool_home(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             codex_home = root / "configured-tools" / "codex"
             codex_home.mkdir(parents=True)
             (codex_home / "AGENTS.md").write_text("context\n", encoding="utf-8")
@@ -75,7 +75,7 @@ class DashboardAiAssetsFilePolicyTests(unittest.TestCase):
                 {"name": "Codex", "emoji": "🤖", "sessionCount": 0, "allTimeMessages": 0, "lastActivity": ""},
             ]
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 agents = ai_assets._get_agents_enhanced(tool_stats)
                 tree = ai_assets._get_agent_tree(tool_stats)
 
@@ -90,12 +90,12 @@ class DashboardAiAssetsFilePolicyTests(unittest.TestCase):
     def test_ai_assets_skills_inventory_uses_configured_codex_skills_root(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             codex_skills = root / "configured-tools" / "codex" / "skills"
             _write_skill(codex_skills / "global-one", "Codex configured skill")
             write_settings({"externalTools": {"codex": {"skillsRoot": str(codex_skills)}}}, paths)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 payload = ai_assets._get_skills_stats()
 
         codex = payload["byTool"]["Codex"]
@@ -173,7 +173,7 @@ class DashboardAiAssetsFilePolicyTests(unittest.TestCase):
     def test_ai_assets_tool_storage_uses_configured_tool_home_sizes(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             tool_root = root / "tools"
             openclaw_home = tool_root / "openclaw"
             codex_home = tool_root / "codex"
@@ -192,7 +192,7 @@ class DashboardAiAssetsFilePolicyTests(unittest.TestCase):
                 paths,
             )
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 storage = ai_assets._get_detailed_storage(include_rag=False)
 
         by_tool = {item["name"]: item for item in storage["tools"]}
@@ -202,13 +202,13 @@ class DashboardAiAssetsFilePolicyTests(unittest.TestCase):
         self.assertEqual(by_tool["Gemini CLI"]["sizeMB"], 0)
         self.assertEqual(by_tool["Hermes"]["sizeMB"], 0)
 
-    def test_ai_assets_open_nova_storage_follows_runtime_paths_and_rag_store(self):
+    def test_ai_assets_actanara_storage_follows_runtime_paths_and_rag_store(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             diary_root = root / "ConfiguredDiary"
             archives_root = root / "ConfiguredArchives"
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=root / "LegacyDiary").home,
+                initialize_home(root / "Actanara", legacy_diary_root=root / "LegacyDiary").home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=root / "LegacyDiary",
                 archives_root=archives_root,
@@ -228,7 +228,7 @@ class DashboardAiAssetsFilePolicyTests(unittest.TestCase):
             )
             write_settings({"rag": {"enabled": True, "mode": "v2", "v2": {"storePath": str(rag_store)}}}, paths)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 storage = ai_assets._get_detailed_storage(include_rag=True)
 
         by_label = {item["label"]: item for item in storage["categories"]}
@@ -265,12 +265,12 @@ class DashboardAiAssetsFilePolicyTests(unittest.TestCase):
     def test_ai_assets_workspace_and_cache_key_follow_dashboard_settings(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             project_a = root / "ProjectA"
             project_b = root / "ProjectB"
             project_a.mkdir()
             project_b.mkdir()
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 write_settings({"dashboard": {"projectRoot": str(project_a)}}, paths)
                 first_key = ai_assets._ai_assets_cache_key("foundation")
                 self.assertEqual(ai_assets._workspace_dir(), project_a.absolute())
@@ -284,13 +284,13 @@ class DashboardAiAssetsFilePolicyTests(unittest.TestCase):
     def test_ai_assets_tool_config_snapshot_uses_configured_openclaw_path(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             snapshot = root / "configured-tools" / "openclaw" / "workspace" / ".dashboard-tool-configs.json"
             write_settings({"externalTools": {"openclaw": {"toolConfigSnapshotPath": str(snapshot)}}}, paths)
 
             ai_assets.TOOL_CONFIG_SNAPSHOT = ai_assets._DEFAULT_TOOL_CONFIG_SNAPSHOT
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch.object(ai_assets, "_find_tool_executable", return_value=None),
             ):
                 self.assertEqual(ai_assets._tool_config_snapshot_path(), snapshot.absolute())
@@ -305,7 +305,7 @@ class DashboardAiAssetsFilePolicyTests(unittest.TestCase):
             day = diary_root / "diary-2026-06-07"
             day.mkdir(parents=True)
             (day / "日记-260607.md").write_text("one two three\n", encoding="utf-8")
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
             migrate(paths)
             run_id = begin_ingestion_run(paths, trigger_type="fixture", business_date=date(2026, 6, 7))
             write_dashboard_snapshot(
@@ -320,7 +320,7 @@ class DashboardAiAssetsFilePolicyTests(unittest.TestCase):
             )
 
             ai_assets._cache = {"data": None, "ts": 0}
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 payload = ai_assets._get_ai_assets_foundation()
 
         self.assertEqual(payload["diary"]["count"], 1)
@@ -332,7 +332,7 @@ class DashboardAiAssetsFilePolicyTests(unittest.TestCase):
 
     def test_cached_ai_assets_does_not_fallback_to_live_scanner_for_retired_source(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             ai_assets._cache = {"data": None, "ts": 0}
             foundation_payload = {
                 "dataFreshness": {"aiAssets": {"source": "foundation", "staticSnapshotOnly": True}},
@@ -340,7 +340,7 @@ class DashboardAiAssetsFilePolicyTests(unittest.TestCase):
             }
 
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch.object(ai_assets, "resolve_runtime_source", return_value="legacy"),
                 patch.object(ai_assets, "_get_ai_assets_foundation", return_value=foundation_payload),
                 patch.object(ai_assets, "get_ai_assets", side_effect=AssertionError("legacy scanner called")),
@@ -353,14 +353,14 @@ class DashboardAiAssetsFilePolicyTests(unittest.TestCase):
     def test_file_content_write_requires_confirmation_and_backs_up_existing_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             codex_home = root / "configured-tools" / "codex"
             codex_home.mkdir(parents=True)
             target = codex_home / "AGENTS.md"
             target.write_text("old\n", encoding="utf-8")
             write_settings({"externalTools": {"codex": {"home": str(codex_home)}}}, paths)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 dry_run = ai_assets.write_file_content(str(target), "new\n", dry_run=True)
                 rejected = ai_assets.write_file_content(str(target), "new\n", confirmation_text="wrong")
                 written = ai_assets.write_file_content(
@@ -381,7 +381,7 @@ class DashboardAiAssetsFilePolicyTests(unittest.TestCase):
     def test_file_policy_rejects_sensitive_files_even_inside_workspace(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             workspace = root / "Project"
             workspace.mkdir()
             env_file = workspace / ".env"
@@ -392,7 +392,7 @@ class DashboardAiAssetsFilePolicyTests(unittest.TestCase):
             config_file.write_text("token='secret'\n", encoding="utf-8")
             write_settings({"dashboard": {"projectRoot": str(workspace)}}, paths)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 denied_env = ai_assets.read_file_content(str(env_file))
                 denied_settings = ai_assets.read_file_content(str(settings_file))
                 denied_config = ai_assets.read_file_content(str(config_file))
@@ -407,7 +407,7 @@ class DashboardAiAssetsFilePolicyTests(unittest.TestCase):
     def test_file_policy_rejects_hidden_subpaths_and_large_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             workspace = root / "Project"
             workspace.mkdir()
             hidden_dir = workspace / ".secret"
@@ -418,7 +418,7 @@ class DashboardAiAssetsFilePolicyTests(unittest.TestCase):
             large_doc.write_text("x" * (ai_assets.MAX_FILE_CONTENT_BYTES + 1), encoding="utf-8")
             write_settings({"dashboard": {"projectRoot": str(workspace)}}, paths)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 hidden = ai_assets.read_file_content(str(hidden_doc))
                 large = ai_assets.read_file_content(str(large_doc))
 
@@ -430,7 +430,7 @@ class DashboardAiAssetsFilePolicyTests(unittest.TestCase):
     def test_file_policy_allows_workspace_markdown_without_parent_escape(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             workspace = root / "Project"
             workspace.mkdir()
             allowed = workspace / "README.md"
@@ -439,7 +439,7 @@ class DashboardAiAssetsFilePolicyTests(unittest.TestCase):
             parent.write_text("outside\n", encoding="utf-8")
             write_settings({"dashboard": {"projectRoot": str(workspace)}}, paths)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 ok = ai_assets.read_file_content(str(allowed))
                 denied = ai_assets.read_file_content(str(parent))
 

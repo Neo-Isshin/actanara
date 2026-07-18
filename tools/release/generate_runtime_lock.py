@@ -448,7 +448,7 @@ def build_lock(args: argparse.Namespace) -> dict[str, Any]:
         raise LockGenerationError("all audited pip reports must use the same resolver version")
     return {
         "schemaVersion": 1,
-        "product": "open-nova",
+        "product": "actanara",
         "artifactPolicy": {
             "hashAlgorithm": "sha256",
             "hashesRequired": True,

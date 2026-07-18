@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Open Nova is a non-invasive local AI operations layer that connects your AI tools, automatically summarizes your work, and turns scattered memory into searchable, reusable AI assets.">
-  <title>Open Nova - Local AI Operations Runtime</title>
+  <meta name="description" content="Actanara is a non-invasive local AI operations layer that connects your AI tools, automatically summarizes your work, and turns scattered memory into searchable, reusable AI assets.">
+  <title>Actanara - Local AI Operations Runtime</title>
   <style>
     :root {
       color-scheme: light;
@@ -545,15 +545,15 @@
 <body>
   <nav class="nav" aria-label="Primary navigation">
     <div class="nav-inner">
-      <a class="brand" href="#top" aria-label="Open Nova home">
+      <a class="brand" href="#top" aria-label="Actanara home">
         <span class="mark">N</span>
-        <span>Open Nova</span>
+        <span>Actanara</span>
       </a>
       <div class="nav-links">
         <a href="#features">功能</a>
         <a href="#architecture">架构</a>
         <a href="#install">安装</a>
-        <a class="button primary" href="https://github.com/Neo-Isshin/open-nova" rel="noreferrer">View Repository</a>
+        <a class="button primary" href="https://github.com/Neo-Isshin/actanara" rel="noreferrer">View Repository</a>
       </div>
     </div>
   </nav>
@@ -562,10 +562,10 @@
     <header class="hero">
       <div class="hero-inner">
         <div>
-          <div class="eyebrow">Open Nova · Non-invasive cross-tool AI asset layer</div>
-          <h1>Open Nova</h1>
+          <div class="eyebrow">Actanara · Non-invasive cross-tool AI asset layer</div>
+          <h1>Actanara</h1>
           <p class="lead">
-            打通你的所有 AI 工具，自动为你总结工作，并沉淀专属于你的可检索、可复用 AI 资产。Open Nova 作为外挂式本地运行层，把分散在工具、CLI 和 agent 中的记忆、任务、经验与总结收拢进用户自己的 Foundation、Dashboard 与 Nova-RAG。
+            打通你的所有 AI 工具，自动为你总结工作，并沉淀专属于你的可检索、可复用 AI 资产。Actanara 作为外挂式本地运行层，把分散在工具、CLI 和 agent 中的记忆、任务、经验与总结收拢进用户自己的 Foundation、Dashboard 与 Nova-RAG。
           </p>
           <div class="hero-actions">
             <a class="button primary" href="#install">开始安装</a>
@@ -578,7 +578,7 @@
           </div>
         </div>
         <figure class="hero-visual">
-          <img src="assets/open-nova-product.svg" alt="Open Nova dashboard product mockup">
+          <img src="assets/actanara-product.svg" alt="Actanara dashboard product mockup">
         </figure>
       </div>
     </header>
@@ -587,13 +587,13 @@
       <div class="section-kicker">System Capabilities</div>
       <h2>从分散的 AI 工具活动，到自动总结、可检索的个人资产层。</h2>
       <p class="section-copy">
-        Open Nova 不替代现有工具，而是外挂在它们旁边：采集受支持工具的活动，规范化为用户本地 Foundation 状态，并通过 Dashboard、Diary pipeline 与 Nova-RAG 自动形成工作总结、周期报告、任务证据和可复用记忆。
+        Actanara 不替代现有工具，而是外挂在它们旁边：采集受支持工具的活动，规范化为用户本地 Foundation 状态，并通过 Dashboard、Diary pipeline 与 Nova-RAG 自动形成工作总结、周期报告、任务证据和可复用记忆。
       </p>
       <div class="feature-grid">
         <article class="feature-card">
           <div class="feature-icon">01</div>
           <h3>外挂式非侵入架构</h3>
-          <p>读取配置好的工具位置，写入 Open Nova 自己的 runtime home，不接管用户的 agent、shell、编辑器或模型网关。</p>
+          <p>读取配置好的工具位置，写入 Actanara 自己的 runtime home，不接管用户的 agent、shell、编辑器或模型网关。</p>
         </article>
         <article class="feature-card">
           <div class="feature-icon">02</div>
@@ -628,7 +628,7 @@
         <div class="section-kicker">Runtime Model</div>
         <h2>外挂在工具之外，资产沉淀在用户本地。</h2>
         <p class="section-copy">
-          Open Nova 将采集、生成、物化、检索和展示拆分为可组合模块。默认 runtime 写入 <code>~/.open-nova</code>，活动位置由 <code>~/.config/open-nova/location.json</code> 指向；外部工具路径由 operator 显式配置。
+          Actanara 将采集、生成、物化、检索和展示拆分为可组合模块。默认 runtime 写入 <code>~/.actanara</code>，活动位置由 <code>~/.config/actanara/location.json</code> 指向；外部工具路径由 operator 显式配置。
         </p>
         <div class="flow">
           <article class="step"><b>1</b><h3>Ingest</h3><p>收集受支持 AI 工具、CLI、agent、workspace 与外部来源活动。</p></article>
@@ -650,7 +650,7 @@
           </p>
         </div>
         <div class="profile-list">
-          <article class="profile"><b>ON</b><div><h3>open-nova</h3><p>核心日记管线、运行时设置、LLM provider 配置和 Foundation 数据存储。</p></div></article>
+          <article class="profile"><b>ON</b><div><h3>actanara</h3><p>核心日记管线、运行时设置、LLM provider 配置和 Foundation 数据存储。</p></div></article>
           <article class="profile"><b>UI</b><div><h3>dashboard</h3><p>本地 FastAPI Dashboard、设置界面、运维视图和实时指标。</p></div></article>
           <article class="profile"><b>RG</b><div><h3>nova-rag</h3><p>本地或云端 embedding 选择、搜索服务、索引治理和外部 agent 只读接口。</p></div></article>
           <article class="profile"><b>TK</b><div><h3>nova-task</h3><p>任务 authority、review surface 和任务证据投影。</p></div></article>
@@ -664,7 +664,7 @@
 
 zsh install/bootstrap.sh
 
-<span id="install-command">curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/open-nova/main/install/bootstrap.sh | zsh</span></code></pre>
+<span id="install-command">curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/actanara/main/install/bootstrap.sh | zsh</span></code></pre>
         </div>
         <div class="panel">
           <h3>发布与安全保证</h3>
@@ -683,10 +683,10 @@ zsh install/bootstrap.sh
     <section class="cta">
       <div class="section" style="padding:0">
         <h2>自动总结你的 AI 工作，并沉淀为长期资产。</h2>
-        <p>Open Nova 面向需要跨工具复盘、检索、审计、任务跟踪和自动化日报/周报的个人或小团队 operator。</p>
+        <p>Actanara 面向需要跨工具复盘、检索、审计、任务跟踪和自动化日报/周报的个人或小团队 operator。</p>
         <div class="hero-actions" style="justify-content:center">
           <button class="button primary" type="button" id="copy-install-command">复制安装命令</button>
-          <a class="button secondary" href="https://github.com/Neo-Isshin/open-nova/blob/main/README.md">阅读 README</a>
+          <a class="button secondary" href="https://github.com/Neo-Isshin/actanara/blob/main/README.md">阅读 README</a>
         </div>
         <div class="copy-status" id="copy-install-status" role="status" aria-live="polite"></div>
       </div>
@@ -695,8 +695,8 @@ zsh install/bootstrap.sh
 
   <footer class="footer">
     <div class="footer-inner">
-      <span>Open Nova - non-invasive cross-tool AI asset layer with Foundation, Dashboard, RAG, and task review.</span>
-      <span>© 2026 Neo-Isshin · <a href="https://github.com/Neo-Isshin/open-nova/blob/main/LICENSE">GPL-3.0-or-later</a></span>
+      <span>Actanara - non-invasive cross-tool AI asset layer with Foundation, Dashboard, RAG, and task review.</span>
+      <span>© 2026 Neo-Isshin · <a href="https://github.com/Neo-Isshin/actanara/blob/main/LICENSE">GPL-3.0-or-later</a></span>
     </div>
   </footer>
   <script>

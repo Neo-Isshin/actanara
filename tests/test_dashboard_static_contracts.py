@@ -77,14 +77,14 @@ class DashboardStaticContractTests(unittest.TestCase):
         html = (ROOT / "src" / "dashboard" / "app" / "static" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "src" / "dashboard" / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
         self.assertIn('id="hideInactiveDiaryDays"', html)
-        self.assertIn("openNova.hideInactiveDiaryDays", script)
+        self.assertIn("actanara.hideInactiveDiaryDays", script)
         self.assertIn("dates.filter(d => !d.isBlankDay)", script)
         self.assertIn("setHideInactiveDiaryDays", script)
 
     def test_dashboard_initialization_and_settings_rerender_are_guarded(self):
         script = (ROOT / "src" / "dashboard" / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
-        self.assertIn("OPEN_NOVA_DIARY_NAV_READY = loadDiaryNav()", script)
-        self.assertIn("await OPEN_NOVA_DIARY_NAV_READY", script)
+        self.assertIn("ACTANARA_DIARY_NAV_READY = loadDiaryNav()", script)
+        self.assertIn("await ACTANARA_DIARY_NAV_READY", script)
         self.assertIn('data-diary-date="${escapeHtml(d.fullDate)}"', script)
         self.assertIn("async function restoreDynamicDiaryPageFromHash()", script)
         self.assertIn("requestedHash.match(/^page-day-(\\d{4})$/)", script)
@@ -110,22 +110,22 @@ class DashboardStaticContractTests(unittest.TestCase):
 
     def test_settings_bundle_only_includes_dirty_embedded_llm_provider(self):
         script = (ROOT / "src" / "dashboard" / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
-        self.assertIn("let OPEN_NOVA_SETTINGS_LLM_DIRTY = false;", script)
+        self.assertIn("let ACTANARA_SETTINGS_LLM_DIRTY = false;", script)
         self.assertIn('data-settings-bundle-form', script)
         dirty_body = script.split("function recordSettingsLlmDirty(event)", 1)[1].split("function isAdvancedSettingsField", 1)[0]
         self.assertIn("body?.querySelector('[data-settings-bundle-form]')", dirty_body)
         self.assertIn("input?.closest('.settings-pane[data-pane=\"llm\"]')", dirty_body)
-        self.assertIn("OPEN_NOVA_SETTINGS_LLM_DIRTY = true", dirty_body)
+        self.assertIn("ACTANARA_SETTINGS_LLM_DIRTY = true", dirty_body)
         self.assertIn("input.dataset.userEdited = 'true'", dirty_body)
         save_body = script.split("async function saveSettingsModal()", 1)[1].split("async function refreshRagStatus()", 1)[0]
-        self.assertIn("if (OPEN_NOVA_SETTINGS_LLM_DIRTY && document.getElementById('llmProviderName'))", save_body)
-        self.assertGreaterEqual(script.count("OPEN_NOVA_SETTINGS_LLM_DIRTY = false"), 3)
+        self.assertIn("if (ACTANARA_SETTINGS_LLM_DIRTY && document.getElementById('llmProviderName'))", save_body)
+        self.assertGreaterEqual(script.count("ACTANARA_SETTINGS_LLM_DIRTY = false"), 3)
         self.assertIn("document.addEventListener('input', recordSettingsLlmDirty)", script)
         self.assertIn("document.addEventListener('change', recordSettingsLlmDirty)", script)
         toggle_body = script.split("function toggleSettingsAdvanced()", 1)[1].split("function isSettingsAdvancedVisible()", 1)[0]
-        self.assertNotIn("OPEN_NOVA_SETTINGS_LLM_DIRTY = false", toggle_body)
+        self.assertNotIn("ACTANARA_SETTINGS_LLM_DIRTY = false", toggle_body)
         standalone_body = script.split("async function openLlmProviderModal()", 1)[1].split("function renderLlmProviderModal", 1)[0]
-        self.assertNotIn("OPEN_NOVA_SETTINGS_LLM_DIRTY", standalone_body)
+        self.assertNotIn("ACTANARA_SETTINGS_LLM_DIRTY", standalone_body)
 
     def test_dashboard_shell_defines_active_label_in_both_profiles(self):
         script = (ROOT / "src" / "dashboard" / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
@@ -148,7 +148,7 @@ class DashboardStaticContractTests(unittest.TestCase):
         script = (ROOT / "src" / "dashboard" / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
         tasks = (ROOT / "src" / "dashboard" / "app" / "static" / "tasks.html").read_text(encoding="utf-8")
 
-        self.assertIn("OPEN_NOVA_SETTINGS_ADVANCED_BASELINE = new Map()", script)
+        self.assertIn("ACTANARA_SETTINGS_ADVANCED_BASELINE = new Map()", script)
         self.assertIn("function advancedSettingsFieldKey(input)", script)
         self.assertIn("'path:' + input.dataset.settingsPathGroup", script)
         self.assertIn("'runtime-source:' + input.dataset.runtimeSourceKey", script)
@@ -210,15 +210,15 @@ class DashboardStaticContractTests(unittest.TestCase):
                 )[0]
                 task_text = tasks.split("const TASK_TEXT =", 1)[1].split("function taskText", 1)[0]
 
-                self.assertIn("<title>Open Nova</title>", html)
+                self.assertIn("<title>Actanara</title>", html)
                 self.assertEqual(
                     re.findall(r"documentTitle:\s*'([^']+)'", dashboard_shell),
-                    ["Open Nova", "Open Nova"],
+                    ["Actanara", "Actanara"],
                 )
-                self.assertIn("<title>Open Nova — Nova Task</title>", tasks)
+                self.assertIn("<title>Actanara — Nova Task</title>", tasks)
                 self.assertEqual(
                     re.findall(r"documentTitle:\s*'([^']+)'", task_text),
-                    ["Open Nova — Nova Task", "Open Nova — Nova Task"],
+                    ["Actanara — Nova Task", "Actanara — Nova Task"],
                 )
                 legacy_dashboard_brand = "Agent" + " Dashboard"
                 legacy_task_title = "任务看板 — " + "Dashboard"
@@ -234,12 +234,12 @@ class DashboardStaticContractTests(unittest.TestCase):
         for name, path in scripts.items():
             with self.subTest(surface=name):
                 script = path.read_text(encoding="utf-8")
-                status = script.split("const OPEN_NOVA_SSE_STREAM_STATES", 1)[1].split(
+                status = script.split("const ACTANARA_SSE_STREAM_STATES", 1)[1].split(
                     "// ── Initialize SSE connections", 1
                 )[0]
                 connections = script.split("// ── Initialize SSE connections", 1)[1]
 
-                self.assertIn("const OPEN_NOVA_SSE_STREAM_STATES = new Map()", script)
+                self.assertIn("const ACTANARA_SSE_STREAM_STATES = new Map()", script)
                 self.assertIn("const pending = states.filter(state => state.transport !== 'connected')", status)
                 self.assertIn("if (!states.length || pending.length)", status)
                 self.assertIn("state.transport === 'reconnecting'", status)
@@ -419,7 +419,7 @@ class DashboardStaticContractTests(unittest.TestCase):
         self.assertIn("const labels = { ...dashboardText(profile), ...dashboardShellText(profile), ...aiAssetsText(profile) }", script)
         self.assertIn("function updateMonthlyReportLabels()", script)
         self.assertIn("document.documentElement.lang = dashboardLanguageProfile(profile) === 'en' ? 'en-US' : 'zh-CN'", script)
-        self.assertIn("applyStaticDashboardText(OPEN_NOVA_PIPELINE_LANGUAGE_PROFILE)", script)
+        self.assertIn("applyStaticDashboardText(ACTANARA_PIPELINE_LANGUAGE_PROFILE)", script)
         self.assertIn("ensureDashboardLanguageProfile().then(profile => applyStaticDashboardText(profile))", script)
         self.assertIn("AI Assets Overview", script)
         self.assertIn("Foundation Ops", script)
@@ -460,7 +460,7 @@ class DashboardStaticContractTests(unittest.TestCase):
         self.assertIn("assetLabels.tokenUnit", script)
         self.assertIn('当日实时总览', html)
         self.assertIn('Foundation 运维', html)
-        self.assertIn('搜索 Open Nova 长期记忆', html)
+        self.assertIn('搜索 Actanara 长期记忆', html)
 
     def test_ai_assets_infrastructure_panel_limits_devices_and_services(self):
         script = (ROOT / "src" / "dashboard" / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
@@ -502,7 +502,7 @@ class DashboardStaticContractTests(unittest.TestCase):
         self.assertIn("padding: 16px 42px 16px 18px;", css)
         self.assertIn(".aa-infra-card[open] .aa-infra-card-top::after", css)
 
-    def test_ai_assets_storage_splits_open_nova_and_tool_cards(self):
+    def test_ai_assets_storage_splits_actanara_and_tool_cards(self):
         script = (ROOT / "src" / "dashboard" / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
         css = (ROOT / "src" / "dashboard" / "app" / "static" / "css" / "style.css").read_text(encoding="utf-8")
         html = (ROOT / "src" / "dashboard" / "app" / "static" / "index.html").read_text(encoding="utf-8")
@@ -732,7 +732,7 @@ class DashboardStaticContractTests(unittest.TestCase):
         self.assertIn("payload.pipeline = collectPipelineSettingsFromModal()", save_settings_body)
         self.assertIn("payload.externalTools = collectExternalToolSettingsFromModal()", save_settings_body)
         self.assertIn("DASHBOARD_RESTART_COMMAND", script)
-        self.assertIn("open-nova dashboard restart", script)
+        self.assertIn("actanara dashboard restart", script)
         self.assertIn('id="page-home" class="page active"', html)
         self.assertIn('id="page-overview" class="page"', html)
         self.assertIn("sidebar-brand-banner", html)
@@ -788,7 +788,7 @@ class DashboardStaticContractTests(unittest.TestCase):
         self.assertIn("function renderStartupSettings()", script)
         self.assertIn("function loadStartupLaunchAgents(", script)
         self.assertIn("function toggleStartupLaunchAgent(kind, checked)", script)
-        self.assertIn("OPEN_NOVA_STARTUP_PREVIEWS", script)
+        self.assertIn("ACTANARA_STARTUP_PREVIEWS", script)
         self.assertIn("startupDashboardServer: 'Dashboard server'", script)
         self.assertIn("startupRagServer: 'nova-RAG / Embedding server'", script)
         self.assertNotIn("settings.authority || {}).settingsAuthority", script)
@@ -813,7 +813,7 @@ class DashboardStaticContractTests(unittest.TestCase):
         self.assertNotIn("data-pane=\"future\"", script)
         self.assertIn("renderPathSettings(paths, settings.runtimePath || {})", script)
         self.assertIn("['runtime', 'database'", script)
-        self.assertNotIn("data-settings-path-key=\"novaHome\"", script)
+        self.assertNotIn("data-settings-path-key=\"actanaraHome\"", script)
         self.assertIn("id=\"runtimePathCandidate\"", script)
         self.assertIn("data-requires-restart=\"dashboard\"", script)
         self.assertIn("id=\"setDashboardProjectRoot\"", script)
@@ -832,7 +832,7 @@ class DashboardStaticContractTests(unittest.TestCase):
         self.assertIn("token usage events", script)
         self.assertIn("diaryProjectionRebuild(true)", script)
         self.assertIn("diaryProjectionRebuild(false)", script)
-        self.assertIn("REBUILD OPEN NOVA DIARY PROJECTIONS", script)
+        self.assertIn("REBUILD ACTANARA DIARY PROJECTIONS", script)
         self.assertIn("payload.confirmationText = confirmationText", script)
         self.assertIn("fetch('/api/settings/diary-path/rebuild'", script)
         self.assertIn("fetch('/api/settings/diary-path/rebuild/jobs?limit=10')", script)
@@ -841,7 +841,7 @@ class DashboardStaticContractTests(unittest.TestCase):
         self.assertIn('@router.post("/settings/sqlite-cache/rebuild")', router)
         self.assertIn("sqliteCacheRebuild(true)", script)
         self.assertIn("sqliteCacheRebuild(false)", script)
-        self.assertIn("REBUILD OPEN NOVA SQLITE CACHE", script)
+        self.assertIn("REBUILD ACTANARA SQLITE CACHE", script)
         self.assertIn("fetch('/api/settings/sqlite-cache/rebuild'", script)
         self.assertIn("settings-progress-bar", css)
         self.assertIn('@router.get("/settings/diary-path/rebuild/jobs")', router)
@@ -880,7 +880,7 @@ class DashboardStaticContractTests(unittest.TestCase):
         self.assertIn("function runtimePathAction(mode)", script)
         self.assertIn("fetch('/api/settings/runtime-path/validate?path='", script)
         self.assertIn("fetch('/api/settings/runtime-path/select'", script)
-        self.assertIn("SELECT OPEN NOVA RUNTIME PATH", script)
+        self.assertIn("SELECT ACTANARA RUNTIME PATH", script)
         self.assertIn("runtimePathConfirmationPrompt", script)
         self.assertIn("JSON.stringify({path, mode, confirmationText})", script)
         self.assertIn("renderRuntimePathStatus(data, mode)", script)
@@ -1025,9 +1025,9 @@ class DashboardStaticContractTests(unittest.TestCase):
 
     def test_dashboard_foundation_date_helpers_use_loaded_timezone(self):
         script = (ROOT / "src" / "dashboard" / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
-        self.assertIn("let OPEN_NOVA_DASHBOARD_TIMEZONE", script)
+        self.assertIn("let ACTANARA_DASHBOARD_TIMEZONE", script)
         self.assertIn("function loadDashboardTimezone()", script)
-        self.assertIn("OPEN_NOVA_DASHBOARD_TIMEZONE = schedule.timezone || general.timezone", script)
+        self.assertIn("ACTANARA_DASHBOARD_TIMEZONE = schedule.timezone || general.timezone", script)
         self.assertIn("timeZone: timezone", script)
 
     def test_nova_rag_page_exposes_rag_control_plane(self):
@@ -1093,7 +1093,7 @@ class DashboardStaticContractTests(unittest.TestCase):
         self.assertIn("迁移RAG基座/模式", script)
         self.assertIn("previewRagProfileMigration()", script)
         self.assertIn("fetch('/api/rag/profile/migrate/plan'", script)
-        self.assertIn("INITIALIZE OPEN NOVA RAG", script)
+        self.assertIn("INITIALIZE ACTANARA RAG", script)
         self.assertIn("initializationConfirmationMismatch", script)
         self.assertIn("openRagExternalSkillRegistration()", script)
         self.assertIn("fetch('/api/rag/profile/migrate'", script)
@@ -1127,7 +1127,7 @@ class DashboardStaticContractTests(unittest.TestCase):
         self.assertIn("loadRagSearchPage()", script)
         self.assertIn("runRagPageSearch()", script)
         self.assertIn("function runRagProductionSync()", script)
-        self.assertIn("SYNC OPEN NOVA RAG", script)
+        self.assertIn("SYNC ACTANARA RAG", script)
         self.assertIn("RAG_PRODUCTION_SYNC_BUSY", script)
         self.assertIn("productionSyncConfirmationPrompt", script)
         self.assertIn("fetch('/api/rag/sync/run'", script)
@@ -1195,7 +1195,7 @@ class DashboardStaticContractTests(unittest.TestCase):
         script = (ROOT / "src" / "dashboard" / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
         tasks_html = (ROOT / "src" / "dashboard" / "app" / "static" / "tasks.html").read_text(encoding="utf-8")
 
-        self.assertIn("const OPEN_NOVA_CSRF_HEADER = 'X-Open-Nova-CSRF'", script)
+        self.assertIn("const ACTANARA_CSRF_HEADER = 'X-Actanara-CSRF'", script)
         self.assertIn("window.fetch = function(input, init)", script)
         self.assertIn("function sanitizeDashboardHtml", script)
         self.assertIn("function renderSafeMarkdown", script)
@@ -1203,7 +1203,7 @@ class DashboardStaticContractTests(unittest.TestCase):
         self.assertIn("return sanitizeDashboardHtml(html)", script)
         self.assertIn("${renderSafeMarkdown(d.rawContent)}", script)
         self.assertNotIn("${marked.parse(d.rawContent)}", script)
-        self.assertIn("const csrfHeader = 'X-Open-Nova-CSRF'", tasks_html)
+        self.assertIn("const csrfHeader = 'X-Actanara-CSRF'", tasks_html)
         self.assertIn("window.fetch = function(input, init)", tasks_html)
 
 

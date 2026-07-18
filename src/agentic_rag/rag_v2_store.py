@@ -1,6 +1,6 @@
 """RAG v2 shadow storage primitives.
 
-These helpers only manage v2 metadata under ``$NOVA_HOME/reserved/rag/v2``.
+These helpers only manage v2 metadata under ``$ACTANARA_HOME/reserved/rag/v2``.
 They do not read, rebuild, compact, delete or replace the legacy production
 RAG index.
 """

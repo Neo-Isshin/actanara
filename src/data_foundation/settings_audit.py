@@ -22,8 +22,8 @@ SECRET_ENV_KEYS = {
 }
 
 BOOTSTRAP_ENV_KEYS = {
-    "NOVA_HOME",
-    "NOVA_LOCATION_FILE",
+    "ACTANARA_HOME",
+    "ACTANARA_LOCATION_FILE",
 }
 
 DIAGNOSTIC_ENV_KEYS = {
@@ -35,7 +35,7 @@ DIAGNOSTIC_ENV_KEYS = {
     "TASK_AUDIT_SINK",
 }
 
-INSTALLER_TRANSPORT_ENV_PREFIXES = ("NOVA_INSTALL_",)
+INSTALLER_TRANSPORT_ENV_PREFIXES = ("ACTANARA_INSTALL_",)
 
 AUDIT_TARGETS = (
     {
@@ -263,16 +263,16 @@ def _protected_group_risk() -> dict[str, Any]:
 
 def _rag_legacy_env_risk(root: Path) -> dict[str, Any]:
     legacy_mode_env = os.getenv("RAG_MODE")
-    nova_mode_env = os.getenv("NOVA_RAG_MODE")
+    actanara_mode_env = os.getenv("NOVA_RAG_MODE")
     config_text = _read_text(root / "src" / "agentic_rag" / "rag_config.py")
     mentions_legacy_mode = "RAG_MODE" in config_text
-    active = bool(legacy_mode_env or nova_mode_env or mentions_legacy_mode)
+    active = bool(legacy_mode_env or actanara_mode_env or mentions_legacy_mode)
     return {
         "id": "rag-legacy-env-boundary",
         "category": "rag-settings",
-        "severity": "medium" if legacy_mode_env or nova_mode_env else "low",
+        "severity": "medium" if legacy_mode_env or actanara_mode_env else "low",
         "status": "attention" if active else "ok",
-        "activeEnv": [name for name, value in (("RAG_MODE", legacy_mode_env), ("NOVA_RAG_MODE", nova_mode_env)) if value is not None],
+        "activeEnv": [name for name, value in (("RAG_MODE", legacy_mode_env), ("NOVA_RAG_MODE", actanara_mode_env)) if value is not None],
         "codeMentionsLegacyMode": mentions_legacy_mode,
         "recommendation": "Keep nova-RAG mode changes in the dedicated RAG control plane; legacy RAG_MODE must not become the product-level subsystem switch.",
     }
@@ -283,7 +283,7 @@ def _shell_wrapper_risk(root: Path) -> dict[str, Any]:
     content = _read_text(path)
     markers = [
         marker
-        for marker in ("NOVA_DASHBOARD_PROJECT_ROOT", "NOVA_DASHBOARD_PYTHON", "NOVA_DASHBOARD_HOST", "NOVA_DASHBOARD_PORT")
+        for marker in ("ACTANARA_DASHBOARD_PROJECT_ROOT", "ACTANARA_DASHBOARD_PYTHON", "ACTANARA_DASHBOARD_HOST", "ACTANARA_DASHBOARD_PORT")
         if marker in content
     ]
     return {

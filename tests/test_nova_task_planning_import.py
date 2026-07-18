@@ -20,13 +20,13 @@ from data_foundation.paths import initialize_home
 class NovaTaskPlanningImportTests(unittest.TestCase):
     def test_planning_document_can_create_pathless_planned_l1_tree(self):
         def fake_sender(**kwargs):
-            self.assertIn("Document title:\nNova Agent RFC", kwargs["prompt"])
+            self.assertIn("Document title:\nActanara Agent RFC", kwargs["prompt"])
             return """```yaml
 nova_task:
   planning_import:
-    document_title: "Nova Agent RFC"
+    document_title: "Actanara Agent RFC"
     project:
-      proposed_title: "Nova Agent"
+      proposed_title: "Actanara Agent"
       suggested_node_type: track
       proposed_level: 1
       matched_existing_node_id: ""
@@ -46,12 +46,12 @@ nova_task:
 ```"""
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
 
             result = import_planning_document(
                 paths,
-                document_title="Nova Agent RFC",
-                document_text="# Nova Agent RFC\n\nBuild the planner subsystem.",
+                document_title="Actanara Agent RFC",
+                document_text="# Actanara Agent RFC\n\nBuild the planner subsystem.",
                 apply=False,
                 sender=fake_sender,
             )
@@ -66,7 +66,7 @@ nova_task:
             artifact_head = Path(result.artifact_path).read_text(encoding="utf-8")[:200]
 
         self.assertFalse(result.applied)
-        self.assertEqual(result.preview_tree["title"], "Nova Agent")
+        self.assertEqual(result.preview_tree["title"], "Actanara Agent")
         self.assertEqual(result.preview_tree["action"], "create")
         self.assertEqual(result.validation_report["summary"], {"create": 3, "reuse": 0, "skip": 0})
         self.assertEqual(result.node_created_count, 3)
@@ -75,10 +75,10 @@ nova_task:
         self.assertEqual(applied.node_created_count, 3)
         self.assertEqual(applied.node_reused_count, 0)
         by_title = {row["title"]: row for row in rows}
-        self.assertEqual((by_title["Nova Agent"]["node_type"], by_title["Nova Agent"]["status"]), ("track", "planned"))
-        self.assertEqual(by_title["Planner subsystem"]["parent_node_id"], by_title["Nova Agent"]["node_id"])
+        self.assertEqual((by_title["Actanara Agent"]["node_type"], by_title["Actanara Agent"]["status"]), ("track", "planned"))
+        self.assertEqual(by_title["Planner subsystem"]["parent_node_id"], by_title["Actanara Agent"]["node_id"])
         self.assertEqual(by_title["Task tree importer"]["parent_node_id"], by_title["Planner subsystem"]["node_id"])
-        metadata = json.loads(by_title["Nova Agent"]["metadata_json"])
+        metadata = json.loads(by_title["Actanara Agent"]["metadata_json"])
         self.assertEqual(metadata["origin"], ORIGIN_PLANNED)
         self.assertEqual(metadata["stateAuthority"], STATE_AUTHORITY_PLANNED_STATE_MACHINE)
         self.assertEqual(metadata["createdFrom"], "nova_task_planning_import")
@@ -89,9 +89,9 @@ nova_task:
             return """```yaml
 nova_task:
   planning_import:
-    document_title: "Open Nova Roadmap"
+    document_title: "Actanara Roadmap"
     project:
-      proposed_title: "open-nova"
+      proposed_title: "actanara"
       suggested_node_type: track
       proposed_level: 1
       matched_existing_node_id: "NT-ROOT"
@@ -111,13 +111,13 @@ nova_task:
 ```"""
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
-            root = create_task_node(paths, node_id="NT-ROOT", title="open-nova", node_type="track", actor="operator")
+            paths = initialize_home(Path(tmp) / "Actanara")
+            root = create_task_node(paths, node_id="NT-ROOT", title="actanara", node_type="track", actor="operator")
 
             result = import_planning_document(
                 paths,
-                document_title="Open Nova Roadmap",
-                document_text="# Open Nova Roadmap",
+                document_title="Actanara Roadmap",
+                document_text="# Actanara Roadmap",
                 apply=True,
                 sender=fake_sender,
             )

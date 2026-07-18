@@ -1,4 +1,4 @@
-"""Nova Data Foundation infrastructure introduced during the shadow migration."""
+"""Actanara Data Foundation infrastructure introduced during the shadow migration."""
 
 from .paths import RuntimePaths, load_paths
 

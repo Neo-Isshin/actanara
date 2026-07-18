@@ -106,7 +106,7 @@ class DiaryMetricsReaderTests(unittest.TestCase):
         root.mkdir(parents=True, exist_ok=True)
         artifact = root / "fixture.jsonl"
         artifact.write_text("{}\n", encoding="utf-8")
-        paths = initialize_home(root / "NovaDiary")
+        paths = initialize_home(root / "Actanara")
         with patch(
             "data_foundation.ingest.business_date_for",
             return_value=date(2026, 5, 19),
@@ -130,7 +130,7 @@ class DiaryMetricsReaderTests(unittest.TestCase):
             root = Path(tmp)
             artifact = root / "empty.jsonl"
             artifact.write_text("", encoding="utf-8")
-            paths = initialize_home(root / "NovaDiary")
+            paths = initialize_home(root / "Actanara")
             with patch(
                 "data_foundation.ingest.business_date_for",
                 return_value=date(2026, 5, 19),
@@ -789,7 +789,7 @@ class DiaryMetricsReaderTests(unittest.TestCase):
             return _Response()
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             with patch.dict(os.environ, {"TARGET_TIMEZONE": "UTC"}, clear=False):
                 weather = weather_service.fetch_weather_for_date(
                     "2026-06-05",

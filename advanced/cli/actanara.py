@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compatibility wrapper for the packaged Open Nova operator CLI."""
+"""Source-tree entrypoint for the packaged Actanara operator CLI."""
 
 from __future__ import annotations
 

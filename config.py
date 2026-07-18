@@ -12,14 +12,14 @@ WORKSPACE_DIR_BASE = (
 )
 
 # Provide sensible defaults, then overlay the active runtime settings file.
-# Open Nova does not load a workspace .env file. Non-secret runtime
-# configuration is persisted in ~/.open-nova/config/settings.json. Environment
+# Actanara does not load a workspace .env file. Non-secret runtime
+# configuration is persisted in ~/.actanara/config/settings.json. Environment
 # variables are limited to bootstrap/secret injection and process-local
 # diagnostics; they must not override normal persisted settings here.
 
 # Paths
-DEFAULT_NOVA_HOME = Path.home() / ".open-nova"
-DEFAULT_LOCATION_FILE = Path("~/.config/open-nova/location.json").expanduser()
+DEFAULT_ACTANARA_HOME = Path.home() / ".actanara"
+DEFAULT_LOCATION_FILE = Path("~/.config/actanara/location.json").expanduser()
 
 
 def _read_json(path: Path) -> dict:
@@ -31,12 +31,12 @@ def _read_json(path: Path) -> dict:
 
 
 def _selected_home() -> Path:
-    env_home = os.getenv("NOVA_HOME")
+    env_home = os.getenv("ACTANARA_HOME")
     if env_home:
         return Path(env_home).expanduser()
-    location_file = Path(os.getenv("NOVA_LOCATION_FILE", str(DEFAULT_LOCATION_FILE))).expanduser()
-    selected = _read_json(location_file).get("novaHome")
-    return Path(selected).expanduser() if selected else DEFAULT_NOVA_HOME
+    location_file = Path(os.getenv("ACTANARA_LOCATION_FILE", str(DEFAULT_LOCATION_FILE))).expanduser()
+    selected = _read_json(location_file).get("actanaraHome")
+    return Path(selected).expanduser() if selected else DEFAULT_ACTANARA_HOME
 
 
 def _get_nested(payload: dict, dotted_path: str, default=None):
@@ -48,8 +48,8 @@ def _get_nested(payload: dict, dotted_path: str, default=None):
     return value
 
 
-NOVA_HOME = _selected_home()
-_SETTINGS = _read_json(NOVA_HOME / "config" / "settings.json")
+ACTANARA_HOME = _selected_home()
+_SETTINGS = _read_json(ACTANARA_HOME / "config" / "settings.json")
 
 
 def _settings_path(dotted_path: str, default: Path | str) -> Path:
@@ -63,10 +63,10 @@ def _settings_str(dotted_path: str, default: str) -> str:
 
 
 WORKSPACE_DIR = _settings_path("general.workspaceRoot", WORKSPACE_DIR_BASE)
-DIARY_OUTPUT_DIR = _settings_path("paths.diary.generatedDiary", NOVA_HOME / "artifacts" / "diary")
-TMP_WORKSPACE = _settings_path("paths.logsCacheTmp.tmp", NOVA_HOME / "state" / "tmp")
-NOVA_DATA_DB_PATH = _settings_path("paths.runtime.database", NOVA_HOME / "data" / "nova_data.sqlite3")
-NOVA_DATA_EXPORT_DIR = _settings_path("paths.runtime.snapshots", NOVA_HOME / "snapshots")
+DIARY_OUTPUT_DIR = _settings_path("paths.diary.generatedDiary", ACTANARA_HOME / "artifacts" / "diary")
+TMP_WORKSPACE = _settings_path("paths.logsCacheTmp.tmp", ACTANARA_HOME / "state" / "tmp")
+ACTANARA_DATA_DB_PATH = _settings_path("paths.runtime.database", ACTANARA_HOME / "data" / "actanara_data.sqlite3")
+ACTANARA_DATA_EXPORT_DIR = _settings_path("paths.runtime.snapshots", ACTANARA_HOME / "snapshots")
 
 # LLM Configuration. Secret values may still be injected by the parent
 # process or the secret store, but they are not loaded from .env.
@@ -75,11 +75,11 @@ LLM_HOST = _settings_str("llmProvider.endpoint", "")
 LLM_MODEL_NAME = _settings_str("llmProvider.model", "")
 
 # DB Configuration
-TASK_DB_PATH = str(_settings_path("paths.tasks.legacyTaskDatabase", NOVA_HOME / "data" / "nova_tasks.db"))
+TASK_DB_PATH = str(_settings_path("paths.tasks.legacyTaskDatabase", ACTANARA_HOME / "data" / "nova_tasks.db"))
 
 # Data foundation production defaults. Legacy remains archived for explicit
 # diagnostic/import/comparison use, but is no longer the normal runtime source.
-NOVA_DATA_FOUNDATION_ENABLED = True
+ACTANARA_DATA_FOUNDATION_ENABLED = True
 DASHBOARD_READ_SOURCE = _settings_str("runtimeSources.dashboardReadSource", "foundation")
 REPORT_READ_SOURCE = _settings_str("runtimeSources.reportReadSource", "foundation")
 DIARY_METRICS_SOURCE = _settings_str("runtimeSources.diaryMetricsSource", "foundation")

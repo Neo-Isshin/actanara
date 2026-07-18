@@ -591,10 +591,10 @@ def _run_step(
 def _pipeline_language_environment(paths: RuntimePaths | None = None) -> dict[str, str]:
     pipeline = resolve_pipeline_settings(paths)
     return {
-        "NOVA_PIPELINE_LANGUAGE_PROFILE": str(pipeline.get("languageProfile") or "zh"),
-        "NOVA_DIARY_SCHEMA_VERSION": str(pipeline.get("diarySchemaVersion") or "diary-v1-zh"),
-        "NOVA_PROMPT_PAYLOAD_PROFILE": str(pipeline.get("promptPayloadProfile") or "zh-CN"),
-        "NOVA_DISPLAY_LOCALE": str(pipeline.get("displayLocale") or "zh-CN"),
+        "ACTANARA_PIPELINE_LANGUAGE_PROFILE": str(pipeline.get("languageProfile") or "zh"),
+        "ACTANARA_DIARY_SCHEMA_VERSION": str(pipeline.get("diarySchemaVersion") or "diary-v1-zh"),
+        "ACTANARA_PROMPT_PAYLOAD_PROFILE": str(pipeline.get("promptPayloadProfile") or "zh-CN"),
+        "ACTANARA_DISPLAY_LOCALE": str(pipeline.get("displayLocale") or "zh-CN"),
         "NOVA_RAG_LANGUAGE_PROFILE": str(pipeline.get("ragLanguageProfile") or "zh"),
         "LLM_THINKING_MODE": str(pipeline.get("thinkingMode") or "off"),
     }
@@ -771,7 +771,7 @@ def prepare_blank_day_foundation_inputs(date_str: str, paths: RuntimePaths | Non
 def _skip_final_rag_reason(paths: RuntimePaths | None = None) -> str | None:
     pipeline = resolve_pipeline_settings(paths)
     if _truthy(pipeline.get("skipFinalRag")):
-        return f"{pipeline.get('skipFinalRagEnv') or 'NOVA_PIPELINE_SKIP_FINAL_RAG'} override is set"
+        return f"{pipeline.get('skipFinalRagEnv') or 'ACTANARA_PIPELINE_SKIP_FINAL_RAG'} override is set"
     if is_rag_product_enabled is not None:
         try:
             if not is_rag_product_enabled(paths=paths):
@@ -1026,7 +1026,7 @@ def run_daily_pipeline(
         step_contract=step_contract,
         pipeline_contract_hash=pipeline_contract_hash,
     )
-    print(f"Open Nova · Daily diary · {target_date}")
+    print(f"Actanara · Daily diary · {target_date}")
     language_block_reason = _pipeline_language_blocking_reason(pipeline_settings)
     if language_block_reason:
         _print_pipeline_status("[X]", "Generate diary", "English output is not enabled.")
@@ -1509,7 +1509,7 @@ def _pipeline_language_blocking_reason(pipeline: dict[str, object] | RuntimePath
 
 
 def command_main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Run the Open Nova daily production pipeline.")
+    parser = argparse.ArgumentParser(description="Run the Actanara daily production pipeline.")
     parser.add_argument("date", nargs="?", type=_normalize_command_date, help="Business date, YYYY-MM-DD or YYMMDD.")
     args = parser.parse_args(list(sys.argv[1:] if argv is None else argv))
     result = run_daily_pipeline(args.date)

@@ -20,7 +20,7 @@ FASTAPI_AVAILABLE = importlib.util.find_spec("fastapi") is not None
 class SystemRegistryTests(unittest.TestCase):
     def test_default_system_registry_registers_core_surfaces_readonly(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             status = register_default_system_components(paths)
             second = register_default_system_components(paths)
 
@@ -45,7 +45,7 @@ class SystemRegistryTests(unittest.TestCase):
 
     def test_system_registry_status_is_readonly_after_registration(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             register_default_system_components(paths)
             status = system_registry_status(paths)
 

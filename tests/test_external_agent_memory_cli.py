@@ -42,8 +42,8 @@ class _FakeRawResponse(_FakeResponse):
 
 class ExternalAgentMemoryCliTests(unittest.TestCase):
     def test_advanced_cli_wrapper_delegates_to_packaged_entrypoint(self):
-        module_path = ROOT / "advanced" / "cli" / "open_nova.py"
-        spec = importlib.util.spec_from_file_location("open_nova_advanced_wrapper", module_path)
+        module_path = ROOT / "advanced" / "cli" / "actanara.py"
+        spec = importlib.util.spec_from_file_location("actanara_advanced_wrapper", module_path)
         module = importlib.util.module_from_spec(spec)
         assert spec.loader is not None
         spec.loader.exec_module(module)
@@ -207,8 +207,8 @@ class ExternalAgentMemoryCliTests(unittest.TestCase):
     def test_packaged_cli_delegates_operator_commands(self):
         payload = {"summary": {"errors": 0}}
         with (
-            patch("data_foundation.operator_cli.nova_settings_status", return_value=payload) as status,
-            patch("data_foundation.operator_cli.format_nova_settings_status", return_value="Open Nova · System status\n") as formatter,
+            patch("data_foundation.operator_cli.actanara_settings_status", return_value=payload) as status,
+            patch("data_foundation.operator_cli.format_actanara_settings_status", return_value="Actanara · System status\n") as formatter,
             redirect_stdout(io.StringIO()) as output,
         ):
             code = cli.main(["settings", "status"])
@@ -216,29 +216,29 @@ class ExternalAgentMemoryCliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         status.assert_called_once_with(None, doctor_profile="all")
         formatter.assert_called_once_with(payload)
-        self.assertIn("Open Nova · System status", output.getvalue())
+        self.assertIn("Actanara · System status", output.getvalue())
 
     def test_packaged_cli_supports_layered_doctor_flags(self):
         payload = {"summary": {"errors": 0}, "doctorProfile": "pipeline"}
         with (
-            patch("data_foundation.operator_cli.nova_settings_status", return_value=payload) as status,
-            patch("data_foundation.operator_cli.format_nova_settings_status", return_value="Open Nova · Daily diary check\n"),
+            patch("data_foundation.operator_cli.actanara_settings_status", return_value=payload) as status,
+            patch("data_foundation.operator_cli.format_actanara_settings_status", return_value="Actanara · Daily diary check\n"),
             redirect_stdout(io.StringIO()) as output,
         ):
             code = cli.main(["doctor", "--pipeline"])
 
         self.assertEqual(code, 0)
         status.assert_called_once_with(None, doctor_profile="pipeline")
-        self.assertIn("Open Nova · Daily diary check", output.getvalue())
+        self.assertIn("Actanara · Daily diary check", output.getvalue())
 
     def test_packaged_cli_no_args_prints_product_command_guide(self):
         with redirect_stdout(io.StringIO()) as output:
             code = cli.main([])
 
         self.assertEqual(code, 0)
-        self.assertIn("Open Nova", output.getvalue())
+        self.assertIn("Actanara", output.getvalue())
         self.assertIn("Start here:", output.getvalue())
-        self.assertIn("open-nova doctor", output.getvalue())
+        self.assertIn("actanara doctor", output.getvalue())
 
     def test_rag_group_help_keeps_existing_nonzero_exit_code(self):
         with redirect_stdout(io.StringIO()) as output:
@@ -249,10 +249,10 @@ class ExternalAgentMemoryCliTests(unittest.TestCase):
 
     def test_compact_memory_results_reports_unavailable_without_mutation_hint(self):
         text = compact_memory_results({"available": False, "reason": "server-unavailable"})
-        self.assertIn("Open Nova · Memory search", text)
+        self.assertIn("Actanara · Memory search", text)
         self.assertIn("Unavailable", text)
         self.assertIn("not responding", text)
-        self.assertIn("open-nova doctor --rag", text)
+        self.assertIn("actanara doctor --rag", text)
         self.assertNotIn("server-unavailable", text)
 
     def test_normalize_memory_response_preserves_external_evidence_schema(self):

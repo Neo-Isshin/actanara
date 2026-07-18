@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Compatibility entrypoint for the historical Nova Diary CLI path."""
+"""Diary-focused source-tree entrypoint for the Actanara CLI."""
 
 from __future__ import annotations
 
-from open_nova import main
+from actanara import main
 
 
 if __name__ == "__main__":

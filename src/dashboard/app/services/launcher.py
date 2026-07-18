@@ -18,10 +18,10 @@ from advanced.dashboard import dashboard_launch_agent, rag_server_launch_agent
 from data_foundation.paths import load_paths
 from data_foundation.settings import read_settings, write_settings
 
-DASHBOARD_INSTALL_CONFIRMATION = "INSTALL OPEN NOVA DASHBOARD LAUNCHAGENT"
-DASHBOARD_UNINSTALL_CONFIRMATION = "UNINSTALL OPEN NOVA DASHBOARD LAUNCHAGENT"
-RAG_INSTALL_CONFIRMATION = "INSTALL OPEN NOVA RAG LAUNCHAGENT"
-RAG_UNINSTALL_CONFIRMATION = "UNINSTALL OPEN NOVA RAG LAUNCHAGENT"
+DASHBOARD_INSTALL_CONFIRMATION = "INSTALL ACTANARA DASHBOARD LAUNCHAGENT"
+DASHBOARD_UNINSTALL_CONFIRMATION = "UNINSTALL ACTANARA DASHBOARD LAUNCHAGENT"
+RAG_INSTALL_CONFIRMATION = "INSTALL ACTANARA RAG LAUNCHAGENT"
+RAG_UNINSTALL_CONFIRMATION = "UNINSTALL ACTANARA RAG LAUNCHAGENT"
 
 
 def preview_dashboard_launch_agent(*, probe_runtime: bool = True, launchctl_runner=None) -> dict[str, Any]:
@@ -165,7 +165,7 @@ def _jobs(kind: str) -> list[dict[str, Any]]:
             label=defaults["label"],
             python=defaults["python"],
             project_root=defaults["project_root"],
-            nova_home=defaults["nova_home"],
+            actanara_home=defaults["actanara_home"],
             host=defaults["host"],
             port=defaults["port"],
             foundation=True,
@@ -178,7 +178,7 @@ def _jobs(kind: str) -> list[dict[str, Any]]:
             script=defaults["project_root"] / "advanced" / "dashboard" / "dashboard_launch_agent.py",
             url=defaults["url"],
             interval=60,
-            nova_home=defaults["nova_home"],
+            actanara_home=defaults["actanara_home"],
             logs_dir=defaults["logs_dir"],
         )
         return [
@@ -201,7 +201,7 @@ def _jobs(kind: str) -> list[dict[str, Any]]:
             label=defaults["label"],
             python=defaults["python"],
             project_root=defaults["project_root"],
-            nova_home=defaults["nova_home"],
+            actanara_home=defaults["actanara_home"],
             script=defaults["project_root"] / "advanced" / "dashboard" / "rag_server_launch_agent.py",
             logs_dir=defaults["logs_dir"],
         )
@@ -432,7 +432,7 @@ def _write_plist(path: Path, payload: dict[str, Any]) -> None:
 
 
 def _launchctl(action: str, label: str, plist_path: Path, *, allow_failure: bool = False) -> subprocess.CompletedProcess[str]:
-    binary = os.environ.get("NOVA_INSTALL_LAUNCHCTL") or shutil.which("launchctl") or "/bin/launchctl"
+    binary = os.environ.get("ACTANARA_INSTALL_LAUNCHCTL") or shutil.which("launchctl") or "/bin/launchctl"
     domain = f"gui/{os.getuid()}"
     command = [binary]
     if action == "bootout":

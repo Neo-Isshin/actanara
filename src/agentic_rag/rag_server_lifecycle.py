@@ -1,6 +1,6 @@
 """Local nova-RAG server process lifecycle helpers.
 
-The nova-RAG subsystem owns its serving process under the selected Nova runtime
+The nova-RAG subsystem owns its serving process under the selected Actanara runtime
 state directory. This module does not build, promote or mutate indexes.
 """
 
@@ -129,14 +129,14 @@ def start_rag_server(
         result = {
             "accepted": False,
             "status": "missing-runtime",
-            "reason": "The Open Nova runtime venv is missing the local nova-RAG server dependencies.",
+            "reason": "The Actanara runtime venv is missing the local nova-RAG server dependencies.",
             "requiredModules": list(required_modules),
             "requiredInstallGroup": "rag-local" if resolved.embedding_provider == "local" else "rag-server",
             "installHint": (
                 "Initialize nova-RAG from Dashboard to install the optional rag-local dependencies in the background, "
                 "or run the installer with --enable-rag."
                 if resolved.embedding_provider == "local"
-                else "Repair the Open Nova rag-server runtime dependencies before starting nova-RAG."
+                else "Repair the Actanara rag-server runtime dependencies before starting nova-RAG."
             ),
             "lifecycle": existing,
         }
@@ -297,7 +297,7 @@ def _runtime_state_dir(settings: RagSettings | None = None) -> Path:
         if home is not None:
             return home / "state"
     if load_paths is None:
-        return Path(os.getenv("NOVA_HOME", str(ROOT))) / "state"
+        return Path(os.getenv("ACTANARA_HOME", str(ROOT))) / "state"
     return load_paths().state_dir
 
 
@@ -368,9 +368,9 @@ def _python_has_modules(
 
 def _runtime_venv_python() -> str | None:
     try:
-        home = load_paths().home if load_paths is not None else Path(os.getenv("NOVA_HOME", ""))
+        home = load_paths().home if load_paths is not None else Path(os.getenv("ACTANARA_HOME", ""))
     except Exception:
-        home = Path(os.getenv("NOVA_HOME", ""))
+        home = Path(os.getenv("ACTANARA_HOME", ""))
     if not home:
         return None
     path = Path(home).expanduser() / ".venv" / "bin" / "python"
@@ -389,8 +389,8 @@ def _server_env(settings: RagSettings) -> dict[str, str]:
         env.get("PYTHONPATH", ""),
     ]
     env["PYTHONPATH"] = os.pathsep.join([item for item in pythonpath if item])
-    if "NOVA_HOME" not in env and load_paths is not None:
-        env["NOVA_HOME"] = str(load_paths().home)
+    if "ACTANARA_HOME" not in env and load_paths is not None:
+        env["ACTANARA_HOME"] = str(load_paths().home)
     env.update(
         {
             "NOVA_RAG_ENABLED": "true" if settings.enabled else "false",

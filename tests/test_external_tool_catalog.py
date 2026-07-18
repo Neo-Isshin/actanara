@@ -52,7 +52,7 @@ class ExternalToolCatalogTests(unittest.TestCase):
             (primary / "config.json").write_text("{}\n", encoding="utf-8")
             (secondary / "agents").mkdir(parents=True)
             (secondary / "config.json").write_text("{}\n", encoding="utf-8")
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"externalTools": {"openclaw": {"home": str(primary)}}}, paths)
 
             with patch("data_foundation.external_tool_catalog.Path.home", return_value=home):
@@ -73,7 +73,7 @@ class ExternalToolCatalogTests(unittest.TestCase):
             (codex / "sessions").mkdir(parents=True)
             (gemini / "tmp").mkdir(parents=True)
             (hermes / "profiles").mkdir(parents=True)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
 
             with patch("data_foundation.external_tool_catalog.Path.home", return_value=home):
                 result = rediscover_external_tools(paths)
@@ -89,7 +89,7 @@ class ExternalToolCatalogTests(unittest.TestCase):
     def test_add_external_tool_instance_persists_derived_paths_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             tool_home = root / "codex-alt"
             tool_home.mkdir()
 
@@ -104,7 +104,7 @@ class ExternalToolCatalogTests(unittest.TestCase):
     def test_add_external_tool_instance_persists_all_catalog_fields(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             tool_home = root / "hermes-alt"
             tool_home.mkdir()
 

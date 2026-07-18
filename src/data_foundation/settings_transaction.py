@@ -412,7 +412,7 @@ def _secret_ref_owned_by_transaction(
     pattern = rf"settings-tx-{runtime_id}-[a-f0-9]{{12}}-{re.escape(transaction_id)}"
     return (
         bool(transaction_id)
-        and ref["service"] == "open-nova"
+        and ref["service"] == "actanara"
         and re.fullmatch(pattern, ref["account"]) is not None
     )
 
@@ -423,7 +423,7 @@ def _normalized_secret_ref(ref: object) -> dict[str, str]:
         value = {}
     return {
         "backend": str(value.get("backend") or ""),
-        "service": str(value.get("service") or "open-nova"),
+        "service": str(value.get("service") or "actanara"),
         "account": str(value.get("account") or ""),
     }
 

@@ -14,7 +14,7 @@ from data_foundation.settings import read_settings, write_llm_provider
 class LlmProviderAvailabilityTests(unittest.TestCase):
     def test_probe_reports_missing_config_without_network(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
 
             result = check_llm_provider_availability(paths)
 
@@ -25,7 +25,7 @@ class LlmProviderAvailabilityTests(unittest.TestCase):
 
     def test_probe_uses_secret_ref_without_exposing_or_persisting_candidate_key(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_llm_provider(
                 {
                     "provider": "custom",
@@ -65,7 +65,7 @@ class LlmProviderAvailabilityTests(unittest.TestCase):
             return "OK"
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             result = check_llm_provider_availability(
                 paths,
                 candidate={
@@ -84,7 +84,7 @@ class LlmProviderAvailabilityTests(unittest.TestCase):
 
     def test_candidate_preset_provider_rehydrates_catalog_endpoint_api_and_model(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_llm_provider(
                 {
                     "mode": "preset",

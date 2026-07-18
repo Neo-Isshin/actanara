@@ -70,7 +70,7 @@ class PipelineCommandContractTests(unittest.TestCase):
 
     def test_default_date_uses_runtime_timezone(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings({"general": {"timezone": "UTC"}}, paths)
 
             value = default_business_date(datetime(2026, 5, 27, 0, 30, tzinfo=ZoneInfo("Asia/Hong_Kong")), paths)
@@ -200,7 +200,7 @@ class PipelineCommandContractTests(unittest.TestCase):
 
             result = run_daily_pipeline(
                 "2026-05-19",
-                paths=initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary"),
+                paths=initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary"),
                 steps=[PipelineStep("fixture", script, ("{date}",))],
                 runner=runner,
             )
@@ -210,7 +210,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_pipeline_step_timeout_is_passed_to_runner(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"pipeline": {"stepTimeoutSeconds": 77}}, paths)
             script = root / "step.py"
             script.write_text("", encoding="utf-8")
@@ -233,7 +233,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_pipeline_step_timeout_override_uses_script_name(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"pipeline": {"stepTimeoutSeconds": 77, "stepTimeouts": {"technical_pass.py": 123}}}, paths)
             script = root / "technical_pass.py"
             script.write_text("", encoding="utf-8")
@@ -257,7 +257,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_pipeline_timeout_is_recorded_as_step_failure_reason(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"pipeline": {"stepTimeoutSeconds": 9}}, paths)
             script = root / "step.py"
             script.write_text("", encoding="utf-8")
@@ -281,7 +281,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_pipeline_total_timeout_halts_before_next_step(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"pipeline": {"totalWatchdogSeconds": 900, "stepTimeoutSeconds": 900}}, paths)
             first = root / "first.py"
             second = root / "second.py"
@@ -312,7 +312,7 @@ class PipelineCommandContractTests(unittest.TestCase):
 
     def test_pipeline_total_watchdog_ignores_legacy_daily_timeout(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings({"pipeline": {"dailyTimeoutSeconds": 900}}, paths)
 
             timeout = _pipeline_total_timeout_seconds(paths)
@@ -329,20 +329,20 @@ class PipelineCommandContractTests(unittest.TestCase):
 
             result = run_daily_pipeline(
                 "2026-05-19",
-                paths=initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary"),
+                paths=initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary"),
                 steps=[PipelineStep("fixture", script)],
                 runner=runner,
             )
             self.assertFalse(result.success)
             self.assertEqual(result.succeeded_steps, 0)
-            latest = latest_pipeline_failure(initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary"))
+            latest = latest_pipeline_failure(initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary"))
             self.assertEqual(latest["businessDate"], "2026-05-19")
             self.assertEqual(latest["failedStep"], "fixture")
 
     def test_daily_pipeline_lock_blocks_duplicate_same_date_run(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             script = root / "step.py"
             script.write_text("", encoding="utf-8")
             lock = _acquire_daily_pipeline_lock(paths, "2026-05-19")
@@ -373,7 +373,7 @@ class PipelineCommandContractTests(unittest.TestCase):
             ):
                 result = run_daily_pipeline(
                     "2026-05-19",
-                    paths=initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary"),
+                    paths=initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary"),
                     steps=[PipelineStep("narrative", script, ("{date}",))],
                     runner=lambda command, **kwargs: subprocess.CompletedProcess(command, 0, "ok\n", ""),
                     pre_materializer=lambda selected, paths: prepared.append((selected, paths)) or True,
@@ -403,7 +403,7 @@ class PipelineCommandContractTests(unittest.TestCase):
             ):
                 result = run_daily_pipeline(
                     "2026-05-19",
-                    paths=initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary"),
+                    paths=initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary"),
                     steps=[PipelineStep("collect", collect), PipelineStep("narrative", narrative)],
                     runner=runner,
                     pre_materializer=prepare,
@@ -414,7 +414,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_blank_day_fast_path_skips_passes_after_collect_and_materializes_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             collect = root / "unified_source_collector.py"
             narrative = root / "narrative_pass.py"
             technical = root / "technical_pass.py"
@@ -465,7 +465,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_blank_day_fast_path_allows_missing_usage_stats_before_blank_marker_exists(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             collect = root / "unified_source_collector.py"
             narrative = root / "narrative_pass.py"
             technical = root / "technical_pass.py"
@@ -516,7 +516,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_blank_day_narrative_uses_english_materializer_for_english_profile(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"pipeline": {"languageProfile": "en", "englishEnabled": True}}, paths)
             from diary_generator import narrative_pass as zh_narrative_pass
             from diary_generator.en import narrative_pass as en_narrative_pass
@@ -534,7 +534,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_blank_day_narrative_real_english_writer_creates_no_activity_artifact(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"pipeline": {"languageProfile": "en", "englishEnabled": True}}, paths)
             from diary_generator.en import narrative_pass as en_narrative_pass
 
@@ -553,7 +553,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_blank_day_narrative_writer_ignores_cron_only_filtered_entries(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             cron_dir = paths.diary_dir / "__diary_daily" / "2026-05-19" / "_filtered" / "cron"
             cron_dir.mkdir(parents=True, exist_ok=True)
             (cron_dir / "unified_daily.jsonl").write_text(
@@ -580,7 +580,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_blank_day_fast_path_ignores_cron_only_filtered_entries(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             collect = root / "unified_source_collector.py"
             narrative = root / "narrative_pass.py"
             technical = root / "technical_pass.py"
@@ -638,7 +638,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_reuse_foundation_inputs_can_take_blank_day_fast_path_without_collect(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             collect = root / "unified_source_collector.py"
             narrative = root / "narrative_pass.py"
             technical = root / "technical_pass.py"
@@ -692,7 +692,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_collect_blank_day_detection_uses_final_summary_not_agent_details(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             collect = root / "unified_source_collector.py"
             narrative = root / "narrative_pass.py"
             for script in (collect, narrative):
@@ -731,7 +731,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_collect_empty_uses_full_foundation_inputs_when_unified_entries_exist(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             collect = root / "unified_source_collector.py"
             narrative = root / "narrative_pass.py"
             for script in (collect, narrative):
@@ -776,7 +776,7 @@ class PipelineCommandContractTests(unittest.TestCase):
             with patch.dict("os.environ", {"DIARY_MEMORY_SOURCE": "foundation"}):
                 result = run_daily_pipeline(
                     "2026-05-19",
-                    paths=initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary"),
+                    paths=initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary"),
                     steps=[PipelineStep("narrative", narrative)],
                     runner=lambda command, **kwargs: self.fail("narrative ran after failed preparation"),
                     pre_materializer=lambda selected, paths: False,
@@ -787,7 +787,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_runtime_settings_can_drive_pipeline_foundation_preparation(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"runtimeSources": {"diaryMetricsSource": "foundation"}}, paths)
             narrative = root / "narrative_pass.py"
             narrative.write_text("", encoding="utf-8")
@@ -810,7 +810,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_pipeline_materializes_foundation_outputs_before_final_rag_sync(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             learning = root / "learning_pass.py"
             rag = root / "rag_v2_sync.py"
             learning.write_text("", encoding="utf-8")
@@ -834,12 +834,12 @@ class PipelineCommandContractTests(unittest.TestCase):
                     post_materializer=post,
                 )
             self.assertTrue(result.success)
-            self.assertEqual(observed, ["learning_pass.py", "materialize:2026-05-19:NovaDiary", "rag_v2_sync.py"])
+            self.assertEqual(observed, ["learning_pass.py", "materialize:2026-05-19:Actanara", "rag_v2_sync.py"])
 
     def test_pipeline_invokes_final_rag_sync_with_default_auto_promote(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             rag = root / "rag_v2_sync.py"
             rag.write_text("", encoding="utf-8")
             observed = []
@@ -868,7 +868,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_pipeline_blocks_final_rag_before_subprocess_when_readiness_preflight_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             rag = root / "rag_v2_sync.py"
             rag.write_text("", encoding="utf-8")
 
@@ -898,7 +898,7 @@ class PipelineCommandContractTests(unittest.TestCase):
             root = Path(tmp)
             legacy = root / "LegacyDiary"
             current = root / "GeneratedDiary"
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=legacy)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=legacy)
             paths = update_runtime_manifest_paths(paths.home, generated_diary_root=current, legacy_diary_root=legacy)
             legacy_report = legacy / "diary-2026-05-19" / "技术进展-260519.md"
             current_report = current / "diary-2026" / "diary-2026-05" / "05-19" / "技术进展-260519.md"
@@ -912,7 +912,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_pipeline_technical_report_path_uses_english_profile_filename(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             paths = update_runtime_manifest_paths(paths.home, generated_diary_root=root / "GeneratedDiary", legacy_diary_root=root / "Diary")
             write_settings({"pipeline": {"languageProfile": "en", "englishEnabled": True}}, paths)
             current = paths.diary_dir / "diary-2026" / "diary-2026-05" / "05-19"
@@ -927,7 +927,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_pipeline_technical_report_path_fallback_is_english_when_profile_is_en(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             paths = update_runtime_manifest_paths(paths.home, generated_diary_root=root / "GeneratedDiary", legacy_diary_root=root / "Diary")
             write_settings({"pipeline": {"languageProfile": "en", "englishEnabled": True}}, paths)
 
@@ -939,7 +939,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_pipeline_treats_executed_rag_sync_blocked_as_failure(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             rag = root / "rag_v2_sync.py"
             rag.write_text("", encoding="utf-8")
             payload = {
@@ -973,7 +973,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_pipeline_skips_final_rag_when_rag_is_disabled_but_still_materializes_foundation_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"rag": {"mode": "disabled"}}, paths)
             rag = root / "rag_v2_sync.py"
             rag.write_text("", encoding="utf-8")
@@ -993,12 +993,12 @@ class PipelineCommandContractTests(unittest.TestCase):
 
             self.assertTrue(result.success)
             self.assertEqual(result.succeeded_steps, 1)
-            self.assertEqual(observed, ["materialize:2026-05-19:NovaDiary"])
+            self.assertEqual(observed, ["materialize:2026-05-19:Actanara"])
 
     def test_pipeline_skip_final_rag_env_override_skips_only_rag_sync(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             rag = root / "rag_v2_sync.py"
             rag.write_text("", encoding="utf-8")
             observed = []
@@ -1007,7 +1007,7 @@ class PipelineCommandContractTests(unittest.TestCase):
                 observed.append(f"materialize:{selected}:{runtime_paths.home.name}")
                 return True
 
-            with patch.dict(os.environ, {"NOVA_PIPELINE_SKIP_FINAL_RAG": "1"}):
+            with patch.dict(os.environ, {"ACTANARA_PIPELINE_SKIP_FINAL_RAG": "1"}):
                 result = run_daily_pipeline(
                     "2026-05-19",
                     paths=paths,
@@ -1018,12 +1018,12 @@ class PipelineCommandContractTests(unittest.TestCase):
 
             self.assertTrue(result.success)
             self.assertEqual(result.succeeded_steps, 1)
-            self.assertEqual(observed, ["materialize:2026-05-19:NovaDiary"])
+            self.assertEqual(observed, ["materialize:2026-05-19:Actanara"])
 
     def test_pipeline_runs_nova_task_materialization_after_technical_pass(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             technical = root / "technical_pass.py"
             learning = root / "learning_pass.py"
             technical.write_text("", encoding="utf-8")
@@ -1047,12 +1047,12 @@ class PipelineCommandContractTests(unittest.TestCase):
             )
 
             self.assertTrue(result.success)
-            self.assertEqual(observed, ["technical_pass.py", "nova-task:2026-05-19:NovaDiary", "learning_pass.py"])
+            self.assertEqual(observed, ["technical_pass.py", "nova-task:2026-05-19:Actanara", "learning_pass.py"])
 
     def test_pipeline_skips_nova_task_materialization_when_feature_disabled(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"features": {"novaTask": False}}, paths)
             technical = root / "technical_pass.py"
             learning = root / "learning_pass.py"
@@ -1078,7 +1078,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_failed_nova_task_materialization_does_not_halt_diary_pipeline(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             technical = root / "technical_pass.py"
             learning = root / "learning_pass.py"
             technical.write_text("", encoding="utf-8")
@@ -1103,7 +1103,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_nova_task_pipeline_materializer_runs_reconciliation_from_technical_report_and_exports_board(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             report_dir = paths.diary_dir / "diary-2026-05-19"
             report_dir.mkdir(parents=True)
             report = report_dir / "技术进展-260519.md"
@@ -1146,7 +1146,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_nova_task_materialization_rejects_malformed_reconciliation_response(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             report_dir = paths.diary_dir / "diary-2026-05-19"
             report_dir.mkdir(parents=True)
             report = report_dir / "技术进展-260519.md"
@@ -1169,7 +1169,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_pipeline_subprocess_env_points_config_at_runtime_home(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             script = root / "step.py"
             script.write_text("", encoding="utf-8")
             observed = []
@@ -1186,7 +1186,7 @@ class PipelineCommandContractTests(unittest.TestCase):
             )
 
             self.assertTrue(result.success)
-            self.assertEqual(observed[0]["NOVA_HOME"], str(paths.home))
+            self.assertEqual(observed[0]["ACTANARA_HOME"], str(paths.home))
             self.assertNotIn("DIARY_OUTPUT_DIR", observed[0])
 
     def test_pipeline_subprocess_env_exports_configured_llm_key_name(self):
@@ -1194,7 +1194,7 @@ class PipelineCommandContractTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_llm_provider(
                 {
                     "provider": "openai-compatible",
@@ -1227,7 +1227,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_daily_pipeline_fails_fast_before_narrative_when_provider_key_is_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             narrative = root / "narrative_pass.py"
             narrative.write_text("", encoding="utf-8")
 
@@ -1237,6 +1237,7 @@ class PipelineCommandContractTests(unittest.TestCase):
                     paths=paths,
                     steps=[PipelineStep("Narrative", narrative)],
                     runner=lambda command, **kwargs: self.fail("narrative subprocess should not be launched"),
+                    pre_materializer=lambda selected, runtime_paths: True,
                 )
             failure = latest_pipeline_failure(paths)
 
@@ -1247,7 +1248,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_pipeline_subprocess_env_exports_language_profile(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"pipeline": {"languageProfile": "en"}}, paths)
             script = root / "step.py"
             script.write_text("", encoding="utf-8")
@@ -1260,16 +1261,16 @@ class PipelineCommandContractTests(unittest.TestCase):
             result = _run_step(PipelineStep("fixture", script), "2026-05-19", runner, paths)
 
         self.assertTrue(result.success)
-        self.assertEqual(observed[0]["NOVA_PIPELINE_LANGUAGE_PROFILE"], "en")
-        self.assertEqual(observed[0]["NOVA_DIARY_SCHEMA_VERSION"], "diary-v1-en")
-        self.assertEqual(observed[0]["NOVA_PROMPT_PAYLOAD_PROFILE"], "en-US")
-        self.assertEqual(observed[0]["NOVA_DISPLAY_LOCALE"], "en-US")
+        self.assertEqual(observed[0]["ACTANARA_PIPELINE_LANGUAGE_PROFILE"], "en")
+        self.assertEqual(observed[0]["ACTANARA_DIARY_SCHEMA_VERSION"], "diary-v1-en")
+        self.assertEqual(observed[0]["ACTANARA_PROMPT_PAYLOAD_PROFILE"], "en-US")
+        self.assertEqual(observed[0]["ACTANARA_DISPLAY_LOCALE"], "en-US")
         self.assertEqual(observed[0]["NOVA_RAG_LANGUAGE_PROFILE"], "en")
 
     def test_pipeline_subprocess_env_exports_thinking_mode(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"pipeline": {"thinkingMode": "medium"}}, paths)
             script = root / "step.py"
             script.write_text("", encoding="utf-8")
@@ -1287,7 +1288,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_english_pipeline_profile_requires_enable_gate(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"pipeline": {"languageProfile": "en"}}, paths)
             script = root / "step.py"
             script.write_text("", encoding="utf-8")
@@ -1309,7 +1310,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_english_pipeline_enable_gate_executes_english_manifest_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"pipeline": {"languageProfile": "en", "englishEnabled": True}}, paths)
             collect = root / "en" / "unified_source_collector.py"
             narrative = root / "en" / "diary_generator" / "en" / "narrative_pass.py"
@@ -1353,7 +1354,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_english_pipeline_manifest_writes_expected_profile_artifacts(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"pipeline": {"languageProfile": "en", "englishEnabled": True}, "features": {"novaTask": False}}, paths)
             scripts_root = root / "scripts" / "diary_generator" / "en"
             scripts_root.mkdir(parents=True)
@@ -1372,7 +1373,7 @@ class PipelineCommandContractTests(unittest.TestCase):
             def runner(command, **kwargs):
                 script_name = Path(command[1]).name
                 date_str = command[-1]
-                observed.append((script_name, kwargs["env"]["NOVA_PIPELINE_LANGUAGE_PROFILE"]))
+                observed.append((script_name, kwargs["env"]["ACTANARA_PIPELINE_LANGUAGE_PROFILE"]))
                 if script_name == "narrative_pass.py":
                     out = diary_narrative_report_path(paths.diary_dir, date_str, language_profile="en")
                     out.parent.mkdir(parents=True, exist_ok=True)
@@ -1418,10 +1419,10 @@ class PipelineCommandContractTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             script = root / "narrative_pass.py"
             script.write_text("", encoding="utf-8")
-            with patch.dict(os.environ, {"OPEN_NOVA_SECRET_BACKEND": "memory"}):
+            with patch.dict(os.environ, {"ACTANARA_SECRET_BACKEND": "memory"}):
                 write_llm_provider(
                     {
                         "provider": "openai-compatible",
@@ -1435,7 +1436,7 @@ class PipelineCommandContractTests(unittest.TestCase):
             def runner(command, **kwargs):
                 raise AssertionError("LLM step subprocess should not be launched")
 
-            with self._real_pipeline_readiness():
+            with self._real_pipeline_readiness(), patch.dict(os.environ, {"ACTANARA_SECRET_BACKEND": "memory"}):
                 result = _run_step(PipelineStep("Narrative", script), "2026-05-19", runner, paths)
 
         self.assertFalse(result.success)
@@ -1444,7 +1445,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_english_llm_steps_use_provider_readiness_gate(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"pipeline": {"languageProfile": "en", "englishEnabled": True}}, paths)
             script = root / "en" / "diary_generator" / "en" / "narrative_pass.py"
             script.parent.mkdir(parents=True, exist_ok=True)
@@ -1461,7 +1462,7 @@ class PipelineCommandContractTests(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertIn("missing apiKey", result.reason)
 
-    def test_legacy_nova_task_scripts_are_not_part_of_open_nova(self):
+    def test_legacy_nova_task_scripts_are_not_part_of_actanara(self):
         for relative in (
             "src/nova_task/achievement_scanner.py",
             "src/nova_task/ingest_to_db.py",
@@ -1472,7 +1473,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_failed_pipeline_materialization_stops_before_final_rag_sync(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             rag = root / "rag_v2_sync.py"
             rag.write_text("", encoding="utf-8")
             result = run_daily_pipeline(
@@ -1566,7 +1567,7 @@ class PipelineCommandContractTests(unittest.TestCase):
     def test_reuse_foundation_inputs_skips_source_collection_and_shadow_ingestion(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             script_root = root / "scripts"
             script_root.mkdir()
             for script_name in ("unified_source_collector.py", "narrative_pass.py"):

@@ -32,9 +32,9 @@ class DiaryPageFoundationTests(unittest.TestCase):
             day.mkdir(parents=True)
             (day / "日记-260620.md").write_text("# standard\n", encoding="utf-8")
             (day / "日记-260620-no-activity.md").write_text("# empty\n", encoding="utf-8")
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 items = diary.get_diary_list()
 
         matching = [item for item in items if item["fullDate"] == "2026-06-20"]
@@ -51,7 +51,7 @@ class DiaryPageFoundationTests(unittest.TestCase):
             (day / "日记-260620.md").write_text("# standard\n", encoding="utf-8")
             (day / "日记-260620-no-activity.md").write_text("# stale empty\n", encoding="utf-8")
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -76,7 +76,7 @@ class DiaryPageFoundationTests(unittest.TestCase):
                     (run_id,),
                 )
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 item = next(row for row in diary.get_diary_list() if row["fullDate"] == "2026-06-20")
 
         self.assertFalse(item["isBlankDay"])
@@ -94,13 +94,13 @@ class DiaryPageFoundationTests(unittest.TestCase):
             other_day.mkdir(parents=True)
             (other_day / "narrative-260621.md").write_text("# retired alias\n", encoding="utf-8")
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
             write_settings({"pipeline": {"languageProfile": "en", "englishEnabled": True}}, paths)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 items = diary.get_diary_list()
 
         matching = [item for item in items if item["fullDate"] == "2026-06-20"]
@@ -117,13 +117,13 @@ class DiaryPageFoundationTests(unittest.TestCase):
             (day / "日记-260620.md").write_text("# Chinese diary\n\n## 今日概要\nwrong\n", encoding="utf-8")
             (day / "diary-260620.md").write_text("# English diary\n\n## Daily Overview\nright\n", encoding="utf-8")
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
             write_settings({"pipeline": {"languageProfile": "en", "englishEnabled": True}}, paths)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}), patch.object(
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}), patch.object(
                 diary, "_get_jsonl_stats", return_value={"hourlyTokens": {}, "agentStats": {}, "sessionStats": {"sessions": 0, "messages": 0}}
             ), patch.object(diary, "detect_cron_tasks", return_value=[]):
                 page = diary.parse_diary("2026-06-20")
@@ -195,13 +195,13 @@ Only final integration should emit Nova-Task YAML.
                 encoding="utf-8",
             )
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
             write_settings({"pipeline": {"languageProfile": "en", "englishEnabled": True}}, paths)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}), patch.object(
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}), patch.object(
                 diary, "_get_jsonl_stats", return_value={"hourlyTokens": {}, "agentStats": {}, "sessionStats": {"sessions": 0, "messages": 0}}
             ), patch.object(diary, "detect_cron_tasks", return_value=[]):
                 page = diary.parse_diary("2026-06-20")
@@ -301,13 +301,13 @@ None
     def test_diary_memory_stats_use_configured_openclaw_memory_root(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             memory_root = root / "configured-tools" / "openclaw" / "memory"
             memory_root.mkdir(parents=True)
             (memory_root / "daily-note.md").write_text("memory\n", encoding="utf-8")
             write_settings({"externalTools": {"openclaw": {"memoryRoot": str(memory_root)}}}, paths)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 _, memory = diary._get_rag_memory_stats(include_rag=False)
 
         self.assertEqual(memory["sessionFiles"], 1)
@@ -344,13 +344,13 @@ None
             legacy_index.parent.mkdir(parents=True)
             legacy_index.write_text("{}\n{}\n{}\n", encoding="utf-8")
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
 
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch("agentic_rag.rag_status.read_rag_status", side_effect=RuntimeError("v2 unavailable")),
             ):
                 rag, _ = diary._get_rag_memory_stats(include_memory=False)
@@ -400,7 +400,7 @@ None
 """,
                 encoding="utf-8",
             )
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
             migrate(paths)
             apply_infrastructure_updates(
                 paths,
@@ -418,7 +418,7 @@ None
             )
             materialize_diary_markdown_day(paths, date(2026, 5, 19), source_run_id=None)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}), patch.object(
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}), patch.object(
                 diary, "_get_jsonl_stats", side_effect=AssertionError("Foundation diary page must not scan JSONL")
             ), patch.object(
                 diary, "detect_cron_tasks", side_effect=AssertionError("Foundation diary page must not scan cron files")
@@ -469,7 +469,7 @@ Normalize semantic headings.
                 encoding="utf-8",
             )
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -477,7 +477,7 @@ Normalize semantic headings.
             migrate(paths)
             materialize_diary_markdown_day(paths, date(2026, 5, 19), source_run_id=None)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}), patch.object(
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}), patch.object(
                 diary, "detect_cron_tasks", side_effect=AssertionError("Foundation diary page must not scan cron files")
             ):
                 result = diary.get_diary_page("2026-05-19")
@@ -530,14 +530,14 @@ Normalize semantic headings.
 """,
                 encoding="utf-8",
             )
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
             write_settings({"general": {"timezone": "Asia/Hong_Kong"}}, paths)
             migrate(paths)
             materialize_diary_markdown_day(paths, date(2026, 5, 19), source_run_id=None)
             _insert_usage_event(paths, "2026-05-19T00:30:00+00:00", 50)
             _insert_usage_event(paths, "2026-05-19T15:30:00+00:00", 70)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}), patch.object(
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}), patch.object(
                 diary, "_get_jsonl_stats", side_effect=AssertionError("Foundation diary page must not scan JSONL")
             ), patch.object(
                 diary, "detect_cron_tasks", side_effect=AssertionError("Foundation diary page must not scan cron files")
@@ -583,7 +583,7 @@ Normalize semantic headings.
                 encoding="utf-8",
             )
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -615,7 +615,7 @@ Normalize semantic headings.
                     ],
                 )
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 result = diary.get_diary_page("2026-05-19")
 
         self.assertEqual(sorted(result["sessionBySource"]), ["claude-code", "codex"])
@@ -626,12 +626,12 @@ Normalize semantic headings.
     def test_foundation_hourly_tokens_follow_configured_0400_business_day(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             migrate(paths)
             _insert_usage_event(paths, "2026-05-19T19:30:00+00:00", 30, business_date="2026-05-19")
             _insert_usage_event(paths, "2026-05-19T20:30:00+00:00", 40, business_date="2026-05-20")
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home), "TARGET_TIMEZONE": "Asia/Hong_Kong"}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home), "TARGET_TIMEZONE": "Asia/Hong_Kong"}):
                 result = diary._foundation_hourly_tokens(paths, date(2026, 5, 19))
 
         self.assertEqual(result, {"03": 30})
@@ -663,11 +663,11 @@ weather
 """,
                 encoding="utf-8",
             )
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
             migrate(paths)
             materialize_diary_markdown_day(paths, date(2026, 5, 19), source_run_id=None)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}), patch.object(
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}), patch.object(
                 diary, "detect_cron_tasks", side_effect=AssertionError("Foundation diary page must not scan cron files")
             ):
                 result = diary.get_diary_page("2026-05-19")
@@ -684,10 +684,10 @@ weather
             day = diary_root / "diary-2026-05-19"
             day.mkdir(parents=True)
             (day / "日记-260519.md").write_text("# 2026年05月19日 日记\n\n## 今日概要\n不应被读取\n", encoding="utf-8")
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
             migrate(paths)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 result = diary.get_diary_page("2026-05-19")
 
             self.assertEqual(result["dataFreshness"]["diaryPage"]["source"], "snapshot-missing")
@@ -708,7 +708,7 @@ def _insert_usage_event(paths, occurred_at: str, protocol_total: int, *, busines
         cursor = connection.execute(
             """
             INSERT INTO sessions(tool_key, external_session_key, started_at, last_active_at, initial_cwd, metadata_json)
-            VALUES ('codex', ?, ?, ?, '/workspace/example/open-nova', '{}')
+            VALUES ('codex', ?, ?, ?, '/workspace/example/actanara', '{}')
             """,
             (f"session-{occurred_at}", occurred_at, occurred_at),
         )

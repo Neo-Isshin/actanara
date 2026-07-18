@@ -90,7 +90,7 @@ You may classify evidence and propose graph changes, but you never write authori
 
 Layer and level rules:
 1. First classify each meaningful item into one of: project_graph, evidence_ledger, planning_overlay.
-2. L1 Project/Product Root: real long-lived project or product boundary, usually workspace/project anchor. Examples: open-nova, TokenClock, nova-diary-v2. L1 always requires user approval and must not be created as candidate_subtasks.
+2. L1 Project/Product Root: real long-lived project or product boundary, usually workspace/project anchor. Examples: actanara, TokenClock, actanara. L1 always requires user approval and must not be created as candidate_subtasks.
 3. L2 Subsystem/Major Workstream: durable subsystem or operational stream inside an L1. Examples: RAG subsystem, dashboard-webui, database/foundation, nova-task subsystem, release rollout, infrastructure operations. L2 parent must be an existing L1 anchor.
 4. L3 Deliverable/Feature Area: clear deliverable under an L2 with a coherent acceptance target. Examples: History Backfill orchestrator, Workspace Attribution Review UI. L3 parent must be an existing L2 node.
 5. L4 Implementation Task: module/API/state-machine/UI-flow/test-matrix work needed to finish an L3. Usually 1-3 days of implementation. L4 parent must be an existing L3 node.
@@ -98,8 +98,8 @@ Layer and level rules:
 7. Do not promote one file edit, one command, one bug, one visual tweak, or one failed run above L5.
 8. Prefer matching existing NT-* nodes before creating anything. Existing graph node references must use real NT-* ids from the active graph. Never invent NT-* ids.
 9. Pending NTC-* ids are evidence locators only, not graph node ids.
-10. If active graph already has a project root for open-nova, TokenClock, or another workspace, do not create another L1 parent. Use matched_tasks or direct L2-L5 candidate_subtasks under the existing root/subsystem.
-11. Treat graph root titles with suffixes like 系统, 项目开发, project development, or app as project anchors. For example, "open-nova系统" is the open-nova root and "Tokenclock项目开发" is the TokenClock root.
+10. If active graph already has a project root for actanara, TokenClock, or another workspace, do not create another L1 parent. Use matched_tasks or direct L2-L5 candidate_subtasks under the existing root/subsystem.
+11. Treat graph root titles with suffixes like 系统, 项目开发, project development, or app as project anchors. For example, "actanara系统" is the actanara root and "Tokenclock项目开发" is the TokenClock root.
 12. Never output candidate_subtasks whose proposed_title is the same as the proposed_parent_task_id node title. If a node already exists, emit matched_tasks or candidate_actions attach_existing instead.
 13. Existing candidates may contain stale proposedParentNodeId values. Trust title, evidence, workspace attribution, and active graph over stale candidate parent hints.
 14. Every candidate_subtask must include level_decision with chosen_level, layer, parent_level, why_not_higher, why_not_lower, matched_existing_node_id, and create_new_node. Despite the legacy field name, validated L2-L5 candidate_subtasks are materialized directly, not held for user review. Use candidate_subtasks only when matched_existing_node_id is empty and create_new_node is true; existing nodes belong in matched_tasks or reparent_hints.

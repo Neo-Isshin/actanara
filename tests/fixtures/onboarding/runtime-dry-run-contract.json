@@ -8,7 +8,7 @@
   "installerImplemented": false,
   "profileModel": "product-v2",
   "selectedProfiles": [
-    "open-nova",
+    "actanara",
     "dashboard",
     "nova-task"
   ],
@@ -18,12 +18,12 @@
     "llm-api-key"
   ],
   "dependencyGroups": [
-    "open-nova",
+    "actanara",
     "dashboard",
     "nova-task"
   ],
   "requirementSets": [
-    "open-nova-core",
+    "actanara-core",
     "dashboard",
     "nova-task"
   ],
@@ -58,7 +58,7 @@
       "nova-task"
     ],
     "defaultSelectedProfiles": [
-      "open-nova",
+      "actanara",
       "dashboard",
       "nova-task"
     ],
@@ -128,12 +128,12 @@
       "installSpec": ".[rag-local]"
     },
     "runtime": {
-      "installTarget": "~/.open-nova",
-      "activeRuntimePointer": "~/.config/open-nova/location.json"
+      "installTarget": "~/.actanara",
+      "activeRuntimePointer": "~/.config/actanara/location.json"
     }
   },
   "commandDraft": {
-    "id": "open-nova-onboarding-one-liner",
+    "id": "actanara-onboarding-one-liner",
     "copyPasteReady": true,
     "executesShell": false
   },
@@ -141,7 +141,7 @@
     "implemented": true,
     "blocked": true,
     "exitCode": 1,
-    "display": "open-nova onboarding apply",
+    "display": "actanara onboarding apply",
     "writeContractIncluded": true
   },
   "applyWriteContract": {
@@ -150,7 +150,7 @@
     "applyImplemented": false,
     "writesAllowed": false,
     "selectedProfiles": [
-      "open-nova",
+      "actanara",
       "dashboard",
       "nova-task"
     ]
@@ -186,11 +186,11 @@
     "applyImplemented": false,
     "registrationPlanned": true,
     "dryRunOnly": true,
-    "confirmationPhrase": "REGISTER OPEN NOVA SCHEDULER",
+    "confirmationPhrase": "REGISTER ACTANARA SCHEDULER",
     "auditRequired": true,
-    "auditPath": "$NOVA_HOME/state/onboarding/onboarding-audit.jsonl",
+    "auditPath": "$ACTANARA_HOME/state/onboarding/onboarding-audit.jsonl",
     "rollbackRequired": true,
-    "rollbackConfirmationPhrase": "UNREGISTER OPEN NOVA SCHEDULER",
+    "rollbackConfirmationPhrase": "UNREGISTER ACTANARA SCHEDULER",
     "stdoutStderrPolicy": "under-runtime-log-dir"
   },
   "ragReadiness": {

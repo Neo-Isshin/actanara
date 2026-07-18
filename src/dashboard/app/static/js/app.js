@@ -18,16 +18,16 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-const OPEN_NOVA_CSRF_COOKIE = 'open_nova_dashboard_csrf';
-const OPEN_NOVA_CSRF_HEADER = 'X-Open-Nova-CSRF';
-const OPEN_NOVA_NATIVE_FETCH = window.fetch.bind(window);
+const ACTANARA_CSRF_COOKIE = 'actanara_dashboard_csrf';
+const ACTANARA_CSRF_HEADER = 'X-Actanara-CSRF';
+const ACTANARA_NATIVE_FETCH = window.fetch.bind(window);
 
-function openNovaCookie(name) {
+function actanaraCookie(name) {
   const prefix = encodeURIComponent(name) + '=';
   return document.cookie.split(';').map(part => part.trim()).find(part => part.startsWith(prefix))?.slice(prefix.length) || '';
 }
 
-function openNovaSameOriginRequest(input) {
+function actanaraSameOriginRequest(input) {
   try {
     const url = typeof input === 'string' ? input : (input && input.url) || '';
     return new URL(url, window.location.href).origin === window.location.origin;
@@ -38,17 +38,17 @@ function openNovaSameOriginRequest(input) {
 
 window.fetch = function(input, init) {
   const next = { ...(init || {}) };
-  if (openNovaSameOriginRequest(input)) {
+  if (actanaraSameOriginRequest(input)) {
     next.credentials = next.credentials || 'same-origin';
     const method = String(next.method || (input && input.method) || 'GET').toUpperCase();
     if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
       const headers = new Headers(next.headers || (input && input.headers) || {});
-      const csrf = decodeURIComponent(openNovaCookie(OPEN_NOVA_CSRF_COOKIE));
-      if (csrf && !headers.has(OPEN_NOVA_CSRF_HEADER)) headers.set(OPEN_NOVA_CSRF_HEADER, csrf);
+      const csrf = decodeURIComponent(actanaraCookie(ACTANARA_CSRF_COOKIE));
+      if (csrf && !headers.has(ACTANARA_CSRF_HEADER)) headers.set(ACTANARA_CSRF_HEADER, csrf);
       next.headers = headers;
     }
   }
-  return OPEN_NOVA_NATIVE_FETCH(input, next);
+  return ACTANARA_NATIVE_FETCH(input, next);
 };
 
 function sanitizeDashboardUrl(value) {
@@ -139,7 +139,7 @@ function toggleSection(el) {
 }
 
 let modalHistory = [];
-let OPEN_NOVA_MODAL_GENERATION = 0;
+let ACTANARA_MODAL_GENERATION = 0;
 let MSGBOX_STATE = { items: [], attentionCount: 0, count: 0 };
 let BACKGROUND_TASK_STATE = { activeCount: 0, tasks: [], active: [] };
 let backgroundTasksTimer = null;
@@ -150,24 +150,24 @@ let HISTORY_BACKFILL_LAST_PLAN_KEY = '';
 let HISTORY_BACKFILL_LAST_PLAN_PAYLOAD = null;
 let HISTORY_BACKFILL_PENDING_SELECTION = new Set();
 let RAG_PRODUCTION_SYNC_BUSY = false;
-let OPEN_NOVA_DASHBOARD_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Hong_Kong';
-let OPEN_NOVA_PIPELINE_LANGUAGE_PROFILE = 'zh';
-let OPEN_NOVA_SETTINGS_LOADED = false;
-let OPEN_NOVA_LAST_SETTINGS = null;
-let OPEN_NOVA_SETTINGS_ADVANCED = false;
-let OPEN_NOVA_SETTINGS_FORM_DRAFT = {};
-let OPEN_NOVA_SETTINGS_LLM_DIRTY = false;
-let OPEN_NOVA_SETTINGS_ADVANCED_DIRTY = new Set();
-let OPEN_NOVA_SETTINGS_ADVANCED_BASELINE = new Map();
-let OPEN_NOVA_DIARY_NAV_READY = null;
-let OPEN_NOVA_STARTUP_PREVIEWS = {};
-let OPEN_NOVA_MODAL_RETURN_FOCUS = null;
-let OPEN_NOVA_DOC_MODAL_RETURN_FOCUS = null;
-let OPEN_NOVA_EDITOR_RETURN_FOCUS = null;
-let OPEN_NOVA_TOKEN_CLOCK_READY = false;
-let OPEN_NOVA_TOKEN_SUMMARY_READY = false;
-let OPEN_NOVA_TASK_BOARD_READY = false;
-const DASHBOARD_RESTART_COMMAND = 'open-nova dashboard restart';
+let ACTANARA_DASHBOARD_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Hong_Kong';
+let ACTANARA_PIPELINE_LANGUAGE_PROFILE = 'zh';
+let ACTANARA_SETTINGS_LOADED = false;
+let ACTANARA_LAST_SETTINGS = null;
+let ACTANARA_SETTINGS_ADVANCED = false;
+let ACTANARA_SETTINGS_FORM_DRAFT = {};
+let ACTANARA_SETTINGS_LLM_DIRTY = false;
+let ACTANARA_SETTINGS_ADVANCED_DIRTY = new Set();
+let ACTANARA_SETTINGS_ADVANCED_BASELINE = new Map();
+let ACTANARA_DIARY_NAV_READY = null;
+let ACTANARA_STARTUP_PREVIEWS = {};
+let ACTANARA_MODAL_RETURN_FOCUS = null;
+let ACTANARA_DOC_MODAL_RETURN_FOCUS = null;
+let ACTANARA_EDITOR_RETURN_FOCUS = null;
+let ACTANARA_TOKEN_CLOCK_READY = false;
+let ACTANARA_TOKEN_SUMMARY_READY = false;
+let NOVA_TASK_BOARD_READY = false;
+const DASHBOARD_RESTART_COMMAND = 'actanara dashboard restart';
 
 const DASHBOARD_TEXT = {
   zh: {
@@ -450,7 +450,7 @@ const DASHBOARD_TEXT = {
 
 const DASHBOARD_SHELL_TEXT = {
   zh: {
-    documentTitle: 'Open Nova',
+    documentTitle: 'Actanara',
     sseConnecting: '⏳ 连接中',
     navOverview: '总览',
     navTodayOverview: '当日实时总览',
@@ -519,7 +519,7 @@ const DASHBOARD_SHELL_TEXT = {
     end: '结束',
     submitBackfill: '提交 Backfill',
     latestFailed: '最近失败',
-    ragSubtitle: 'Open Nova v2 长期记忆',
+    ragSubtitle: 'Actanara v2 长期记忆',
     readStatus: '读取状态…',
     startRagServer: '启动 Server',
     stopRagServer: '停止 Server',
@@ -528,7 +528,7 @@ const DASHBOARD_SHELL_TEXT = {
     registerExternalSkill: '注册外部 Agent Skill',
     coverageCheck: '覆盖检查',
     notReadYet: '尚未读取',
-    ragSearchPlaceholder: '搜索 Open Nova 长期记忆',
+    ragSearchPlaceholder: '搜索 Actanara 长期记忆',
     search: '搜索',
     projectOptional: 'project，可选',
     sourceSetsOptional: 'sourceSets，逗号分隔，可选',
@@ -569,7 +569,7 @@ const DASHBOARD_SHELL_TEXT = {
     modalBack: '← 返回',
   },
   en: {
-    documentTitle: 'Open Nova',
+    documentTitle: 'Actanara',
     sseConnecting: '⏳ Connecting',
     navOverview: 'Overview',
     navTodayOverview: 'Today Live Overview',
@@ -638,7 +638,7 @@ const DASHBOARD_SHELL_TEXT = {
     end: 'End',
     submitBackfill: 'Submit Backfill',
     latestFailed: 'Latest Failed',
-    ragSubtitle: 'Open Nova v2 long-term memory',
+    ragSubtitle: 'Actanara v2 long-term memory',
     readStatus: 'Read Status...',
     startRagServer: 'Start Server',
     stopRagServer: 'Stop Server',
@@ -647,7 +647,7 @@ const DASHBOARD_SHELL_TEXT = {
     registerExternalSkill: 'Register External Agent Skill',
     coverageCheck: 'Coverage Check',
     notReadYet: 'Not read yet',
-    ragSearchPlaceholder: 'Search Open Nova long-term memory',
+    ragSearchPlaceholder: 'Search Actanara long-term memory',
     search: 'Search',
     projectOptional: 'project, optional',
     sourceSetsOptional: 'sourceSets, comma-separated, optional',
@@ -941,7 +941,7 @@ const RAG_UI_TEXT = {
     configured: 'Configured',
     activeIndex: 'Active index',
     noActiveProfile: 'no active profile',
-    policy: 'local/cloud/model/dimension 由基座 profile 锁定；变更请走“迁移RAG基座/模式”。语言跟随 Open Nova 全局 locale。',
+    policy: 'local/cloud/model/dimension 由基座 profile 锁定；变更请走“迁移RAG基座/模式”。语言跟随 Actanara 全局 locale。',
     timeHalfLife: '时间半衰期',
     cloudProviderCredential: '云端 Embedding Provider Key',
     cloudProviderCredentialPlaceholder: '仅在轮换或首次配置时输入',
@@ -1038,7 +1038,7 @@ const RAG_UI_TEXT = {
     migrationPreviewAction: '预览执行计划',
     migrationPlanPrefix: '计划: ',
     migrationPlanFailed: '计划读取失败: ',
-    initializationConfirmation: 'INITIALIZE OPEN NOVA RAG',
+    initializationConfirmation: 'INITIALIZE ACTANARA RAG',
     initializationConfirmationMismatch: '初始化已取消：确认短语不匹配。',
     targetProfile: '目标 Profile',
     sourceRootOverride: '覆盖源路径',
@@ -1081,7 +1081,7 @@ const RAG_UI_TEXT = {
     configured: 'Configured',
     activeIndex: 'Active Index',
     noActiveProfile: 'no active profile',
-    policy: 'The base profile locks local/cloud/model/dimension. Use “Migrate RAG profile/mode” for changes. Language follows the global Open Nova locale.',
+    policy: 'The base profile locks local/cloud/model/dimension. Use “Migrate RAG profile/mode” for changes. Language follows the global Actanara locale.',
     timeHalfLife: 'Recency Half-Life',
     cloudProviderCredential: 'Cloud Embedding Provider Key',
     cloudProviderCredentialPlaceholder: 'Enter only for first-time setup or rotation',
@@ -1178,7 +1178,7 @@ const RAG_UI_TEXT = {
     migrationPreviewAction: 'Preview Plan',
     migrationPlanPrefix: 'Plan: ',
     migrationPlanFailed: 'Plan read failed: ',
-    initializationConfirmation: 'INITIALIZE OPEN NOVA RAG',
+    initializationConfirmation: 'INITIALIZE ACTANARA RAG',
     initializationConfirmationMismatch: 'Initialization cancelled: confirmation phrase did not match.',
     targetProfile: 'Target Profile',
     sourceRootOverride: 'Source Root Override',
@@ -1268,7 +1268,7 @@ const OPERATOR_UI_TEXT = {
     submitFailed: '提交失败: ',
     historyBackfillTitle: '生成历史数据',
     historyBackfillSection: '历史数据回填',
-    historyBackfillNote: '适用于新用户已有大量历史数据的场景。任务会按每日完整性契约补齐日记、SQLite、RAG 与 Nova-task 缺失项，再生成周/月聚合；勾选周/月总结会覆盖当前已有周/月总结并调用当前 LLM Provider。',
+    historyBackfillNote: '适用于新用户已有大量历史数据的场景。任务会按每日完整性契约补齐日记、SQLite、RAG 与 Nova-Task 缺失项，再生成周/月聚合；勾选周/月总结会覆盖当前已有周/月总结并调用当前 LLM Provider。',
     selectedPeriods: '已选择周期',
     choosePeriod: '选择周期',
     runMode: '执行方式',
@@ -1320,7 +1320,7 @@ const OPERATOR_UI_TEXT = {
     dashboardPort: '监听端口',
     dashboardPublicBaseUrl: '公开 URL',
     dashboardAllowedOrigins: '允许的浏览器 Origin',
-    dashboardAllowedOriginsHint: '每行一个 Origin，例如 http://100.x.y.z:3036 或 https://nova.example.com。',
+    dashboardAllowedOriginsHint: '每行一个 Origin，例如 http://100.x.y.z:3036 或 https://actanara.example.com。',
     dashboardService: 'Dashboard 服务',
     dashboardRestartNote: '这些值保存到 settings.json；已运行的 Dashboard LaunchAgent 需要重启后才会采用网络/启动参数变更。',
     restartCommand: '重启命令：',
@@ -1364,7 +1364,7 @@ const OPERATOR_UI_TEXT = {
     currentMonthSnapshot: '本月 snapshot',
     externalAgentMode: '外部 agent 模式',
     enableExternalAgentMode: '启用外部 agent 模式',
-    externalAgentNote: '外部 Agent 仅负责按提示词触发任务，Open Nova 继续负责管线与 snapshot 逻辑。启用前请先停用或卸载系统 scheduler，避免重复运行。',
+    externalAgentNote: '外部 Agent 仅负责按提示词触发任务，Actanara 继续负责管线与 snapshot 逻辑。启用前请先停用或卸载系统 scheduler，避免重复运行。',
     prompt: '提示词',
     currentSelection: '当前选择',
     editedValue: '编辑值',
@@ -1372,7 +1372,7 @@ const OPERATOR_UI_TEXT = {
     runtimePathReadFailed: '读取当前路径失败: ',
     processing: '处理中…',
     pathOperationFailed: '路径操作失败: ',
-    runtimePathConfirmationPrompt: '输入确认短语以切换或初始化 Open Nova runtime path：',
+    runtimePathConfirmationPrompt: '输入确认短语以切换或初始化 Actanara runtime path：',
     readingPath: '读取路径…',
     pathReadFailed: '读取路径失败: ',
     parentDirectory: '上级目录',
@@ -1387,7 +1387,7 @@ const OPERATOR_UI_TEXT = {
     taskIntelligencePath: 'Task Intelligence 路径',
     taskBoardPath: 'Task Board 路径',
     ragIndexPath: 'nova-RAG index 路径',
-    runtimeHomeNote: '验证/切换 runtime home 会更新 Open Nova 当前选择；import legacy 会从 legacy diary root 尝试复制可迁移资产。',
+    runtimeHomeNote: '验证/切换 runtime home 会更新 Actanara 当前选择；import legacy 会从 legacy diary root 尝试复制可迁移资产。',
     refreshRuntimePath: '刷新 Runtime Path',
     validateRuntimePath: '验证 Runtime Path',
     useRuntimePath: '使用该 Runtime Path',
@@ -1414,7 +1414,7 @@ const OPERATOR_UI_TEXT = {
     githubTodo: 'GitHub 跳转链接待配置。该按钮已预留，确认项目主页后接入。',
     i18nSwitch: '中英文切换',
     i18nTodo: '中英文切换暂不启用。该能力可能影响生产 prompt payload 语言边界，需要单独评审后实现。',
-    settingsTitle: 'Open Nova 设置',
+    settingsTitle: 'Actanara 设置',
     readingSettings: '读取设置…',
     settingsReadFailed: '读取设置失败: ',
     tabGeneral: '基础',
@@ -1539,7 +1539,7 @@ const OPERATOR_UI_TEXT = {
     submitFailed: 'Submit failed: ',
     historyBackfillTitle: 'Generate Historical Data',
     historyBackfillSection: 'Historical Backfill',
-    historyBackfillNote: 'For users with substantial historical data. The task fills missing diary, SQLite, RAG, and Nova-task contract items, then generates weekly/monthly aggregates. Weekly/monthly summaries overwrite existing summaries and call the current LLM provider.',
+    historyBackfillNote: 'For users with substantial historical data. The task fills missing diary, SQLite, RAG, and Nova-Task contract items, then generates weekly/monthly aggregates. Weekly/monthly summaries overwrite existing summaries and call the current LLM provider.',
     selectedPeriods: 'Selected Periods',
     choosePeriod: 'Choose Periods',
     runMode: 'Run Mode',
@@ -1591,7 +1591,7 @@ const OPERATOR_UI_TEXT = {
     dashboardPort: 'Bind Port',
     dashboardPublicBaseUrl: 'Public URL',
     dashboardAllowedOrigins: 'Allowed Browser Origins',
-    dashboardAllowedOriginsHint: 'One Origin per line, for example http://100.x.y.z:3036 or https://nova.example.com.',
+    dashboardAllowedOriginsHint: 'One Origin per line, for example http://100.x.y.z:3036 or https://actanara.example.com.',
     dashboardService: 'Dashboard Service',
     dashboardRestartNote: 'These values are saved to settings.json. A running Dashboard LaunchAgent must be restarted before network/startup parameter changes fully apply.',
     restartCommand: 'Restart command: ',
@@ -1635,7 +1635,7 @@ const OPERATOR_UI_TEXT = {
     currentMonthSnapshot: 'Current Month Snapshot',
     externalAgentMode: 'External Agent Mode',
     enableExternalAgentMode: 'Enable external agent mode',
-    externalAgentNote: 'The external agent only triggers jobs from the prompt; Open Nova still owns pipeline and snapshot logic. Disable or uninstall the system scheduler first to prevent duplicate runs.',
+    externalAgentNote: 'The external agent only triggers jobs from the prompt; Actanara still owns pipeline and snapshot logic. Disable or uninstall the system scheduler first to prevent duplicate runs.',
     prompt: 'Prompt',
     currentSelection: 'Current Selection',
     editedValue: 'Edited Value',
@@ -1643,7 +1643,7 @@ const OPERATOR_UI_TEXT = {
     runtimePathReadFailed: 'Current path read failed: ',
     processing: 'Processing...',
     pathOperationFailed: 'Path operation failed: ',
-    runtimePathConfirmationPrompt: 'Enter the confirmation phrase to switch or initialize the Open Nova runtime path: ',
+    runtimePathConfirmationPrompt: 'Enter the confirmation phrase to switch or initialize the Actanara runtime path: ',
     readingPath: 'Reading path...',
     pathReadFailed: 'Path read failed: ',
     parentDirectory: 'Parent Directory',
@@ -1658,7 +1658,7 @@ const OPERATOR_UI_TEXT = {
     taskIntelligencePath: 'Task Intelligence Path',
     taskBoardPath: 'Task Board Path',
     ragIndexPath: 'nova-RAG Index Path',
-    runtimeHomeNote: 'Validating or switching runtime home updates the current Open Nova selection. Import legacy attempts to copy migratable assets from the legacy diary root.',
+    runtimeHomeNote: 'Validating or switching runtime home updates the current Actanara selection. Import legacy attempts to copy migratable assets from the legacy diary root.',
     refreshRuntimePath: 'Refresh Runtime Path',
     validateRuntimePath: 'Validate Runtime Path',
     useRuntimePath: 'Use This Runtime Path',
@@ -1685,7 +1685,7 @@ const OPERATOR_UI_TEXT = {
     githubTodo: 'GitHub link is not configured yet. This button is reserved until the project home is confirmed.',
     i18nSwitch: 'Language Switch',
     i18nTodo: 'Language switching is not enabled yet. It may affect production prompt payload language boundaries and requires a separate review.',
-    settingsTitle: 'Open Nova Settings',
+    settingsTitle: 'Actanara Settings',
     readingSettings: 'Reading settings...',
     settingsReadFailed: 'Settings read failed: ',
     tabGeneral: 'General',
@@ -1922,7 +1922,7 @@ const AI_ASSETS_TEXT = {
     fileWillBeCreated: '文件尚不存在，保存后会创建',
     createFileTitle: (agentName, fileName) => `${agentName} · 创建 ${fileName}`,
     toolStorage: '工具占用空间',
-    artifactDetails: 'Open Nova 产物明细',
+    artifactDetails: 'Actanara 产物明细',
     noStorageData: '暂无存储数据',
     noAgentData: '暂无 Agent 数据',
     levelLabels: { global: '全局配置', workspace: '工作区 / 项目', agent: 'Agent', session: '会话记录' },
@@ -2099,7 +2099,7 @@ const AI_ASSETS_TEXT = {
     fileWillBeCreated: 'File does not exist yet; saving will create it',
     createFileTitle: (agentName, fileName) => `${agentName} · Create ${fileName}`,
     toolStorage: 'Tool Storage',
-    artifactDetails: 'Open Nova Artifact Details',
+    artifactDetails: 'Actanara Artifact Details',
     noStorageData: 'No storage data',
     noAgentData: 'No Agent data',
     levelLabels: { global: 'Global Config', workspace: 'Workspace / Project', agent: 'Agent', session: 'Session Records' },
@@ -2186,7 +2186,7 @@ const AI_ASSETS_TEXT = {
 };
 
 function dashboardLanguageProfile(value) {
-  const raw = String(value || OPEN_NOVA_PIPELINE_LANGUAGE_PROFILE || 'zh').toLowerCase();
+  const raw = String(value || ACTANARA_PIPELINE_LANGUAGE_PROFILE || 'zh').toLowerCase();
   return raw.startsWith('en') ? 'en' : 'zh';
 }
 
@@ -2251,20 +2251,20 @@ function applyStaticDashboardText(profile) {
 }
 
 function rememberDashboardSettings(settings) {
-  OPEN_NOVA_LAST_SETTINGS = settings || null;
+  ACTANARA_LAST_SETTINGS = settings || null;
   const pipeline = settings && settings.pipeline ? settings.pipeline : {};
-  OPEN_NOVA_PIPELINE_LANGUAGE_PROFILE = dashboardLanguageProfile(pipeline.languageProfile);
-  OPEN_NOVA_SETTINGS_LOADED = true;
-  applyStaticDashboardText(OPEN_NOVA_PIPELINE_LANGUAGE_PROFILE);
+  ACTANARA_PIPELINE_LANGUAGE_PROFILE = dashboardLanguageProfile(pipeline.languageProfile);
+  ACTANARA_SETTINGS_LOADED = true;
+  applyStaticDashboardText(ACTANARA_PIPELINE_LANGUAGE_PROFILE);
 }
 
 async function ensureDashboardLanguageProfile() {
-  if (OPEN_NOVA_SETTINGS_LOADED) return OPEN_NOVA_PIPELINE_LANGUAGE_PROFILE;
+  if (ACTANARA_SETTINGS_LOADED) return ACTANARA_PIPELINE_LANGUAGE_PROFILE;
   try {
     const res = await fetch('/api/settings');
     if (res.ok) rememberDashboardSettings(await res.json());
   } catch (e) {}
-  return OPEN_NOVA_PIPELINE_LANGUAGE_PROFILE;
+  return ACTANARA_PIPELINE_LANGUAGE_PROFILE;
 }
 
 async function refreshBackgroundTaskButton() {
@@ -2820,8 +2820,8 @@ function toggleHistoryBackfillSchedule() {
 
 function replaceModalContent(title, content) {
   const modal = document.getElementById('modal');
-  OPEN_NOVA_MODAL_GENERATION += 1;
-  if (!modal.classList.contains('active')) OPEN_NOVA_MODAL_RETURN_FOCUS = document.activeElement;
+  ACTANARA_MODAL_GENERATION += 1;
+  if (!modal.classList.contains('active')) ACTANARA_MODAL_RETURN_FOCUS = document.activeElement;
   document.getElementById('modal-title').textContent = title;
   document.getElementById('modal-body').innerHTML = content;
   modal.classList.add('active');
@@ -3115,7 +3115,7 @@ let MR_CURRENT_MONTH = null;
 let MR_REQUEST_TOKEN = 0;
 
 function updateMonthlyReportLabels() {
-  applyStaticDashboardText(OPEN_NOVA_PIPELINE_LANGUAGE_PROFILE);
+  applyStaticDashboardText(ACTANARA_PIPELINE_LANGUAGE_PROFILE);
 }
 
 function loadMonthlyReportById(mk, navEl) {
@@ -4308,7 +4308,7 @@ async function loadDiaryNav() {
     if (dashboardStateFailed(payload)) throw new Error(dashboardStateSummary(payload));
     const diaries = Array.isArray(payload.items) ? payload.items : [];
     const diaryState = dashboardStateOf(payload);
-    const hideInactive = localStorage.getItem('openNova.hideInactiveDiaryDays') === 'true';
+    const hideInactive = localStorage.getItem('actanara.hideInactiveDiaryDays') === 'true';
     const filter = document.getElementById('hideInactiveDiaryDays');
     if (filter) filter.checked = hideInactive;
 
@@ -4408,7 +4408,7 @@ async function loadDiaryNav() {
 }
 
 function setHideInactiveDiaryDays(enabled) {
-  localStorage.setItem('openNova.hideInactiveDiaryDays', enabled ? 'true' : 'false');
+  localStorage.setItem('actanara.hideInactiveDiaryDays', enabled ? 'true' : 'false');
   loadDiaryNav();
 }
 
@@ -4601,7 +4601,7 @@ function toggleKpiPanel(date, type) {
     const sbs = d.sessionBySource || {};
     const agents = agentList.slice().sort((a,b) => b.messages - a.messages || b.taskCount - a.taskCount);
     if (Object.keys(sbs).length > 0) {
-      // Per-source sessions from open-nova JSON block
+      // Per-source sessions from actanara JSON block
       const sourceLabels = {'openclaw':'OpenClaw','gemini-cli':'Gemini CLI','claude-code':'Claude Code','codex':'Codex','hermes':'Hermes','cron':'Cron'};
       const sourceColors = {'openclaw':'#533afd','gemini-cli':'#2563eb','claude-code':'#dc2626','codex':'#10B981','hermes':'#0891b2','cron':'#6b7280'};
       const sourceEntries = Object.entries(sbs).sort((a,b) => (b[1].active_sessions||0) - (a[1].active_sessions||0));
@@ -5207,8 +5207,8 @@ function trapDashboardDialogFocus(event, panel) {
 
 function openModal(title, content) {
   const modal = document.getElementById('modal');
-  const generation = ++OPEN_NOVA_MODAL_GENERATION;
-  if (!modal.classList.contains('active')) OPEN_NOVA_MODAL_RETURN_FOCUS = document.activeElement;
+  const generation = ++ACTANARA_MODAL_GENERATION;
+  if (!modal.classList.contains('active')) ACTANARA_MODAL_RETURN_FOCUS = document.activeElement;
   document.getElementById('modal-title').textContent = title;
   document.getElementById('modal-body').innerHTML = content;
   modal.classList.add('active');
@@ -5221,12 +5221,12 @@ function openModal(title, content) {
 
 function dashboardModalGenerationIsCurrent(generation) {
   const modal = document.getElementById('modal');
-  return generation === OPEN_NOVA_MODAL_GENERATION && modal.classList.contains('active') && modal.getAttribute('aria-hidden') === 'false';
+  return generation === ACTANARA_MODAL_GENERATION && modal.classList.contains('active') && modal.getAttribute('aria-hidden') === 'false';
 }
 
 function closeModal() {
   const modal = document.getElementById('modal');
-  OPEN_NOVA_MODAL_GENERATION += 1;
+  ACTANARA_MODAL_GENERATION += 1;
   modal.classList.remove('active');
   modal.setAttribute('aria-hidden', 'true');
   document.body.style.overflow = '';
@@ -5235,14 +5235,14 @@ function closeModal() {
     clearInterval(backgroundTasksTimer);
     backgroundTasksTimer = null;
   }
-  const returnFocus = OPEN_NOVA_MODAL_RETURN_FOCUS;
-  OPEN_NOVA_MODAL_RETURN_FOCUS = null;
+  const returnFocus = ACTANARA_MODAL_RETURN_FOCUS;
+  ACTANARA_MODAL_RETURN_FOCUS = null;
   restoreDashboardFocus(returnFocus);
 }
 
 function modalBack() {
   if (modalHistory.length > 1) {
-    OPEN_NOVA_MODAL_GENERATION += 1;
+    ACTANARA_MODAL_GENERATION += 1;
     modalHistory.pop();
     const prev = modalHistory[modalHistory.length - 1];
     document.getElementById('modal-title').textContent = prev.title;
@@ -5285,7 +5285,7 @@ function captureSettingsFormDraft() {
   const body = document.getElementById('modal-body');
   if (!body) return;
   body.querySelectorAll('input[id], select[id], textarea[id]').forEach(input => {
-    OPEN_NOVA_SETTINGS_FORM_DRAFT[input.id] = {
+    ACTANARA_SETTINGS_FORM_DRAFT[input.id] = {
       value: input.value,
       checked: input.type === 'checkbox' || input.type === 'radio' ? input.checked : null,
     };
@@ -5295,7 +5295,7 @@ function captureSettingsFormDraft() {
 function restoreSettingsFormDraft() {
   const body = document.getElementById('modal-body');
   if (!body) return;
-  Object.entries(OPEN_NOVA_SETTINGS_FORM_DRAFT).forEach(([id, draft]) => {
+  Object.entries(ACTANARA_SETTINGS_FORM_DRAFT).forEach(([id, draft]) => {
     const input = document.getElementById(id);
     if (!input || !body.contains(input)) return;
     input.value = draft.value;
@@ -5309,7 +5309,7 @@ function recordSettingsLlmDirty(event) {
   const settingsForm = body?.querySelector('[data-settings-bundle-form]');
   const llmPane = input?.closest('.settings-pane[data-pane="llm"]');
   if (!settingsForm || !llmPane || !settingsForm.contains(input)) return;
-  OPEN_NOVA_SETTINGS_LLM_DIRTY = true;
+  ACTANARA_SETTINGS_LLM_DIRTY = true;
   if (input.id === 'llmProviderApiKey') input.dataset.userEdited = 'true';
 }
 
@@ -5360,10 +5360,10 @@ function advancedSettingsControls() {
 }
 
 function captureAdvancedSettingsBaseline() {
-  OPEN_NOVA_SETTINGS_ADVANCED_BASELINE = new Map();
+  ACTANARA_SETTINGS_ADVANCED_BASELINE = new Map();
   advancedSettingsControls().forEach(input => {
     const key = advancedSettingsFieldKey(input);
-    if (key) OPEN_NOVA_SETTINGS_ADVANCED_BASELINE.set(key, advancedSettingsFieldValue(input));
+    if (key) ACTANARA_SETTINGS_ADVANCED_BASELINE.set(key, advancedSettingsFieldValue(input));
   });
 }
 
@@ -5371,17 +5371,17 @@ function refreshAdvancedSettingsDirty() {
   const dirty = new Set();
   advancedSettingsControls().forEach(input => {
     const key = advancedSettingsFieldKey(input);
-    if (key && OPEN_NOVA_SETTINGS_ADVANCED_BASELINE.get(key) !== advancedSettingsFieldValue(input)) dirty.add(key);
+    if (key && ACTANARA_SETTINGS_ADVANCED_BASELINE.get(key) !== advancedSettingsFieldValue(input)) dirty.add(key);
   });
-  OPEN_NOVA_SETTINGS_ADVANCED_DIRTY = dirty;
+  ACTANARA_SETTINGS_ADVANCED_DIRTY = dirty;
 }
 
 function recordAdvancedSettingsDirty(event) {
   const input = event.target;
   const body = document.getElementById('modal-body');
-  if (!OPEN_NOVA_SETTINGS_ADVANCED || !body || !body.contains(input) || !isAdvancedSettingsField(input)) return;
+  if (!ACTANARA_SETTINGS_ADVANCED || !body || !body.contains(input) || !isAdvancedSettingsField(input)) return;
   const key = advancedSettingsFieldKey(input);
-  if (key) OPEN_NOVA_SETTINGS_ADVANCED_DIRTY.add(key);
+  if (key) ACTANARA_SETTINGS_ADVANCED_DIRTY.add(key);
 }
 
 function focusSettingsControl(key) {
@@ -5394,45 +5394,45 @@ function focusSettingsControl(key) {
 function toggleSettingsAdvanced() {
   const activeTab = document.querySelector('#modal-body .settings-tab.active')?.dataset.tab || '';
   captureSettingsFormDraft();
-  if (OPEN_NOVA_SETTINGS_ADVANCED) refreshAdvancedSettingsDirty();
-  if (OPEN_NOVA_SETTINGS_ADVANCED && OPEN_NOVA_SETTINGS_ADVANCED_DIRTY.size) {
+  if (ACTANARA_SETTINGS_ADVANCED) refreshAdvancedSettingsDirty();
+  if (ACTANARA_SETTINGS_ADVANCED && ACTANARA_SETTINGS_ADVANCED_DIRTY.size) {
     const status = document.getElementById('settingsSaveStatus');
     if (status) status.textContent = operatorText().advancedDirtyCollapseBlocked;
     const firstDirty = Array.from(document.querySelectorAll('#modal-body input, #modal-body select, #modal-body textarea'))
-      .find(input => OPEN_NOVA_SETTINGS_ADVANCED_DIRTY.has(advancedSettingsFieldKey(input)));
+      .find(input => ACTANARA_SETTINGS_ADVANCED_DIRTY.has(advancedSettingsFieldKey(input)));
     if (firstDirty) firstDirty.focus();
     return false;
   }
-  OPEN_NOVA_SETTINGS_ADVANCED = !OPEN_NOVA_SETTINGS_ADVANCED;
-  document.getElementById('modal-body').innerHTML = renderSettingsModal(OPEN_NOVA_LAST_SETTINGS || {});
+  ACTANARA_SETTINGS_ADVANCED = !ACTANARA_SETTINGS_ADVANCED;
+  document.getElementById('modal-body').innerHTML = renderSettingsModal(ACTANARA_LAST_SETTINGS || {});
   restoreSettingsFormDraft();
   const activeTabStillAvailable = Array.from(document.querySelectorAll('#modal-body .settings-tab'))
     .some(tab => tab.dataset.tab === activeTab);
-  settingsTab(activeTabStillAvailable ? activeTab : (OPEN_NOVA_SETTINGS_ADVANCED ? 'paths' : 'schedule'));
+  settingsTab(activeTabStillAvailable ? activeTab : (ACTANARA_SETTINGS_ADVANCED ? 'paths' : 'schedule'));
   syncSystemSchedulerCheckboxWithActual();
-  if (OPEN_NOVA_SETTINGS_ADVANCED) captureAdvancedSettingsBaseline();
+  if (ACTANARA_SETTINGS_ADVANCED) captureAdvancedSettingsBaseline();
   focusSettingsControl('advanced-toggle');
   return true;
 }
 
 function isSettingsAdvancedVisible() {
-  return OPEN_NOVA_SETTINGS_ADVANCED;
+  return ACTANARA_SETTINGS_ADVANCED;
 }
 
 async function openSettingsModal() {
   const labels = operatorText();
   const modalGeneration = openModal(labels.settingsTitle, '<div class="wr-loading"><div class="wr-spinner"></div><span>' + escapeHtml(labels.readingSettings) + '</span></div>');
-  OPEN_NOVA_SETTINGS_LLM_DIRTY = false;
+  ACTANARA_SETTINGS_LLM_DIRTY = false;
   try {
     const res = await fetch('/api/settings');
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const settings = await res.json();
     if (!dashboardModalGenerationIsCurrent(modalGeneration)) return;
     rememberDashboardSettings(settings);
-    OPEN_NOVA_SETTINGS_ADVANCED = false;
-    OPEN_NOVA_SETTINGS_FORM_DRAFT = {};
-    OPEN_NOVA_SETTINGS_ADVANCED_DIRTY = new Set();
-    OPEN_NOVA_SETTINGS_ADVANCED_BASELINE = new Map();
+    ACTANARA_SETTINGS_ADVANCED = false;
+    ACTANARA_SETTINGS_FORM_DRAFT = {};
+    ACTANARA_SETTINGS_ADVANCED_DIRTY = new Set();
+    ACTANARA_SETTINGS_ADVANCED_BASELINE = new Map();
     document.getElementById('modal-body').innerHTML = renderSettingsModal(settings);
     settingsTab('schedule');
     syncSystemSchedulerCheckboxWithActual();
@@ -5497,7 +5497,7 @@ function renderSettingsModal(settings) {
 }
 
 const ONBOARDING_PROFILE_OPTIONS = [
-  ['open-nova', 'Open Nova', true, true],
+  ['actanara', 'Actanara', true, true],
   ['dashboard', 'Dashboard', true],
   ['nova-rag', 'nova-RAG', true],
   ['nova-task', 'Nova-Task', true],
@@ -5523,7 +5523,7 @@ function renderOnboardingSettings() {
 
 function selectedOnboardingProfiles() {
   const values = Array.from(document.querySelectorAll('[data-onboarding-profile]'))
-    .filter(el => el.checked || el.dataset.onboardingProfile === 'open-nova')
+    .filter(el => el.checked || el.dataset.onboardingProfile === 'actanara')
     .map(el => el.dataset.onboardingProfile)
     .filter(Boolean);
   return Array.from(new Set(values));
@@ -5579,7 +5579,7 @@ function renderOnboardingStatus(payload) {
   const packagingRows = ((packagingPlan.groups || [])).map(item => '<tr><td>' + escapeHtml(item.label || item.id || '') + '</td><td>' + escapeHtml(String(item.selected)) + '</td><td>' + escapeHtml(item.status || '') + '</td><td>' + escapeHtml(item.currentDetection || '') + '</td><td>' + escapeHtml((item.providerInputs || []).join(', ') || '—') + '</td></tr>').join('');
   const inputRows = requiredInputs.map(item => '<tr><td>' + escapeHtml(item.id || '') + '</td><td>' + escapeHtml(item.profile || '') + '</td><td>' + escapeHtml(item.status || '') + '</td></tr>').join('');
   return '<div class="settings-runtime-line"><b>Status</b> ' + escapeHtml(readiness.status || 'unknown') + '</div>' +
-    '<div class="settings-runtime-line"><b>Runtime</b><code>' + escapeHtml(runtime.novaHome || '—') + '</code></div>' +
+    '<div class="settings-runtime-line"><b>Runtime</b><code>' + escapeHtml(runtime.actanaraHome || '—') + '</code></div>' +
     '<div class="settings-runtime-line"><b>Settings</b><code>' + escapeHtml(runtime.settingsPath || '—') + '</code></div>' +
     '<div class="settings-runtime-flags">' + checks + '</div>' +
     '<div class="settings-runtime-line"><b>Resource</b> dashboard=' + escapeHtml(String(((resource.dashboard || {}).expectedResidentProcesses ?? '—'))) +
@@ -5620,7 +5620,7 @@ function renderSettingsAuthority(authority) {
   if (!groups.length) return '<div class="settings-note">' + escapeHtml(labels.noSettingsAuthority) + '</div>';
   const policy = authority.policy || {};
   const policyRows = [
-    [labels.persistentWrite, policy.singleWriter || '$NOVA_HOME/config/settings.json'],
+    [labels.persistentWrite, policy.singleWriter || '$ACTANARA_HOME/config/settings.json'],
     [labels.envSemantics, policy.envSemantics || 'process-local override'],
     [labels.defaultManual, policy.manualVsDefault || 'manual choices must be explicit'],
     [labels.secret, policy.secretHandling || 'redacted in read APIs'],
@@ -5684,7 +5684,7 @@ function dashboardRestartAttr(value) {
 function renderGeneralSettings(general, dashboard, showAdvanced = false) {
   const labels = operatorText();
   const advancedGeneral = showAdvanced ? `
-      <div class="settings-row"><label>App name</label><input id="setGeneralAppName" value="${escapeHtml(general.appName || 'Open Nova')}"></div>
+      <div class="settings-row"><label>App name</label><input id="setGeneralAppName" value="${escapeHtml(general.appName || 'Actanara')}"></div>
       <div class="settings-row"><label>Environment</label><input id="setGeneralEnvironment" value="${escapeHtml(general.environment || 'local')}"></div>
       <div class="settings-row"><label>Workspace root</label><input id="setGeneralWorkspaceRoot" value="${escapeHtml(general.workspaceRoot || '')}"></div>
       <div class="settings-row"><label>Tmp workspace</label><input id="setGeneralTmpWorkspace" value="${escapeHtml(general.tmpWorkspace || '')}"></div>` : '';
@@ -5696,8 +5696,8 @@ function renderGeneralSettings(general, dashboard, showAdvanced = false) {
       <div class="settings-row"><label>App dir</label><input id="setDashboardAppDir"${dashboardRestartAttr(dashboard.appDir || '')} value="${escapeHtml(dashboard.appDir || '')}"></div>
       <div class="settings-row"><label>Health path</label><input id="setDashboardHealthPath"${dashboardRestartAttr(dashboard.healthPath || '/health')} value="${escapeHtml(dashboard.healthPath || '/health')}"></div>
       <div class="settings-row"><label>Logs dir</label><input id="setDashboardLogsDir"${dashboardRestartAttr(dashboard.logsDir || '')} value="${escapeHtml(dashboard.logsDir || '')}"></div>
-      <div class="settings-row"><label>Service label</label><input id="setDashboardServiceLabel"${dashboardRestartAttr(dashboard.serviceLabel || 'com.open-nova.dashboard')} value="${escapeHtml(dashboard.serviceLabel || 'com.open-nova.dashboard')}"></div>
-      <div class="settings-row"><label>Watchdog label</label><input id="setDashboardWatchdogLabel"${dashboardRestartAttr(dashboard.watchdogLabel || 'com.open-nova.dashboard.watchdog')} value="${escapeHtml(dashboard.watchdogLabel || 'com.open-nova.dashboard.watchdog')}"></div>
+      <div class="settings-row"><label>Service label</label><input id="setDashboardServiceLabel"${dashboardRestartAttr(dashboard.serviceLabel || 'com.actanara.dashboard')} value="${escapeHtml(dashboard.serviceLabel || 'com.actanara.dashboard')}"></div>
+      <div class="settings-row"><label>Watchdog label</label><input id="setDashboardWatchdogLabel"${dashboardRestartAttr(dashboard.watchdogLabel || 'com.actanara.dashboard.watchdog')} value="${escapeHtml(dashboard.watchdogLabel || 'com.actanara.dashboard.watchdog')}"></div>
       <div class="settings-note">${escapeHtml(labels.dashboardRestartNote)}<br>${escapeHtml(labels.restartCommand)}<code>${escapeHtml(DASHBOARD_RESTART_COMMAND)}</code> <button type="button" class="fo-copy-btn" onclick="copyDashboardRestartCommand()">${escapeHtml(labels.copyCommand)}</button><span class="fo-copy-status" id="dashboardRestartCopyStatus" aria-live="polite"></span></div>
     </div>` : '';
   return `
@@ -5734,7 +5734,7 @@ function renderScheduleSettings(schedule, agentPrompt, showAdvanced = false) {
   const advancedSystemTimer = showAdvanced ? `
       <div class="settings-row"><label>${escapeHtml(labels.dashboardAggregationTime)}</label><input id="setDashboardAggregationTime" type="time" value="${escapeHtml(schedule.dashboardAggregationTime || '04:30')}"></div>
       <div class="settings-row"><label>${escapeHtml(labels.systemTimerProvider)}</label><input id="setSystemTimerProvider" value="${escapeHtml((schedule.systemTimer || {}).provider || 'launchd')}"></div>
-      <div class="settings-row"><label>${escapeHtml(labels.systemTimerLabel)}</label><input id="setSystemTimerLabel" value="${escapeHtml((schedule.systemTimer || {}).label || 'open-nova.daily')}"></div>
+      <div class="settings-row"><label>${escapeHtml(labels.systemTimerLabel)}</label><input id="setSystemTimerLabel" value="${escapeHtml((schedule.systemTimer || {}).label || 'actanara.daily')}"></div>
       <div class="settings-note">${escapeHtml(labels.systemTimerNote)}</div>
       <div class="settings-timer-actions">
         <button type="button" class="wr-export-btn" onclick="loadSystemTimerPreview()">${escapeHtml(labels.previewSystemTimer)}</button>
@@ -5829,8 +5829,8 @@ async function syncSystemSchedulerCheckboxWithActual() {
       toggleScheduleMode(agentInput?.checked ? 'agent' : 'system');
     }
 
-    if (OPEN_NOVA_LAST_SETTINGS && OPEN_NOVA_LAST_SETTINGS.schedule) {
-      const schedule = OPEN_NOVA_LAST_SETTINGS.schedule;
+    if (ACTANARA_LAST_SETTINGS && ACTANARA_LAST_SETTINGS.schedule) {
+      const schedule = ACTANARA_LAST_SETTINGS.schedule;
       schedule.enabled = Boolean(systemInput.checked || agentInput?.checked);
       schedule.mode = agentInput?.checked ? 'agent' : 'system';
       schedule.systemTimer = Object.assign({}, schedule.systemTimer || {}, {
@@ -5875,7 +5875,7 @@ async function loadStartupLaunchAgents(message = '') {
       dashboard: await dashboardRes.json(),
       rag: await ragRes.json()
     };
-    OPEN_NOVA_STARTUP_PREVIEWS = previews;
+    ACTANARA_STARTUP_PREVIEWS = previews;
     panel.innerHTML = renderStartupLaunchAgents(previews, message);
   } catch (e) {
     panel.innerHTML = '<div class="fo-job-error" style="padding:12px">' + escapeHtml(labels.startupReadFailed + e.message) + '</div>';
@@ -5945,12 +5945,12 @@ function startupConfirmationText(kind, action, preview) {
   if (fromPreview) return fromPreview;
   const fallback = {
     dashboard: {
-      install: 'INSTALL OPEN NOVA DASHBOARD LAUNCHAGENT',
-      uninstall: 'UNINSTALL OPEN NOVA DASHBOARD LAUNCHAGENT'
+      install: 'INSTALL ACTANARA DASHBOARD LAUNCHAGENT',
+      uninstall: 'UNINSTALL ACTANARA DASHBOARD LAUNCHAGENT'
     },
     rag: {
-      install: 'INSTALL OPEN NOVA RAG LAUNCHAGENT',
-      uninstall: 'UNINSTALL OPEN NOVA RAG LAUNCHAGENT'
+      install: 'INSTALL ACTANARA RAG LAUNCHAGENT',
+      uninstall: 'UNINSTALL ACTANARA RAG LAUNCHAGENT'
     }
   };
   return ((fallback[kind] || {})[action]) || '';
@@ -5972,7 +5972,7 @@ function startupLaunchAgentEndpoint(kind, action) {
 
 async function toggleStartupLaunchAgent(kind, checked) {
   const labels = operatorText();
-  const previews = OPEN_NOVA_STARTUP_PREVIEWS || {};
+  const previews = ACTANARA_STARTUP_PREVIEWS || {};
   const preview = previews[kind] || {};
   const action = checked ? 'install' : 'uninstall';
   const service = kind === 'dashboard' ? labels.startupDashboardServer : labels.startupRagServer;
@@ -6027,7 +6027,7 @@ function renderPathSettings(paths, runtimePath) {
       <div class="settings-row">
         <label>${escapeHtml(label)}</label>
         <div class="settings-path-control">
-          <input data-settings-path-group="${escapeHtml(group)}" data-settings-path-key="${escapeHtml(key)}" data-original-value="${escapeHtml(value)}" data-requires-restart="dashboard" value="${escapeHtml(value)}" ${group === 'runtime' && key === 'novaHome' ? 'oninput="updateRuntimePathEditedPreview()"' : ''}>
+          <input data-settings-path-group="${escapeHtml(group)}" data-settings-path-key="${escapeHtml(key)}" data-original-value="${escapeHtml(value)}" data-requires-restart="dashboard" value="${escapeHtml(value)}" ${group === 'runtime' && key === 'actanaraHome' ? 'oninput="updateRuntimePathEditedPreview()"' : ''}>
           <button type="button" class="settings-browse-btn" onclick="openPathBrowser('${escapeHtml(group)}', '${escapeHtml(key)}')">${escapeHtml(labels.browse)}</button>
         </div>
       </div>`).join('');
@@ -6039,10 +6039,10 @@ function renderPathSettings(paths, runtimePath) {
       <div class="settings-section-title">Runtime Home</div>
       <div class="settings-note">${escapeHtml(labels.runtimeHomeNote)}</div>
       <div class="settings-row">
-        <label>NOVA_HOME</label>
+        <label>ACTANARA_HOME</label>
         <div class="settings-path-control">
-          <input id="runtimePathCandidate" value="${escapeHtml(runtime.novaHome || (runtimePath.selected || {}).novaHome || '')}" oninput="updateRuntimePathEditedPreview()">
-          <button type="button" class="settings-browse-btn" onclick="openPathBrowser('runtime', 'novaHome')">${escapeHtml(labels.browse)}</button>
+          <input id="runtimePathCandidate" value="${escapeHtml(runtime.actanaraHome || (runtimePath.selected || {}).actanaraHome || '')}" oninput="updateRuntimePathEditedPreview()">
+          <button type="button" class="settings-browse-btn" onclick="openPathBrowser('runtime', 'actanaraHome')">${escapeHtml(labels.browse)}</button>
         </div>
       </div>
       <div id="runtimePathCurrent" class="settings-runtime-status">${renderRuntimePathCurrent(runtimePath || {}, runtimePathEditedValue())}</div>
@@ -6148,7 +6148,7 @@ async function diaryProjectionRebuild(dryRun) {
   if (!dryRun) {
     const ok = window.confirm(operatorText().confirmDiaryRebuild(payload.startDate, payload.endDate));
     if (!ok) return;
-    const confirmationText = 'REBUILD OPEN NOVA DIARY PROJECTIONS';
+    const confirmationText = 'REBUILD ACTANARA DIARY PROJECTIONS';
     const typed = prompt(labels.confirmationTextRequired + confirmationText);
     if (typed !== confirmationText) {
       panel.style.display = 'block';
@@ -6229,7 +6229,7 @@ async function sqliteCacheRebuild(dryRun) {
   if (!panel) return;
   const payload = {dryRun};
   if (!dryRun) {
-    const required = 'REBUILD OPEN NOVA SQLITE CACHE';
+    const required = 'REBUILD ACTANARA SQLITE CACHE';
     const typed = window.prompt(labels.sqliteRebuildPrompt + required);
     if (typed !== required) {
       panel.style.display = 'block';
@@ -6303,9 +6303,9 @@ function renderRuntimePathCurrent(data, editedPath) {
   const labels = operatorText();
   const selected = data.selected || {};
   const validation = data.validation || {};
-  const selectedHome = selected.novaHome || '—';
+  const selectedHome = selected.actanaraHome || '—';
   const edited = editedPath || selectedHome;
-  const changed = Boolean(edited && selected.novaHome && edited !== selected.novaHome);
+  const changed = Boolean(edited && selected.actanaraHome && edited !== selected.actanaraHome);
   const issues = (validation.issues || []).map(item => '<li>' + escapeHtml(item) + '</li>').join('');
   return [
     '<div class="settings-runtime-line"><b>' + escapeHtml(labels.currentSelection) + '</b><code>' + escapeHtml(selectedHome) + '</code></div>',
@@ -6315,7 +6315,7 @@ function renderRuntimePathCurrent(data, editedPath) {
     '<span class="settings-runtime-chip ' + (validation.initialized ? 'ok' : 'warn') + '">initialized=' + Boolean(validation.initialized) + '</span>',
     '<span class="settings-runtime-chip ' + (validation.writable ? 'ok' : 'warn') + '">writable=' + Boolean(validation.writable) + '</span>',
     '<span class="settings-runtime-chip ' + (changed ? 'warn' : 'ok') + '">' + (changed ? 'edited differs from selected' : 'edited matches selected') + '</span>',
-    data.envOverride ? '<span class="settings-runtime-chip warn">NOVA_HOME env override</span>' : '',
+    data.envOverride ? '<span class="settings-runtime-chip warn">ACTANARA_HOME env override</span>' : '',
     '</div>',
     data.locationFile ? '<div class="settings-note">Location file: <code>' + escapeHtml(data.locationFile) + '</code></div>' : '',
     issues ? '<ul>' + issues + '</ul>' : ''
@@ -6356,7 +6356,7 @@ async function runtimePathAction(mode) {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       data = await res.json();
     } else {
-      const confirmationText = 'SELECT OPEN NOVA RUNTIME PATH';
+      const confirmationText = 'SELECT ACTANARA RUNTIME PATH';
       const typed = prompt(labels.runtimePathConfirmationPrompt + confirmationText);
       if (typed !== confirmationText) {
         status.innerHTML = '<div class="fo-job-error" style="padding:10px">' + escapeHtml(labels.confirmationMismatchCancelled) + '</div>';
@@ -6369,7 +6369,7 @@ async function runtimePathAction(mode) {
       });
       data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
-      if (data.selected && data.selected.novaHome) homeInput.value = data.selected.novaHome;
+      if (data.selected && data.selected.actanaraHome) homeInput.value = data.selected.actanaraHome;
       await loadRuntimePathCurrent();
     }
     status.innerHTML = renderRuntimePathStatus(data, mode);
@@ -6384,7 +6384,7 @@ function renderRuntimePathStatus(data, mode) {
   const issues = (validation.issues || []).map(item => '<li>' + escapeHtml(item) + '</li>').join('');
   const importResult = data.importResult ? '<div>import copied=' + escapeHtml(data.importResult.copied) + ' matched=' + escapeHtml(data.importResult.matched) + ' conflicts=' + escapeHtml((data.importResult.conflicts || []).length) + '</div>' : '';
   return '<div class="settings-runtime-line"><b>' + escapeHtml(mode) + '</b> · valid=' + Boolean(validation.valid) + ' · initialized=' + Boolean(validation.initialized) + ' · writable=' + Boolean(validation.writable) + '</div>' +
-    '<code>' + escapeHtml(selected.novaHome || validation.candidate || '') + '</code>' +
+    '<code>' + escapeHtml(selected.actanaraHome || validation.candidate || '') + '</code>' +
     (issues ? '<ul>' + issues + '</ul>' : '') +
     importResult +
     (data.audit ? '<div>audit: <code>' + escapeHtml(data.audit.path || '') + '</code></div>' : '');
@@ -6437,7 +6437,7 @@ function pathBrowserChoose(group, key, selectedPath, type) {
 }
 
 function pathBrowserUseCurrent(group, key, selectedPath) {
-  const input = group === 'runtime' && key === 'novaHome'
+  const input = group === 'runtime' && key === 'actanaraHome'
     ? document.getElementById('runtimePathCandidate')
     : document.querySelector('[data-settings-path-group="' + CSS.escape(group) + '"][data-settings-path-key="' + CSS.escape(key) + '"]');
   if (input) input.value = selectedPath;
@@ -6649,7 +6649,7 @@ function renderPipelineSettings(pipeline) {
       <div class="settings-row"><label>Python</label><input id="setPipelinePython" value="${escapeHtml(pipeline.pythonExecutable || 'python3')}"></div>
       <div class="settings-row"><label>Working directory</label><input id="setPipelineWorkingDirectory" value="${escapeHtml(pipeline.workingDirectory || '')}"></div>
       <div class="settings-row"><label>Date argument</label><input id="setPipelineDateArgument" value="${escapeHtml(pipeline.dailyDateArgument || 'YYYY-MM-DD')}"></div>
-      <div class="settings-row"><label>Skip final nova-RAG env</label><input id="setPipelineSkipFinalRagEnv" value="${escapeHtml(pipeline.skipFinalRagEnv || 'NOVA_PIPELINE_SKIP_FINAL_RAG')}"></div>
+      <div class="settings-row"><label>Skip final nova-RAG env</label><input id="setPipelineSkipFinalRagEnv" value="${escapeHtml(pipeline.skipFinalRagEnv || 'ACTANARA_PIPELINE_SKIP_FINAL_RAG')}"></div>
       <div class="settings-row"><label>Thinking mode</label><select id="setPipelineThinkingMode">
         ${['off','low','medium'].map(mode => '<option value="' + mode + '" ' + ((pipeline.thinkingMode || 'off') === mode ? 'selected' : '') + '>' + mode + '</option>').join('')}
       </select></div>
@@ -6858,7 +6858,7 @@ async function saveSettingsModal() {
   }
   try {
     const bundle = {settings: payload};
-    if (OPEN_NOVA_SETTINGS_LLM_DIRTY && document.getElementById('llmProviderName')) {
+    if (ACTANARA_SETTINGS_LLM_DIRTY && document.getElementById('llmProviderName')) {
       bundle.llmProvider = collectLlmProviderSettingsFromModal();
     }
     const res = await fetch('/api/settings/bundle', {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(bundle)});
@@ -6870,12 +6870,12 @@ async function saveSettingsModal() {
     if (!freshRes.ok) throw new Error('reload HTTP ' + freshRes.status);
     const saved = await freshRes.json();
     rememberDashboardSettings(saved);
-    OPEN_NOVA_SETTINGS_FORM_DRAFT = {};
-    OPEN_NOVA_SETTINGS_LLM_DIRTY = false;
-    OPEN_NOVA_SETTINGS_ADVANCED_DIRTY = new Set();
-    OPEN_NOVA_SETTINGS_ADVANCED_BASELINE = new Map();
+    ACTANARA_SETTINGS_FORM_DRAFT = {};
+    ACTANARA_SETTINGS_LLM_DIRTY = false;
+    ACTANARA_SETTINGS_ADVANCED_DIRTY = new Set();
+    ACTANARA_SETTINGS_ADVANCED_BASELINE = new Map();
     document.getElementById('modal-body').innerHTML = renderSettingsModal(saved);
-    if (OPEN_NOVA_SETTINGS_ADVANCED) captureAdvancedSettingsBaseline();
+    if (ACTANARA_SETTINGS_ADVANCED) captureAdvancedSettingsBaseline();
     settingsTab('schedule');
     await syncSystemSchedulerCheckboxWithActual();
     const newStatus = document.getElementById('settingsSaveStatus');
@@ -6921,7 +6921,7 @@ function collectGeneralSettingsFromModal() {
     locale: document.getElementById('setGeneralLocale')?.value || 'zh-CN',
   };
   if (document.getElementById('setGeneralAppName')) {
-    general.appName = document.getElementById('setGeneralAppName')?.value || 'Open Nova';
+    general.appName = document.getElementById('setGeneralAppName')?.value || 'Actanara';
     general.environment = document.getElementById('setGeneralEnvironment')?.value || 'local';
     general.workspaceRoot = document.getElementById('setGeneralWorkspaceRoot')?.value || '';
     general.tmpWorkspace = document.getElementById('setGeneralTmpWorkspace')?.value || '';
@@ -6947,7 +6947,7 @@ function collectScheduleSettingsFromModal() {
   if (document.getElementById('setSystemTimerProvider') || document.getElementById('setSystemTimerLabel')) {
     schedule.systemTimer = {
       provider: document.getElementById('setSystemTimerProvider')?.value || 'launchd',
-      label: document.getElementById('setSystemTimerLabel')?.value || 'open-nova.daily',
+      label: document.getElementById('setSystemTimerLabel')?.value || 'actanara.daily',
     };
   }
   return schedule;
@@ -6975,8 +6975,8 @@ function collectDashboardSettingsFromModal() {
   }
   assignString('healthPath', 'setDashboardHealthPath', '/health');
   assignString('logsDir', 'setDashboardLogsDir');
-  assignString('serviceLabel', 'setDashboardServiceLabel', 'com.open-nova.dashboard');
-  assignString('watchdogLabel', 'setDashboardWatchdogLabel', 'com.open-nova.dashboard.watchdog');
+  assignString('serviceLabel', 'setDashboardServiceLabel', 'com.actanara.dashboard');
+  assignString('watchdogLabel', 'setDashboardWatchdogLabel', 'com.actanara.dashboard.watchdog');
   return dashboard;
 }
 
@@ -6986,7 +6986,7 @@ function collectPathSettingsFromModal() {
     const group = input.dataset.settingsPathGroup;
     const key = input.dataset.settingsPathKey;
     if (!group || !key) return;
-    if (group === 'runtime' && key === 'novaHome') return;
+    if (group === 'runtime' && key === 'actanaraHome') return;
     if (!paths[group]) paths[group] = {};
     paths[group][key] = input.value || '';
   });
@@ -7027,7 +7027,7 @@ function collectPipelineSettingsFromModal() {
     pythonExecutable: document.getElementById('setPipelinePython')?.value || 'python3',
     workingDirectory: document.getElementById('setPipelineWorkingDirectory')?.value || '',
     dailyDateArgument: document.getElementById('setPipelineDateArgument')?.value || 'YYYY-MM-DD',
-    skipFinalRagEnv: document.getElementById('setPipelineSkipFinalRagEnv')?.value || 'NOVA_PIPELINE_SKIP_FINAL_RAG',
+    skipFinalRagEnv: document.getElementById('setPipelineSkipFinalRagEnv')?.value || 'ACTANARA_PIPELINE_SKIP_FINAL_RAG',
     thinkingMode: document.getElementById('setPipelineThinkingMode')?.value || 'off',
     stepTimeoutSeconds: Number(document.getElementById('setPipelineStepTimeoutSeconds')?.value || 1800),
     stepTimeouts,
@@ -7159,7 +7159,7 @@ function collectRagSettingsFromModal() {
     if (secretBackend || secretAccount) {
       payload.embedding.secretRef = {
         backend: secretBackend || 'process-env',
-        service: secretService || 'open-nova',
+        service: secretService || 'actanara',
         account: secretAccount || 'NOVA_RAG_CLOUD_API_KEY',
       };
     }
@@ -7177,7 +7177,7 @@ async function ragOperatorAction(action) {
   }
   let body = {};
   if (action === 'server/start' || action === 'server/stop') {
-    const confirmationText = action === 'server/start' ? 'START OPEN NOVA RAG SERVER' : 'STOP OPEN NOVA RAG SERVER';
+    const confirmationText = action === 'server/start' ? 'START ACTANARA RAG SERVER' : 'STOP ACTANARA RAG SERVER';
     const typed = prompt(labels.confirmationPrompt + confirmationText);
     if (typed !== confirmationText) {
       if (status) status.textContent = labels.confirmationMismatch;
@@ -7206,7 +7206,7 @@ async function ragOperatorAction(action) {
 async function runRagProductionSync() {
   const labels = ragUiText();
   const status = document.getElementById('ragActionStatus');
-  const confirmationText = 'SYNC OPEN NOVA RAG';
+  const confirmationText = 'SYNC ACTANARA RAG';
   if (RAG_PRODUCTION_SYNC_BUSY) return;
   const typed = prompt(labels.productionSyncConfirmationPrompt + confirmationText);
   if (typed !== confirmationText) {
@@ -7519,7 +7519,7 @@ function openRagExternalSkillRegistration() {
         '<div class="settings-runtime-line"><b>Contract</b> GET /api/rag/external/health · GET /api/rag/external/contract · POST /api/rag/external/search</div>' +
         '<div class="settings-runtime-line"><b>Policy</b> ' + escapeHtml(labels.externalSkillPolicy) + '</div>' +
       '</div>' +
-      '<div class="settings-row"><label>' + escapeHtml(labels.confirmationPhrase) + '</label><input id="ragSkillRegistrationConfirmation" placeholder="INSTALL OPEN NOVA RAG SKILL"></div>' +
+      '<div class="settings-row"><label>' + escapeHtml(labels.confirmationPhrase) + '</label><input id="ragSkillRegistrationConfirmation" placeholder="INSTALL ACTANARA RAG SKILL"></div>' +
       '<label class="settings-inline"><input type="checkbox" id="ragSkillRegistrationOverwrite"> ' + escapeHtml(labels.overwriteSkill) + '</label>' +
       '<button type="button" class="wr-export-btn" onclick="loadRagExternalSkillPlan()">' + escapeHtml(labels.refreshPlan) + '</button> ' +
       '<button type="button" class="wr-export-btn" onclick="submitRagExternalSkillRegistration()">' + escapeHtml(labels.installSkill) + '</button> ' +
@@ -7639,7 +7639,7 @@ async function enableNovaRagServices() {
     const startRes = await fetch('/api/rag/server/start', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({confirmationText: 'START OPEN NOVA RAG SERVER'})
+      body: JSON.stringify({confirmationText: 'START ACTANARA RAG SERVER'})
     });
     const startPayload = await startRes.json().catch(() => ({}));
     if (!startRes.ok) throw new Error(startPayload.error || ('server HTTP ' + startRes.status));
@@ -7663,7 +7663,7 @@ async function disableNovaRagServices() {
     const stopRes = await fetch('/api/rag/server/stop', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({confirmationText: 'STOP OPEN NOVA RAG SERVER'})
+      body: JSON.stringify({confirmationText: 'STOP ACTANARA RAG SERVER'})
     });
     const stopPayload = await stopRes.json().catch(() => ({}));
     if (!stopRes.ok) throw new Error(stopPayload.error || ('server HTTP ' + stopRes.status));
@@ -7706,7 +7706,7 @@ async function ragSearchStartServer() {
     const res = await fetch('/api/rag/server/start', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({confirmationText: 'START OPEN NOVA RAG SERVER'})
+      body: JSON.stringify({confirmationText: 'START ACTANARA RAG SERVER'})
     });
     const payload = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(payload.error || ('server HTTP ' + res.status));
@@ -7730,7 +7730,7 @@ async function ragSearchStopServer() {
     const res = await fetch('/api/rag/server/stop', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({confirmationText: 'STOP OPEN NOVA RAG SERVER'})
+      body: JSON.stringify({confirmationText: 'STOP ACTANARA RAG SERVER'})
     });
     const payload = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(payload.error || ('server HTTP ' + res.status));
@@ -7925,7 +7925,7 @@ function renderSystemTimerPreview(data) {
 
 async function installSystemTimer() {
   const labels = operatorText();
-  const confirmationText = 'INSTALL OPEN NOVA SCHEDULER';
+  const confirmationText = 'INSTALL ACTANARA SCHEDULER';
   const typed = prompt(labels.installTimerPrompt + confirmationText);
   if (typed !== confirmationText) {
     const panel = document.getElementById('systemTimerPreview');
@@ -7960,7 +7960,7 @@ async function installSystemTimer() {
 
 async function uninstallSystemTimer() {
   const labels = operatorText();
-  const confirmationText = 'UNINSTALL OPEN NOVA SCHEDULER';
+  const confirmationText = 'UNINSTALL ACTANARA SCHEDULER';
   const typed = prompt(labels.uninstallTimerPrompt + confirmationText);
   if (typed !== confirmationText) {
     const panel = document.getElementById('systemTimerPreview');
@@ -8487,7 +8487,7 @@ function showSkillsDetail(type) {
             <tbody>
               <tr><td class="skill-item">agent-orchestration</td><td style="font-size:12px;color:var(--slate)">Delegates tasks across agents and aggregates results.</td></tr>
               <tr><td class="skill-item">backup</td><td style="font-size:12px;color:var(--slate)">Scheduled workspace backup scripts with incremental NAS backup support.</td></tr>
-              <tr><td class="skill-item">open-nova-memory</td><td style="font-size:12px;color:var(--slate)">Daily diary generation and nova-RAG vector index maintenance.</td></tr>
+              <tr><td class="skill-item">actanara-memory</td><td style="font-size:12px;color:var(--slate)">Daily diary generation and nova-RAG vector index maintenance.</td></tr>
               <tr><td class="skill-item">skills-management</td><td style="font-size:12px;color:var(--slate)">Skill lifecycle management for create, install, remove, and audit workflows.</td></tr>
             </tbody>
           </table>
@@ -8524,7 +8524,7 @@ function showSkillsDetail(type) {
             <tr><td class="skill-item">claude-code-colaab</td><td style="font-size:12px;color:var(--slate)">Claude Code 协同编程，用于深度编程、代码生成与重构</td></tr>
             <tr><td class="skill-item">claude-code-setup</td><td style="font-size:12px;color:var(--slate)">设置和管理 Claude Code 多模型切换功能（claudec 脚本）</td></tr>
             <tr><td class="skill-item">edgeone-cdn-updater</td><td style="font-size:12px;color:var(--slate)">自动更新腾讯云 EdgeOne CDN 源站 IP（NAS 公网 IP 变化时）</td></tr>
-            <tr><td class="skill-item">open-nova-memory</td><td style="font-size:12px;color:var(--slate)">每天 04:05 自动运行，生成日记 + 构建 nova-RAG 向量索引</td></tr>
+            <tr><td class="skill-item">actanara-memory</td><td style="font-size:12px;color:var(--slate)">每天 04:05 自动运行，生成日记 + 构建 nova-RAG 向量索引</td></tr>
             <tr><td class="skill-item">mattermost-push</td><td style="font-size:12px;color:var(--slate)">Mattermost 推送通知，支持跨 Gateway 消息推送</td></tr>
             <tr><td class="skill-item">media-generation</td><td style="font-size:12px;color:var(--slate)">MiniMax 多媒体生成工具（TTS、图片、视频、音乐）</td></tr>
             <tr><td class="skill-item">model-provider-cleanup</td><td style="font-size:12px;color:var(--slate)">清理 OpenClaw 中不再使用的模型 Provider（API 提供方）</td></tr>
@@ -8779,13 +8779,13 @@ function renderTokenClock(data) {
   if (el('tcToolsGrid')) el('tcToolsGrid').innerHTML = toolsHtml;
 
   renderRealtimeWorkspaces(data.workspaceUsage || [], data.timestamp);
-  OPEN_NOVA_TOKEN_CLOCK_READY = true;
+  ACTANARA_TOKEN_CLOCK_READY = true;
 }
 
 function renderTokenClockUnavailable(reason) {
   const labels = dashboardText();
   const message = labels.loadFailed + (reason || 'source-unavailable');
-  if (!OPEN_NOVA_TOKEN_CLOCK_READY) {
+  if (!ACTANARA_TOKEN_CLOCK_READY) {
     ['tcTotalTokens', 'tcTotalMessages', 'tcCacheRate', 'tcHourlyRate', 'tcActiveTools'].forEach(id => {
       const element = document.getElementById(id);
       if (element) element.textContent = '—';
@@ -9137,7 +9137,7 @@ function foDateString(d) {
 }
 
 function foToday() {
-  const timezone = OPEN_NOVA_DASHBOARD_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Hong_Kong';
+  const timezone = ACTANARA_DASHBOARD_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Hong_Kong';
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone,
     year: 'numeric',
@@ -9158,7 +9158,7 @@ async function loadDashboardTimezone() {
     rememberDashboardSettings(settings);
     const schedule = settings.schedule || {};
     const general = settings.general || {};
-    OPEN_NOVA_DASHBOARD_TIMEZONE = schedule.timezone || general.timezone || OPEN_NOVA_DASHBOARD_TIMEZONE;
+    ACTANARA_DASHBOARD_TIMEZONE = schedule.timezone || general.timezone || ACTANARA_DASHBOARD_TIMEZONE;
   } catch (e) {}
 }
 
@@ -9748,7 +9748,7 @@ async function loadFoundationOps() {
     completenessEl.innerHTML = foRenderCompleteness(completeness);
     cadenceEl.innerHTML = foRenderCadence(cadence);
     runtimeEl.innerHTML = [
-      ['NOVA_HOME', runtime.novaHome || '—'],
+      ['ACTANARA_HOME', runtime.actanaraHome || '—'],
       [foundationLabels.database, runtime.database || '—'],
       [foundationLabels.dbExists, runtime.databaseExists ? foundationLabels.yes : foundationLabels.no],
     ].map(row => '<div class="fo-kv"><span>' + row[0] + '</span><b>' + escapeHtml(row[1]) + '</b></div>').join('');
@@ -10074,7 +10074,7 @@ async function openEditor(agentName, fileName, path) {
   if(ta) ta.value = labels.readingFile;
   const overlay = document.getElementById('aaEditorOverlay');
   if(overlay) {
-    if (overlay.getAttribute('aria-hidden') !== 'false') OPEN_NOVA_EDITOR_RETURN_FOCUS = document.activeElement;
+    if (overlay.getAttribute('aria-hidden') !== 'false') ACTANARA_EDITOR_RETURN_FOCUS = document.activeElement;
     overlay.style.display = 'flex';
     overlay.setAttribute('aria-hidden', 'false');
     queueMicrotask(() => focusDashboardDialog(overlay.querySelector('.aa-editor-modal')));
@@ -10091,8 +10091,8 @@ function closeEditor() {
     overlay.style.display = 'none';
     overlay.setAttribute('aria-hidden', 'true');
   }
-  const returnFocus = OPEN_NOVA_EDITOR_RETURN_FOCUS;
-  OPEN_NOVA_EDITOR_RETURN_FOCUS = null;
+  const returnFocus = ACTANARA_EDITOR_RETURN_FOCUS;
+  ACTANARA_EDITOR_RETURN_FOCUS = null;
   restoreDashboardFocus(returnFocus);
 }
 async function saveFile() {
@@ -10100,7 +10100,7 @@ async function saveFile() {
   const ta = document.getElementById('aaEditorTextarea');
   if(!ta) return;
   const content = ta.value;
-  const confirmationText = 'SAVE OPEN NOVA FILE';
+  const confirmationText = 'SAVE ACTANARA FILE';
   const typed = prompt(labels.savePrompt + confirmationText);
   if (typed !== confirmationText) {
     alert(labels.saveCancelled);
@@ -10127,7 +10127,7 @@ function renderStorageDetail(storage) {
   if (!container) return;
   let html = '';
 
-  // Open Nova artifacts and runtime-owned storage.
+  // Actanara artifacts and runtime-owned storage.
   const categories = storage.categories || [];
   if (categories.length) {
     html += '<div class="chart-card aa-storage-card"><div class="aa-storage-section"><div class="aa-storage-section-title">' + escapeHtml(labels.artifactDetails) + '</div>';
@@ -10141,7 +10141,7 @@ function renderStorageDetail(storage) {
     html += '</div></div>';
   }
 
-  // Per-tool disk usage remains separate from Open Nova artifacts.
+  // Per-tool disk usage remains separate from Actanara artifacts.
   const toolStorage = storage.tools || [];
   if (toolStorage.length) {
     html += '<div class="chart-card aa-storage-card"><div class="aa-storage-section"><div class="aa-storage-section-title">' + escapeHtml(labels.toolStorage) + '</div>';
@@ -10191,7 +10191,7 @@ function _showModalContent(html, title, options) {
   const backBtn = document.getElementById('aaModalBack');
   const textarea = document.getElementById('aaDocTextarea');
   const content = document.getElementById('aaModalContent');
-  if (!modal.classList.contains('active')) OPEN_NOVA_DOC_MODAL_RETURN_FOCUS = document.activeElement;
+  if (!modal.classList.contains('active')) ACTANARA_DOC_MODAL_RETURN_FOCUS = document.activeElement;
 
   // Reset to view mode (not editing)
   modal.classList.remove('aa-editing');
@@ -10850,7 +10850,7 @@ async function openDocModal(agentName, fileName, workspace, fullPath, createable
     console.error('AI assets modal DOM is incomplete');
     return;
   }
-  if (!modal.classList.contains('active')) OPEN_NOVA_DOC_MODAL_RETURN_FOCUS = document.activeElement;
+  if (!modal.classList.contains('active')) ACTANARA_DOC_MODAL_RETURN_FOCUS = document.activeElement;
   if (modal.parentElement !== document.body) document.body.appendChild(modal);
 
   // Editor mode: wider modal, textarea fills body
@@ -10947,8 +10947,8 @@ function closeDocModal() {
   if (subtitle) subtitle.textContent = '';
   const backBtn = document.getElementById('aaModalBack');
   if (backBtn) backBtn.style.display = 'none';
-  const returnFocus = OPEN_NOVA_DOC_MODAL_RETURN_FOCUS;
-  OPEN_NOVA_DOC_MODAL_RETURN_FOCUS = null;
+  const returnFocus = ACTANARA_DOC_MODAL_RETURN_FOCUS;
+  ACTANARA_DOC_MODAL_RETURN_FOCUS = null;
   restoreDashboardFocus(returnFocus);
 }
 
@@ -10957,7 +10957,7 @@ async function saveDoc() {
   const textarea = document.getElementById('aaDocTextarea');
   const content = textarea.value;
   const filePath = _aaDocState.path || (_aaDocState.workspace ? _aaDocState.workspace.replace(/\/$/, '') + '/' + _aaDocState.fileName : _aaDocState.fileName);
-  const confirmationText = 'SAVE OPEN NOVA FILE';
+  const confirmationText = 'SAVE ACTANARA FILE';
   const typed = prompt(labels.savePrompt + confirmationText);
   if (typed !== confirmationText) {
     aaToast(labels.saveCancelled, 'error');
@@ -11027,7 +11027,7 @@ _aaObserver.observe(document.getElementById('page-static') || document.body, { a
 
 fetchTokenClock();
 setInterval(fetchTokenClock, 30000);
-OPEN_NOVA_DIARY_NAV_READY = loadDiaryNav();
+ACTANARA_DIARY_NAV_READY = loadDiaryNav();
 
 
 // ═══════════════════════════════════════════════════════
@@ -11069,7 +11069,7 @@ function flashElement(id, newVal) {
 function updateTokenCards(data) {
   const labels = { ...dashboardText(), ...dashboardShellText() };
   if (dashboardStateFailed(data)) {
-    if (!OPEN_NOVA_TOKEN_SUMMARY_READY) {
+    if (!ACTANARA_TOKEN_SUMMARY_READY) {
       ['statMsgCount', 'statTodayTokens', 'statCacheHit'].forEach(id => flashElement(id, '—'));
     }
     const reason = dashboardStateSummary(data);
@@ -11105,7 +11105,7 @@ function updateTokenCards(data) {
 
   // Update uptime
   if (el('statUptime')) el('statUptime').textContent = formatUptime(Date.now() - pageLoadTime);
-  OPEN_NOVA_TOKEN_SUMMARY_READY = true;
+  ACTANARA_TOKEN_SUMMARY_READY = true;
 }
 
 // ── Task Board (from /api/tasks) ─────────────────────────────────────────────
@@ -11219,7 +11219,7 @@ function dashboardTasksFromPayload(data) {
 function updateTaskBoard(data) {
   const labels = taskBoardText();
   if (dashboardStateFailed(data)) {
-    if (!OPEN_NOVA_TASK_BOARD_READY) {
+    if (!NOVA_TASK_BOARD_READY) {
       ['tb-milestone-count', 'tb-active-count', 'tb-planned-count', 'tb-pending-count'].forEach(id => {
         const element = document.getElementById(id);
         if (element) element.textContent = '—';
@@ -11268,7 +11268,7 @@ function updateTaskBoard(data) {
     if (milestoneCount) parts.push(labels.milestoneShort + ' ' + milestoneCount);
     el('statTaskTrend').textContent = parts.join(' · ') || labels.noData;
   }
-  OPEN_NOVA_TASK_BOARD_READY = true;
+  NOVA_TASK_BOARD_READY = true;
 }
 
 // Global store for showAllTasks modal
@@ -11328,7 +11328,7 @@ function showAllTasks() {
 }
 
 
-const OPEN_NOVA_SSE_STREAM_STATES = new Map();
+const ACTANARA_SSE_STREAM_STATES = new Map();
 
 function sseSourceWarnings(payload) {
   const state = dashboardStateOf(payload);
@@ -11347,12 +11347,12 @@ function sseSourceWarnings(payload) {
 
 function updateSseStreamState(label, patch) {
   const key = String(label || 'stream');
-  const previous = OPEN_NOVA_SSE_STREAM_STATES.get(key) || {
+  const previous = ACTANARA_SSE_STREAM_STATES.get(key) || {
     transport: 'connecting',
     retrySeconds: 0,
     sourceWarnings: [],
   };
-  OPEN_NOVA_SSE_STREAM_STATES.set(key, {...previous, ...(patch || {})});
+  ACTANARA_SSE_STREAM_STATES.set(key, {...previous, ...(patch || {})});
   renderSseConnectionStatus();
 }
 
@@ -11360,7 +11360,7 @@ function renderSseConnectionStatus() {
   const el = document.getElementById('sseStatus');
   if (!el) return;
 
-  const states = Array.from(OPEN_NOVA_SSE_STREAM_STATES.values());
+  const states = Array.from(ACTANARA_SSE_STREAM_STATES.values());
   const pending = states.filter(state => state.transport !== 'connected');
   const retrying = pending.find(state => state.transport === 'reconnecting');
   if (!states.length || pending.length) {
@@ -11525,7 +11525,7 @@ document.addEventListener('click', function(e) {
   openSkillModal(cap.dataset.tab, parseInt(cap.dataset.idx));
 }, true);
 async function initFromHash() {
-  if (OPEN_NOVA_DIARY_NAV_READY) await OPEN_NOVA_DIARY_NAV_READY;
+  if (ACTANARA_DIARY_NAV_READY) await ACTANARA_DIARY_NAV_READY;
   if (location.hash && location.hash !== '#' && await restoreDynamicDiaryPageFromHash()) return;
   showPageFromHash();
 }

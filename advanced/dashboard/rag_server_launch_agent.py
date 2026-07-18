@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install or run the Open Nova nova-RAG server LaunchAgent."""
+"""Install or run the Actanara nova-RAG server LaunchAgent."""
 
 from __future__ import annotations
 
@@ -23,10 +23,10 @@ MODULE_PROJECT_ROOT = Path(__file__).absolute().parents[2]
 sys.path.insert(0, str(MODULE_PROJECT_ROOT))
 sys.path.insert(0, str(MODULE_PROJECT_ROOT / "src"))
 
-DEFAULT_NOVA_HOME = Path.home() / ".open-nova"
-DEFAULT_PROJECT_ROOT = DEFAULT_NOVA_HOME / "app" / "source"
-DEFAULT_PYTHON = DEFAULT_NOVA_HOME / ".venv" / "bin" / "python"
-DEFAULT_SERVICE_LABEL = "com.open-nova.rag-server"
+DEFAULT_ACTANARA_HOME = Path.home() / ".actanara"
+DEFAULT_PROJECT_ROOT = DEFAULT_ACTANARA_HOME / "app" / "source"
+DEFAULT_PYTHON = DEFAULT_ACTANARA_HOME / ".venv" / "bin" / "python"
+DEFAULT_SERVICE_LABEL = "com.actanara.rag-server"
 _MAX_SETTINGS_BYTES = 2 * 1024 * 1024
 
 
@@ -35,12 +35,12 @@ class ManagedRuntimeConfigurationError(RuntimeError):
 
 
 def _require_selected_runtime(selected) -> None:
-    explicit_home = os.environ.get("NOVA_HOME")
+    explicit_home = os.environ.get("ACTANARA_HOME")
     if explicit_home:
         expected = Path(explicit_home).expanduser().absolute()
         if selected.home != expected:
             raise ManagedRuntimeConfigurationError(
-                "selected Runtime does not match the explicit NOVA_HOME"
+                "selected Runtime does not match the explicit ACTANARA_HOME"
             )
 
     settings_path = selected.config_dir / "settings.json"
@@ -70,10 +70,10 @@ def _require_selected_runtime(selected) -> None:
     _require_runtime_pointers(selected.home)
 
 
-def _require_runtime_pointers(nova_home: Path) -> None:
+def _require_runtime_pointers(actanara_home: Path) -> None:
     pointers = (
-        (nova_home / "app" / "source", nova_home / "app" / "releases"),
-        (nova_home / ".venv", nova_home / "app" / "venvs"),
+        (actanara_home / "app" / "source", actanara_home / "app" / "releases"),
+        (actanara_home / ".venv", actanara_home / "app" / "venvs"),
     )
     for pointer, container in pointers:
         try:
@@ -90,18 +90,18 @@ def _require_runtime_pointers(nova_home: Path) -> None:
             raise ManagedRuntimeConfigurationError("managed Runtime pointer is unreadable") from exc
         if resolved.parent != expected_container or not resolved.is_dir():
             raise ManagedRuntimeConfigurationError("managed Runtime pointer target is outside its store")
-    if not (nova_home / ".venv" / "bin" / "python").is_file():
+    if not (actanara_home / ".venv" / "bin" / "python").is_file():
         raise ManagedRuntimeConfigurationError("managed Runtime Python is unavailable")
 
 
-def _require_stable_runtime_binding(*, project_root: Path, python: Path, nova_home: Path) -> None:
-    expected_source = nova_home / "app" / "source"
-    expected_python = nova_home / ".venv" / "bin" / "python"
+def _require_stable_runtime_binding(*, project_root: Path, python: Path, actanara_home: Path) -> None:
+    expected_source = actanara_home / "app" / "source"
+    expected_python = actanara_home / ".venv" / "bin" / "python"
     if project_root != expected_source or python != expected_python:
         raise ManagedRuntimeConfigurationError(
             "managed service writes require stable Runtime source and venv paths"
         )
-    _require_runtime_pointers(nova_home)
+    _require_runtime_pointers(actanara_home)
 
 
 def rag_launch_defaults() -> dict:
@@ -116,8 +116,8 @@ def rag_launch_defaults() -> dict:
         return {
             "project_root": selected.home / "app" / "source",
             "python": selected.home / ".venv" / "bin" / "python",
-            "nova_home": selected.home,
-            "logs_dir": Path(str(dashboard.get("logsDir") or (Path.home() / "Library" / "Logs" / "OpenNova"))),
+            "actanara_home": selected.home,
+            "logs_dir": Path(str(dashboard.get("logsDir") or (Path.home() / "Library" / "Logs" / "Actanara"))),
             "label": DEFAULT_SERVICE_LABEL,
         }
     except ManagedRuntimeConfigurationError:
@@ -141,11 +141,11 @@ def build_service_plist(
     label: str,
     python: Path,
     project_root: Path,
-    nova_home: Path,
+    actanara_home: Path,
     script: Path,
     logs_dir: Path | None = None,
 ) -> dict:
-    logs = logs_dir or Path.home() / "Library" / "Logs" / "OpenNova"
+    logs = logs_dir or Path.home() / "Library" / "Logs" / "Actanara"
     return {
         "Label": label,
         "ProgramArguments": [
@@ -154,11 +154,11 @@ def build_service_plist(
             "run",
             "--project-root",
             str(project_root),
-            "--nova-home",
-            str(nova_home),
+            "--actanara-home",
+            str(actanara_home),
         ],
         "EnvironmentVariables": {
-            "NOVA_HOME": str(nova_home),
+            "ACTANARA_HOME": str(actanara_home),
             "PYTHONDONTWRITEBYTECODE": "1",
             "PYTHONPATH": f"{project_root}:{project_root / 'src'}",
             "PATH": "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin",
@@ -178,19 +178,19 @@ def write_plist(path: Path, payload: dict) -> None:
 
 
 def launchctl(*args: str) -> subprocess.CompletedProcess[str]:
-    binary = os.environ.get("NOVA_INSTALL_LAUNCHCTL") or shutil.which("launchctl") or "/bin/launchctl"
+    binary = os.environ.get("ACTANARA_INSTALL_LAUNCHCTL") or shutil.which("launchctl") or "/bin/launchctl"
     return subprocess.run([binary, *args], text=True, capture_output=True, check=False)
 
 
 def write_agent(args: argparse.Namespace) -> Path:
     project_root = args.project_root.expanduser().absolute()
     python = args.python.expanduser().absolute()
-    nova_home = args.nova_home.expanduser().absolute()
+    actanara_home = args.actanara_home.expanduser().absolute()
     logs_dir = args.logs_dir.expanduser().absolute()
     _require_stable_runtime_binding(
         project_root=project_root,
         python=python,
-        nova_home=nova_home,
+        actanara_home=actanara_home,
     )
     logs_dir.mkdir(parents=True, exist_ok=True)
     path = service_plist_path(args.label)
@@ -200,7 +200,7 @@ def write_agent(args: argparse.Namespace) -> Path:
             label=args.label,
             python=python,
             project_root=project_root,
-            nova_home=nova_home,
+            actanara_home=actanara_home,
             script=project_root / "advanced" / "dashboard" / "rag_server_launch_agent.py",
             logs_dir=logs_dir,
         ),
@@ -230,7 +230,7 @@ def uninstall_agent(args: argparse.Namespace) -> int:
 
 
 def run_server(args: argparse.Namespace) -> int:
-    os.environ["NOVA_HOME"] = str(args.nova_home.resolve())
+    os.environ["ACTANARA_HOME"] = str(args.actanara_home.resolve())
     project_root = args.project_root.resolve()
     sys.path.insert(0, str(project_root))
     sys.path.insert(0, str(project_root / "src"))
@@ -275,7 +275,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--label", default=defaults["label"])
         p.add_argument("--python", type=Path, default=defaults["python"])
         p.add_argument("--project-root", type=Path, default=defaults["project_root"])
-        p.add_argument("--nova-home", type=Path, default=defaults["nova_home"])
+        p.add_argument("--actanara-home", type=Path, default=defaults["actanara_home"])
         p.add_argument("--logs-dir", type=Path, default=defaults["logs_dir"])
 
     for name in ("write", "install", "uninstall", "run"):

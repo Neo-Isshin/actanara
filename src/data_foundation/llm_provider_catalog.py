@@ -1,8 +1,8 @@
-"""Approved LLM provider presets for Open Nova runtime settings.
+"""Approved LLM provider presets for Actanara runtime settings.
 
 The catalog is seeded from OpenClaw 2026.6.1 onboard/provider metadata, then
-scrubbed into a Nova-owned static library. It intentionally contains endpoint
-and model metadata only; operator credentials remain in Nova settings/env.
+scrubbed into a Actanara-owned static library. It intentionally contains endpoint
+and model metadata only; operator credentials remain in Actanara settings/env.
 """
 
 from __future__ import annotations
@@ -131,7 +131,7 @@ def _provider(
 
 
 _CATALOG = [
-    # Existing Nova-compatible presets retained for saved-settings compatibility.
+    # Built-in provider presets supported by Actanara.
     _provider(
         "minimax-cn",
         "MiniMax CN",
@@ -518,7 +518,7 @@ def normalize_llm_provider_update(update: dict[str, Any], current: dict[str, Any
     if requested_mode:
         mode = requested_mode
     elif requested_provider:
-        # `open-nova model set --provider ...` is the product-facing switch
+        # `actanara model set --provider ...` is the product-facing switch
         # boundary and intentionally has no separate --mode flag.  An
         # explicit provider therefore outranks a stale mode from the current
         # provider; otherwise custom -> preset silently remains custom.

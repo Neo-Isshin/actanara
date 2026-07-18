@@ -13,8 +13,8 @@ class ExternalToolPathContractTests(unittest.TestCase):
         forbidden = re.compile(
             r"/Users/[^/\s]+/(?:Desktop/)?DEV\b"
             r"|/Volumes/[^/\s]+/DEV\b"
-            r"|/private/tmp/open-nova\b"
-            r"|/tmp/open-nova\b"
+            r"|/private/tmp/actanara\b"
+            r"|/tmp/actanara\b"
         )
         offenders: list[str] = []
         for base in (ROOT / "src", ROOT / "advanced"):

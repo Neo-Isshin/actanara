@@ -69,7 +69,7 @@ class FoundationDatabaseTests(unittest.TestCase):
 
     def test_migration_is_repeatable_and_registry_lifecycle_is_audit_friendly(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             self.assertEqual(migrate(paths), EXPECTED_MIGRATIONS)
             self.assertEqual(migrate(paths), [])
             with connect(paths) as connection:
@@ -90,12 +90,12 @@ class FoundationDatabaseTests(unittest.TestCase):
 
     def test_manual_project_seed_is_idempotent(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             migrate(paths)
             projects = [
                 {
-                    "canonical_name": "open-nova",
-                    "canonical_root": "/workspace/example/open-nova",
+                    "canonical_name": "actanara",
+                    "canonical_root": "/workspace/example/actanara",
                     "aliases": ["nova"],
                 }
             ]
@@ -107,7 +107,7 @@ class FoundationDatabaseTests(unittest.TestCase):
 
     def test_migration_recovers_after_ddl_was_applied_without_version_record(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             with connect(paths) as connection:
                 connection.executescript((MIGRATIONS_DIR / "0001_initial.sql").read_text(encoding="utf-8"))
             self.assertEqual(migrate(paths), EXPECTED_MIGRATIONS)
@@ -115,7 +115,7 @@ class FoundationDatabaseTests(unittest.TestCase):
     def test_failed_migration_rolls_back_schema_data_and_version_then_retries(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary")
+            paths = initialize_home(root / "Actanara")
             migrations = root / "migrations"
             migrations.mkdir()
             migration = migrations / "0001_failure_atomicity.sql"
@@ -152,10 +152,10 @@ class FoundationDatabaseTests(unittest.TestCase):
 
     def test_concurrent_migrate_calls_serialize_without_partial_or_duplicate_apply(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             env = {
                 **os.environ,
-                "NOVA_HOME": str(paths.home),
+                "ACTANARA_HOME": str(paths.home),
                 "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src"),
             }
             command = [
@@ -180,7 +180,7 @@ class FoundationDatabaseTests(unittest.TestCase):
     def test_sigkill_during_migration_body_rolls_back_and_allows_retry(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary")
+            paths = initialize_home(root / "Actanara")
             migrations = root / "migrations"
             migrations.mkdir()
             marker = root / "migration-paused"
@@ -193,10 +193,10 @@ class FoundationDatabaseTests(unittest.TestCase):
             )
             env = {
                 **os.environ,
-                "NOVA_HOME": str(paths.home),
+                "ACTANARA_HOME": str(paths.home),
                 "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src"),
-                "OPEN_NOVA_TEST_MIGRATIONS": str(migrations),
-                "OPEN_NOVA_TEST_MARKER": str(marker),
+                "ACTANARA_TEST_MIGRATIONS": str(migrations),
+                "ACTANARA_TEST_MARKER": str(marker),
             }
             child = subprocess.Popen(
                 [
@@ -209,14 +209,14 @@ from pathlib import Path
 import time
 import data_foundation.db as db
 
-db.MIGRATIONS_DIR = Path(os.environ["OPEN_NOVA_TEST_MIGRATIONS"])
+db.MIGRATIONS_DIR = Path(os.environ["ACTANARA_TEST_MIGRATIONS"])
 original_connect = db.connect
 
 @contextmanager
 def test_connect(*args, **kwargs):
     with original_connect(*args, **kwargs) as connection:
         def pause():
-            Path(os.environ["OPEN_NOVA_TEST_MARKER"]).write_text("paused", encoding="utf-8")
+            Path(os.environ["ACTANARA_TEST_MARKER"]).write_text("paused", encoding="utf-8")
             time.sleep(60)
             return 0
         connection.create_function("test_pause_migration", 0, pause)
@@ -274,7 +274,7 @@ db.migrate()
     def test_version_registry_insert_failure_rolls_back_migration_body(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary")
+            paths = initialize_home(root / "Actanara")
             migrations = root / "migrations"
             migrations.mkdir()
             migration = migrations / "0001_version_failure.sql"
@@ -314,7 +314,7 @@ db.migrate()
 
     def test_nova_task_status_vocabulary_migrates_existing_candidate_rows(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             with connect(paths) as connection:
                 connection.execute(
                     "CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TEXT NOT NULL)"
@@ -385,7 +385,7 @@ db.migrate()
 
     def test_nova_task_l1_review_view_filters_parent_task_candidates(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             migrate(paths)
             with connect(paths) as connection:
                 connection.execute(

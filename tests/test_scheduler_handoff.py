@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "src" / "dashboard"))
-os.environ["OPEN_NOVA_SECRET_BACKEND"] = "memory"
+os.environ["ACTANARA_SECRET_BACKEND"] = "memory"
 
 from app.services import scheduler
 from data_foundation.onboarding_plan import (
@@ -24,7 +24,7 @@ from data_foundation.onboarding_plan import (
 )
 from data_foundation.paths import initialize_home
 from data_foundation.settings import read_settings, write_operator_settings, write_settings
-from data_foundation.settings_status import nova_settings_status
+from data_foundation.settings_status import actanara_settings_status
 from data_foundation.time import detect_system_timezone_authority
 
 
@@ -72,7 +72,7 @@ class _LaunchdVector:
 
 class SchedulerHandoffTests(unittest.TestCase):
     def _runtime(self, root: Path):
-        paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+        paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
         write_settings(
             {
                 "schedule": {
@@ -91,7 +91,7 @@ class SchedulerHandoffTests(unittest.TestCase):
 
     def _patches(self, paths, root: Path, vector: _LaunchdVector):
         return (
-            patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False),
+            patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False),
             patch("data_foundation.scheduler_preview.detect_system_timezone_authority", return_value="UTC"),
             patch.object(scheduler, "_launch_agent_path", side_effect=lambda label: self._plist_path(root, label)),
             patch.object(scheduler, "_launchctl", side_effect=vector.operation),
@@ -298,7 +298,7 @@ class SchedulerHandoffTests(unittest.TestCase):
                     scheduler.install_system_timer(
                         {"confirmationText": scheduler.SCHEDULER_INSTALL_CONFIRMATION}
                     )
-                doctor = nova_settings_status(paths, doctor_profile="scheduler")
+                doctor = actanara_settings_status(paths, doctor_profile="scheduler")
 
             check = next(item for item in doctor["checks"] if item["id"] == "scheduler-timezone-boundary")
             self.assertEqual(check["status"], "error")
@@ -327,14 +327,14 @@ class SchedulerHandoffTests(unittest.TestCase):
             self.assertEqual((paths.config_dir / "settings.json").read_bytes(), before)
 
     @unittest.skipUnless(
-        os.getenv("OPEN_NOVA_RUN_REAL_LAUNCHD_TESTS") == "1" and platform.system() == "Darwin",
+        os.getenv("ACTANARA_RUN_REAL_LAUNCHD_TESTS") == "1" and platform.system() == "Darwin",
         "real isolated launchd handoff not requested",
     )
     def test_real_unique_launchd_install_doctor_uninstall_handoff(self):
-        with tempfile.TemporaryDirectory(prefix="open-nova-scheduler-live-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="actanara-scheduler-live-") as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
-            label = f"com.open-nova.session-d.handoff.{os.getpid()}"
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
+            label = f"com.actanara.session-d.handoff.{os.getpid()}"
             system_timezone = detect_system_timezone_authority()
             self.assertTrue(system_timezone)
             write_settings(
@@ -357,7 +357,7 @@ class SchedulerHandoffTests(unittest.TestCase):
             labels = [f"{label}.pipeline", f"{label}.dashboard-aggregation"]
             try:
                 with (
-                    patch.dict(os.environ, {"NOVA_HOME": str(paths.home), "HOME": str(root / "Home")}, clear=False),
+                    patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home), "HOME": str(root / "Home")}, clear=False),
                     patch.object(scheduler, "_launch_agent_path", side_effect=plist_path),
                 ):
                     installed = scheduler.install_system_timer(
@@ -397,15 +397,15 @@ class SchedulerHandoffTests(unittest.TestCase):
                     )
 
     @unittest.skipUnless(
-        os.getenv("OPEN_NOVA_RUN_REAL_LAUNCHD_TESTS") == "1" and platform.system() == "Darwin",
+        os.getenv("ACTANARA_RUN_REAL_LAUNCHD_TESTS") == "1" and platform.system() == "Darwin",
         "real isolated launchd handoff not requested",
     )
     def test_real_unique_onboarding_cli_register_unregister_uses_same_handoff(self):
-        with tempfile.TemporaryDirectory(prefix="open-nova-scheduler-onboarding-live-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="actanara-scheduler-onboarding-live-") as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             launch_agent_home = root / "Home"
-            label = f"com.open-nova.session-d.onboarding-handoff.{os.getpid()}"
+            label = f"com.actanara.session-d.onboarding-handoff.{os.getpid()}"
             system_timezone = detect_system_timezone_authority()
             self.assertTrue(system_timezone)
             write_settings(
@@ -427,13 +427,13 @@ class SchedulerHandoffTests(unittest.TestCase):
                     ["dashboard"],
                     paths,
                     launch_agent_home=launch_agent_home,
-                    confirmation_text="WRITE OPEN NOVA LAUNCHAGENTS",
+                    confirmation_text="WRITE ACTANARA LAUNCHAGENTS",
                 )
                 registered = onboarding_apply_scheduler_register(
                     ["dashboard"],
                     paths,
                     launch_agent_home=launch_agent_home,
-                    confirmation_text="REGISTER OPEN NOVA SCHEDULER",
+                    confirmation_text="REGISTER ACTANARA SCHEDULER",
                 )
                 preview = scheduler.preview_system_timer(
                     paths,
@@ -444,7 +444,7 @@ class SchedulerHandoffTests(unittest.TestCase):
                     ["dashboard"],
                     paths,
                     launch_agent_home=launch_agent_home,
-                    confirmation_text="UNREGISTER OPEN NOVA SCHEDULER",
+                    confirmation_text="UNREGISTER ACTANARA SCHEDULER",
                 )
 
                 self.assertEqual(written["status"], "scheduler-plist-applied")

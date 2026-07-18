@@ -21,14 +21,14 @@ import { withBrowserContext } from "./dashboard-live-context.js";
  */
 
 const repoRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const rawBaseUrl = String(process.env.OPEN_NOVA_DASHBOARD_LIVE_BASE_URL || "").trim();
+const rawBaseUrl = String(process.env.ACTANARA_DASHBOARD_LIVE_BASE_URL || "").trim();
 const defaultEvidenceDir = path.join(repoRoot, "test-results", "dashboard-live");
 const evidenceDir = path.resolve(
-  process.env.OPEN_NOVA_DASHBOARD_LIVE_EVIDENCE_DIR || defaultEvidenceDir,
+  process.env.ACTANARA_DASHBOARD_LIVE_EVIDENCE_DIR || defaultEvidenceDir,
 );
 
 test.describe.configure({ mode: "serial" });
-test.skip(!rawBaseUrl, "set OPEN_NOVA_DASHBOARD_LIVE_BASE_URL to opt in to the real Dashboard gate");
+test.skip(!rawBaseUrl, "set ACTANARA_DASHBOARD_LIVE_BASE_URL to opt in to the real Dashboard gate");
 
 function liveTarget(value) {
   const parsed = new URL(value);
@@ -135,7 +135,7 @@ test("real Dashboard release gate", async ({ browser, playwright }, testInfo) =>
   const checks = [];
   const skipped = [];
   const screenshots = [];
-  const marker = `OPEN-NOVA-LIVE-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
+  const marker = `ACTANARA-LIVE-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
   let syntheticNodeId = null;
   let settingsPreimage = null;
   let settingsPage = null;
@@ -226,7 +226,7 @@ test("real Dashboard release gate", async ({ browser, playwright }, testInfo) =>
         await localeOverlay(page, "zh-CN");
         await page.goto(`${target.origin}/dashboard`, { waitUntil: "domcontentloaded" });
         await waitForShell(page);
-        await expect(page).toHaveTitle("Open Nova");
+        await expect(page).toHaveTitle("Actanara");
         await expect(page.locator("#sseStatus")).toHaveText("🟢 已连接", { timeout: 20_000 });
         await expect(page.locator("#sseStatus")).toHaveAttribute("data-source-health", "ready");
         const routeStates = [];
@@ -399,11 +399,11 @@ test("real Dashboard release gate", async ({ browser, playwright }, testInfo) =>
       return context({ viewport: { width: 800, height: 600 } }, async ctx => {
         const page = await ctx.newPage();
         await page.goto(`${target.origin}/dashboard`, { waitUntil: "domcontentloaded" });
-        const csrf = (await ctx.cookies()).find(cookie => cookie.name === "open_nova_dashboard_csrf")?.value;
+        const csrf = (await ctx.cookies()).find(cookie => cookie.name === "actanara_dashboard_csrf")?.value;
         expect(csrf).toBeTruthy();
         const allowed = await ctx.request.get(`${target.origin}/api/tokens`, { headers: { Origin: target.origin } });
         const missing = await ctx.request.post(`${target.origin}/api/__live_csrf_probe__`, { data: {} });
-        const matching = await ctx.request.post(`${target.origin}/api/__live_csrf_probe__`, { headers: { "X-Open-Nova-CSRF": csrf }, data: {} });
+        const matching = await ctx.request.post(`${target.origin}/api/__live_csrf_probe__`, { headers: { "X-Actanara-CSRF": csrf }, data: {} });
         expect([allowed.status(), missing.status(), matching.status()]).toEqual([200, 403, 404]);
         return { authenticatedGet: 200, missingCsrf: 403, matchingCsrfRouter: 404 };
       });
@@ -497,7 +497,7 @@ test("real Dashboard release gate", async ({ browser, playwright }, testInfo) =>
           return { enabled: false };
         }
         await page.locator('aside.sidebar [data-page-id="page-rag-search"]').click();
-        await page.locator("#ragPageSearchQuery").fill("Open Nova release validation");
+        await page.locator("#ragPageSearchQuery").fill("Actanara release validation");
         const responsePromise = page.waitForResponse(r => r.url().endsWith("/api/rag/search") && r.request().method() === "POST");
         await page.getByRole("button", { name: /搜索|Search/i }).last().click();
         const response = await responsePromise;
@@ -536,9 +536,9 @@ test("real Dashboard release gate", async ({ browser, playwright }, testInfo) =>
         const cleanupContext = await browser.newContext();
         const cleanupPage = await cleanupContext.newPage();
         await cleanupPage.goto(`${target.origin}/tasks`, { waitUntil: "domcontentloaded" });
-        const csrf = (await cleanupContext.cookies()).find(cookie => cookie.name === "open_nova_dashboard_csrf")?.value;
+        const csrf = (await cleanupContext.cookies()).find(cookie => cookie.name === "actanara_dashboard_csrf")?.value;
         const response = await cleanupContext.request.patch(`${target.origin}/api/tasks/nodes/${encodeURIComponent(syntheticNodeId)}`, {
-          headers: { "X-Open-Nova-CSRF": csrf || "" },
+          headers: { "X-Actanara-CSRF": csrf || "" },
           data: { status: "archived" },
         });
         record("Task synthetic finally cleanup", response.status() === 200, { cleanup: "archived", status: response.status() });
@@ -558,8 +558,8 @@ test("real Dashboard release gate", async ({ browser, playwright }, testInfo) =>
       browser: { name: "Chrome", version: browser.version() },
       target: target.evidence,
       candidate: {
-        manifestSha256: envHash("OPEN_NOVA_DASHBOARD_LIVE_CANDIDATE_MANIFEST_SHA256"),
-        payloadSha256: envHash("OPEN_NOVA_DASHBOARD_LIVE_CANDIDATE_PAYLOAD_SHA256"),
+        manifestSha256: envHash("ACTANARA_DASHBOARD_LIVE_CANDIDATE_MANIFEST_SHA256"),
+        payloadSha256: envHash("ACTANARA_DASHBOARD_LIVE_CANDIDATE_PAYLOAD_SHA256"),
       },
       summary: {
         passed: checks.filter(item => item.passed).length,

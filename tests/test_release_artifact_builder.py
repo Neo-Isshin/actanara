@@ -59,7 +59,7 @@ def _init_repository(root: Path, *, version: str = "7.8.9") -> str:
         'requires = ["setuptools==83.0.0", "wheel==0.47.0"]\n'
         'build-backend = "setuptools.build_meta"\n\n'
         "[project]\n"
-        'name = "open-nova"\n'
+        'name = "actanara"\n'
         f'version = "{version}"\n',
         encoding="utf-8",
     )
@@ -81,11 +81,11 @@ def _init_repository(root: Path, *, version: str = "7.8.9") -> str:
     )
     bootstrap.chmod(0o755)
     (root / "install" / "dependency_contract.py").write_text(
-        'PRODUCT = "open-nova"\n',
+        'PRODUCT = "actanara"\n',
         encoding="utf-8",
     )
     (root / "install" / "runtime-dependencies.lock.json").write_text(
-        '{"product":"open-nova","schemaVersion":1}\n',
+        '{"product":"actanara","schemaVersion":1}\n',
         encoding="utf-8",
     )
     (root / "tools" / "release" / "generate_runtime_lock.py").write_text(
@@ -105,8 +105,8 @@ def _write_fake_python_packages(
     output: Path,
     **_kwargs: object,
 ) -> tuple[Path, Path]:
-    wheel = output / f"open_nova-{source.version}-py3-none-any.whl"
-    sdist = output / f"open_nova-{source.version}.tar.gz"
+    wheel = output / f"actanara-{source.version}-py3-none-any.whl"
+    sdist = output / f"actanara-{source.version}.tar.gz"
     wheel.write_bytes(b"deterministic wheel fixture\n")
     sdist.write_bytes(b"deterministic sdist fixture\n")
     return wheel, sdist
@@ -143,7 +143,7 @@ class ReleaseArtifactBuilderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / "pyproject.toml").write_text(
-                '[project]\nname = "open-nova"\nversion = "9.4.2"\n',
+                '[project]\nname = "actanara"\nversion = "9.4.2"\n',
                 encoding="utf-8",
             )
 
@@ -304,7 +304,7 @@ class ReleaseArtifactBuilderTests(unittest.TestCase):
             "src/tests/test_contract.py",
             "advanced/cache/data.json",
             "install/node_modules/tool.js",
-            "src/open_nova.egg-info/PKG-INFO",
+            "src/actanara.egg-info/PKG-INFO",
             "src/state.sqlite3",
             "src/state.sqlite-wal",
             "src/service.log",
@@ -326,7 +326,7 @@ class ReleaseArtifactBuilderTests(unittest.TestCase):
         )
         self.assertIsNotNone(
             release_builder._package_member_violation(
-                "open-nova-7.8.9/requirements-release.txt",
+                "actanara-7.8.9/requirements-release.txt",
                 sdist_wrapper=True,
             )
         )
@@ -351,14 +351,14 @@ class ReleaseArtifactBuilderTests(unittest.TestCase):
                     root,
                     entries,
                     output,
-                    prefix="open-nova-7.8.9",
+                    prefix="actanara-7.8.9",
                     source_date_epoch=1783900800,
                 )
 
             self.assertEqual(first.read_bytes(), second.read_bytes())
             with tarfile.open(first, "r:gz") as archive:
-                script_info = archive.getmember("open-nova-7.8.9/install/install.sh")
-                link_info = archive.getmember("open-nova-7.8.9/install/current.sh")
+                script_info = archive.getmember("actanara-7.8.9/install/install.sh")
+                link_info = archive.getmember("actanara-7.8.9/install/current.sh")
             self.assertEqual(script_info.mode, 0o755)
             self.assertEqual(script_info.mtime, 1783900800)
             self.assertTrue(link_info.issym())
@@ -390,24 +390,24 @@ class ReleaseArtifactBuilderTests(unittest.TestCase):
                     root,
                     (entry,),
                     root / "runtime.tar.gz",
-                    prefix="open-nova-7.8.9",
+                    prefix="actanara-7.8.9",
                     source_date_epoch=1783900800,
                 )
 
     def test_python_package_boundary_allows_metadata_but_rejects_tests(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            wheel = root / "open_nova-7.8.9-py3-none-any.whl"
-            sdist = root / "open_nova-7.8.9.tar.gz"
+            wheel = root / "actanara-7.8.9-py3-none-any.whl"
+            sdist = root / "actanara-7.8.9.tar.gz"
             with zipfile.ZipFile(wheel, "w") as archive:
                 archive.writestr("sample/__init__.py", "VALUE = 1\n")
-                archive.writestr("open_nova-7.8.9.dist-info/METADATA", "Name: open-nova\n")
+                archive.writestr("actanara-7.8.9.dist-info/METADATA", "Name: actanara\n")
             with sdist.open("wb") as raw:
                 with gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=1783900800) as zipped:
                     with tarfile.open(fileobj=zipped, mode="w") as archive:
                         for name, payload in (
-                            ("open_nova-7.8.9/src/sample/__init__.py", b"VALUE = 1\n"),
-                            ("open_nova-7.8.9/src/open_nova.egg-info/PKG-INFO", b"Name: open-nova\n"),
+                            ("actanara-7.8.9/src/sample/__init__.py", b"VALUE = 1\n"),
+                            ("actanara-7.8.9/src/actanara.egg-info/PKG-INFO", b"Name: actanara\n"),
                         ):
                             info = tarfile.TarInfo(name)
                             info.size = len(payload)
@@ -422,8 +422,8 @@ class ReleaseArtifactBuilderTests(unittest.TestCase):
     def test_python_packages_reject_public_source_only_release_tooling(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            wheel = root / "open_nova-7.8.9-py3-none-any.whl"
-            sdist = root / "open_nova-7.8.9.tar.gz"
+            wheel = root / "actanara-7.8.9-py3-none-any.whl"
+            sdist = root / "actanara-7.8.9.tar.gz"
 
             def write_wheel(*, include_tools: bool) -> None:
                 with zipfile.ZipFile(wheel, "w") as archive:
@@ -432,10 +432,10 @@ class ReleaseArtifactBuilderTests(unittest.TestCase):
                         archive.writestr("tools/release/build_release.py", "raise SystemExit\n")
 
             def write_sdist(*, include_tools: bool) -> None:
-                members = [("open_nova-7.8.9/src/sample/__init__.py", b"VALUE = 1\n")]
+                members = [("actanara-7.8.9/src/sample/__init__.py", b"VALUE = 1\n")]
                 if include_tools:
                     members.append(
-                        ("open_nova-7.8.9/tools/release/build_release.py", b"raise SystemExit\n")
+                        ("actanara-7.8.9/tools/release/build_release.py", b"raise SystemExit\n")
                     )
                 with sdist.open("wb") as raw:
                     with gzip.GzipFile(
@@ -460,8 +460,8 @@ class ReleaseArtifactBuilderTests(unittest.TestCase):
     def test_python_package_privacy_scan_rejects_text_but_skips_binary_members(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            wheel = root / "open_nova-7.8.9-py3-none-any.whl"
-            sdist = root / "open_nova-7.8.9.tar.gz"
+            wheel = root / "actanara-7.8.9-py3-none-any.whl"
+            sdist = root / "actanara-7.8.9.tar.gz"
 
             def write_packages(payload: bytes) -> None:
                 with zipfile.ZipFile(wheel, "w") as archive:
@@ -474,8 +474,8 @@ class ReleaseArtifactBuilderTests(unittest.TestCase):
                         mtime=1783900800,
                     ) as zipped:
                         with tarfile.open(fileobj=zipped, mode="w") as archive:
-                            safe_payload = b"Name: open-nova\n"
-                            info = tarfile.TarInfo("open_nova-7.8.9/PKG-INFO")
+                            safe_payload = b"Name: actanara\n"
+                            info = tarfile.TarInfo("actanara-7.8.9/PKG-INFO")
                             info.size = len(safe_payload)
                             archive.addfile(info, io.BytesIO(safe_payload))
 
@@ -505,8 +505,8 @@ class ReleaseArtifactBuilderTests(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            wheel = root / "open_nova-7.8.9-py3-none-any.whl"
-            sdist = root / "open_nova-7.8.9.tar.gz"
+            wheel = root / "actanara-7.8.9-py3-none-any.whl"
+            sdist = root / "actanara-7.8.9.tar.gz"
             with zipfile.ZipFile(wheel, "w") as archive:
                 for relative in runtime_dependency_files:
                     archive.writestr(relative, (repository / relative).read_bytes())
@@ -515,7 +515,7 @@ class ReleaseArtifactBuilderTests(unittest.TestCase):
                     with tarfile.open(fileobj=zipped, mode="w") as archive:
                         for relative in runtime_dependency_files:
                             payload = (repository / relative).read_bytes()
-                            info = tarfile.TarInfo(f"open_nova-7.8.9/{relative}")
+                            info = tarfile.TarInfo(f"actanara-7.8.9/{relative}")
                             info.size = len(payload)
                             archive.addfile(info, io.BytesIO(payload))
 
@@ -531,7 +531,7 @@ class ReleaseArtifactBuilderTests(unittest.TestCase):
                 input_sdist = root / f"input-{index}.tar.gz"
                 members = [
                     ("sample/__init__.py", b"VALUE = 1\n"),
-                    ("open_nova-7.8.9.dist-info/METADATA", b"Name: open-nova\n"),
+                    ("actanara-7.8.9.dist-info/METADATA", b"Name: actanara\n"),
                 ]
                 if index:
                     members.reverse()
@@ -545,7 +545,7 @@ class ReleaseArtifactBuilderTests(unittest.TestCase):
                     ) as zipped:
                         with tarfile.open(fileobj=zipped, mode="w") as archive:
                             for name, payload in members:
-                                info = tarfile.TarInfo("open_nova-7.8.9/" + name)
+                                info = tarfile.TarInfo("actanara-7.8.9/" + name)
                                 info.size = len(payload)
                                 info.mtime = 1700000000 + index
                                 archive.addfile(info, io.BytesIO(payload))
@@ -606,7 +606,7 @@ class ReleaseArtifactBuilderTests(unittest.TestCase):
             self.assertIn("install.sh", result["outputFiles"])
             serialized = b"".join(first_files.values())
             self.assertNotIn(os.fsencode(source), serialized)
-            self.assertIn(b"open-nova-7.8.9-runtime.tar.gz", first_files["SHA256SUMS"])
+            self.assertIn(b"actanara-7.8.9-runtime.tar.gz", first_files["SHA256SUMS"])
             self.assertIn(b"install.sh", first_files["SHA256SUMS"])
             self.assertEqual(
                 first_files["install.sh"],
@@ -642,23 +642,23 @@ class ReleaseArtifactBuilderTests(unittest.TestCase):
             generator = "tools/release/generate_runtime_lock.py"
             self.assertIn(f"{generator}\t", source_manifest)
             self.assertNotIn(f"{generator}\t", runtime_manifest)
-            runtime_archive = outputs[0] / "open-nova-7.8.9-runtime.tar.gz"
+            runtime_archive = outputs[0] / "actanara-7.8.9-runtime.tar.gz"
             with tarfile.open(runtime_archive, "r:gz") as archive:
                 runtime_members = {member.name for member in archive.getmembers()}
                 archived_bootstrap = archive.extractfile(
-                    "open-nova-7.8.9/install/bootstrap.sh"
+                    "actanara-7.8.9/install/bootstrap.sh"
                 ).read()
             self.assertEqual(first_files["install.sh"], archived_bootstrap)
             self.assertIn(
-                "open-nova-7.8.9/install/dependency_contract.py",
+                "actanara-7.8.9/install/dependency_contract.py",
                 runtime_members,
             )
             self.assertIn(
-                "open-nova-7.8.9/install/runtime-dependencies.lock.json",
+                "actanara-7.8.9/install/runtime-dependencies.lock.json",
                 runtime_members,
             )
             self.assertNotIn(
-                "open-nova-7.8.9/tools/release/generate_runtime_lock.py",
+                "actanara-7.8.9/tools/release/generate_runtime_lock.py",
                 runtime_members,
             )
 

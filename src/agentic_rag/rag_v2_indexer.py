@@ -1,7 +1,7 @@
 """RAG v2 candidate index builder.
 
 This module writes only to the v2 candidate store under
-``$NOVA_HOME/reserved/rag/v2``. It never rewrites, compacts, deletes or replaces
+``$ACTANARA_HOME/reserved/rag/v2``. It never rewrites, compacts, deletes or replaces
 the legacy production index.
 """
 
@@ -1205,7 +1205,7 @@ def _logical_source_path(path: Path) -> str:
     for index in range(0, len(parts) - 2):
         if re.match(r"\d{4}$", parts[index]) and re.match(r"\d{2}$", parts[index + 1]) and re.match(r"\d{2}$", parts[index + 2]):
             return "/".join(parts[index:])
-    if resolved.name in {"lessons.jsonl", "TASK_BOARD.md", "nova_data.sqlite3"}:
+    if resolved.name in {"lessons.jsonl", "TASK_BOARD.md", "actanara_data.sqlite3"}:
         return resolved.name
     return resolved.name or str(resolved)
 

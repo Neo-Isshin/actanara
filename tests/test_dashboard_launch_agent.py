@@ -35,7 +35,7 @@ class DashboardLaunchAgentTests(unittest.TestCase):
             label="com.example.dashboard",
             python=Path("/tmp/venv/bin/python"),
             project_root=Path("/repo"),
-            nova_home=Path("/nova"),
+            actanara_home=Path("/nova"),
             host="127.0.0.1",
             port=3036,
             foundation=True,
@@ -50,16 +50,16 @@ class DashboardLaunchAgentTests(unittest.TestCase):
         self.assertIn("/repo/src/dashboard", args[2])
         self.assertIn("--host 127.0.0.1", args[2])
         self.assertIn("--port 3036", args[2])
-        self.assertEqual(env["NOVA_DASHBOARD_PYTHON"], "/tmp/venv/bin/python")
-        self.assertEqual(env["NOVA_DASHBOARD_PORT"], "3036")
-        self.assertEqual(env["NOVA_HOME"], "/nova")
+        self.assertEqual(env["ACTANARA_DASHBOARD_PYTHON"], "/tmp/venv/bin/python")
+        self.assertEqual(env["ACTANARA_DASHBOARD_PORT"], "3036")
+        self.assertEqual(env["ACTANARA_HOME"], "/nova")
         self.assertEqual(env["PYTHONDONTWRITEBYTECODE"], "1")
         self.assertNotIn("WORKSPACE_DIR", env)
         self.assertNotIn("DIARY_OUTPUT_DIR", env)
         self.assertNotIn("TMP_WORKSPACE", env)
-        self.assertNotIn("NOVA_DATA_DB_PATH", env)
-        self.assertNotIn("NOVA_DATA_EXPORT_DIR", env)
-        self.assertEqual(env["NOVA_DATA_FOUNDATION_ENABLED"], "true")
+        self.assertNotIn("ACTANARA_DATA_DB_PATH", env)
+        self.assertNotIn("ACTANARA_DATA_EXPORT_DIR", env)
+        self.assertEqual(env["ACTANARA_DATA_FOUNDATION_ENABLED"], "true")
         self.assertEqual(env["DASHBOARD_READ_SOURCE"], "foundation")
         self.assertEqual(plist["StandardOutPath"], "/tmp/logs/dashboard-server.out.log")
 
@@ -71,7 +71,7 @@ class DashboardLaunchAgentTests(unittest.TestCase):
             script=Path("/repo/advanced/dashboard/dashboard_launch_agent.py"),
             url="http://127.0.0.1:3036/health",
             interval=60,
-            nova_home=Path("/nova"),
+            actanara_home=Path("/nova"),
             logs_dir=Path("/tmp/logs"),
         )
 
@@ -80,14 +80,14 @@ class DashboardLaunchAgentTests(unittest.TestCase):
         self.assertIn("check", args)
         self.assertIn("--restart", args)
         self.assertIn("com.example.dashboard", args)
-        self.assertEqual(plist["EnvironmentVariables"]["NOVA_HOME"], "/nova")
+        self.assertEqual(plist["EnvironmentVariables"]["ACTANARA_HOME"], "/nova")
         self.assertEqual(plist["EnvironmentVariables"]["PYTHONDONTWRITEBYTECODE"], "1")
         self.assertEqual(plist["StandardErrorPath"], "/tmp/logs/dashboard-watchdog.err.log")
 
     def test_launch_defaults_read_dashboard_settings(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             self._write_runtime_pointers(paths.home)
             write_settings(
                 {
@@ -104,7 +104,7 @@ class DashboardLaunchAgentTests(unittest.TestCase):
                 },
                 paths,
             )
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False):
                 defaults = agent.dashboard_launch_defaults()
 
         self.assertEqual(defaults["project_root"], paths.home / "app" / "source")
@@ -121,7 +121,7 @@ class DashboardLaunchAgentTests(unittest.TestCase):
     def test_rag_launch_defaults_use_stable_runtime_source_and_venv(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             self._write_runtime_pointers(paths.home)
             write_settings(
                 {
@@ -133,7 +133,7 @@ class DashboardLaunchAgentTests(unittest.TestCase):
                 },
                 paths,
             )
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False):
                 defaults = rag_agent.rag_launch_defaults()
 
         self.assertEqual(defaults["project_root"], paths.home / "app" / "source")
@@ -149,7 +149,7 @@ class DashboardLaunchAgentTests(unittest.TestCase):
             with (
                 patch.dict(
                     os.environ,
-                    {"HOME": str(login_home), "NOVA_HOME": str(selected_home)},
+                    {"HOME": str(login_home), "ACTANARA_HOME": str(selected_home)},
                     clear=False,
                 ),
                 patch(
@@ -164,9 +164,9 @@ class DashboardLaunchAgentTests(unittest.TestCase):
                             "selected Runtime",
                         ) as raised:
                             defaults()
-                        self.assertNotIn(str(login_home / ".open-nova"), str(raised.exception))
+                        self.assertNotIn(str(login_home / ".actanara"), str(raised.exception))
 
-            self.assertFalse((login_home / ".open-nova").exists())
+            self.assertFalse((login_home / ".actanara").exists())
 
     def test_malformed_selected_runtime_settings_fail_closed_without_rewrite(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -176,7 +176,7 @@ class DashboardLaunchAgentTests(unittest.TestCase):
             settings_path.write_bytes(b"{not-json\n")
             before = settings_path.read_bytes()
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False):
                 for defaults in (agent.dashboard_launch_defaults, rag_agent.rag_launch_defaults):
                     with self.subTest(defaults=defaults.__name__):
                         with self.assertRaisesRegex(RuntimeError, "settings"):
@@ -190,12 +190,12 @@ class DashboardLaunchAgentTests(unittest.TestCase):
             selected = initialize_home(root / "SelectedRuntime", legacy_diary_root=root / "Diary")
             different = initialize_home(root / "DifferentRuntime", legacy_diary_root=root / "OtherDiary")
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(selected.home)}, clear=False),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(selected.home)}, clear=False),
                 patch("data_foundation.paths.load_paths", return_value=different),
             ):
                 for defaults in (agent.dashboard_launch_defaults, rag_agent.rag_launch_defaults):
                     with self.subTest(defaults=defaults.__name__):
-                        with self.assertRaisesRegex(RuntimeError, "explicit NOVA_HOME"):
+                        with self.assertRaisesRegex(RuntimeError, "explicit ACTANARA_HOME"):
                             defaults()
 
     def test_selected_runtime_rejects_absolute_pointer_targets(self):
@@ -209,7 +209,7 @@ class DashboardLaunchAgentTests(unittest.TestCase):
             source_pointer.unlink()
             source_pointer.symlink_to(concrete_release)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False):
                 for defaults in (agent.dashboard_launch_defaults, rag_agent.rag_launch_defaults):
                     with self.subTest(defaults=defaults.__name__):
                         with self.assertRaisesRegex(RuntimeError, "must be relative"):
@@ -236,7 +236,7 @@ class DashboardLaunchAgentTests(unittest.TestCase):
             common = {
                 "python": stable_python,
                 "project_root": stable_source,
-                "nova_home": runtime,
+                "actanara_home": runtime,
                 "logs_dir": logs,
             }
             dashboard_args = SimpleNamespace(
@@ -264,11 +264,11 @@ class DashboardLaunchAgentTests(unittest.TestCase):
             rag = plistlib.loads(rag_plist.read_bytes())
 
         self.assertEqual(
-            dashboard["EnvironmentVariables"]["NOVA_DASHBOARD_PROJECT_ROOT"],
+            dashboard["EnvironmentVariables"]["ACTANARA_DASHBOARD_PROJECT_ROOT"],
             str(stable_source),
         )
         self.assertEqual(
-            dashboard["EnvironmentVariables"]["NOVA_DASHBOARD_PYTHON"],
+            dashboard["EnvironmentVariables"]["ACTANARA_DASHBOARD_PYTHON"],
             str(stable_python),
         )
         self.assertIn(f"cd {stable_source}", dashboard["ProgramArguments"][2])
@@ -308,7 +308,7 @@ class DashboardLaunchAgentTests(unittest.TestCase):
             common = {
                 "python": venv / "bin" / "python",
                 "project_root": release,
-                "nova_home": runtime,
+                "actanara_home": runtime,
                 "logs_dir": logs,
             }
             dashboard_args = SimpleNamespace(
@@ -346,7 +346,7 @@ class DashboardLaunchAgentTests(unittest.TestCase):
             label="com.example.rag-server",
             python=Path("/tmp/venv/bin/python"),
             project_root=Path("/repo"),
-            nova_home=Path("/nova"),
+            actanara_home=Path("/nova"),
             script=Path("/repo/advanced/dashboard/rag_server_launch_agent.py"),
             logs_dir=Path("/tmp/logs"),
         )
@@ -357,8 +357,8 @@ class DashboardLaunchAgentTests(unittest.TestCase):
         self.assertTrue(plist["KeepAlive"])
         self.assertEqual(args[:3], ["/tmp/venv/bin/python", "/repo/advanced/dashboard/rag_server_launch_agent.py", "run"])
         self.assertIn("--project-root", args)
-        self.assertIn("--nova-home", args)
-        self.assertEqual(env["NOVA_HOME"], "/nova")
+        self.assertIn("--actanara-home", args)
+        self.assertEqual(env["ACTANARA_HOME"], "/nova")
         self.assertEqual(env["PYTHONDONTWRITEBYTECODE"], "1")
         self.assertIn("/repo/src", env["PYTHONPATH"])
         self.assertEqual(plist["StandardOutPath"], "/tmp/logs/rag-server-launchagent.out.log")
@@ -369,7 +369,7 @@ class DashboardLaunchAgentTests(unittest.TestCase):
                 "label": "com.example.rag-server",
                 "python": Path("/tmp/venv/bin/python"),
                 "project_root": Path("/repo"),
-                "nova_home": Path("/nova"),
+                "actanara_home": Path("/nova"),
                 "logs_dir": Path("/tmp/logs"),
             }
             jobs = launcher._jobs("rag")
@@ -392,16 +392,16 @@ class DashboardLaunchAgentTests(unittest.TestCase):
     def test_launcher_install_requires_confirmation_and_supports_dry_run(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
-            plist_path = root / "LaunchAgents" / "com.open-nova.rag-server.plist"
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
+            plist_path = root / "LaunchAgents" / "com.actanara.rag-server.plist"
             job = {
                 "kind": "rag-server",
-                "label": "com.open-nova.rag-server",
+                "label": "com.actanara.rag-server",
                 "plistPath": str(plist_path),
-                "plist": {"Label": "com.open-nova.rag-server", "ProgramArguments": ["python", "rag"]},
+                "plist": {"Label": "com.actanara.rag-server", "ProgramArguments": ["python", "rag"]},
             }
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False),
                 patch.object(launcher, "_jobs", return_value=[job]),
                 patch.object(launcher, "_launchctl") as launchctl,
             ):
@@ -426,15 +426,15 @@ class DashboardLaunchAgentTests(unittest.TestCase):
     def test_launcher_preview_reports_actual_launchd_registration(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
-            plist_path = root / "LaunchAgents" / "com.open-nova.rag-server.plist"
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
+            plist_path = root / "LaunchAgents" / "com.actanara.rag-server.plist"
             plist_path.parent.mkdir(parents=True)
             plist_path.write_text("placeholder", encoding="utf-8")
             job = {
                 "kind": "rag-server",
-                "label": "com.open-nova.rag-server",
+                "label": "com.actanara.rag-server",
                 "plistPath": str(plist_path),
-                "plist": {"Label": "com.open-nova.rag-server", "ProgramArguments": ["python", "rag"]},
+                "plist": {"Label": "com.actanara.rag-server", "ProgramArguments": ["python", "rag"]},
             }
             commands = []
 
@@ -443,7 +443,7 @@ class DashboardLaunchAgentTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, "state = running", "")
 
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False),
                 patch.object(launcher, "_jobs", return_value=[job]),
                 patch.object(launcher.platform, "system", return_value="Darwin"),
                 patch.object(launcher.os, "getuid", return_value=501),
@@ -458,23 +458,23 @@ class DashboardLaunchAgentTests(unittest.TestCase):
         self.assertEqual(preview["runtimeProbe"]["status"], "loaded")
         self.assertEqual(preview["runtimeProbe"]["loadedJobs"], 1)
         self.assertEqual(preview["jobs"][0]["runtimeStatus"]["status"], "loaded")
-        self.assertEqual(commands, [["launchctl", "print", "gui/501/com.open-nova.rag-server"]])
+        self.assertEqual(commands, [["launchctl", "print", "gui/501/com.actanara.rag-server"]])
 
     def test_launcher_install_backs_up_existing_plist_and_writes_audit(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
-            plist_path = root / "LaunchAgents" / "com.open-nova.rag-server.plist"
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
+            plist_path = root / "LaunchAgents" / "com.actanara.rag-server.plist"
             plist_path.parent.mkdir(parents=True)
             plist_path.write_text("old", encoding="utf-8")
             job = {
                 "kind": "rag-server",
-                "label": "com.open-nova.rag-server",
+                "label": "com.actanara.rag-server",
                 "plistPath": str(plist_path),
-                "plist": {"Label": "com.open-nova.rag-server", "ProgramArguments": ["python", "rag"]},
+                "plist": {"Label": "com.actanara.rag-server", "ProgramArguments": ["python", "rag"]},
             }
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False),
                 patch.object(launcher, "_jobs", return_value=[job]),
                 patch.object(launcher, "_launchctl") as launchctl,
             ):
@@ -483,7 +483,7 @@ class DashboardLaunchAgentTests(unittest.TestCase):
 
             self.assertEqual(result["status"], "registered")
             self.assertTrue(plist_path.exists())
-            self.assertEqual(plistlib.loads(plist_path.read_bytes())["Label"], "com.open-nova.rag-server")
+            self.assertEqual(plistlib.loads(plist_path.read_bytes())["Label"], "com.actanara.rag-server")
             self.assertTrue(Path(result["backupDir"]).joinpath(plist_path.name).exists())
             self.assertTrue(settings["rag"]["server"]["launchAgent"]["registered"])
             self.assertEqual(settings["rag"]["server"]["launchAgent"]["registrationManagedBy"], "dashboard")
@@ -492,13 +492,13 @@ class DashboardLaunchAgentTests(unittest.TestCase):
     def test_launcher_install_failure_writes_failed_audit(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
-            plist_path = root / "LaunchAgents" / "com.open-nova.rag-server.plist"
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
+            plist_path = root / "LaunchAgents" / "com.actanara.rag-server.plist"
             job = {
                 "kind": "rag-server",
-                "label": "com.open-nova.rag-server",
+                "label": "com.actanara.rag-server",
                 "plistPath": str(plist_path),
-                "plist": {"Label": "com.open-nova.rag-server", "ProgramArguments": ["python", "rag"]},
+                "plist": {"Label": "com.actanara.rag-server", "ProgramArguments": ["python", "rag"]},
             }
 
             def fail_bootstrap(action, label, plist_path, allow_failure=False):
@@ -507,7 +507,7 @@ class DashboardLaunchAgentTests(unittest.TestCase):
                 return subprocess.CompletedProcess(["launchctl"], 0, "", "")
 
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False),
                 patch.object(launcher, "_jobs", return_value=[job]),
                 patch.object(launcher, "_launchctl", side_effect=fail_bootstrap),
             ):
@@ -526,18 +526,18 @@ class DashboardLaunchAgentTests(unittest.TestCase):
     def test_launcher_uninstall_moves_plist_to_backup_and_marks_unregistered(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
-            plist_path = root / "LaunchAgents" / "com.open-nova.dashboard.plist"
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
+            plist_path = root / "LaunchAgents" / "com.actanara.dashboard.plist"
             plist_path.parent.mkdir(parents=True)
             plist_path.write_text("old", encoding="utf-8")
             job = {
                 "kind": "dashboard-service",
-                "label": "com.open-nova.dashboard",
+                "label": "com.actanara.dashboard",
                 "plistPath": str(plist_path),
-                "plist": {"Label": "com.open-nova.dashboard", "ProgramArguments": ["python", "dashboard"]},
+                "plist": {"Label": "com.actanara.dashboard", "ProgramArguments": ["python", "dashboard"]},
             }
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False),
                 patch.object(launcher, "_jobs", return_value=[job]),
                 patch.object(launcher, "_launchctl") as launchctl,
             ):

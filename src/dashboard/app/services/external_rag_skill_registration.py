@@ -17,15 +17,15 @@ from data_foundation.paths import RuntimePaths, load_paths
 from data_foundation.settings import external_tool_path
 
 
-CONFIRMATION_TEXT = "INSTALL OPEN NOVA RAG SKILL"
-SKILL_ID = "open-nova-rag"
+CONFIRMATION_TEXT = "INSTALL ACTANARA RAG SKILL"
+SKILL_ID = "actanara-rag"
 # Increment this whenever a released canonical template changes. A verified
 # lower version is eligible for automatic backup + upgrade; a same-version
 # mismatch is conservatively treated as customization.
 SKILL_TEMPLATE_VERSION = 1
-_MANAGED_DIGEST_PLACEHOLDER = "__OPEN_NOVA_TEMPLATE_SHA256__"
+_MANAGED_DIGEST_PLACEHOLDER = "__ACTANARA_TEMPLATE_SHA256__"
 _MANAGED_MARKER_RE = re.compile(
-    r"<!-- open-nova-managed-skill id=open-nova-rag template-version=(?P<version>\d+) "
+    r"<!-- actanara-managed-skill id=actanara-rag template-version=(?P<version>\d+) "
     r"template-sha256=(?P<digest>[0-9a-f]{64}) -->"
 )
 # Exact normalized fingerprints of the two unversioned templates shipped before
@@ -233,11 +233,11 @@ def _apply_operation(operation: dict[str, Any], *, paths: RuntimePaths) -> dict[
 
 def _skill_content(tool: str) -> str:
     content = f"""---
-name: open-nova-rag
+name: actanara-rag
 description: Use nova-RAG as a read-only auxiliary memory system only when current/user/local evidence and the host Agent Runtime's own memory are insufficient, or when the user explicitly requests nova-RAG.
 ---
 
-<!-- open-nova-managed-skill id=open-nova-rag template-version={SKILL_TEMPLATE_VERSION} template-sha256={_MANAGED_DIGEST_PLACEHOLDER} -->
+<!-- actanara-managed-skill id=actanara-rag template-version={SKILL_TEMPLATE_VERSION} template-sha256={_MANAGED_DIGEST_PLACEHOLDER} -->
 
 # nova-RAG Memory
 
@@ -247,16 +247,16 @@ This is an auxiliary memory system for external agents. Use evidence sources in 
 2. The host Agent Runtime's built-in or connected memory/history retrieval, when available.
 3. nova-RAG only when the preceding sources do not provide enough reliable information.
 
-Do not call nova-RAG merely because a question concerns Open Nova. If the user explicitly asks you to query nova-RAG, that is an exception: you may use it directly, while still treating its results as evidence rather than authority.
+Do not call nova-RAG merely because a question concerns Actanara. If the user explicitly asks you to query nova-RAG, that is an exception: you may use it directly, while still treating its results as evidence rather than authority.
 
 Potential nova-RAG subject matter includes project history, decisions, tasks, incidents, diary summaries, generated reports, agent activity, previous troubleshooting, and "what happened before" context. Subject matter alone is not a reason to search.
 
 Prefer the product CLI when shell access is available:
 
-- `open-nova search "<query>" --top-k 5 --json`
-- `open-nova rag search-memory "<query>" --top-k 5 --json`
+- `actanara search "<query>" --top-k 5 --json`
+- `actanara rag search-memory "<query>" --top-k 5 --json`
 
-If the CLI is unavailable or the integration only has HTTP access, call only these read-only endpoints on the Open Nova dashboard:
+If the CLI is unavailable or the integration only has HTTP access, call only these read-only endpoints on the Actanara dashboard:
 
 - `GET /api/rag/external/health`
 - `GET /api/rag/external/stats`
@@ -274,7 +274,7 @@ Recommended workflow:
 1. Inspect the current conversation, user-provided material, and local authoritative files first.
 2. Use the host Agent Runtime's own memory/history retrieval next, when it is available.
 3. Continue to nova-RAG only if those sources are insufficient, or if the user explicitly requested nova-RAG.
-4. If shell access is available, run `open-nova search "<query>" --top-k 8 --json` first. Use `open-nova rag search-memory` only for compatibility with older agent instructions.
+4. If shell access is available, run `actanara search "<query>" --top-k 8 --json` first. Use `actanara rag search-memory` only for compatibility with older agent instructions.
 5. If nova-RAG is needed and CLI access is unavailable, check `GET /api/rag/external/health` or `GET /api/rag/external/contract` when you need availability or field guidance.
 6. Call `POST /api/rag/external/search` with a concise query and `topK` between 5 and 12. Add exact filters only when you already know the raw contract values.
 7. Read `quality`, `retrievalController`, `citationPack`, `answerSynthesis`, `eventAggregation`, and top `results` together. Prefer evidence with stronger governance/provenance for final-state answers.

@@ -33,7 +33,7 @@ from data_foundation.llm_transport import (
 from diary_generator import learning_pass, narrative_pass, technical_pass
 
 
-RUN_SLOW_TESTS = os.getenv("OPEN_NOVA_RUN_SLOW_TESTS") == "1"
+RUN_SLOW_TESTS = os.getenv("ACTANARA_RUN_SLOW_TESTS") == "1"
 
 
 class _Response:
@@ -80,7 +80,7 @@ def _make_fixture_ca(root: Path, executable: str, name: str) -> tuple[Path, Path
         "x509_extensions=v3_ca\n"
         "prompt=no\n"
         "[dn]\n"
-        f"CN=OpenNovaTLSFixture{name}\n"
+        f"CN=ActanaraTLSFixture{name}\n"
         "[v3_ca]\n"
         "basicConstraints=critical,CA:true\n"
         "keyUsage=critical,keyCertSign,cRLSign\n"
@@ -590,7 +590,7 @@ class LLMTransportTests(unittest.TestCase):
         self.assertEqual(result, "one\n\ntwo")
         self.assertEqual(llm.call_count, 2)
 
-    @unittest.skipUnless(RUN_SLOW_TESTS, "slow pathological gate guard; set OPEN_NOVA_RUN_SLOW_TESTS=1")
+    @unittest.skipUnless(RUN_SLOW_TESTS, "slow pathological gate guard; set ACTANARA_RUN_SLOW_TESTS=1")
     def test_technical_pass_split_guards_pathological_token_counter(self):
         entries = [{"role": "user", "time": "10:00", "content": f"message {index}"} for index in range(10)]
         with (
@@ -603,7 +603,7 @@ class LLMTransportTests(unittest.TestCase):
         self.assertEqual(sum(len(chunk) for chunk in chunks), len(entries))
         self.assertEqual(len(chunks[-1]), 8)
 
-    @unittest.skipUnless(RUN_SLOW_TESTS, "slow pathological gate guard; set OPEN_NOVA_RUN_SLOW_TESTS=1")
+    @unittest.skipUnless(RUN_SLOW_TESTS, "slow pathological gate guard; set ACTANARA_RUN_SLOW_TESTS=1")
     def test_technical_pass_final_precompress_split_guard(self):
         text = "\n".join(f"line {index}" for index in range(10))
         with (
@@ -615,7 +615,7 @@ class LLMTransportTests(unittest.TestCase):
         self.assertEqual(len(chunks), 4)
         self.assertEqual(chunks[-1].splitlines(), [f"line {index}" for index in range(3, 10)])
 
-    @unittest.skipUnless(RUN_SLOW_TESTS, "slow pathological gate guard; set OPEN_NOVA_RUN_SLOW_TESTS=1")
+    @unittest.skipUnless(RUN_SLOW_TESTS, "slow pathological gate guard; set ACTANARA_RUN_SLOW_TESTS=1")
     def test_technical_pass_unified_split_guard(self):
         entries = [{"source": "main", "role": "user", "time": "10:00", "content": f"message {index}"} for index in range(10)]
         with (
@@ -666,7 +666,7 @@ class LLMTransportTLSIntegrationTests(unittest.TestCase):
         executable = shutil.which("openssl")
         if not executable:
             raise AssertionError("OpenSSL is required for the release-gate TLS certificate matrix")
-        cls._fixture_directory = tempfile.TemporaryDirectory(prefix="open-nova-tls-")
+        cls._fixture_directory = tempfile.TemporaryDirectory(prefix="actanara-tls-")
         try:
             cls.fixture_root = Path(cls._fixture_directory.name)
             cls.empty_ca_directory = cls.fixture_root / "empty-ca-directory"

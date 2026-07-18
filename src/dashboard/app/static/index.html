@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Open Nova</title>
+<title>Actanara</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -19,8 +19,8 @@
 <aside class="sidebar">
   <div class="sidebar-header">
     <div class="sidebar-brand">
-      <button type="button" class="sidebar-brand-home" onclick="showPage('home')" aria-label="Open Nova home">
-        <img class="sidebar-brand-banner" src="/static/img/banner.png" alt="Open Nova" width="174" height="51">
+      <button type="button" class="sidebar-brand-home" onclick="showPage('home')" aria-label="Actanara home">
+        <img class="sidebar-brand-banner" src="/static/img/banner.png" alt="Actanara" width="174" height="51">
       </button>
       <span id="sseStatus" data-i18n="sseConnecting" style="margin-left:auto;font-size:10px;color:var(--slate)">⏳ 连接中</span>
     </div>
@@ -77,7 +77,7 @@
 
 <nav class="mobile-bottom-nav" aria-label="Mobile navigation">
   <button type="button" class="mobile-nav-item active" data-mobile-page="home" onclick="showPage('home')" aria-label="Home">
-    <span class="mobile-nav-icon">⌂</span><span>Open Nova</span>
+    <span class="mobile-nav-icon">⌂</span><span>Actanara</span>
   </button>
   <button type="button" class="mobile-nav-item" data-mobile-page="overview" onclick="showPage('overview')" aria-label="Overview">
     <span class="mobile-nav-icon">⌁</span><span data-i18n="navTodayOverview">当日实时总览</span>
@@ -115,9 +115,9 @@
   <!-- ┌─ 首页 ── -->
   <div id="page-home" class="page active">
     <div class="dashboard-welcome" id="dashboardWelcome">
-      <img class="dashboard-welcome-banner" src="/static/img/banner.png" alt="Open Nova">
+      <img class="dashboard-welcome-banner" src="/static/img/banner.png" alt="Actanara">
       <div class="dashboard-welcome-title" data-i18n="welcomeTagline">专属于你的AI资产，是你这个时代最重要的资产</div>
-      <div class="dashboard-welcome-meta">Copyright © Open Nova · Neo-Isshin · nxc8335@gmail.com</div>
+      <div class="dashboard-welcome-meta">Copyright © Actanara · Neo-Isshin · nxc8335@gmail.com</div>
     </div>
   </div>
 
@@ -283,7 +283,7 @@
   <div id="page-rag-search" class="page">
     <div class="page-header">
       <div class="page-title">nova-RAG</div>
-      <div class="page-subtitle" id="ragSearchSubtitle" data-i18n="ragSubtitle">Open Nova v2 长期记忆</div>
+      <div class="page-subtitle" id="ragSearchSubtitle" data-i18n="ragSubtitle">Actanara v2 长期记忆</div>
       <div class="page-badge">nova-RAG v2</div>
     </div>
     <div class="fo-toolbar">
@@ -303,7 +303,7 @@
     <div class="fo-panel">
       <div class="fo-panel-title">Search</div>
       <div class="rag-search-bar">
-        <input id="ragPageSearchQuery" placeholder="搜索 Open Nova 长期记忆" data-i18n-placeholder="ragSearchPlaceholder">
+        <input id="ragPageSearchQuery" placeholder="搜索 Actanara 长期记忆" data-i18n-placeholder="ragSearchPlaceholder">
         <input id="ragPageSearchTopK" type="number" min="1" max="20" value="8" title="Top K">
         <button class="wr-export-btn" onclick="runRagPageSearch()" data-i18n="search">搜索</button>
       </div>

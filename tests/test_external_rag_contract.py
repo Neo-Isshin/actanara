@@ -510,7 +510,7 @@ class ExternalRagContractTests(unittest.TestCase):
                 )
                 authorized_scope = dict(scope)
                 authorized_scope["headers"] = [
-                    (b"x-open-nova-rag-internal-token", b"candidate-internal-token")
+                    (b"x-actanara-rag-internal-token", b"candidate-internal-token")
                 ]
                 accepted = asyncio.run(
                     embedding_server.enforce_loopback_client(

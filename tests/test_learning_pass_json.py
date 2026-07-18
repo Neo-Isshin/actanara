@@ -39,7 +39,7 @@ class LearningPassJsonTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             diary_root = root / "Diary"
-            home = root / "NovaDiary"
+            home = root / "Actanara"
             markdown = """# 2026-05-23 智慧沉淀与基建审计
 
 ## 🧠 黄金教训 (Lessons)
@@ -59,7 +59,7 @@ LLM 更擅长生成自然文本和 Markdown，跨 provider 时 JSON 标点与包
             with (
                 patch("diary_generator.learning_pass.call_llm", return_value=markdown),
                 patch("diary_generator.learning_pass.load_paths", return_value=type("Paths", (), {"diary_dir": diary_root})()),
-                patch("diary_generator.learning_pass.config.NOVA_HOME", home),
+                patch("diary_generator.learning_pass.config.ACTANARA_HOME", home),
             ):
                 self.assertTrue(learning_pass.process_learning("2026-05-23", "summary"))
 
@@ -76,7 +76,7 @@ LLM 更擅长生成自然文本和 Markdown，跨 provider 时 JSON 标点与包
     def test_learning_pass_updates_infrastructure_graph_from_strict_table(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary")
+            paths = initialize_home(root / "Actanara")
             migrate(paths)
             markdown = """# 2026-07-03 智慧沉淀与基建审计
 
@@ -92,7 +92,7 @@ LLM 更擅长生成自然文本和 Markdown，跨 provider 时 JSON 标点与包
             with (
                 patch("diary_generator.learning_pass.call_llm", return_value=markdown),
                 patch("diary_generator.learning_pass.load_paths", return_value=paths),
-                patch("diary_generator.learning_pass.config.NOVA_HOME", paths.home),
+                patch("diary_generator.learning_pass.config.ACTANARA_HOME", paths.home),
             ):
                 self.assertTrue(learning_pass.process_learning("2026-07-03", "summary"))
 
@@ -109,7 +109,7 @@ LLM 更擅长生成自然文本和 Markdown，跨 provider 时 JSON 标点与包
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             diary_root = root / "Diary"
-            home = root / "NovaDiary"
+            home = root / "Actanara"
             repaired = """# 2026-05-23 智慧沉淀与基建审计
 
 ## 🧠 黄金教训 (Lessons)
@@ -121,7 +121,7 @@ LLM 更擅长生成自然文本和 Markdown，跨 provider 时 JSON 标点与包
             with (
                 patch("diary_generator.learning_pass.call_llm", side_effect=["not markdown", repaired]),
                 patch("diary_generator.learning_pass.load_paths", return_value=type("Paths", (), {"diary_dir": diary_root})()),
-                patch("diary_generator.learning_pass.config.NOVA_HOME", home),
+                patch("diary_generator.learning_pass.config.ACTANARA_HOME", home),
             ):
                 self.assertTrue(learning_pass.process_learning("2026-05-23", "summary"))
 
@@ -133,11 +133,11 @@ LLM 更擅长生成自然文本和 Markdown，跨 provider 时 JSON 标点与包
     def test_learning_pass_fails_after_markdown_repair_parse_failure(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            home = root / "NovaDiary"
+            home = root / "Actanara"
             with (
                 patch("diary_generator.learning_pass.call_llm", side_effect=["not markdown", "still not markdown"]),
                 patch("diary_generator.learning_pass.load_paths", return_value=type("Paths", (), {"diary_dir": root / "Diary"})()),
-                patch("diary_generator.learning_pass.config.NOVA_HOME", home),
+                patch("diary_generator.learning_pass.config.ACTANARA_HOME", home),
             ):
                 with self.assertRaises(learning_pass.LearningPassError):
                     learning_pass.process_learning("2026-05-23", "summary")

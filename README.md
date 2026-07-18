@@ -1,9 +1,9 @@
 <h1 align="center">
-  <img src="docs/assets/banner.png" alt="Open Nova" width="650">
+  <img src="docs/assets/banner.png" alt="Actanara" width="650">
 </h1>
 
 <p align="center">
-  <strong>Your agents do valuable work. Open Nova makes sure it does not disappear with the session.</strong>
+  <strong>Your agents do valuable work. Actanara makes sure it does not disappear with the session.</strong>
   <br>
   Turn Codex, Claude Code, Gemini CLI, OpenClaw, and Hermes activity into local reports, task evidence, reusable assets, and shared searchable memory.
 </p>
@@ -14,29 +14,29 @@
 </p>
 
 <p align="center">
-  <a href="https://neo-isshin.github.io/open-nova/"><img src="https://img.shields.io/badge/Website-GitHub%20Pages-2563EB" alt="Website"></a>
-  <a href="https://github.com/Neo-Isshin/open-nova/releases/latest"><img src="https://img.shields.io/github/v/release/Neo-Isshin/open-nova?display_name=tag&amp;sort=semver" alt="Latest stable Release"></a>
-  <a href="https://neo-isshin.github.io/open-nova/dashboard-demo/"><img src="https://img.shields.io/badge/Demo-interactive-7C3AED" alt="Interactive Dashboard Demo"></a>
+  <a href="https://neo-isshin.github.io/actanara/"><img src="https://img.shields.io/badge/Website-GitHub%20Pages-2563EB" alt="Website"></a>
+  <a href="https://github.com/Neo-Isshin/actanara/releases/latest"><img src="https://img.shields.io/github/v/release/Neo-Isshin/actanara?display_name=tag&amp;sort=semver" alt="Latest stable Release"></a>
+  <a href="https://neo-isshin.github.io/actanara/dashboard-demo/"><img src="https://img.shields.io/badge/Demo-interactive-7C3AED" alt="Interactive Dashboard Demo"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0--or--later-16A34A" alt="License"></a>
   <a href="https://discord.gg/JvJHngZWz"><img src="https://img.shields.io/badge/Discord-Join-5865F2" alt="Discord"></a>
 </p>
 
 <p align="center">
-  <a href="https://neo-isshin.github.io/open-nova/dashboard-demo/"><strong>Try the Interactive Dashboard</strong></a> ·
-  <a href="#install-open-nova"><strong>Install Open Nova</strong></a> ·
+  <a href="https://neo-isshin.github.io/actanara/dashboard-demo/"><strong>Try the Interactive Dashboard</strong></a> ·
+  <a href="#install-actanara"><strong>Install Actanara</strong></a> ·
   <a href="docs/local-operations-runbook.md">Operations Runbook</a> ·
   <a href="docs/rag-external-agent-contract.md">nova-RAG External Contract</a>
 </p>
 
 <p align="center">
-  <a href="https://neo-isshin.github.io/open-nova/dashboard-demo/">
-    <img src="docs/assets/dashboard/dashboard-ai-assets-overview.png" alt="Real Open Nova local Dashboard showing AI assets across agent runtimes" width="920">
+  <a href="https://neo-isshin.github.io/actanara/dashboard-demo/">
+    <img src="docs/assets/dashboard/dashboard-ai-assets-overview.png" alt="Real Actanara local Dashboard showing AI assets across agent runtimes" width="920">
   </a>
 </p>
 
 <p align="center"><sub><b>Real local Dashboard</b> · select the image to explore the interactive demo</sub></p>
 
-## What Open Nova gives you
+## What Actanara gives you
 
 | | Outcome |
 | :--- | :--- |
@@ -45,25 +45,25 @@
 | **Automatic work narratives** | Daily, weekly, and monthly reports turn fragmented sessions into a durable record of progress, decisions, and lessons learned. |
 | **A local source of truth** | Sessions, usage, generated assets, task evidence, and indexes remain in user-controlled local storage with explicit integration boundaries. |
 
-<a id="install-open-nova"></a>
-## Install or refresh Open Nova
+<a id="install-actanara"></a>
+## Install or refresh Actanara
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/open-nova/main/install/bootstrap.sh | zsh
+curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/actanara/main/install/bootstrap.sh | zsh
 ```
 
-The one-liner targets local macOS environments, requires no `sudo`, and pins each installation to the current official `main` commit. It can install a new Runtime or refresh an existing one without discarding user data. New here? You can explore the [interactive Dashboard demo](https://neo-isshin.github.io/open-nova/dashboard-demo/) before installing.
+The one-liner targets local macOS environments, requires no `sudo`, and pins each installation to the current official `main` commit. It can install a new Runtime or refresh an existing one without discarding user data. New here? You can explore the [interactive Dashboard demo](https://neo-isshin.github.io/actanara/dashboard-demo/) before installing.
 
-Open Nova is a structured, local-first AI asset operations system. LLMs participate in summarization, task extraction, learning-asset generation, and knowledge organization, while deterministic components control data collection, parsing, attribution, scheduling, persistence, and security boundaries.
+Actanara is a structured, local-first AI asset operations system. LLMs participate in summarization, task extraction, learning-asset generation, and knowledge organization, while deterministic components control data collection, parsing, attribution, scheduling, persistence, and security boundaries.
 
 > In this README, an **agent runtime** means an AI tool environment with its own sessions, logs, memory, and execution context, such as Codex, Claude Code, Gemini CLI, OpenClaw, or Hermes.
 
-<a id="why-open-nova"></a>
-## 🌟 Why Open Nova
+<a id="why-actanara"></a>
+## 🌟 Why Actanara
 
 A single user may switch among several agent runtimes within the same week—or even within the same project. Each tool has its own logs, sessions, skills, memory, token usage, and task history. These records often capture real work, yet remain isolated from one another.
 
-Open Nova is designed to break down those barriers: it lets `Codex` find work already completed in `Claude Code`, unifies activity from different runtimes into summaries and dashboards, and preserves deliverables, resolved obstacles, and debugging evidence beyond the life of an individual session.
+Actanara is designed to break down those barriers: it lets `Codex` find work already completed in `Claude Code`, unifies activity from different runtimes into summaries and dashboards, and preserves deliverables, resolved obstacles, and debugging evidence beyond the life of an individual session.
 
 You can use it to:
 
@@ -86,7 +86,7 @@ You can use it to:
 - **Parser-first processing:** Source-specific parsers normalize sessions, tasks, usage, scheduled activity, and workspace signals before data enters summarization, task-evidence, or RAG workflows. Raw, unprocessed logs are not handed directly to an LLM.
 - **Reliable workspace attribution:** Project context is not inferred solely from the current shell directory. Scheduled jobs, background scripts, and out-of-directory runtime activity can still be associated with the correct workspace through execution evidence.
 - **Task evidence grounded in real work:** `Nova-Task` evaluates tool results and delivery evidence as well as conversations when determining task status, keeping the board closer to the engineering work that actually occurred.
-- **Local-first with explicit boundaries:** Open Nova reads configured tool locations and writes to its own runtime home. It does not rewrite external-runtime history or take over runtime execution.
+- **Local-first with explicit boundaries:** Actanara reads configured tool locations and writes to its own runtime home. It does not rewrite external-runtime history or take over runtime execution.
 - **Model-cost efficient:** Structured prompts, explicit schemas, and controlled orchestration let lightweight or cost-efficient models produce useful output without locking the system to one provider.
 - **User-controlled integrations:** Tool skills, external-runtime definitions, and critical settings remain visible, editable, and auditable instead of implicitly taking over the global toolchain.
 - **Protected Agentic RAG lifecycle:** `nova-RAG` manages retrieval quality through evaluation queries, candidate promotion, recall calibration, and safe rollback, while exposing only a restricted read-only contract to external runtimes.
@@ -121,7 +121,7 @@ Together, the local fact layer, Pipeline, task system, Dashboard, and optional r
 <a id="support"></a>
 ## 💻 Support and Prerequisites
 
-The hosted Open Nova installation path is designed first for local macOS user environments:
+The hosted Actanara installation path is designed first for local macOS user environments:
 
 - 🍎 **macOS is the first-class target:** Guided installation, Dashboard services, and managed scheduling use user-level `LaunchAgent` services by default.
 - 🛠️ **Base tools:** Verify that `zsh`, `git`, and `curl` are available before installation. `sudo` is not required.
@@ -147,12 +147,12 @@ The available data depends on whether compatible logs, sessions, or usage record
 > [!TIP]
 > **Deploy with one command, then let prosperity follow.**
 
-### 1. Install or Refresh Open Nova
+### 1. Install or Refresh Actanara
 
-This one-liner fetches the maintained bootstrap and installs the latest Open Nova code from `main`:
+This one-liner fetches the maintained bootstrap and installs the latest Actanara code from `main`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/open-nova/main/install/bootstrap.sh | zsh
+curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/actanara/main/install/bootstrap.sh | zsh
 ```
 
 > [!NOTE]
@@ -172,12 +172,12 @@ curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/open-nova/main/install/b
 
 | Path | Purpose |
 | :--- | :--- |
-| `~/.cache/open-nova/installer` | Installation source cache |
-| `~/.open-nova` | Runtime, virtual environment, settings, database, logs, secrets, and generated assets |
-| `~/.config/open-nova/location.json` | Active runtime pointer |
-| `~/.local/bin/open-nova` | User-facing CLI entry on `PATH` |
+| `~/.cache/actanara/installer` | Installation source cache |
+| `~/.actanara` | Runtime, virtual environment, settings, database, logs, secrets, and generated assets |
+| `~/.config/actanara/location.json` | Active runtime pointer |
+| `~/.local/bin/actanara` | User-facing CLI entry on `PATH` |
 | `~/.zprofile` | Receives a marked `PATH` block by default; disable with `--no-shell-path` |
-| `~/Desktop/Open Nova` | Desktop shortcut to the diary directory, created by default |
+| `~/Desktop/Actanara` | Desktop shortcut to the diary directory, created by default |
 | `~/Library/LaunchAgents/` | User-level macOS Dashboard, Scheduler, and optional RAG services |
 
 The default shell-profile update can be disabled with `--no-shell-path`, or redirected explicitly with `--shell-path-file /path/to/profile`.
@@ -189,19 +189,19 @@ When `nova-RAG` is enabled and external agent runtimes are selected in the wizar
 After installation, run these read-only commands first. They do not initialize a new runtime or change existing settings:
 
 ```bash
-open-nova doctor
-open-nova model show
-open-nova onboard status
-open-nova config show
+actanara doctor
+actanara model show
+actanara onboard status
+actanara config show
 ```
 
 For targeted diagnostics:
 
 ```bash
-open-nova doctor --installer
-open-nova doctor --pipeline
-open-nova doctor --scheduler
-open-nova doctor --rag
+actanara doctor --installer
+actanara doctor --pipeline
+actanara doctor --scheduler
+actanara doctor --rag
 ```
 
 The installation summary displays the actual Dashboard URL. The default is `http://127.0.0.1:3036/dashboard`; if that port is occupied, use the automatically selected address shown in the summary.
@@ -222,7 +222,7 @@ The installation summary displays the actual Dashboard URL. The default is `http
 
 - [ ] The Dashboard opens successfully.
 - [ ] The LLM Provider test passes and the settings are saved.
-- [ ] `open-nova doctor` reports no blocking errors.
+- [ ] `actanara doctor` reports no blocking errors.
 - [ ] The history plan and selected tasks match expectations.
 - [ ] The first tasks have completed or are observable in the background.
 - [ ] Diary, AI Assets, and Nova-Task contain data.
@@ -230,12 +230,12 @@ The installation summary displays the actual Dashboard URL. The default is `http
 
 </details>
 
-Open Nova targets a local macOS runtime. For complete pre-install checks, first-run setup, historical backfill, daily Pipeline, Dashboard / Nova-Task / nova-RAG operations, updates, and troubleshooting, see the [Local Operations Runbook](docs/local-operations-runbook.md).
+Actanara targets a local macOS runtime. For complete pre-install checks, first-run setup, historical backfill, daily Pipeline, Dashboard / Nova-Task / nova-RAG operations, updates, and troubleshooting, see the [Local Operations Runbook](docs/local-operations-runbook.md).
 
 <a id="dashboard"></a>
 ## 📊 Dashboard, Screenshots, and Interactive Demo
 
-The Dashboard is Open Nova's primary operating surface. It includes:
+The Dashboard is Actanara's primary operating surface. It includes:
 
 - 📅 Daily, weekly, and monthly diaries;
 - 📈 Live overview, token usage, and AI asset metrics;
@@ -247,18 +247,18 @@ The Dashboard is Open Nova's primary operating surface. It includes:
 
 ### 🖼️ Real Dashboard Screenshots
 
-The images below come from the real Open Nova Dashboard during development and operation. They preserve the project's own design, layout, typography, and components; they are neither redrawn mockups nor marketing illustrations from the release website. **nova-RAG v2** in a screenshot refers to the index and retrieval generation of the RAG subsystem, not an Open Nova product version. GitHub Releases is the authority for the current stable product version.
+The images below come from the real Actanara Dashboard during development and operation. They preserve the project's own design, layout, typography, and components; they are neither redrawn mockups nor marketing illustrations from the release website. **nova-RAG v2** in a screenshot refers to the index and retrieval generation of the RAG subsystem, not an Actanara product version. GitHub Releases is the authority for the current stable product version.
 
 <details>
 <summary><strong>Expand the real Dashboard home screenshot</strong></summary>
 
 <p align="center">
   <a href="docs/assets/dashboard/dashboard-home.png">
-    <img src="docs/assets/dashboard/dashboard-home.png" alt="Open Nova Dashboard home" width="100%">
+    <img src="docs/assets/dashboard/dashboard-home.png" alt="Actanara Dashboard home" width="100%">
   </a>
 </p>
 
-<p align="center"><sub>Open Nova Dashboard home; select the image to view it at full size.</sub></p>
+<p align="center"><sub>Actanara Dashboard home; select the image to view it at full size.</sub></p>
 
 </details>
 
@@ -267,7 +267,7 @@ The images below come from the real Open Nova Dashboard during development and o
 
 <p align="center">
   <a href="docs/assets/dashboard/dashboard-weekly-full.png">
-    <img src="docs/assets/dashboard/dashboard-weekly-overview.png" alt="Open Nova Dashboard W27 weekly report overview" width="100%">
+    <img src="docs/assets/dashboard/dashboard-weekly-overview.png" alt="Actanara Dashboard W27 weekly report overview" width="100%">
   </a>
 </p>
 
@@ -280,7 +280,7 @@ The images below come from the real Open Nova Dashboard during development and o
 
 <p align="center">
   <a href="docs/assets/dashboard/dashboard-ai-assets-long.png">
-    <img src="docs/assets/dashboard/dashboard-ai-assets-overview.png" alt="Open Nova Dashboard AI Assets overview" width="100%">
+    <img src="docs/assets/dashboard/dashboard-ai-assets-overview.png" alt="Actanara Dashboard AI Assets overview" width="100%">
   </a>
 </p>
 
@@ -293,7 +293,7 @@ The images below come from the real Open Nova Dashboard during development and o
 
 <p align="center">
   <a href="docs/assets/dashboard/dashboard-nova-task.png">
-    <img src="docs/assets/dashboard/dashboard-nova-task.png" alt="Real Open Nova Nova-Task work graph" width="100%">
+    <img src="docs/assets/dashboard/dashboard-nova-task.png" alt="Real Actanara Nova-Task work graph" width="100%">
   </a>
 </p>
 
@@ -304,7 +304,7 @@ The images below come from the real Open Nova Dashboard during development and o
 
 <p align="center">
   <a href="docs/assets/dashboard/dashboard-nova-rag.png">
-    <img src="docs/assets/dashboard/dashboard-nova-rag.png" alt="Open Nova nova-RAG status and retrieval interface" width="100%">
+    <img src="docs/assets/dashboard/dashboard-nova-rag.png" alt="Actanara nova-RAG status and retrieval interface" width="100%">
   </a>
 </p>
 
@@ -312,26 +312,26 @@ The images below come from the real Open Nova Dashboard during development and o
 
 ### ▶️ Real Static Interactive Demo
 
-The [Dashboard Static Demo](https://neo-isshin.github.io/open-nova/dashboard-demo/) preserves the real Dashboard HTML, CSS, components, layout, and interaction code, replacing only backend APIs with fixed static data. It never connects to or modifies a local Open Nova runtime. The published demo dataset contains only the live overview, AI Assets, Nova-Task board, one W27 weekly report, two ordinary diaries, and one Blank Day diary. To fully demonstrate the weekly-report components, clearly identified display data was added to the W27 metrics based on the fields and approximate scale visible in the existing real screenshot; those values do not represent statistics from a specific real run.
+The [Dashboard Static Demo](https://neo-isshin.github.io/actanara/dashboard-demo/) preserves the real Dashboard HTML, CSS, components, layout, and interaction code, replacing only backend APIs with fixed static data. It never connects to or modifies a local Actanara runtime. The published demo dataset contains only the live overview, AI Assets, Nova-Task board, one W27 weekly report, two ordinary diaries, and one Blank Day diary. To fully demonstrate the weekly-report components, clearly identified display data was added to the W27 metrics based on the fields and approximate scale visible in the existing real screenshot; those values do not represent statistics from a specific real run.
 
 <p align="center">
-  ▶ <a href="https://neo-isshin.github.io/open-nova/dashboard-demo/"><strong>Open the Real Dashboard Static Demo</strong></a>
+  ▶ <a href="https://neo-isshin.github.io/actanara/dashboard-demo/"><strong>Open the Real Dashboard Static Demo</strong></a>
 </p>
 
-The version-controlled static snapshot is available at [`docs/dashboard-demo/index.html`](docs/dashboard-demo/index.html). The [release website](https://neo-isshin.github.io/open-nova/) remains the product and installation overview rather than the interactive Dashboard itself.
+The version-controlled static snapshot is available at [`docs/dashboard-demo/index.html`](docs/dashboard-demo/index.html). The [release website](https://neo-isshin.github.io/actanara/) remains the product and installation overview rather than the interactive Dashboard itself.
 
 ### Runtime Layout
 
 | Default path | Purpose |
 | :--- | :--- |
-| `~/.open-nova` | Main runtime home |
-| `~/.config/open-nova/location.json` | Active runtime pointer |
-| `~/.open-nova/config/settings.json` | Runtime settings |
-| `~/.open-nova/data/nova_data.sqlite3` | Foundation SQLite database |
-| `~/.open-nova/state/secrets` | LLM and optional cloud-embedding provider keys |
-| `~/.open-nova/artifacts/diary` | Diaries and summaries |
-| `~/.open-nova/artifacts/reports` | Report output |
-| `~/.open-nova/bin/open-nova` | Runtime-local CLI shim |
+| `~/.actanara` | Main runtime home |
+| `~/.config/actanara/location.json` | Active runtime pointer |
+| `~/.actanara/config/settings.json` | Runtime settings |
+| `~/.actanara/data/actanara_data.sqlite3` | Foundation SQLite database |
+| `~/.actanara/state/secrets` | LLM and optional cloud-embedding provider keys |
+| `~/.actanara/artifacts/diary` | Diaries and summaries |
+| `~/.actanara/artifacts/reports` | Report output |
+| `~/.actanara/bin/actanara` | Runtime-local CLI shim |
 
 Runtime databases, diaries, reports, logs, caches, secrets, and local LaunchAgent artifacts must not be committed to the source repository.
 
@@ -340,8 +340,8 @@ Runtime databases, diaries, reports, logs, caches, secrets, and local LaunchAgen
 Search local memory through `nova-RAG`:
 
 ```bash
-open-nova search "deployment issue" --top-k 5
-open-nova search "deployment issue" --top-k 5 --json
+actanara search "deployment issue" --top-k 5
+actanara search "deployment issue" --top-k 5 --json
 ```
 
 This command uses the Dashboard's read-only external retrieval API. Automation consuming JSON output should check the `available` field; when RAG is unavailable, the command may still return a successful structured status response.
@@ -349,8 +349,8 @@ This command uses the Dashboard's read-only external retrieval API. Automation c
 Run the daily Pipeline manually:
 
 ```bash
-open-nova pipeline
-open-nova pipeline 2026-07-12
+actanara pipeline
+actanara pipeline 2026-07-12
 ```
 
 Without a date, the Pipeline processes the previous calendar day in the configured time zone. It writes diaries, reports, and Foundation data. If the target date has already been generated completely, regeneration from the frozen Foundation input requires an explicit `--force`.
@@ -358,19 +358,19 @@ Without a date, the Pipeline processes the previous calendar day in the configur
 Review or apply an update:
 
 ```bash
-open-nova update
-open-nova update --dry-run
-open-nova update --apply
+actanara update
+actanara update --dry-run
+actanara update --apply
 ```
 
-- `open-nova update` only displays the update plan.
+- `actanara update` only displays the update plan.
 - `--dry-run` runs a no-change preview and reports venv reuse versus locked rebuild when the candidate source is available. A cold remote source cache can still limit the preview to source acquisition.
 - Only `--apply` executes the protected update transaction.
-- Matching dependency fingerprints reuse the active venv with zero pip work; otherwise Open Nova builds a separate candidate venv from its exact hash-verified Runtime lock. Operators can require `--source-only`, require `--force-rebuild`, or prohibit source/dependency network access with `--offline`. Offline source selection requires either `--source-root PATH` or a full `--ref` already present in the installer source cache.
+- Matching dependency fingerprints reuse the active venv with zero pip work; otherwise Actanara builds a separate candidate venv from its exact hash-verified Runtime lock. Operators can require `--source-only`, require `--force-rebuild`, or prohibit source/dependency network access with `--offline`. Offline source selection requires either `--source-root PATH` or a full `--ref` already present in the installer source cache.
 
 > The one-liner and updater resolve the latest official `main` commit at execution time, then pin the installation transaction to that exact commit.
 
-Open Nova does not yet include a product-level one-command uninstaller. Do not remove only `~/.open-nova`; doing so leaves LaunchAgents, the CLI shim, runtime pointer, shell `PATH` block, desktop shortcut, and installation cache behind.
+Actanara does not yet include a product-level one-command uninstaller. Do not remove only `~/.actanara`; doing so leaves LaunchAgents, the CLI shim, runtime pointer, shell `PATH` block, desktop shortcut, and installation cache behind.
 
 <a id="nova-task"></a>
 ## 📋 Nova-Task: A Graph of Real Work
@@ -381,12 +381,12 @@ It is a **graph of real work**: much valuable work does not begin with a formal 
 
 In automatic-maintenance mode, `Nova-Task` can detect hierarchy, update status, attach subtasks, and refine the task tree. High-impact top-level nodes retain human review, while routine second- and third-level updates can proceed under configured rules. A person can take over at any time.
 
-After an RFC, PRD, Roadmap, or Audit document is imported, Open Nova can also ask an LLM to decompose it into an iterative `Nova-Task` tree for review and maintenance.
+After an RFC, PRD, Roadmap, or Audit document is imported, Actanara can also ask an LLM to decompose it into an iterative `Nova-Task` tree for review and maintenance.
 
 <a id="nova-rag"></a>
 ## 🤖 nova-RAG: Shared Memory with a Read-Only Boundary
 
-`nova-RAG` is Open Nova's optional retrieval subsystem with local or cloud embeddings. It gives external agent runtimes read-only access to a user's work memory while refusing memory writes, index changes, global-setting changes, or service-lifecycle control.
+`nova-RAG` is Actanara's optional retrieval subsystem with local or cloud embeddings. It gives external agent runtimes read-only access to a user's work memory while refusing memory writes, index changes, global-setting changes, or service-lifecycle control.
 
 Retrieval quality is managed at two levels:
 
@@ -425,11 +425,11 @@ For the complete security boundary, request schema, and error semantics, see the
 ## 🔐 Privacy and Security
 
 - **Local-first:** Runtime state, the Foundation database, generated assets, and indexes remain in user-owned local paths.
-- **Secret permissions:** Provider keys live in `$NOVA_HOME/state/secrets`; the directory uses mode `0700`, and secret files use mode `0600`.
-- **Keychain migration:** Legacy `macos-keychain` references are used only for compatibility migration. Readable legacy secrets are copied to the runtime secret store; Open Nova does not automatically delete old Keychain items.
+- **Secret permissions:** Provider keys live in `$ACTANARA_HOME/state/secrets`; the directory uses mode `0700`, and secret files use mode `0600`.
+- **Keychain migration:** Legacy `macos-keychain` references are used only for compatibility migration. Readable legacy secrets are copied to the runtime secret store; Actanara does not automatically delete old Keychain items.
 - **External-provider boundary:** If an external LLM or embedding provider is configured, relevant derived work content is sent according to the selected endpoint and provider data policy.
 - **Input content:** If source logs, diaries, or user-selected material already contain secrets or sensitive information, generated diaries, reports, snapshots, and indexes may faithfully preserve that content.
-- **Non-invasive boundary:** Open Nova does not rewrite supported runtimes' historical data or take over their execution. It creates its own runtime, CLI shim, optional skills, and managed services.
+- **Non-invasive boundary:** Actanara does not rewrite supported runtimes' historical data or take over their execution. It creates its own runtime, CLI shim, optional skills, and managed services.
 
 <a id="development"></a>
 ## 📐 Development, Testing, and Reproducible Releases
@@ -446,7 +446,7 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[dashboard,rag-local]"
 ```
 
-Run the release suite with isolated virtual environment, `HOME`, `NOVA_HOME`, and a fixed business clock:
+Run the release suite with isolated virtual environment, `HOME`, `ACTANARA_HOME`, and a fixed business clock:
 
 ```bash
 python tests/run_isolated_release_suite.py
@@ -471,7 +471,7 @@ PROJECT_VERSION="$(python -c 'import tomllib; print(tomllib.load(open("pyproject
 SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)" \
 python -B -m tools.release.build_release \
   --source-root . \
-  --output-dir ../open-nova-release-artifacts \
+  --output-dir ../actanara-release-artifacts \
   --expected-commit "$(git rev-parse HEAD)" \
   --expected-version "$PROJECT_VERSION"
 ```
@@ -508,11 +508,11 @@ The release builder accepts only a clean, committed Git worktree and writes outp
 
 Copyright © 2026 Neo-Isshin.
 
-Open Nova is free software licensed under the [GNU General Public License, version 3 or any later version](LICENSE), with SPDX identifier `GPL-3.0-or-later`.
+Actanara is free software licensed under the [GNU General Public License, version 3 or any later version](LICENSE), with SPDX identifier `GPL-3.0-or-later`.
 
 ## 🙏 Acknowledgements
 
-Open Nova exists thanks to outstanding AI coding tools and their open-source communities. Their local activity and token-usage logs make unified visualization, asset consolidation, and cross-runtime memory sharing possible.
+Actanara exists thanks to outstanding AI coding tools and their open-source communities. Their local activity and token-usage logs make unified visualization, asset consolidation, and cross-runtime memory sharing possible.
 
 Thanks also to the [getdesign.md](https://getdesign.md) community for inspiration on the Dashboard's layout and visual direction.
 
@@ -524,12 +524,12 @@ Thanks also to the [getdesign.md](https://getdesign.md) community for inspiratio
 <h2>⭐ Give me a Star</h2>
 
 <p>
-If Open Nova helps you turn fragmented AI work into searchable, reusable local assets,<br>
+If Actanara helps you turn fragmented AI work into searchable, reusable local assets,<br>
 please give it a Star so more people can discover the project.
 </p>
 
-<a href="https://github.com/Neo-Isshin/open-nova">
-  <img src="https://img.shields.io/github/stars/Neo-Isshin/open-nova?style=for-the-badge&amp;logo=github&amp;label=Give%20me%20a%20Star&amp;color=F5B942" alt="Give Open Nova a Star">
+<a href="https://github.com/Neo-Isshin/actanara">
+  <img src="https://img.shields.io/github/stars/Neo-Isshin/actanara?style=for-the-badge&amp;logo=github&amp;label=Give%20me%20a%20Star&amp;color=F5B942" alt="Give Actanara a Star">
 </a>
 
 </div>

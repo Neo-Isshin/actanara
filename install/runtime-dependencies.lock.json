@@ -3219,7 +3219,7 @@
       ]
     }
   },
-  "product": "open-nova",
+  "product": "actanara",
   "profiles": {
     "dashboard": {
       "directRequirements": [

@@ -34,13 +34,13 @@ class InstallerV2Tests(unittest.TestCase):
         env = {
             **os.environ,
             "HOME": str(home),
-            "NOVA_LOCATION_FILE": str(home / ".config" / "open-nova" / "location.json"),
-            "NOVA_INSTALL_PLATFORM": "Darwin",
-            "NOVA_INSTALL_LANGUAGE": "zh-CN",
-            "NOVA_INSTALL_VERBOSE": "0",
+            "ACTANARA_LOCATION_FILE": str(home / ".config" / "actanara" / "location.json"),
+            "ACTANARA_INSTALL_PLATFORM": "Darwin",
+            "ACTANARA_INSTALL_LANGUAGE": "zh-CN",
+            "ACTANARA_INSTALL_VERBOSE": "0",
         }
-        env.pop("NOVA_HOME", None)
-        env.pop("NOVA_INSTALL_RUNTIME", None)
+        env.pop("ACTANARA_HOME", None)
+        env.pop("ACTANARA_INSTALL_RUNTIME", None)
         return env
 
     def _start_health_server(self) -> int:
@@ -80,7 +80,7 @@ class InstallerV2Tests(unittest.TestCase):
             """#!/bin/zsh
 set -eu
 command_name="${1:-}"
-print -r -- "$*" >> "$NOVA_TEST_LAUNCHCTL_CALLS"
+print -r -- "$*" >> "$ACTANARA_TEST_LAUNCHCTL_CALLS"
 case "$command_name" in
   print)
     target="${2:-}"
@@ -89,14 +89,14 @@ case "$command_name" in
       exit 0
     fi
     label="${target##*/}"
-    state_file="$NOVA_TEST_LAUNCHCTL_STATE/$label"
+    state_file="$ACTANARA_TEST_LAUNCHCTL_STATE/$label"
     [[ -f "$state_file" ]] || exit 113
     print -r -- "state = $(<\"$state_file\")"
     ;;
   bootout)
     target="${2:-}"
     label="${target##*/}"
-    rm -f "$NOVA_TEST_LAUNCHCTL_STATE/$label"
+    rm -f "$ACTANARA_TEST_LAUNCHCTL_STATE/$label"
     ;;
   bootstrap)
     plist="${3:-}"
@@ -105,12 +105,12 @@ case "$command_name" in
     if [[ "$label" == *dashboard* || "$label" == *rag* ]]; then
       state="running"
     fi
-    print -r -- "$state" > "$NOVA_TEST_LAUNCHCTL_STATE/$label"
+    print -r -- "$state" > "$ACTANARA_TEST_LAUNCHCTL_STATE/$label"
     ;;
   kickstart)
     target="${@: -1}"
     label="${target##*/}"
-    print -r -- "running" > "$NOVA_TEST_LAUNCHCTL_STATE/$label"
+    print -r -- "running" > "$ACTANARA_TEST_LAUNCHCTL_STATE/$label"
     ;;
   *)
     exit 64
@@ -126,7 +126,7 @@ esac
         source = runtime / "app" / "releases" / "old-release"
         python = runtime / ".venv" / "bin" / "python"
         environment = {
-            "NOVA_HOME": str(runtime),
+            "ACTANARA_HOME": str(runtime),
             "PYTHONDONTWRITEBYTECODE": "1",
         }
         if label.endswith("dashboard.watchdog"):
@@ -154,7 +154,7 @@ esac
                     "run",
                     "--project-root",
                     str(source),
-                    "--nova-home",
+                    "--actanara-home",
                     str(runtime),
                 ],
                 "EnvironmentVariables": environment,
@@ -178,8 +178,8 @@ esac
         else:
             environment.update(
                 {
-                    "NOVA_DASHBOARD_PROJECT_ROOT": str(source),
-                    "NOVA_DASHBOARD_PYTHON": str(python),
+                    "ACTANARA_DASHBOARD_PROJECT_ROOT": str(source),
+                    "ACTANARA_DASHBOARD_PYTHON": str(python),
                     "PYTHONPATH": f"{source}:{source / 'src'}:{source / 'src' / 'dashboard'}",
                 }
             )
@@ -200,10 +200,10 @@ esac
         release = runtime / "app" / "releases" / "old-release"
         release.mkdir(parents=True, exist_ok=True)
         (release / "pyproject.toml").write_text(
-            '[project]\nname="open-nova-old-fixture"\nversion="0"\n',
+            '[project]\nname="actanara-old-fixture"\nversion="0"\n',
             encoding="utf-8",
         )
-        (release / ".open-nova-runtime-source.json").write_text(
+        (release / ".actanara-runtime-source.json").write_text(
             '{"fixture":"old-source"}\n',
             encoding="utf-8",
         )
@@ -398,7 +398,7 @@ if [[ "${{1:-}}" == "-m" && "${{2:-}}" == "pip" && "${{3:-}}" == "install" ]]; t
   exit 0
 fi
 if [[ "${{1:-}}" == "-" ]]; then
-  missing="${{NOVA_INSTALL_MISSING_DEPENDENCIES_FILE:-}}"
+  missing="${{ACTANARA_INSTALL_MISSING_DEPENDENCIES_FILE:-}}"
   if [[ ! -f "{marker_path}" ]]; then
     mkdir -p "${{missing:h}}"
     print -r -- "fastapi>=0.110,<1" > "$missing"
@@ -530,9 +530,9 @@ done
         source_sentinel = source / "legacy-source.txt"
         source_sentinel.write_text("legacy concrete source\n", encoding="utf-8")
 
-        cli = runtime / "bin" / "open-nova"
+        cli = runtime / "bin" / "actanara"
         cli.write_text(
-            "#!/usr/bin/env zsh\nprint -r -- 'legacy open-nova'\n",
+            "#!/usr/bin/env zsh\nprint -r -- 'legacy actanara'\n",
             encoding="utf-8",
         )
         cli.chmod(0o755)
@@ -551,7 +551,7 @@ done
         venv = runtime / ".venv"
         venv_python = venv / "bin" / "python"
         settings = runtime / "config" / "settings.json"
-        database = runtime / "data" / "nova_data.sqlite3"
+        database = runtime / "data" / "actanara_data.sqlite3"
         prior = {
             "source": source,
             "source_inode": source.stat().st_ino,
@@ -640,7 +640,7 @@ exit 1
 
         self.assertIn("render_installer_header", script)
         self.assertIn("installer_version", script)
-        self.assertIn("Open Nova ${version}", script)
+        self.assertIn("Actanara ${version}", script)
         self.assertIn("installer_text setup_title", script)
         self.assertIn("────────────────────────────────────────", script)
         self.assertIn("TTY_BLUE", script)
@@ -653,8 +653,8 @@ exit 1
         self.assertIn('text_language="en-US"', script)
         self.assertIn('if [[ "$LANGUAGE_SET" != "1" && "$LANGUAGE_SELECTED" != "1" ]]; then', script)
         self.assertIn("LANGUAGE_SELECTED=1", script)
-        self.assertIn("Choose the Open Nova language", script)
-        self.assertIn("Welcome to Open Nova. Dashboard, diaries, daily runs, and Nova-Task are included by default.", script)
+        self.assertIn("Choose the Actanara language", script)
+        self.assertIn("Welcome to Actanara. Dashboard, diaries, daily runs, and Nova-Task are included by default.", script)
 
     def test_installer_declares_input_data_sensitivity_notice(self):
         script = INSTALLER.read_text(encoding="utf-8")
@@ -743,7 +743,7 @@ exit 1
         self.assertIn('"status": "installer-applied"', script)
         self.assertIn('"supportedNow": True', script)
         self.assertIn('"applyEndpoint": "POST /api/settings/external-tools/rag-skill-registration"', script)
-        self.assertIn('"confirmationTextRequired": "INSTALL OPEN NOVA RAG SKILL"', script)
+        self.assertIn('"confirmationTextRequired": "INSTALL ACTANARA RAG SKILL"', script)
         self.assertIn("exact unmodified generated versions are backed up and upgraded", script)
         self.assertIn("customized files are preserved unless Dashboard overwrite is explicitly confirmed", script)
         self.assertIn("installer writes missing nova-RAG skills for selected external tools", script)
@@ -783,12 +783,12 @@ exit 1
         for token in (
             "preflight",
             "post-install doctor",
-            "open-nova update",
+            "actanara update",
             "pyproject.toml",
-            "~/.open-nova/bin/open-nova",
+            "~/.actanara/bin/actanara",
             "--upgrade",
-            "https://github.com/Neo-Isshin/open-nova",
-            "https://raw.githubusercontent.com/Neo-Isshin/open-nova/main/install/bootstrap.sh",
+            "https://github.com/Neo-Isshin/actanara",
+            "https://raw.githubusercontent.com/Neo-Isshin/actanara/main/install/bootstrap.sh",
         ):
             with self.subTest(token=token):
                 self.assertIn(token, runbook)
@@ -807,7 +807,7 @@ exit 1
             (ROOT / "docs" / "local-operations-runbook.zh-CN.md").read_text(encoding="utf-8"),
             (ROOT / "docs" / "new-user-onboarding-runbook.md").read_text(encoding="utf-8"),
         ]
-        unsafe_example = re.compile(r"^open-nova update --apply --offline(?:\s+#.*)?$", re.MULTILINE)
+        unsafe_example = re.compile(r"^actanara update --apply --offline(?:\s+#.*)?$", re.MULTILINE)
         for content in documents:
             with self.subTest():
                 self.assertIsNone(unsafe_example.search(content))
@@ -827,8 +827,8 @@ exit 1
 
         for content in (readme, readme_zh):
             with self.subTest():
-                self.assertIn("~/.open-nova/bin/open-nova", content)
-                self.assertIn("~/.local/bin/open-nova", content)
+                self.assertIn("~/.actanara/bin/actanara", content)
+                self.assertIn("~/.local/bin/actanara", content)
                 self.assertIn("--no-shell-path", content)
                 self.assertIn("--shell-path-file /path/to/profile", content)
 
@@ -857,7 +857,7 @@ exit 1
     def test_update_stops_managed_services_after_preflight_and_confirmation(self):
         script = INSTALLER.read_text(encoding="utf-8")
 
-        entry = script.index('LOCATION_FILE="${NOVA_LOCATION_FILE:-$HOME/.config/open-nova/location.json}"')
+        entry = script.index('LOCATION_FILE="${ACTANARA_LOCATION_FILE:-$HOME/.config/actanara/location.json}"')
         port_select = script.index("select_dashboard_port", entry)
         preflight = script.index("run_installer_preflight", entry)
         confirmation = script.index('prompt_yes_no "$(installer_text proceed_upgrade)"', preflight)
@@ -875,12 +875,12 @@ exit 1
         self.assertIn("update_transaction.py", script)
         helper = (ROOT / "install" / "update_transaction.py").read_text(encoding="utf-8")
         for label in (
-            "com.open-nova.dashboard",
-            "com.open-nova.dashboard.watchdog",
-            "com.open-nova.rag-server",
+            "com.actanara.dashboard",
+            "com.actanara.dashboard.watchdog",
+            "com.actanara.rag-server",
         ):
             self.assertIn(label, helper)
-        self.assertIn('timer.get("label") or "open-nova.daily"', helper)
+        self.assertIn('timer.get("label") or "actanara.daily"', helper)
         self.assertIn('("scheduler-pipeline", "pipeline")', helper)
         self.assertIn('("scheduler-aggregation", "dashboard-aggregation")', helper)
         self.assertNotIn("defaults = [", helper)
@@ -889,7 +889,7 @@ exit 1
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             home = root / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             launch_agents = home / "Library" / "LaunchAgents"
             source = root / "incomplete-source"
             launch_agents.mkdir(parents=True)
@@ -904,14 +904,14 @@ exit 1
             calls = root / "launchctl-calls.log"
             fake_launchctl = root / "launchctl"
             fake_launchctl.write_text(
-                '#!/bin/zsh\nprint -r -- "$*" >> "$NOVA_TEST_LAUNCHCTL_CALLS"\n',
+                '#!/bin/zsh\nprint -r -- "$*" >> "$ACTANARA_TEST_LAUNCHCTL_CALLS"\n',
                 encoding="utf-8",
             )
             fake_launchctl.chmod(0o755)
             for name in (
-                "com.open-nova.dashboard.plist",
-                "com.open-nova.dashboard.watchdog.plist",
-                "com.open-nova.rag-server.plist",
+                "com.actanara.dashboard.plist",
+                "com.actanara.dashboard.watchdog.plist",
+                "com.actanara.rag-server.plist",
             ):
                 (launch_agents / name).write_text("placeholder", encoding="utf-8")
 
@@ -930,12 +930,13 @@ exit 1
                 env={
                     **os.environ,
                     "HOME": str(home),
-                    "NOVA_INSTALL_PLATFORM": "Darwin",
-                    "NOVA_INSTALL_LAUNCHCTL": str(fake_launchctl),
-                    "NOVA_INSTALL_TEST_MODE": "1",
-                    "NOVA_TEST_LAUNCHCTL_CALLS": str(calls),
-                    "NOVA_LOCATION_FILE": str(root / "location.json"),
-                    "NOVA_INSTALL_PYTHON": sys.executable,
+                    "ACTANARA_INSTALL_PLATFORM": "Darwin",
+                    "ACTANARA_INSTALL_LAUNCHCTL": str(fake_launchctl),
+                    "ACTANARA_INSTALL_TEST_MODE": "1",
+                    "ACTANARA_TEST_LAUNCHCTL_CALLS": str(calls),
+                    "ACTANARA_LOCATION_FILE": str(root / "location.json"),
+                    "ACTANARA_INSTALL_PYTHON": sys.executable,
+                    "ACTANARA_INSTALL_VERBOSE": "1",
                 },
                 text=True,
                 capture_output=True,
@@ -943,7 +944,8 @@ exit 1
             )
 
             self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
-            self.assertIn("Installer preflight failed", result.stdout + result.stderr)
+            self.assertIn("Installer preflight/doctor", result.stdout + result.stderr)
+            self.assertIn("缺少 Actanara 所需文件", result.stdout + result.stderr)
             operations = calls.read_text(encoding="utf-8").splitlines() if calls.exists() else []
             self.assertFalse(any(line.startswith("bootout ") for line in operations), operations)
             self.assertFalse(any(line.startswith("bootstrap ") for line in operations), operations)
@@ -956,7 +958,7 @@ exit 1
         rag = script.split("run_rag_service_launch_agent_apply() {", 1)[1].split(
             "run_external_rag_skill_registration_apply() {", 1
         )[0]
-        scheduler = script.split('log "Registering managed Open Nova scheduler LaunchAgents"', 1)[1].split(
+        scheduler = script.split('log "Registering managed Actanara scheduler LaunchAgents"', 1)[1].split(
             'elif [[ "$NO_SCHEDULER" == "1" ]]', 1
         )[0]
 
@@ -969,7 +971,7 @@ exit 1
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             home = root / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             launch_agents = home / "Library" / "LaunchAgents"
             state_dir = root / "launchctl-state"
             launch_agents.mkdir(parents=True)
@@ -997,17 +999,17 @@ exit 1
             fake_launchctl = root / "launchctl"
             self._write_stateful_fake_launchctl(fake_launchctl)
             for name in (
-                "com.open-nova.dashboard.plist",
-                "com.open-nova.dashboard.watchdog.plist",
-                "com.open-nova.rag-server.plist",
-                "open-nova.daily.pipeline.plist",
-                "open-nova.daily.dashboard-aggregation.plist",
+                "com.actanara.dashboard.plist",
+                "com.actanara.dashboard.watchdog.plist",
+                "com.actanara.rag-server.plist",
+                "actanara.daily.pipeline.plist",
+                "actanara.daily.dashboard-aggregation.plist",
             ):
                 self._write_runtime_plist(launch_agents / name, runtime=runtime)
             initial_state = {
-                "com.open-nova.dashboard": "running",
-                "com.open-nova.dashboard.watchdog": "running",
-                "open-nova.daily.pipeline": "waiting",
+                "com.actanara.dashboard": "running",
+                "com.actanara.dashboard.watchdog": "running",
+                "actanara.daily.pipeline": "waiting",
             }
             for label, service_state in initial_state.items():
                 (state_dir / label).write_text(service_state + "\n", encoding="utf-8")
@@ -1029,14 +1031,14 @@ exit 1
                 env={
                     **os.environ,
                     "HOME": str(home),
-                    "NOVA_INSTALL_PLATFORM": "Darwin",
-                    "NOVA_INSTALL_LANGUAGE": "zh-CN",
-                    "NOVA_INSTALL_LAUNCHCTL": str(fake_launchctl),
-                    "NOVA_INSTALL_TEST_MODE": "1",
-                    "NOVA_TEST_LAUNCHCTL_CALLS": str(calls),
-                    "NOVA_TEST_LAUNCHCTL_STATE": str(state_dir),
-                    "NOVA_LOCATION_FILE": str(root / "location.json"),
-                    "NOVA_INSTALL_SOURCE_ROOT": str(ROOT),
+                    "ACTANARA_INSTALL_PLATFORM": "Darwin",
+                    "ACTANARA_INSTALL_LANGUAGE": "zh-CN",
+                    "ACTANARA_INSTALL_LAUNCHCTL": str(fake_launchctl),
+                    "ACTANARA_INSTALL_TEST_MODE": "1",
+                    "ACTANARA_TEST_LAUNCHCTL_CALLS": str(calls),
+                    "ACTANARA_TEST_LAUNCHCTL_STATE": str(state_dir),
+                    "ACTANARA_LOCATION_FILE": str(root / "location.json"),
+                    "ACTANARA_INSTALL_SOURCE_ROOT": str(ROOT),
                 },
                 text=True,
                 capture_output=True,
@@ -1044,7 +1046,7 @@ exit 1
             )
 
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertIn("Open Nova 文件已更新。", result.stdout + result.stderr)
+            self.assertIn("Actanara 文件已更新。", result.stdout + result.stderr)
             final_state = {
                 path.name: path.read_text(encoding="utf-8").strip()
                 for path in state_dir.iterdir()
@@ -1052,7 +1054,7 @@ exit 1
             }
             self.assertEqual(final_state, initial_state)
             source_manifest = json.loads(
-                (runtime / "app" / "source" / ".open-nova-runtime-source.json").read_text(encoding="utf-8")
+                (runtime / "app" / "source" / ".actanara-runtime-source.json").read_text(encoding="utf-8")
             )
             self.assertEqual(source_manifest["cleanScan"]["status"], "passed")
             self.assertEqual(source_manifest["cleanScan"]["findingCount"], 0)
@@ -1069,7 +1071,7 @@ exit 1
             self.assertEqual(os.readlink(runtime / ".venv"), "app/venvs/old-venv")
             operations = calls.read_text(encoding="utf-8").splitlines()
             self.assertTrue(any(line.startswith("bootout gui/") and line.endswith("dashboard.watchdog") for line in operations))
-            self.assertTrue(any(line.startswith("bootstrap gui/") and line.endswith("open-nova.daily.pipeline.plist") for line in operations))
+            self.assertTrue(any(line.startswith("bootstrap gui/") and line.endswith("actanara.daily.pipeline.plist") for line in operations))
             self.assertFalse(any(line.startswith("bootstrap gui/") and line.endswith("rag-server.plist") for line in operations))
             self.assertFalse(any(line.startswith("bootstrap gui/") and line.endswith("dashboard-aggregation.plist") for line in operations))
 
@@ -1078,7 +1080,7 @@ exit 1
             with self.subTest(pointer_kind=pointer_kind), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 home = root / "Home"
-                runtime = home / ".open-nova"
+                runtime = home / ".actanara"
                 old_source = self._write_prior_runtime_source(runtime)
                 venv_pointer = runtime / ".venv"
                 expected_venv_raw = None
@@ -1109,7 +1111,7 @@ exit 1
                     path: hashlib.sha256(path.read_bytes()).hexdigest()
                     for path in (
                         old_source / "pyproject.toml",
-                        old_source / ".open-nova-runtime-source.json",
+                        old_source / ".actanara-runtime-source.json",
                         legacy_python,
                         settings,
                     )
@@ -1143,13 +1145,13 @@ exit 1
                     env={
                         **os.environ,
                         "HOME": str(home),
-                        "NOVA_INSTALL_PLATFORM": "Darwin",
-                        "NOVA_INSTALL_TEST_MODE": "1",
-                        "NOVA_INSTALL_LAUNCHCTL": str(fake_launchctl),
-                        "NOVA_TEST_LAUNCHCTL_CALLS": str(calls),
-                        "NOVA_TEST_LAUNCHCTL_STATE": str(state_dir),
-                        "NOVA_LOCATION_FILE": str(root / "location.json"),
-                        "NOVA_INSTALL_PYTHON": sys.executable,
+                        "ACTANARA_INSTALL_PLATFORM": "Darwin",
+                        "ACTANARA_INSTALL_TEST_MODE": "1",
+                        "ACTANARA_INSTALL_LAUNCHCTL": str(fake_launchctl),
+                        "ACTANARA_TEST_LAUNCHCTL_CALLS": str(calls),
+                        "ACTANARA_TEST_LAUNCHCTL_STATE": str(state_dir),
+                        "ACTANARA_LOCATION_FILE": str(root / "location.json"),
+                        "ACTANARA_INSTALL_PYTHON": sys.executable,
                     },
                     text=True,
                     capture_output=True,
@@ -1161,7 +1163,7 @@ exit 1
                 envelope_line = next(
                     line
                     for line in output.splitlines()
-                    if line.startswith("OPEN_NOVA_UPDATE_RESULT_JSON=")
+                    if line.startswith("ACTANARA_UPDATE_RESULT_JSON=")
                 )
                 envelope = json.loads(envelope_line.split("=", 1)[1])
                 self.assertEqual(result.returncode, 2, output)
@@ -1218,7 +1220,7 @@ exit 1
             with self.subTest(phase=phase, failure=failure_kind), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 home = root / "Home"
-                runtime = home / ".open-nova"
+                runtime = home / ".actanara"
                 app = runtime / "app"
                 old_release = app / "releases" / "old-release"
                 launch_agents = home / "Library" / "LaunchAgents"
@@ -1233,7 +1235,7 @@ exit 1
                 ):
                     path.mkdir(parents=True, exist_ok=True)
                 (old_release / "pyproject.toml").write_text('[project]\nname="old"\nversion="0"\n', encoding="utf-8")
-                (old_release / ".open-nova-runtime-source.json").write_text('{"old": true}\n', encoding="utf-8")
+                (old_release / ".actanara-runtime-source.json").write_text('{"old": true}\n', encoding="utf-8")
                 shutil.copytree(
                     ROOT / "src" / "data_foundation" / "migrations",
                     old_release / "src" / "data_foundation" / "migrations",
@@ -1242,7 +1244,7 @@ exit 1
                 self._write_trusted_runtime_venv(runtime)
                 settings = runtime / "config" / "settings.json"
                 runtime_manifest = runtime / "config" / "runtime.json"
-                database = runtime / "data" / "nova_data.sqlite3"
+                database = runtime / "data" / "actanara_data.sqlite3"
                 health_port = self._start_health_server()
                 settings.write_text(
                     json.dumps(
@@ -1279,18 +1281,18 @@ exit 1
                 before_hashes = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in protected}
 
                 plist_names = (
-                    "com.open-nova.dashboard.plist",
-                    "com.open-nova.dashboard.watchdog.plist",
-                    "com.open-nova.rag-server.plist",
-                    "open-nova.daily.pipeline.plist",
-                    "open-nova.daily.dashboard-aggregation.plist",
+                    "com.actanara.dashboard.plist",
+                    "com.actanara.dashboard.watchdog.plist",
+                    "com.actanara.rag-server.plist",
+                    "actanara.daily.pipeline.plist",
+                    "actanara.daily.dashboard-aggregation.plist",
                 )
                 for name in plist_names:
                     self._write_runtime_plist(launch_agents / name, runtime=runtime)
                 initial_state = {
-                    "com.open-nova.dashboard": "running",
-                    "com.open-nova.dashboard.watchdog": "running",
-                    "open-nova.daily.pipeline": "waiting",
+                    "com.actanara.dashboard": "running",
+                    "com.actanara.dashboard.watchdog": "running",
+                    "actanara.daily.pipeline": "waiting",
                 }
                 for label, service_state in initial_state.items():
                     (state_dir / label).write_text(service_state + "\n", encoding="utf-8")
@@ -1298,8 +1300,8 @@ exit 1
                 fake_launchctl = root / "launchctl"
                 self._write_stateful_fake_launchctl(fake_launchctl)
                 fault_env = {
-                    "NOVA_INSTALL_TEST_MODE": "1",
-                    "NOVA_INSTALL_TEST_FAIL_PHASE": phase,
+                    "ACTANARA_INSTALL_TEST_MODE": "1",
+                    "ACTANARA_INSTALL_TEST_FAIL_PHASE": phase,
                 }
                 if failure_kind == "term":
                     hook = root / "update-hook"
@@ -1310,8 +1312,8 @@ exit 1
                     )
                     hook.chmod(0o755)
                     fault_env = {
-                        "NOVA_INSTALL_TEST_MODE": "1",
-                        "NOVA_INSTALL_TEST_HOOK": str(hook),
+                        "ACTANARA_INSTALL_TEST_MODE": "1",
+                        "ACTANARA_INSTALL_TEST_HOOK": str(hook),
                     }
                 elif failure_kind == "kill":
                     hook = root / "update-hook"
@@ -1323,8 +1325,8 @@ exit 1
                     )
                     hook.chmod(0o755)
                     fault_env = {
-                        "NOVA_INSTALL_TEST_MODE": "1",
-                        "NOVA_INSTALL_TEST_HOOK": str(hook),
+                        "ACTANARA_INSTALL_TEST_MODE": "1",
+                        "ACTANARA_INSTALL_TEST_HOOK": str(hook),
                     }
                 elif failure_kind == "conflict":
                     hook = root / "update-hook"
@@ -1337,8 +1339,8 @@ exit 1
                     )
                     hook.chmod(0o755)
                     fault_env = {
-                        "NOVA_INSTALL_TEST_MODE": "1",
-                        "NOVA_INSTALL_TEST_HOOK": str(hook),
+                        "ACTANARA_INSTALL_TEST_MODE": "1",
+                        "ACTANARA_INSTALL_TEST_HOOK": str(hook),
                     }
 
                 command = [
@@ -1359,12 +1361,12 @@ exit 1
                 base_env = {
                     **os.environ,
                     "HOME": str(home),
-                    "NOVA_INSTALL_PLATFORM": "Darwin",
-                    "NOVA_INSTALL_LAUNCHCTL": str(fake_launchctl),
-                    "NOVA_INSTALL_TEST_MODE": "1",
-                    "NOVA_TEST_LAUNCHCTL_CALLS": str(calls),
-                    "NOVA_TEST_LAUNCHCTL_STATE": str(state_dir),
-                    "NOVA_LOCATION_FILE": str(root / "location.json"),
+                    "ACTANARA_INSTALL_PLATFORM": "Darwin",
+                    "ACTANARA_INSTALL_LAUNCHCTL": str(fake_launchctl),
+                    "ACTANARA_INSTALL_TEST_MODE": "1",
+                    "ACTANARA_TEST_LAUNCHCTL_CALLS": str(calls),
+                    "ACTANARA_TEST_LAUNCHCTL_STATE": str(state_dir),
+                    "ACTANARA_LOCATION_FILE": str(root / "location.json"),
                 }
                 result = subprocess.run(
                     command,
@@ -1384,7 +1386,7 @@ exit 1
                     envelope_lines = [
                         line
                         for line in result.stdout.splitlines()
-                        if line.startswith("OPEN_NOVA_UPDATE_RESULT_JSON=")
+                        if line.startswith("ACTANARA_UPDATE_RESULT_JSON=")
                     ]
                     self.assertEqual(len(envelope_lines), 1, result.stdout + result.stderr)
                     envelope = json.loads(envelope_lines[0].split("=", 1)[1])
@@ -1471,7 +1473,7 @@ exit 1
                         timeout=120,
                     )
                     self.assertEqual(retry.returncode, 0, retry.stdout + retry.stderr)
-                    self.assertTrue((app / "source" / ".open-nova-runtime-source.json").is_file())
+                    self.assertTrue((app / "source" / ".actanara-runtime-source.json").is_file())
                     self.assertEqual(
                         {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in protected},
                         before_hashes,
@@ -1495,7 +1497,7 @@ exit 1
                 envelope_lines = [
                     line
                     for line in result.stdout.splitlines()
-                    if line.startswith("OPEN_NOVA_UPDATE_RESULT_JSON=")
+                    if line.startswith("ACTANARA_UPDATE_RESULT_JSON=")
                 ]
                 self.assertEqual(len(envelope_lines), 1, result.stdout + result.stderr)
                 envelope = json.loads(envelope_lines[0].split("=", 1)[1])
@@ -1534,7 +1536,7 @@ exit 1
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             home = root / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             codex_skills = root / "codex-skills"
             paths = initialize_home(runtime, legacy_diary_root=root / "Diary")
             self._write_prior_runtime_source(runtime)
@@ -1579,9 +1581,9 @@ exit 1
                 env={
                     **os.environ,
                     "HOME": str(home),
-                    "NOVA_INSTALL_PLATFORM": "Linux",
-                    "NOVA_INSTALL_TEST_MODE": "1",
-                    "NOVA_LOCATION_FILE": str(root / "location.json"),
+                    "ACTANARA_INSTALL_PLATFORM": "Linux",
+                    "ACTANARA_INSTALL_TEST_MODE": "1",
+                    "ACTANARA_LOCATION_FILE": str(root / "location.json"),
                 },
                 text=True,
                 capture_output=True,
@@ -1589,7 +1591,7 @@ exit 1
             )
 
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            skill = codex_skills / "open-nova-rag" / "SKILL.md"
+            skill = codex_skills / "actanara-rag" / "SKILL.md"
             self.assertFalse(skill.exists(), result.stdout + result.stderr)
             saved = (runtime / "config" / "settings.json").read_text(encoding="utf-8")
             self.assertIn('"status": "dashboard-controlled"', saved)
@@ -1600,7 +1602,7 @@ exit 1
 
         self.assertIn("print_tty_copy()", script)
         self.assertIn("unicodedata.east_asian_width", script)
-        self.assertIn('NOVA_INSTALL_COPY_WIDTH="$width"', script)
+        self.assertIn('ACTANARA_INSTALL_COPY_WIDTH="$width"', script)
         self.assertIn('print_tty_copy "$prompt"', script)
         self.assertIn("Continue only if you understand", script)
         self.assertIn("请确认你理解：", script)
@@ -1654,7 +1656,8 @@ exit 1
         self.assertIn("effective_dashboard_url()", script)
         self.assertIn('${RUNTIME_HOME}/config/settings.json', script)
         self.assertIn('dashboard.get("port")', script)
-        self.assertIn('dashboard_detail="server enabled at $(effective_dashboard_url)"', script)
+        self.assertIn('dashboard_detail="$(effective_dashboard_url)"', script)
+        self.assertIn('summary_line "$summary_status" "$(installer_text label_dashboard)" "$dashboard_detail"', script)
 
     def test_install_summary_llm_and_tools_use_runtime_settings_when_available(self):
         script = INSTALLER.read_text(encoding="utf-8")
@@ -1663,8 +1666,9 @@ exit 1
         self.assertIn("effective_external_tools_summary()", script)
         self.assertIn('settings.get("llmProvider")', script)
         self.assertIn('external.get("installerSelectedTools")', script)
-        self.assertIn('summary_line "${llm_status:-warn}" "LLM generation" "${llm_detail:-unknown}"', script)
-        self.assertIn('summary_line ok "external tools" "$(effective_external_tools_summary)"', script)
+        self.assertIn('summary_line "${llm_status:-warn}" "$(installer_text label_ai)" "$llm_detail"', script)
+        self.assertIn('connected_tools="$(effective_external_tools_summary)"', script)
+        self.assertIn('summary_line "$summary_status" "$(installer_text label_tools)" "$connected_tools"', script)
 
     def test_install_summary_reads_runtime_settings_during_dry_run_when_available(self):
         script = INSTALLER.read_text(encoding="utf-8")
@@ -1690,7 +1694,7 @@ exit 1
         self.assertIn('run_optional_json_cmd "Pipeline doctor"', script)
         self.assertIn('run_optional_json_cmd "Scheduler doctor"', script)
         self.assertIn('INSTALLER_LOG_FILE="${RUNTIME_HOME}/state/logs/installer-v2.log"', script)
-        self.assertIn('summary_line ok "installer log"', script)
+        self.assertIn('$(installer_text details_log): ${INSTALLER_LOG_FILE}', script)
 
     def test_full_upgrade_runs_fatal_candidate_doctor_before_verify(self):
         script = INSTALLER.read_text(encoding="utf-8")
@@ -1764,10 +1768,10 @@ exit 1
                 (module, server_dependencies),
             )
         self.assertIn('if [[ "$ENABLE_RAG" == "1" ]]; then\n  INSTALL_EXTRAS+=("rag-server")', script)
-        self.assertIn('if os.environ.get("NOVA_INSTALL_ENABLE_RAG") == "1":\n    rag_checks = [', script)
-        self.assertIn('if os.environ.get("NOVA_INSTALL_RAG_EMBEDDING_MODE") == "local":', script)
+        self.assertIn('if os.environ.get("ACTANARA_INSTALL_ENABLE_RAG") == "1":\n    rag_checks = [', script)
+        self.assertIn('if os.environ.get("ACTANARA_INSTALL_RAG_EMBEDDING_MODE") == "local":', script)
         self.assertIn('else "rag-server"', lifecycle)
-        self.assertIn("Repair the Open Nova rag-server runtime dependencies", lifecycle)
+        self.assertIn("Repair the Actanara rag-server runtime dependencies", lifecycle)
         self.assertIn('"nova-rag-cloud": "rag-server"', onboarding)
 
     def test_standalone_wheel_declares_synchronized_runtime_config_module(self):
@@ -1782,12 +1786,9 @@ exit 1
         script = INSTALLER.read_text(encoding="utf-8")
         useful = script.split("print_useful_commands() {", 1)[1].split("summary_line()", 1)[0]
 
-        self.assertIn('open-nova onboarding runtime-status --runtime', useful)
-        self.assertIn('open-nova doctor --installer --runtime', useful)
-        self.assertIn('open-nova doctor --pipeline --runtime', useful)
-        self.assertIn('open-nova doctor --scheduler --runtime', useful)
-        self.assertIn('open-nova onboarding rollback-plan --runtime', useful)
-        self.assertIn('open-nova dashboard restart', useful)
+        self.assertIn('actanara doctor', useful)
+        self.assertIn('actanara update --dry-run', useful)
+        self.assertIn('actanara dashboard restart', useful)
         self.assertNotIn("PYTHONPATH", useful)
         self.assertNotIn('"${VENV_PY}" -m data_foundation.cli', useful)
 
@@ -1809,30 +1810,28 @@ exit 1
 
         self.assertIn("create_cli_shim", script)
         self.assertIn("ensure_cli_on_shell_path", script)
-        self.assertIn('CLI_SHIM="${RUNTIME_HOME}/bin/open-nova"', script)
-        self.assertIn('USER_CLI_SHIM="${NOVA_INSTALL_USER_CLI_SHIM:-$HOME/.local/bin/open-nova}"', script)
-        self.assertIn("# >>> open-nova installer PATH >>>", script)
-        self.assertIn("unset WORKSPACE_DIR DIARY_OUTPUT_DIR TMP_WORKSPACE NOVA_DATA_DB_PATH NOVA_DATA_EXPORT_DIR TASK_DB_PATH", script)
+        self.assertIn('CLI_SHIM="${RUNTIME_HOME}/bin/actanara"', script)
+        self.assertIn('USER_CLI_SHIM="${ACTANARA_INSTALL_USER_CLI_SHIM:-$HOME/.local/bin/actanara}"', script)
+        self.assertIn("# >>> actanara installer PATH >>>", script)
+        self.assertIn("unset WORKSPACE_DIR DIARY_OUTPUT_DIR TMP_WORKSPACE ACTANARA_DATA_DB_PATH ACTANARA_DATA_EXPORT_DIR TASK_DB_PATH", script)
         self.assertIn('export PYTHONDONTWRITEBYTECODE="1"', script)
         self.assertIn('local shim_tmp="${CLI_SHIM}.tmp.$$"', script)
         self.assertIn('mv -f "${shim_tmp}" "${CLI_SHIM}"', script)
         self.assertNotIn('export DIARY_OUTPUT_DIR="${DIARY_OUTPUT_DIR}"', script)
         self.assertNotIn('export TMP_WORKSPACE="${RUNTIME_HOME}/state/tmp"', script)
-        self.assertNotIn('export NOVA_DATA_DB_PATH="${RUNTIME_HOME}/data/nova_data.sqlite3"', script)
-        self.assertNotIn('export NOVA_DATA_EXPORT_DIR="${SNAPSHOTS_OUTPUT_DIR}"', script)
+        self.assertNotIn('export ACTANARA_DATA_DB_PATH="${RUNTIME_HOME}/data/actanara_data.sqlite3"', script)
+        self.assertNotIn('export ACTANARA_DATA_EXPORT_DIR="${SNAPSHOTS_OUTPUT_DIR}"', script)
         self.assertIn("export_runtime_environment", script)
         self.assertIn('exec "${VENV_PY}" -m data_foundation.cli "\\$@"', script)
         self.assertIn("ln -sf", script)
         self.assertIn("deploy_runtime_source", script)
         self.assertIn('DEPLOY_SOURCE_ROOT="${RUNTIME_HOME}/app/source"', script)
         self.assertIn('INSTALL_SPEC="${DEPLOY_SOURCE_ROOT}', script)
-        self.assertIn(".open-nova-runtime-source.json", script)
+        self.assertIn(".actanara-runtime-source.json", script)
 
     def test_upgrade_recreates_product_cli_shim_after_transaction(self):
         script = INSTALLER.read_text(encoding="utf-8")
-        start = script.index(
-            'if [[ "$UPGRADE" == "1" ]]; then\n  run_guarded_update_transaction'
-        )
+        start = script.index('if [[ "$UPGRADE" == "1" ]]; then\n  print_phase phase_installing')
         end = script.index('run_cmd mkdir -p "${RUNTIME_HOME}"', start)
         upgrade_flow = script[start:end]
 
@@ -1890,7 +1889,7 @@ exit 1
         self.assertIn('"policy": contract["policy"]', script)
         self.assertIn('"preCommitWriterContract": contract["preCommitWriterContract"]', script)
         self.assertIn('"migrationSetSha256": migration_set_digest.hexdigest()', script)
-        self.assertIn('(target / ".open-nova-runtime-source.json").write_text', script)
+        self.assertIn('(target / ".actanara-runtime-source.json").write_text', script)
 
     def test_runtime_source_deploy_uses_versioned_release_symlink(self):
         script = INSTALLER.read_text(encoding="utf-8")
@@ -1903,7 +1902,7 @@ exit 1
         self.assertIn('"app/venvs"', script)
         self.assertNotIn("os.replace(tmp, link)", script)
         self.assertNotIn("os.unlink(tmp)", script)
-        self.assertIn("the no-clobber pointer was preserved", script)
+        self.assertIn("runtime source release switch failed validation; existing files were preserved", script)
         self.assertNotIn('rm -rf "${DEPLOY_SOURCE_ROOT}"', script)
 
     def test_fresh_runtime_pointer_helper_is_relative_store_confined_and_no_clobber(self):
@@ -1916,7 +1915,7 @@ exit 1
         harness = "\n".join(
             (
                 "set -euo pipefail",
-                'PYTHON_BIN="$NOVA_TEST_PYTHON"',
+                'PYTHON_BIN="$ACTANARA_TEST_PYTHON"',
                 function_header + function_body,
                 'promote_fresh_runtime_pointer "$1" "$2" "$3"',
             )
@@ -1934,7 +1933,7 @@ exit 1
                     store_relative,
                 ],
                 cwd=ROOT,
-                env={**os.environ, "NOVA_TEST_PYTHON": sys.executable},
+                env={**os.environ, "ACTANARA_TEST_PYTHON": sys.executable},
                 text=True,
                 capture_output=True,
                 check=False,
@@ -2043,7 +2042,7 @@ exit 1
         self.assertIn('-name "*.egg-info"', script)
         entry = script.rsplit("run_post_install_doctor", 1)[1]
         self.assertIn("cleanup_runtime_source_artifacts", entry)
-        self.assertLess(entry.index("cleanup_runtime_source_artifacts"), entry.index("print_install_summary"))
+        self.assertLess(entry.index("cleanup_runtime_source_artifacts"), entry.index("print_completion"))
 
     def test_runtime_source_artifact_cleanup_follows_only_active_source_symlink(self):
         script = INSTALLER.read_text(encoding="utf-8")
@@ -2062,8 +2061,8 @@ exit 1
             artifacts = (
                 release / "build",
                 release / "dist",
-                release / "open_nova.egg-info",
-                release / "src" / "open_nova.egg-info",
+                release / "actanara.egg-info",
+                release / "src" / "actanara.egg-info",
                 release / "src" / "package" / "__pycache__",
             )
             for artifact in artifacts:
@@ -2115,11 +2114,11 @@ exit 1
         script = INSTALLER.read_text(encoding="utf-8")
 
         export_call = script.index("export_runtime_environment")
-        scheduler = script.index("Registering managed Open Nova scheduler LaunchAgents")
+        scheduler = script.index("Registering managed Actanara scheduler LaunchAgents")
         dashboard = script.index("Installing SSE server LaunchAgent service")
         self.assertLess(export_call, scheduler)
         self.assertLess(export_call, dashboard)
-        self.assertIn("unset WORKSPACE_DIR DIARY_OUTPUT_DIR TMP_WORKSPACE NOVA_DATA_DB_PATH NOVA_DATA_EXPORT_DIR TASK_DB_PATH", script)
+        self.assertIn("unset WORKSPACE_DIR DIARY_OUTPUT_DIR TMP_WORKSPACE ACTANARA_DATA_DB_PATH ACTANARA_DATA_EXPORT_DIR TASK_DB_PATH", script)
 
     def test_installer_has_guarded_upgrade_mode(self):
         script = INSTALLER.read_text(encoding="utf-8")
@@ -2130,14 +2129,14 @@ exit 1
         self.assertIn("UPGRADE=1", script)
         self.assertIn("--upgrade requires an existing runtime", script)
         self.assertIn("Proceed with upgrade now?", script)
-        self.assertIn("preserving runtime settings and secrets", script)
+        self.assertIn("Upgrade preserved Settings, runtime manifest, location pointer", script)
         self.assertIn("installer_text upgrade_complete", script)
         self.assertIn("installer_text update_no_changes", script)
         self.assertIn("installer_text source_update_complete", script)
         self.assertIn('if [[ "$UPGRADE" != "1" || "$LANGUAGE_SET" == "1" ]]; then', script)
-        self.assertIn('first_install_or("NOVA_INSTALL_LLM_SET") and enable_llm', script)
-        self.assertIn('first_install_or("NOVA_INSTALL_RAG_SET")', script)
-        self.assertIn('first_install_or("NOVA_INSTALL_DIARY_OUTPUT_SET")', script)
+        self.assertIn('first_install_or("ACTANARA_INSTALL_LLM_SET") and enable_llm', script)
+        self.assertIn('first_install_or("ACTANARA_INSTALL_RAG_SET")', script)
+        self.assertIn('first_install_or("ACTANARA_INSTALL_DIARY_OUTPUT_SET")', script)
 
     def test_guarded_candidate_environment_uses_absolute_env_binary(self):
         script = INSTALLER.read_text(encoding="utf-8")
@@ -2165,12 +2164,12 @@ exit 1
         self.assertIn('LLM_PROVIDER="$2"', llm_provider_case)
         self.assertIn('LLM_PROVIDER_MODE="preset"', llm_provider_case)
         self.assertNotIn('LLM_API="$2"', llm_provider_case)
-        self.assertIn("NOVA_INSTALL_LLM_API", script)
+        self.assertIn("ACTANARA_INSTALL_LLM_API", script)
 
     def test_source_only_dry_run_skips_settings_dependencies_and_services(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             self._write_prior_runtime_source(runtime)
             self._write_trusted_runtime_venv(runtime)
@@ -2179,9 +2178,9 @@ exit 1
             env = {
                 **os.environ,
                 "HOME": str(home),
-                "NOVA_INSTALL_PLATFORM": "Darwin",
-                "NOVA_INSTALL_LANGUAGE": "zh-CN",
-                "NOVA_LOCATION_FILE": str(home / ".config" / "open-nova" / "location.json"),
+                "ACTANARA_INSTALL_PLATFORM": "Darwin",
+                "ACTANARA_INSTALL_LANGUAGE": "zh-CN",
+                "ACTANARA_LOCATION_FILE": str(home / ".config" / "actanara" / "location.json"),
             }
             result = subprocess.run(
                 [
@@ -2209,11 +2208,11 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("Open Nova 文件更新计划已生成。", output)
+        self.assertIn("Actanara 文件更新计划已生成。", output)
         self.assertIn("更新计划", output)
         self.assertNotIn("Staging source snapshot", output)
         self.assertNotIn("copy source snapshot", output)
-        self.assertNotIn(".open-nova-runtime-source.json", output)
+        self.assertNotIn(".actanara-runtime-source.json", output)
         self.assertNotIn("source-only dry-run complete", output)
         self.assertNotIn("-m venv", output)
         self.assertNotIn("-m pip install", output)
@@ -2225,7 +2224,7 @@ exit 1
         envelope_line = next(
             line
             for line in output.splitlines()
-            if line.startswith("OPEN_NOVA_UPDATE_RESULT_JSON=")
+            if line.startswith("ACTANARA_UPDATE_RESULT_JSON=")
         )
         envelope = json.loads(envelope_line.split("=", 1)[1])
         self.assertEqual(envelope["updateMode"], "reuse-existing-venv")
@@ -2239,7 +2238,7 @@ exit 1
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             home = root / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             self._write_prior_runtime_source(runtime)
             self._write_trusted_runtime_venv(
@@ -2297,8 +2296,8 @@ exit 1
                 env={
                     **os.environ,
                     "HOME": str(home),
-                    "NOVA_INSTALL_PLATFORM": "Darwin",
-                    "NOVA_LOCATION_FILE": str(root / "location.json"),
+                    "ACTANARA_INSTALL_PLATFORM": "Darwin",
+                    "ACTANARA_LOCATION_FILE": str(root / "location.json"),
                 },
                 text=True,
                 capture_output=True,
@@ -2312,7 +2311,7 @@ exit 1
         envelope_line = next(
             line
             for line in result.stdout.splitlines()
-            if line.startswith("OPEN_NOVA_UPDATE_RESULT_JSON=")
+            if line.startswith("ACTANARA_UPDATE_RESULT_JSON=")
         )
         envelope = json.loads(envelope_line.split("=", 1)[1])
         self.assertEqual(result.returncode, 0, output)
@@ -2327,7 +2326,7 @@ exit 1
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             home = root / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             old_source = self._write_prior_runtime_source(runtime)
             old_venv = self._write_trusted_runtime_venv(runtime)
@@ -2349,7 +2348,7 @@ exit 1
                 path: hashlib.sha256(path.read_bytes()).hexdigest()
                 for path in (
                     settings,
-                    old_source / ".open-nova-runtime-source.json",
+                    old_source / ".actanara-runtime-source.json",
                     old_venv / runtime_dependency_contract.MARKER_NAME,
                 )
             }
@@ -2376,8 +2375,8 @@ exit 1
                 env={
                     **os.environ,
                     "HOME": str(home),
-                    "NOVA_INSTALL_PLATFORM": "Darwin",
-                    "NOVA_LOCATION_FILE": str(root / "location.json"),
+                    "ACTANARA_INSTALL_PLATFORM": "Darwin",
+                    "ACTANARA_LOCATION_FILE": str(root / "location.json"),
                 },
                 text=True,
                 capture_output=True,
@@ -2389,7 +2388,7 @@ exit 1
             envelope_line = next(
                 line
                 for line in result.stdout.splitlines()
-                if line.startswith("OPEN_NOVA_UPDATE_RESULT_JSON=")
+                if line.startswith("ACTANARA_UPDATE_RESULT_JSON=")
             )
             envelope = json.loads(envelope_line.split("=", 1)[1])
             self.assertEqual(result.returncode, 2, output)
@@ -2411,7 +2410,7 @@ exit 1
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             home = root / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             self._write_prior_runtime_source(runtime)
             old_venv = self._write_trusted_runtime_venv(
@@ -2444,8 +2443,8 @@ exit 1
                 env={
                     **os.environ,
                     "HOME": str(home),
-                    "NOVA_INSTALL_PLATFORM": "Darwin",
-                    "NOVA_LOCATION_FILE": str(root / "location.json"),
+                    "ACTANARA_INSTALL_PLATFORM": "Darwin",
+                    "ACTANARA_LOCATION_FILE": str(root / "location.json"),
                 },
                 text=True,
                 capture_output=True,
@@ -2457,7 +2456,7 @@ exit 1
             envelope_line = next(
                 line
                 for line in result.stdout.splitlines()
-                if line.startswith("OPEN_NOVA_UPDATE_RESULT_JSON=")
+                if line.startswith("ACTANARA_UPDATE_RESULT_JSON=")
             )
             envelope = json.loads(envelope_line.split("=", 1)[1])
             self.assertEqual(result.returncode, 0, output)
@@ -2474,7 +2473,7 @@ exit 1
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             home = root / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             self._write_prior_runtime_source(runtime)
             self._write_trusted_runtime_venv(
@@ -2507,8 +2506,8 @@ exit 1
                 env={
                     **os.environ,
                     "HOME": str(home),
-                    "NOVA_INSTALL_PLATFORM": "Darwin",
-                    "NOVA_LOCATION_FILE": str(root / "location.json"),
+                    "ACTANARA_INSTALL_PLATFORM": "Darwin",
+                    "ACTANARA_LOCATION_FILE": str(root / "location.json"),
                 },
                 text=True,
                 capture_output=True,
@@ -2519,7 +2518,7 @@ exit 1
             envelope_line = next(
                 line
                 for line in result.stdout.splitlines()
-                if line.startswith("OPEN_NOVA_UPDATE_RESULT_JSON=")
+                if line.startswith("ACTANARA_UPDATE_RESULT_JSON=")
             )
             envelope = json.loads(envelope_line.split("=", 1)[1])
             self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
@@ -2534,7 +2533,7 @@ exit 1
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             home = root / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             prior_source = self._write_prior_runtime_source(runtime)
             prior_venv = self._write_trusted_runtime_venv(runtime)
@@ -2543,7 +2542,7 @@ exit 1
             protected = {
                 path: hashlib.sha256(path.read_bytes()).hexdigest()
                 for path in (
-                    prior_source / ".open-nova-runtime-source.json",
+                    prior_source / ".actanara-runtime-source.json",
                     prior_venv / runtime_dependency_contract.MARKER_NAME,
                     prior_venv / "bin" / "python",
                 )
@@ -2576,11 +2575,11 @@ exit 1
                 env={
                     **os.environ,
                     "HOME": str(home),
-                    "NOVA_INSTALL_PLATFORM": "Darwin",
-                    "NOVA_INSTALL_LAUNCHCTL": str(launchctl),
-                    "NOVA_TEST_LAUNCHCTL_CALLS": str(launchctl_calls),
-                    "NOVA_TEST_LAUNCHCTL_STATE": str(launchctl_state),
-                    "NOVA_LOCATION_FILE": str(root / "location.json"),
+                    "ACTANARA_INSTALL_PLATFORM": "Darwin",
+                    "ACTANARA_INSTALL_LAUNCHCTL": str(launchctl),
+                    "ACTANARA_TEST_LAUNCHCTL_CALLS": str(launchctl_calls),
+                    "ACTANARA_TEST_LAUNCHCTL_STATE": str(launchctl_state),
+                    "ACTANARA_LOCATION_FILE": str(root / "location.json"),
                 },
                 text=True,
                 capture_output=True,
@@ -2591,7 +2590,7 @@ exit 1
             envelope_line = next(
                 line
                 for line in output.splitlines()
-                if line.startswith("OPEN_NOVA_UPDATE_RESULT_JSON=")
+                if line.startswith("ACTANARA_UPDATE_RESULT_JSON=")
             )
             envelope = json.loads(envelope_line.split("=", 1)[1])
             calls = (
@@ -2625,34 +2624,34 @@ exit 1
     def test_installer_persists_distinct_nova_task_feature_flag(self):
         script = INSTALLER.read_text(encoding="utf-8")
 
-        self.assertIn('"novaTask": os.environ["NOVA_INSTALL_ENABLE_NOVA_TASK"] == "1"', script)
-        self.assertIn('"taskAuditSink": os.environ["NOVA_INSTALL_ENABLE_NOVA_TASK"] == "1"', script)
+        self.assertIn('"novaTask": os.environ["ACTANARA_INSTALL_ENABLE_NOVA_TASK"] == "1"', script)
+        self.assertIn('"taskAuditSink": os.environ["ACTANARA_INSTALL_ENABLE_NOVA_TASK"] == "1"', script)
 
     def test_installer_declares_install_time_language_profile(self):
         script = INSTALLER.read_text(encoding="utf-8")
 
         self.assertIn("--language LOCALE", script)
-        self.assertIn("NOVA_INSTALL_LANGUAGE", script)
+        self.assertIn("ACTANARA_INSTALL_LANGUAGE", script)
         self.assertIn("apply_language_profile", script)
-        self.assertIn('"locale": os.environ["NOVA_INSTALL_LANGUAGE"]', script)
-        self.assertIn('"languageProfile": os.environ["NOVA_INSTALL_PIPELINE_LANGUAGE_PROFILE"]', script)
-        self.assertIn('"englishEnabled": os.environ["NOVA_INSTALL_PIPELINE_ENGLISH_ENABLED"] == "1"', script)
-        self.assertIn('"diarySchemaVersion": os.environ["NOVA_INSTALL_PIPELINE_DIARY_SCHEMA_VERSION"]', script)
-        self.assertIn('"promptPayloadProfile": os.environ["NOVA_INSTALL_PIPELINE_PROMPT_PAYLOAD_PROFILE"]', script)
-        self.assertIn('update.setdefault("rag", {})["languageProfile"] = os.environ["NOVA_INSTALL_RAG_LANGUAGE_PROFILE"]', script)
+        self.assertIn('"locale": os.environ["ACTANARA_INSTALL_LANGUAGE"]', script)
+        self.assertIn('"languageProfile": os.environ["ACTANARA_INSTALL_PIPELINE_LANGUAGE_PROFILE"]', script)
+        self.assertIn('"englishEnabled": os.environ["ACTANARA_INSTALL_PIPELINE_ENGLISH_ENABLED"] == "1"', script)
+        self.assertIn('"diarySchemaVersion": os.environ["ACTANARA_INSTALL_PIPELINE_DIARY_SCHEMA_VERSION"]', script)
+        self.assertIn('"promptPayloadProfile": os.environ["ACTANARA_INSTALL_PIPELINE_PROMPT_PAYLOAD_PROFILE"]', script)
+        self.assertIn('update.setdefault("rag", {})["languageProfile"] = os.environ["ACTANARA_INSTALL_RAG_LANGUAGE_PROFILE"]', script)
         self.assertIn('RAG_LOCAL_MODEL="all-MiniLM-L6-v2"', script)
         self.assertIn('--language "${INSTALL_LANGUAGE}"', script)
 
     def test_dry_run_can_select_english_language_profile(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             env = {
                 **os.environ,
                 "HOME": str(home),
-                "NOVA_INSTALL_PLATFORM": "Darwin",
-                "NOVA_LOCATION_FILE": str(home / ".config" / "open-nova" / "location.json"),
+                "ACTANARA_INSTALL_PLATFORM": "Darwin",
+                "ACTANARA_LOCATION_FILE": str(home / ".config" / "actanara" / "location.json"),
             }
             result = subprocess.run(
                 [
@@ -2686,13 +2685,13 @@ exit 1
     def test_dry_run_english_rag_uses_english_local_embedding_default(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             env = {
                 **os.environ,
                 "HOME": str(home),
-                "NOVA_INSTALL_PLATFORM": "Darwin",
-                "NOVA_LOCATION_FILE": str(home / ".config" / "open-nova" / "location.json"),
+                "ACTANARA_INSTALL_PLATFORM": "Darwin",
+                "ACTANARA_LOCATION_FILE": str(home / ".config" / "actanara" / "location.json"),
             }
             result = subprocess.run(
                 [
@@ -2725,12 +2724,12 @@ exit 1
     def test_dry_run_english_rag_preserves_explicit_local_embedding_model(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             env = {
                 **os.environ,
                 "HOME": str(home),
-                "NOVA_INSTALL_PLATFORM": "Darwin",
+                "ACTANARA_INSTALL_PLATFORM": "Darwin",
             }
             result = subprocess.run(
                 [
@@ -2765,7 +2764,7 @@ exit 1
     def test_installer_rejects_unknown_language_profile(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             result = subprocess.run(
                 [
@@ -2780,7 +2779,7 @@ exit 1
                     "fr-FR",
                 ],
                 cwd=ROOT,
-                env={**os.environ, "HOME": str(home), "NOVA_INSTALL_PLATFORM": "Darwin"},
+                env={**os.environ, "HOME": str(home), "ACTANARA_INSTALL_PLATFORM": "Darwin"},
                 text=True,
                 capture_output=True,
                 check=False,
@@ -2796,13 +2795,13 @@ exit 1
     def test_dry_run_defaults_to_dashboard_scheduler_and_base_dashboard_install(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             env = {
                 **os.environ,
                 "HOME": str(home),
-                "NOVA_INSTALL_PLATFORM": "Darwin",
-                "NOVA_LOCATION_FILE": str(home / ".config" / "open-nova" / "location.json"),
+                "ACTANARA_INSTALL_PLATFORM": "Darwin",
+                "ACTANARA_LOCATION_FILE": str(home / ".config" / "actanara" / "location.json"),
             }
             result = subprocess.run(
                 [
@@ -2824,10 +2823,10 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("准备 Open Nova 文件夹", output)
-        self.assertEqual(output.count("✓ 准备 Open Nova 文件夹"), 1)
+        self.assertIn("准备 Actanara 文件夹", output)
+        self.assertEqual(output.count("✓ 准备 Actanara 文件夹"), 1)
         self.assertIn("准备日记与报告文件夹", output)
-        self.assertIn("准备 Open Nova 文件", output)
+        self.assertIn("准备 Actanara 文件", output)
         self.assertIn("准备 Python 文件", output)
         self.assertIn("创建 Python 环境", output)
         self.assertIn("安装所需软件", output)
@@ -2835,23 +2834,23 @@ exit 1
         self.assertIn("确认已安装软件", output)
         self.assertIn("检查所需软件", output)
         self.assertIn("安装计划", output)
-        self.assertIn(f"Open Nova 文件夹 · {runtime.resolve()}", output)
+        self.assertIn(f"Actanara 文件夹 · {runtime.resolve()}", output)
         self.assertNotIn("mode: install", output)
         self.assertNotIn("preflight ok:", output)
         self.assertNotIn("copy source snapshot", output)
-        self.assertNotIn(".open-nova-runtime-source.json", output)
+        self.assertNotIn(".actanara-runtime-source.json", output)
         self.assertNotIn("-m venv", output)
         self.assertNotIn("-m pip install", output)
         self.assertNotIn("onboarding runtime-apply", output)
         self.assertNotIn("import-check dashboard dependencies", output)
-        self.assertIn("检查 Open Nova 文件", output)
+        self.assertIn("检查 Actanara 文件", output)
         self.assertIn("检查日记创建", output)
         self.assertIn("检查每日自动运行", output)
         self.assertNotIn("--select-active-runtime", output)
         self.assertNotIn("--scheduler-plist-apply", output)
         self.assertNotIn("--scheduler-register-apply", output)
         self.assertNotIn("install_dashboard_launch_agent", output)
-        self.assertIn("安装 open-nova 命令", output)
+        self.assertIn("安装 actanara 命令", output)
         self.assertIn("命令行 · 将会准备", output)
         self.assertNotIn("ln -s", output)
         self.assertNotIn(".zprofile", output)
@@ -2861,7 +2860,7 @@ exit 1
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             home = root / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             bin_dir = root / "bin"
             fake_lsof = bin_dir / "lsof"
             home.mkdir()
@@ -2871,9 +2870,9 @@ exit 1
                 **os.environ,
                 "HOME": str(home),
                 "PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}",
-                "NOVA_INSTALL_LSOF": str(fake_lsof),
-                "NOVA_INSTALL_PLATFORM": "Darwin",
-                "NOVA_LOCATION_FILE": str(home / ".config" / "open-nova" / "location.json"),
+                "ACTANARA_INSTALL_LSOF": str(fake_lsof),
+                "ACTANARA_INSTALL_PLATFORM": "Darwin",
+                "ACTANARA_LOCATION_FILE": str(home / ".config" / "actanara" / "location.json"),
             }
             result = subprocess.run(
                 [
@@ -2913,7 +2912,7 @@ exit 1
     def test_preflight_blocks_missing_python_before_writes(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             result = subprocess.run(
                 [
@@ -2930,7 +2929,7 @@ exit 1
                     "--no-dashboard-server",
                 ],
                 cwd=ROOT,
-                env={**os.environ, "HOME": str(home), "NOVA_INSTALL_PLATFORM": "Darwin"},
+                env={**os.environ, "HOME": str(home), "ACTANARA_INSTALL_PLATFORM": "Darwin"},
                 text=True,
                 capture_output=True,
                 check=False,
@@ -2947,7 +2946,7 @@ exit 1
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             home = root / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             bin_dir = root / "bin"
             low_python = bin_dir / "python3"
             home.mkdir()
@@ -2956,9 +2955,9 @@ exit 1
             env = {
                 **os.environ,
                 "HOME": str(home),
-                "NOVA_INSTALL_PLATFORM": "Darwin",
-                "NOVA_INSTALL_MACHINE": "arm64",
-                "NOVA_INSTALL_PYTHON_CANDIDATES": str(low_python),
+                "ACTANARA_INSTALL_PLATFORM": "Darwin",
+                "ACTANARA_INSTALL_MACHINE": "arm64",
+                "ACTANARA_INSTALL_PYTHON_CANDIDATES": str(low_python),
             }
             result = subprocess.run(
                 [
@@ -2996,7 +2995,7 @@ exit 1
     def test_upgrade_dry_run_reports_upgrade_mode(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             old_source = self._write_prior_runtime_source(runtime)
             old_venv = self._write_trusted_runtime_venv(runtime)
@@ -3006,7 +3005,7 @@ exit 1
             protected = {
                 path: hashlib.sha256(path.read_bytes()).hexdigest()
                 for path in (
-                    old_source / ".open-nova-runtime-source.json",
+                    old_source / ".actanara-runtime-source.json",
                     old_venv / "bin" / "python",
                     runtime / "config" / "settings.json",
                 )
@@ -3028,7 +3027,7 @@ exit 1
                     "--no-dashboard-server",
                 ],
                 cwd=ROOT,
-                env={**os.environ, "HOME": str(home), "NOVA_INSTALL_PLATFORM": "Darwin"},
+                env={**os.environ, "HOME": str(home), "ACTANARA_INSTALL_PLATFORM": "Darwin"},
                 text=True,
                 capture_output=True,
                 check=False,
@@ -3043,18 +3042,18 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("Open Nova 更新计划已生成", output)
+        self.assertIn("Actanara 更新计划已生成", output)
         self.assertNotIn("mode: upgrade", output)
         self.assertNotIn("dry-run only", output)
         self.assertNotIn("Creating Python environment", output)
-        self.assertIn("安装 open-nova 命令", output)
+        self.assertIn("安装 actanara 命令", output)
         self.assertEqual(source_target_after, source_target_before)
         self.assertEqual(venv_target_after, venv_target_before)
         self.assertEqual(protected_after, protected)
         envelope_line = next(
             line
             for line in output.splitlines()
-            if line.startswith("OPEN_NOVA_UPDATE_RESULT_JSON=")
+            if line.startswith("ACTANARA_UPDATE_RESULT_JSON=")
         )
         envelope = json.loads(envelope_line.split("=", 1)[1])
         self.assertEqual(envelope["updateMode"], "rebuild-candidate-venv")
@@ -3066,7 +3065,7 @@ exit 1
     def test_upgrade_dry_run_recovers_legacy_concrete_venv_without_force_flag(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             self._write_prior_runtime_source(runtime)
             managed_venv = self._write_trusted_runtime_venv(runtime)
@@ -3092,7 +3091,7 @@ exit 1
                     "--no-dashboard-server",
                 ],
                 cwd=ROOT,
-                env={**os.environ, "HOME": str(home), "NOVA_INSTALL_PLATFORM": "Darwin"},
+                env={**os.environ, "HOME": str(home), "ACTANARA_INSTALL_PLATFORM": "Darwin"},
                 text=True,
                 capture_output=True,
                 check=False,
@@ -3109,7 +3108,7 @@ exit 1
         envelope_line = next(
             line
             for line in output.splitlines()
-            if line.startswith("OPEN_NOVA_UPDATE_RESULT_JSON=")
+            if line.startswith("ACTANARA_UPDATE_RESULT_JSON=")
         )
         envelope = json.loads(envelope_line.split("=", 1)[1])
         self.assertEqual(envelope["updateMode"], "rebuild-candidate-venv")
@@ -3128,7 +3127,7 @@ exit 1
                 with self.subTest(flag=conflicting_flag, order=ordered_flags), tempfile.TemporaryDirectory() as tmp:
                     root = Path(tmp)
                     home = root / "Home"
-                    runtime = home / ".open-nova"
+                    runtime = home / ".actanara"
                     home.mkdir()
                     result = subprocess.run(
                         [
@@ -3148,8 +3147,8 @@ exit 1
                         env={
                             **os.environ,
                             "HOME": str(home),
-                            "NOVA_INSTALL_PLATFORM": "Darwin",
-                            "NOVA_INSTALL_VERBOSE": "1",
+                            "ACTANARA_INSTALL_PLATFORM": "Darwin",
+                            "ACTANARA_INSTALL_VERBOSE": "1",
                         },
                         text=True,
                         capture_output=True,
@@ -3169,7 +3168,7 @@ exit 1
             with self.subTest(runtime_kind=runtime_kind), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 home = root / "Home"
-                runtime = home / ".open-nova"
+                runtime = home / ".actanara"
                 home.mkdir()
                 sentinel = runtime / "operator-owned.txt"
                 if runtime_kind == "foreign-directory":
@@ -3197,8 +3196,8 @@ exit 1
                     env={
                         **os.environ,
                         "HOME": str(home),
-                        "NOVA_INSTALL_PLATFORM": "Darwin",
-                        "NOVA_INSTALL_VERBOSE": "1",
+                        "ACTANARA_INSTALL_PLATFORM": "Darwin",
+                        "ACTANARA_INSTALL_VERBOSE": "1",
                     },
                     text=True,
                     capture_output=True,
@@ -3208,7 +3207,7 @@ exit 1
 
                 output = result.stdout + result.stderr
                 self.assertEqual(result.returncode, 2, output)
-                self.assertIn("--repair-existing requires a legacy Open Nova Runtime", output)
+                self.assertIn("--repair-existing requires a legacy Actanara Runtime", output)
                 self.assertFalse((runtime / "app" / "update-transactions").exists())
                 if runtime_kind == "missing":
                     self.assertFalse(runtime.exists())
@@ -3365,7 +3364,7 @@ exit 1
 
             result = harness._run_update(
                 fixture,
-                env_overrides={"NOVA_INSTALL_TEST_FAIL_PHASE": "venv-promoted"},
+                env_overrides={"ACTANARA_INSTALL_TEST_FAIL_PHASE": "venv-promoted"},
             )
 
             output = result.stdout + result.stderr
@@ -3417,8 +3416,8 @@ exit 1
             failed = harness._run_update(
                 fixture,
                 env_overrides={
-                    "NOVA_FULL_UPGRADE_FAULT_PHASE": "runtime-apply",
-                    "NOVA_FULL_UPGRADE_FAULT_KIND": "return",
+                    "ACTANARA_FULL_UPGRADE_FAULT_PHASE": "runtime-apply",
+                    "ACTANARA_FULL_UPGRADE_FAULT_KIND": "return",
                 },
             )
 
@@ -3521,7 +3520,7 @@ exit 1
     def test_upgrade_requires_existing_runtime_for_real_apply(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             fake_python = Path(tmp) / "python3"
             log_path = Path(tmp) / "commands.log"
             home.mkdir()
@@ -3544,7 +3543,7 @@ exit 1
                     "--yes",
                 ],
                 cwd=ROOT,
-                env={**os.environ, "HOME": str(home), "NOVA_INSTALL_PLATFORM": "Darwin"},
+                env={**os.environ, "HOME": str(home), "ACTANARA_INSTALL_PLATFORM": "Darwin"},
                 text=True,
                 capture_output=True,
                 check=False,
@@ -3554,14 +3553,14 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 2, output)
-        self.assertIn("No existing Open Nova installation was found", output)
+        self.assertIn("No existing Actanara installation was found", output)
         self.assertNotIn("--upgrade requires an existing runtime", output)
         self.assertNotIn("-m venv", log)
 
     def test_fresh_apply_rejects_existing_runtime_before_writes(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             old_release = runtime / "app" / "releases" / "old"
             fake_python = Path(tmp) / "python3"
             log_path = Path(tmp) / "commands.log"
@@ -3594,7 +3593,7 @@ exit 1
                 env={
                     **os.environ,
                     "HOME": str(home),
-                    "NOVA_INSTALL_PLATFORM": "Darwin",
+                    "ACTANARA_INSTALL_PLATFORM": "Darwin",
                 },
                 text=True,
                 capture_output=True,
@@ -3604,8 +3603,8 @@ exit 1
 
             output = result.stdout + result.stderr
             self.assertNotEqual(result.returncode, 0, output)
-            self.assertIn("Open Nova is already installed in this folder", output)
-            self.assertNotIn("existing Open Nova Runtime state", output)
+            self.assertIn("Actanara is already installed in this folder", output)
+            self.assertNotIn("existing Actanara Runtime state", output)
             self.assertEqual(os.readlink(runtime / "app" / "source"), "releases/old")
             self.assertEqual(sentinel.read_text(encoding="utf-8"), "preserve\n")
             self.assertEqual(
@@ -3617,12 +3616,12 @@ exit 1
     def test_dry_run_can_disable_desktop_diary_link(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             env = {
                 **os.environ,
                 "HOME": str(home),
-                "NOVA_INSTALL_PLATFORM": "Darwin",
+                "ACTANARA_INSTALL_PLATFORM": "Darwin",
             }
             result = subprocess.run(
                 [
@@ -3649,19 +3648,19 @@ exit 1
         self.assertEqual(result.returncode, 0, output)
         self.assertNotIn("Desktop diary shortcut:", output)
         self.assertNotIn("Desktop diary shortcut skipped", output)
-        self.assertNotIn("Open Nova'", output)
+        self.assertNotIn("Actanara'", output)
         self.assertFalse(runtime.exists())
 
     def test_dry_run_can_disable_wizard_with_environment(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             env = {
                 **os.environ,
                 "HOME": str(home),
-                "NOVA_INSTALL_PLATFORM": "Darwin",
-                "NOVA_INSTALL_WIZARD": "false",
+                "ACTANARA_INSTALL_PLATFORM": "Darwin",
+                "ACTANARA_INSTALL_WIZARD": "false",
             }
             result = subprocess.run(
                 [
@@ -3684,20 +3683,20 @@ exit 1
 
         self.assertEqual(result.returncode, 0, output)
         self.assertNotIn("dry-run only", output)
-        self.assertIn("Open Nova 安装计划已生成", output)
-        self.assertIn("open-nova doctor", output)
+        self.assertIn("Actanara 安装计划已生成", output)
+        self.assertIn("actanara doctor", output)
         self.assertNotIn("guided setup", output)
 
     def test_dry_run_summary_only_hides_command_noise(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             env = {
                 **os.environ,
                 "HOME": str(home),
-                "NOVA_INSTALL_PLATFORM": "Darwin",
-                "NOVA_INSTALL_WIZARD": "false",
+                "ACTANARA_INSTALL_PLATFORM": "Darwin",
+                "ACTANARA_INSTALL_WIZARD": "false",
             }
             result = subprocess.run(
                 [
@@ -3722,8 +3721,8 @@ exit 1
         self.assertEqual(result.returncode, 0, output)
         self.assertIn("安装计划", output)
         self.assertIn("接下来", output)
-        self.assertIn("Open Nova 安装计划已生成", output)
-        self.assertIn("open-nova doctor", output)
+        self.assertIn("Actanara 安装计划已生成", output)
+        self.assertIn("actanara doctor", output)
         self.assertNotIn("+ mkdir", output)
         self.assertNotIn("Installer preflight", output)
         self.assertFalse(runtime.exists())
@@ -3731,13 +3730,13 @@ exit 1
     def test_summary_only_uses_selected_english_language(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             env = {
                 **os.environ,
                 "HOME": str(home),
-                "NOVA_INSTALL_PLATFORM": "Darwin",
-                "NOVA_INSTALL_WIZARD": "false",
+                "ACTANARA_INSTALL_PLATFORM": "Darwin",
+                "ACTANARA_INSTALL_WIZARD": "false",
             }
             result = subprocess.run(
                 [
@@ -3770,13 +3769,13 @@ exit 1
     def test_dry_run_can_disable_scheduler_and_dashboard_server_without_disabling_nova_task(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             env = {
                 **os.environ,
                 "HOME": str(home),
-                "NOVA_INSTALL_PLATFORM": "Darwin",
-                "NOVA_LOCATION_FILE": str(home / ".config" / "open-nova" / "location.json"),
+                "ACTANARA_INSTALL_PLATFORM": "Darwin",
+                "ACTANARA_LOCATION_FILE": str(home / ".config" / "actanara" / "location.json"),
             }
             result = subprocess.run(
                 [
@@ -3812,7 +3811,7 @@ exit 1
     def test_dry_run_reports_output_paths_and_non_secret_llm_provider_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             diary = home / "DiaryOut"
             reports = home / "ReportsOut"
             snapshots = home / "SnapshotsOut"
@@ -3821,7 +3820,7 @@ exit 1
             env = {
                 **os.environ,
                 "HOME": str(home),
-                "NOVA_INSTALL_PLATFORM": "Darwin",
+                "ACTANARA_INSTALL_PLATFORM": "Darwin",
             }
             result = subprocess.run(
                 [
@@ -3847,7 +3846,7 @@ exit 1
                     "--llm-model",
                     "example-model",
                     "--llm-api-key-env",
-                    "NOVA_TEST_LLM_KEY",
+                    "ACTANARA_TEST_LLM_KEY",
                     "--no-scheduler",
                     "--no-dashboard-server",
                 ],
@@ -3874,14 +3873,14 @@ exit 1
     def test_installer_rejects_secret_like_llm_api_key_env_without_echoing_value(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             secret_like = "sk-test-value-that-should-not-be-echoed"
             env = {
                 **os.environ,
                 "HOME": str(home),
-                "NOVA_INSTALL_PLATFORM": "Darwin",
-                "NOVA_INSTALL_LANGUAGE": "zh-CN",
+                "ACTANARA_INSTALL_PLATFORM": "Darwin",
+                "ACTANARA_INSTALL_LANGUAGE": "zh-CN",
             }
             result = subprocess.run(
                 [
@@ -3922,12 +3921,12 @@ exit 1
     def test_no_dashboard_is_rejected_because_dashboard_is_required(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             env = {
                 **os.environ,
                 "HOME": str(home),
-                "NOVA_INSTALL_PLATFORM": "Darwin",
+                "ACTANARA_INSTALL_PLATFORM": "Darwin",
             }
             result = subprocess.run(
                 [
@@ -3950,7 +3949,7 @@ exit 1
 
         output = result.stdout + result.stderr
         self.assertEqual(result.returncode, 2, output)
-        self.assertIn("Dashboard is included with Open Nova", output)
+        self.assertIn("Dashboard is included with Actanara", output)
         self.assertNotIn("--no-dashboard is no longer supported", output)
         self.assertIn("--no-dashboard-server", output)
         self.assertFalse(runtime.exists())
@@ -3958,12 +3957,12 @@ exit 1
     def test_dry_run_enable_dev_test_adds_dev_test_extra(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             env = {
                 **os.environ,
                 "HOME": str(home),
-                "NOVA_INSTALL_PLATFORM": "Darwin",
+                "ACTANARA_INSTALL_PLATFORM": "Darwin",
             }
             result = subprocess.run(
                 [
@@ -3989,7 +3988,7 @@ exit 1
         deployed = runtime.resolve() / "app" / "source"
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn(f"Open Nova 文件夹 · {runtime.resolve()}", output)
+        self.assertIn(f"Actanara 文件夹 · {runtime.resolve()}", output)
         self.assertNotIn("install dependency spec:", output)
         self.assertNotIn("dev-test: enabled", output)
         self.assertNotIn(f"-m pip install {deployed}[dashboard,dev-test]", output)
@@ -3998,12 +3997,12 @@ exit 1
     def test_dry_run_rag_embedding_server_deployment_is_background_and_nonblocking(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             env = {
                 **os.environ,
                 "HOME": str(home),
-                "NOVA_INSTALL_PLATFORM": "Darwin",
+                "ACTANARA_INSTALL_PLATFORM": "Darwin",
             }
             result = subprocess.run(
                 [
@@ -4030,7 +4029,7 @@ exit 1
         deployed = runtime.resolve() / "app" / "source"
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn(f"Open Nova 文件夹 · {runtime.resolve()}", output)
+        self.assertIn(f"Actanara 文件夹 · {runtime.resolve()}", output)
         self.assertNotIn("install dependency spec:", output)
         self.assertNotIn(f"-m pip install {deployed}[dashboard,rag-local]", output)
         self.assertIn("准备记忆与搜索", output)
@@ -4045,12 +4044,12 @@ exit 1
     def test_dry_run_rag_local_defaults_to_embedding_server_deployment(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             env = {
                 **os.environ,
                 "HOME": str(home),
-                "NOVA_INSTALL_PLATFORM": "Darwin",
+                "ACTANARA_INSTALL_PLATFORM": "Darwin",
             }
             result = subprocess.run(
                 [
@@ -4084,12 +4083,12 @@ exit 1
     def test_dry_run_rag_local_embedding_server_deployment_can_be_disabled(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             env = {
                 **os.environ,
                 "HOME": str(home),
-                "NOVA_INSTALL_PLATFORM": "Darwin",
+                "ACTANARA_INSTALL_PLATFORM": "Darwin",
             }
             result = subprocess.run(
                 [
@@ -4124,12 +4123,12 @@ exit 1
     def test_dry_run_rag_cloud_mode_does_not_queue_local_embedding_server(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             env = {
                 **os.environ,
                 "HOME": str(home),
-                "NOVA_INSTALL_PLATFORM": "Darwin",
+                "ACTANARA_INSTALL_PLATFORM": "Darwin",
             }
             result = subprocess.run(
                 [
@@ -4152,7 +4151,7 @@ exit 1
                     "--rag-cloud-dimension",
                     "1024",
                     "--rag-cloud-api-key-env",
-                    "NOVA_TEST_EMBED_KEY",
+                    "ACTANARA_TEST_EMBED_KEY",
                     "--no-scheduler",
                     "--no-dashboard-server",
                 ],
@@ -4168,7 +4167,7 @@ exit 1
         self.assertEqual(result.returncode, 0, output)
         self.assertIn("记忆与搜索 · 云端 · embed-example", output)
         self.assertNotIn("nova-RAG embedding mode: cloud", output)
-        self.assertNotIn("api key env=NOVA_TEST_EMBED_KEY", output)
+        self.assertNotIn("api key env=ACTANARA_TEST_EMBED_KEY", output)
         self.assertNotIn("Queueing background embedding server deployment", output)
         self.assertNotIn("install_rag_launch_agent", output)
         self.assertNotIn("nohup", output)
@@ -4177,12 +4176,12 @@ exit 1
     def test_dry_run_rag_local_model_can_select_384_dimension(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             env = {
                 **os.environ,
                 "HOME": str(home),
-                "NOVA_INSTALL_PLATFORM": "Darwin",
+                "ACTANARA_INSTALL_PLATFORM": "Darwin",
             }
             result = subprocess.run(
                 [
@@ -4210,7 +4209,7 @@ exit 1
         deployed = runtime.resolve() / "app" / "source"
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn(f"Open Nova 文件夹 · {runtime.resolve()}", output)
+        self.assertIn(f"Actanara 文件夹 · {runtime.resolve()}", output)
         self.assertIn("记忆与搜索 · 本地 · intfloat/multilingual-e5-small", output)
         self.assertNotIn("nova-RAG embedding mode: local", output)
         self.assertFalse(runtime.exists())
@@ -4219,9 +4218,9 @@ exit 1
         content = INSTALLER.read_text(encoding="utf-8")
         self.assertIn('"mode": embedding_mode', content)
         self.assertIn('"provider": embedding_mode', content)
-        self.assertIn('"providerId": "local" if embedding_mode == "local" else os.environ["NOVA_INSTALL_RAG_CLOUD_PROVIDER"]', content)
-        self.assertIn('os.environ["NOVA_INSTALL_RAG_LOCAL_MODEL"]', content)
-        self.assertIn('os.environ["NOVA_INSTALL_RAG_LOCAL_DIMENSION"]', content)
+        self.assertIn('"providerId": "local" if embedding_mode == "local" else os.environ["ACTANARA_INSTALL_RAG_CLOUD_PROVIDER"]', content)
+        self.assertIn('os.environ["ACTANARA_INSTALL_RAG_LOCAL_MODEL"]', content)
+        self.assertIn('os.environ["ACTANARA_INSTALL_RAG_LOCAL_DIMENSION"]', content)
 
     def test_fake_python_helpers_execute_manifest_validator_without_cwd_symlink(self):
         for helper_name in ("base", "dependency-remediation"):
@@ -4243,7 +4242,7 @@ exit 1
                 releases = root / "runtime" / "app" / "releases"
                 staging = releases / f".tmp-{release_id}"
                 staging.mkdir(parents=True)
-                manifest = staging / ".open-nova-runtime-source.json"
+                manifest = staging / ".actanara-runtime-source.json"
                 manifest.write_text('{"schemaVersion": 2}\n', encoding="utf-8")
                 validator_marker = staging / "validator-ran.txt"
                 validator_script = (
@@ -4292,7 +4291,7 @@ exit 1
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             home = root / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             bin_dir = root / "bin"
             log_path = root / "commands.log"
             fake_python = bin_dir / "python3"
@@ -4303,9 +4302,9 @@ exit 1
             env = {
                 **os.environ,
                 "HOME": str(home),
-                "NOVA_INSTALL_PLATFORM": "Darwin",
-                "NOVA_LOCATION_FILE": str(home / ".config" / "open-nova" / "location.json"),
-                "NOVA_INSTALL_LANGUAGE": "zh-CN",
+                "ACTANARA_INSTALL_PLATFORM": "Darwin",
+                "ACTANARA_LOCATION_FILE": str(home / ".config" / "actanara" / "location.json"),
+                "ACTANARA_INSTALL_LANGUAGE": "zh-CN",
             }
             result = subprocess.run(
                 [
@@ -4371,14 +4370,14 @@ exit 1
         self.assertNotIn("安装助手", output)
         self.assertNotIn("────────────────────────────────────────", output)
         self.assertNotIn("检查系统环境\n", output)
-        self.assertNotIn("准备 Open Nova\n", output)
-        self.assertNotIn("安装 Open Nova\n", output)
+        self.assertNotIn("准备 Actanara\n", output)
+        self.assertNotIn("安装 Actanara\n", output)
 
     def test_installer_stores_wizard_llm_api_key_via_stdin_without_echoing_secret(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             home = root / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             bin_dir = root / "bin"
             log_path = root / "commands.log"
             fake_python = bin_dir / "python3"
@@ -4389,9 +4388,9 @@ exit 1
             env = {
                 **os.environ,
                 "HOME": str(home),
-                "NOVA_INSTALL_PLATFORM": "Darwin",
-                "NOVA_LOCATION_FILE": str(home / ".config" / "open-nova" / "location.json"),
-                "NOVA_INSTALL_LLM_API_KEY_VALUE": secret_value,
+                "ACTANARA_INSTALL_PLATFORM": "Darwin",
+                "ACTANARA_LOCATION_FILE": str(home / ".config" / "actanara" / "location.json"),
+                "ACTANARA_INSTALL_LLM_API_KEY_VALUE": secret_value,
             }
             result = subprocess.run(
                 [
@@ -4426,7 +4425,7 @@ exit 1
         self.assertEqual(result.returncode, 0, output)
         self.assertIn("安全保存 AI 密钥", output)
         self.assertIn("model key --value-stdin", log)
-        self.assertIn("open-nova model key --value-stdin", installer_log)
+        self.assertIn("actanara model key --value-stdin", installer_log)
         self.assertNotIn(secret_value, output)
         self.assertNotIn(secret_value, log)
         self.assertNotIn(secret_value, installer_log)
@@ -4435,7 +4434,7 @@ exit 1
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             home = root / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             bin_dir = root / "bin"
             log_path = root / "commands.log"
             marker_path = root / "fastapi-installed.marker"
@@ -4446,8 +4445,8 @@ exit 1
             env = {
                 **os.environ,
                 "HOME": str(home),
-                "NOVA_INSTALL_PLATFORM": "Darwin",
-                "NOVA_LOCATION_FILE": str(home / ".config" / "open-nova" / "location.json"),
+                "ACTANARA_INSTALL_PLATFORM": "Darwin",
+                "ACTANARA_LOCATION_FILE": str(home / ".config" / "actanara" / "location.json"),
             }
             result = subprocess.run(
                 [
@@ -4508,7 +4507,7 @@ exit 1
     def test_bootstrap_dry_run_uses_local_source_root_and_forwards_installer_options(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             home.mkdir()
             env = self._fresh_bootstrap_env(home)
             result = subprocess.run(
@@ -4534,7 +4533,7 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("启动 Open Nova 安装", output)
+        self.assertIn("启动 Actanara 安装", output)
         self.assertNotIn("install/install.sh --source-root", output)
         self.assertNotIn("--no-scheduler --no-dashboard-server", output)
         self.assertNotIn("dry-run only", output)
@@ -4560,7 +4559,7 @@ exit 1
             self._write_bootstrap_command_tripwire(fake_curl, curl_log)
             self._write_bootstrap_installer_probe(source, installer_log)
             env = self._fresh_bootstrap_env(home)
-            env["NOVA_INSTALL_CURL"] = str(fake_curl)
+            env["ACTANARA_INSTALL_CURL"] = str(fake_curl)
 
             result = subprocess.run(
                 [
@@ -4641,7 +4640,7 @@ exit 1
             self._write_bootstrap_command_tripwire(fake_git, git_log)
             self._write_bootstrap_command_tripwire(fake_curl, curl_log)
             env = self._fresh_bootstrap_env(home)
-            env["NOVA_INSTALL_CURL"] = str(fake_curl)
+            env["ACTANARA_INSTALL_CURL"] = str(fake_curl)
 
             result = subprocess.run(
                 [
@@ -4649,14 +4648,14 @@ exit 1
                     str(BOOTSTRAP),
                     "--offline",
                     "--source-url",
-                    "https://github.com/Neo-Isshin/open-nova.git",
+                    "https://github.com/Neo-Isshin/actanara.git",
                     "--cache-root",
                     str(cache),
                     "--git",
                     str(fake_git),
                     "--",
                     "--runtime",
-                    str(home / ".open-nova"),
+                    str(home / ".actanara"),
                 ],
                 cwd=root,
                 env=env,
@@ -4667,7 +4666,7 @@ exit 1
 
         output = result.stdout + result.stderr
         self.assertEqual(result.returncode, 2, output)
-        self.assertIn("离线状态下缺少所需 Open Nova 文件", output)
+        self.assertIn("离线状态下缺少所需 Actanara 文件", output)
         self.assertFalse(cache.exists())
         self.assertFalse(git_log.exists(), output)
         self.assertFalse(curl_log.exists(), output)
@@ -4687,7 +4686,7 @@ exit 1
             self._write_bootstrap_command_tripwire(fake_git, git_log)
             self._write_bootstrap_command_tripwire(fake_curl, curl_log)
             env = self._fresh_bootstrap_env(home)
-            env["NOVA_INSTALL_CURL"] = str(fake_curl)
+            env["ACTANARA_INSTALL_CURL"] = str(fake_curl)
 
             result = subprocess.run(
                 [
@@ -4695,7 +4694,7 @@ exit 1
                     str(BOOTSTRAP),
                     "--offline",
                     "--source-url",
-                    "https://github.com/Neo-Isshin/open-nova.git",
+                    "https://github.com/Neo-Isshin/actanara.git",
                     "--ref",
                     IMMUTABLE_TEST_COMMIT,
                     "--cache-root",
@@ -4704,7 +4703,7 @@ exit 1
                     str(fake_git),
                     "--",
                     "--runtime",
-                    str(home / ".open-nova"),
+                    str(home / ".actanara"),
                 ],
                 cwd=root,
                 env=env,
@@ -4715,14 +4714,14 @@ exit 1
 
         output = result.stdout + result.stderr
         self.assertEqual(result.returncode, 2, output)
-        self.assertIn("离线状态下缺少所需 Open Nova 文件", output)
+        self.assertIn("离线状态下缺少所需 Actanara 文件", output)
         self.assertNotIn(str((cache / "source").resolve()), output)
         self.assertFalse(cache.exists())
         self.assertFalse(git_log.exists(), output)
         self.assertFalse(curl_log.exists(), output)
 
     def test_bootstrap_offline_cached_ref_verifies_object_without_network_operations(self):
-        source_url = "https://example.invalid/open-nova.git"
+        source_url = "https://example.invalid/actanara.git"
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             home = root / "Home"
@@ -4746,7 +4745,7 @@ exit 1
             )
             self._write_bootstrap_command_tripwire(fake_curl, curl_log)
             env = self._fresh_bootstrap_env(home)
-            env["NOVA_INSTALL_CURL"] = str(fake_curl)
+            env["ACTANARA_INSTALL_CURL"] = str(fake_curl)
 
             result = subprocess.run(
                 [
@@ -4830,8 +4829,8 @@ exit 1
                 )
 
             git("init", "--quiet", cwd=origin_work)
-            git("config", "user.name", "Open Nova Test", cwd=origin_work)
-            git("config", "user.email", "open-nova-test@example.invalid", cwd=origin_work)
+            git("config", "user.name", "Actanara Test", cwd=origin_work)
+            git("config", "user.email", "actanara-test@example.invalid", cwd=origin_work)
             payloads = {
                 "pyproject.toml": "[project]\nname='offline-fixture'\nversion='1.0.0'\n",
                 "MANIFEST.in": "include LICENSE\n",
@@ -4898,7 +4897,7 @@ exit 1
                     str(cache),
                     "--",
                     "--runtime",
-                    str(home / ".open-nova"),
+                    str(home / ".actanara"),
                 ],
                 cwd=root,
                 env=self._fresh_bootstrap_env(home),
@@ -4909,7 +4908,7 @@ exit 1
 
             output = result.stdout + result.stderr
             self.assertEqual(result.returncode, 2, output)
-            self.assertIn("离线状态下缺少所需 Open Nova 文件", output)
+            self.assertIn("离线状态下缺少所需 Actanara 文件", output)
             self.assertFalse(tripwire_marker.exists(), output)
             self.assertEqual((source / ".git" / "config").read_bytes(), config_before)
             self.assertFalse((source / "install" / "install.sh").exists())
@@ -4938,8 +4937,8 @@ exit 1
                 )
 
             git("init", "--quiet", cwd=origin_work)
-            git("config", "user.name", "Open Nova Test", cwd=origin_work)
-            git("config", "user.email", "open-nova-test@example.invalid", cwd=origin_work)
+            git("config", "user.name", "Actanara Test", cwd=origin_work)
+            git("config", "user.email", "actanara-test@example.invalid", cwd=origin_work)
             payloads = {
                 "pyproject.toml": "[project]\nname='offline-fixture'\nversion='1.0.0'\n",
                 "MANIFEST.in": "include LICENSE\n",
@@ -4948,7 +4947,7 @@ exit 1
                 "install/install.sh": (
                     "#!/bin/zsh\n"
                     "set -eu\n"
-                    "print -r -- \"$@\" > \"${NOVA_TEST_INSTALLER_LOG:?}\"\n"
+                    "print -r -- \"$@\" > \"${ACTANARA_TEST_INSTALLER_LOG:?}\"\n"
                 ),
                 "advanced/placeholder.txt": "advanced\n",
                 "src/placeholder.txt": "src\n",
@@ -5020,7 +5019,7 @@ exit 1
             git("remote", "set-url", "origin", source_url, cwd=source)
             git("config", "protocol.ext.allow", "always", cwd=source)
             env = self._fresh_bootstrap_env(home)
-            env["NOVA_TEST_INSTALLER_LOG"] = str(installer_log)
+            env["ACTANARA_TEST_INSTALLER_LOG"] = str(installer_log)
 
             result = subprocess.run(
                 [
@@ -5035,7 +5034,7 @@ exit 1
                     str(cache),
                     "--",
                     "--runtime",
-                    str(home / ".open-nova"),
+                    str(home / ".actanara"),
                 ],
                 cwd=root,
                 env=env,
@@ -5061,7 +5060,7 @@ exit 1
             self.assertFalse(tripwire_marker.exists(), output)
 
     def test_bootstrap_offline_cached_ref_rejects_mismatched_resolved_object(self):
-        source_url = "https://example.invalid/open-nova.git"
+        source_url = "https://example.invalid/actanara.git"
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             home = root / "Home"
@@ -5085,7 +5084,7 @@ exit 1
             )
             self._write_bootstrap_command_tripwire(fake_curl, curl_log)
             env = self._fresh_bootstrap_env(home)
-            env["NOVA_INSTALL_CURL"] = str(fake_curl)
+            env["ACTANARA_INSTALL_CURL"] = str(fake_curl)
 
             result = subprocess.run(
                 [
@@ -5113,7 +5112,7 @@ exit 1
 
         output = result.stdout + result.stderr
         self.assertEqual(result.returncode, 2, output)
-        self.assertIn("未能确认所选 Open Nova 版本", output)
+        self.assertIn("未能确认所选 Actanara 版本", output)
         self.assertFalse(installer_log.exists())
         self.assertFalse(curl_log.exists(), output)
         self.assertFalse(
@@ -5133,7 +5132,7 @@ exit 1
                     str(BOOTSTRAP),
                     "--dry-run",
                     "--source-url",
-                    "https://example.invalid/open-nova.git",
+                    "https://example.invalid/actanara.git",
                     "--ref",
                     IMMUTABLE_TEST_COMMIT,
                     "--cache-root",
@@ -5152,9 +5151,9 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("下载 Open Nova", output)
+        self.assertIn("下载 Actanara", output)
         self.assertIn("准备安装文件", output)
-        self.assertIn("启动 Open Nova 安装", output)
+        self.assertIn("启动 Actanara 安装", output)
         self.assertNotIn("sparse-checkout", output)
         self.assertNotIn(f"checkout --detach {IMMUTABLE_TEST_COMMIT}", output)
         self.assertNotIn("install/install.sh --source-root", output)
@@ -5177,7 +5176,7 @@ exit 1
                     "zsh",
                     str(BOOTSTRAP),
                     "--source-url",
-                    "https://credential@example.invalid/open-nova.git",
+                    "https://credential@example.invalid/actanara.git",
                     "--ref",
                     IMMUTABLE_TEST_COMMIT,
                     "--cache-root",
@@ -5197,7 +5196,7 @@ exit 1
 
         output = result.stdout + result.stderr
         self.assertEqual(result.returncode, 97, output)
-        self.assertIn("未能准备 Open Nova", output)
+        self.assertIn("未能准备 Actanara", output)
         self.assertNotIn("credential@example.invalid", output)
         self.assertNotIn("credential@example.invalid", bootstrap_log)
 
@@ -5218,7 +5217,7 @@ exit 1
                     "zsh",
                     str(BOOTSTRAP),
                     "--source-url",
-                    "https://example.invalid/open-nova.git",
+                    "https://example.invalid/actanara.git",
                     "--ref",
                     IMMUTABLE_TEST_COMMIT,
                     "--cache-root",
@@ -5244,7 +5243,7 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("git clone --filter=blob:none --sparse --no-checkout https://example.invalid/open-nova.git", log)
+        self.assertIn("git clone --filter=blob:none --sparse --no-checkout https://example.invalid/actanara.git", log)
         self.assertIn("sparse-checkout init --no-cone", log)
         self.assertIn("sparse-checkout set /pyproject.toml /MANIFEST.in /LICENSE /config.py /install /advanced /src", log)
         self.assertIn("git -C", log)
@@ -5252,7 +5251,7 @@ exit 1
         self.assertIn(f"reset --hard {IMMUTABLE_TEST_COMMIT}", log)
         self.assertNotIn("dry-run only", output)
         self.assertEqual(bootstrap_log_mode, 0o600)
-        self.assertNotIn("https://example.invalid/open-nova.git", bootstrap_log)
+        self.assertNotIn("https://example.invalid/actanara.git", bootstrap_log)
 
     def test_bootstrap_stdin_style_with_source_url_does_not_depend_on_script_path(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -5269,10 +5268,10 @@ exit 1
             env = self._fresh_bootstrap_env(home)
             env.update(
                 {
-                    "NOVA_INSTALL_SOURCE_URL": "https://example.invalid/open-nova.git",
-                    "NOVA_INSTALL_REF": IMMUTABLE_TEST_COMMIT,
-                    "NOVA_INSTALL_CACHE_ROOT": str(cache),
-                    "NOVA_INSTALL_GIT": str(fake_git),
+                    "ACTANARA_INSTALL_SOURCE_URL": "https://example.invalid/actanara.git",
+                    "ACTANARA_INSTALL_REF": IMMUTABLE_TEST_COMMIT,
+                    "ACTANARA_INSTALL_CACHE_ROOT": str(cache),
+                    "ACTANARA_INSTALL_GIT": str(fake_git),
                 }
             )
             result = subprocess.run(
@@ -5280,7 +5279,7 @@ exit 1
                     "zsh",
                     "-c",
                     script,
-                    "open-nova-bootstrap",
+                    "actanara-bootstrap",
                     "--",
                     "--dry-run",
                     "--no-scheduler",
@@ -5297,7 +5296,7 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("git clone --filter=blob:none --sparse --no-checkout https://example.invalid/open-nova.git", log)
+        self.assertIn("git clone --filter=blob:none --sparse --no-checkout https://example.invalid/actanara.git", log)
         self.assertIn("sparse-checkout init --no-cone", log)
         self.assertIn("sparse-checkout set /pyproject.toml /MANIFEST.in /LICENSE /config.py /install /advanced /src", log)
         self.assertIn(f"checkout --detach {IMMUTABLE_TEST_COMMIT}", log)
@@ -5319,9 +5318,9 @@ exit 1
             env = self._fresh_bootstrap_env(home)
             env.update(
                 {
-                    "NOVA_INSTALL_CACHE_ROOT": str(cache),
-                    "NOVA_INSTALL_GIT": str(fake_git),
-                    "NOVA_INSTALL_REF": IMMUTABLE_TEST_COMMIT,
+                    "ACTANARA_INSTALL_CACHE_ROOT": str(cache),
+                    "ACTANARA_INSTALL_GIT": str(fake_git),
+                    "ACTANARA_INSTALL_REF": IMMUTABLE_TEST_COMMIT,
                 }
             )
             result = subprocess.run(
@@ -5329,7 +5328,7 @@ exit 1
                     "zsh",
                     "-c",
                     script,
-                    "open-nova-bootstrap",
+                    "actanara-bootstrap",
                     "--",
                     "--dry-run",
                     "--no-scheduler",
@@ -5346,7 +5345,7 @@ exit 1
         output = result.stdout + result.stderr
 
         self.assertEqual(result.returncode, 0, output)
-        self.assertIn("git clone --filter=blob:none --sparse --no-checkout https://github.com/Neo-Isshin/open-nova.git", log)
+        self.assertIn("git clone --filter=blob:none --sparse --no-checkout https://github.com/Neo-Isshin/actanara.git", log)
         self.assertIn("sparse-checkout init --no-cone", log)
         self.assertIn("sparse-checkout set /pyproject.toml /MANIFEST.in /LICENSE /config.py /install /advanced /src", log)
         self.assertIn(f"checkout --detach {IMMUTABLE_TEST_COMMIT}", log)
@@ -5357,7 +5356,7 @@ exit 1
             root = Path(tmp)
             home = root / "Home"
             cache = root / "Cache"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             bin_dir = root / "bin"
             log_path = root / "commands.log"
             fake_git = bin_dir / "git"
@@ -5372,7 +5371,7 @@ exit 1
                     "zsh",
                     str(BOOTSTRAP),
                     "--source-url",
-                    "https://example.invalid/open-nova.git",
+                    "https://example.invalid/actanara.git",
                     "--ref",
                     IMMUTABLE_TEST_COMMIT,
                     "--cache-root",
@@ -5401,7 +5400,7 @@ exit 1
 
         self.assertEqual(result.returncode, 0, output)
         self.assertTrue(runtime_exists)
-        self.assertIn("git clone --filter=blob:none --sparse --no-checkout https://example.invalid/open-nova.git", log)
+        self.assertIn("git clone --filter=blob:none --sparse --no-checkout https://example.invalid/actanara.git", log)
         self.assertIn("sparse-checkout init --no-cone", log)
         self.assertIn("sparse-checkout set /pyproject.toml /MANIFEST.in /LICENSE /config.py /install /advanced /src", log)
         self.assertIn(f"checkout --detach {IMMUTABLE_TEST_COMMIT}", log)
@@ -5414,14 +5413,14 @@ exit 1
         self.assertIn("dependency_contract.py verify-marker", log)
         self.assertIn("onboarding runtime-apply", log)
         self.assertNotIn("--scheduler-register-apply", log)
-        self.assertIn("# >>> open-nova installer PATH >>>", profile_text)
+        self.assertIn("# >>> actanara installer PATH >>>", profile_text)
         self.assertIn('export PATH="$HOME/.local/bin:$PATH"', profile_text)
 
     def test_installer_shell_path_update_can_be_disabled(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             home = root / "Home"
-            runtime = home / ".open-nova"
+            runtime = home / ".actanara"
             cache = root / "Cache"
             bin_dir = root / "bin"
             log_path = root / "commands.log"
@@ -5437,7 +5436,7 @@ exit 1
                     "zsh",
                     str(BOOTSTRAP),
                     "--source-url",
-                    "https://example.invalid/open-nova.git",
+                    "https://example.invalid/actanara.git",
                     "--ref",
                     IMMUTABLE_TEST_COMMIT,
                     "--cache-root",

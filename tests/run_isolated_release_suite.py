@@ -24,12 +24,12 @@ DEFAULT_TIMEZONE = "Asia/Hong_Kong"
 REQUIRED_TEST_MODULES = ("fastapi", "uvicorn", "yaml", "croniter", "numpy")
 INHERITED_RUNTIME_ENV = (
     "DIARY_OUTPUT_DIR",
-    "NOVA_DATA_DB_PATH",
-    "NOVA_DATA_EXPORT_DIR",
-    "NOVA_INSTALL_REF",
-    "NOVA_INSTALL_RUNTIME",
-    "NOVA_INSTALL_SOURCE_ROOT",
-    "OPEN_NOVA_RUNTIME_ROOT",
+    "ACTANARA_DATA_DB_PATH",
+    "ACTANARA_DATA_EXPORT_DIR",
+    "ACTANARA_INSTALL_REF",
+    "ACTANARA_INSTALL_RUNTIME",
+    "ACTANARA_INSTALL_SOURCE_ROOT",
+    "ACTANARA_RUNTIME_ROOT",
     "TARGET_TIMEZONE",
     "TASK_DB_PATH",
     "TMP_WORKSPACE",
@@ -43,7 +43,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--reuse-current-interpreter",
         action="store_true",
-        help="Skip the disposable dev-test venv bootstrap; isolation of HOME/NOVA_HOME still applies.",
+        help="Skip the disposable dev-test venv bootstrap; isolation of HOME/ACTANARA_HOME still applies.",
     )
     parser.add_argument("--fixed-now", default=DEFAULT_FIXED_NOW, help="Fixed UTC instant for central business-clock helpers.")
     parser.add_argument("--timezone", default=DEFAULT_TIMEZONE, help="Process timezone; Runtime-specific tests may override it.")
@@ -53,7 +53,7 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _bootstrap_disposable_venv(args: argparse.Namespace) -> int:
-    with tempfile.TemporaryDirectory(prefix="open-nova-release-venv-") as raw_root:
+    with tempfile.TemporaryDirectory(prefix="actanara-release-venv-") as raw_root:
         root = Path(raw_root)
         build_source = root / "source"
         venv = root / "venv"
@@ -143,11 +143,11 @@ def _run_isolated(args: argparse.Namespace) -> int:
         raise ValueError("--fixed-now must include a UTC offset")
     fixed_utc = fixed_utc.astimezone(timezone.utc)
 
-    with tempfile.TemporaryDirectory(prefix="open-nova-release-runtime-") as raw_root:
+    with tempfile.TemporaryDirectory(prefix="actanara-release-runtime-") as raw_root:
         root = Path(raw_root)
         home = root / "Home"
-        nova_home = home / ".open-nova"
-        location_file = home / ".config" / "open-nova" / "location.json"
+        actanara_home = home / ".actanara"
+        location_file = home / ".config" / "actanara" / "location.json"
         fake_bin = root / "bin"
         fake_bin.mkdir(parents=True)
         home.mkdir(parents=True)
@@ -155,11 +155,11 @@ def _run_isolated(args: argparse.Namespace) -> int:
 
         isolated_env = {
             "HOME": str(home),
-            "NOVA_HOME": str(nova_home),
-            "NOVA_LOCATION_FILE": str(location_file),
-            "OPEN_NOVA_SECRET_BACKEND": "memory",
-            "OPEN_NOVA_RUN_REAL_LAUNCHD_TESTS": "0",
-            "NOVA_INSTALL_LAUNCHCTL": str(fake_bin / "launchctl"),
+            "ACTANARA_HOME": str(actanara_home),
+            "ACTANARA_LOCATION_FILE": str(location_file),
+            "ACTANARA_SECRET_BACKEND": "memory",
+            "ACTANARA_RUN_REAL_LAUNCHD_TESTS": "0",
+            "ACTANARA_INSTALL_LAUNCHCTL": str(fake_bin / "launchctl"),
             "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
             "PYTHONDONTWRITEBYTECODE": "1",
             "TZ": args.timezone,
@@ -187,7 +187,7 @@ def _run_isolated(args: argparse.Namespace) -> int:
         print(
             "ISOLATED_RELEASE_SUITE "
             f"python={sys.version.split()[0]} fixedNow={fixed_utc.isoformat()} "
-            f"timezone={args.timezone} runtime={nova_home} launchctl=fake",
+            f"timezone={args.timezone} runtime={actanara_home} launchctl=fake",
             flush=True,
         )
         with ExitStack() as stack:

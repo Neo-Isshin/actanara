@@ -20,7 +20,7 @@ from .reports import materialize_legacy_asset_projection
 from .snapshots import materialize_ai_assets_non_rag_snapshot
 from .time import business_today
 
-SQLITE_CACHE_REBUILD_CONFIRMATION = "REBUILD OPEN NOVA SQLITE CACHE"
+SQLITE_CACHE_REBUILD_CONFIRMATION = "REBUILD ACTANARA SQLITE CACHE"
 SQLITE_CACHE_REBUILD_TRIGGER = "operator-sqlite-cache-rebuild"
 
 

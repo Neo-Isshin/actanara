@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
-os.environ["OPEN_NOVA_SECRET_BACKEND"] = "memory"
+os.environ["ACTANARA_SECRET_BACKEND"] = "memory"
 
 from data_foundation.db import connect
 from data_foundation.paths import initialize_home
@@ -42,7 +42,7 @@ class PipelineRunsTests(unittest.TestCase):
     def test_daily_pipeline_records_successful_run_in_ledger(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "OpenNova", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             script = root / "step.py"
             script.write_text("print('ok')\n", encoding="utf-8")
 
@@ -64,7 +64,7 @@ class PipelineRunsTests(unittest.TestCase):
     def test_daily_pipeline_prints_compact_product_progress_without_child_logs(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "OpenNova", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             step_specs = (
                 ("0. Unified collection", "unified_source_collector.py"),
                 ("2. Narrative pass", "narrative_pass.py"),
@@ -103,7 +103,7 @@ class PipelineRunsTests(unittest.TestCase):
         text = output.getvalue()
         self.assertTrue(result.success)
         for expected in (
-            "Open Nova · Daily diary · 2026-06-22",
+            "Actanara · Daily diary · 2026-06-22",
             "[OK] Collect activity",
             "[OK] Prepare diary",
             "[OK] Generate diary · Daily story",
@@ -132,7 +132,7 @@ class PipelineRunsTests(unittest.TestCase):
     def test_daily_pipeline_failure_is_concise_and_does_not_echo_stderr(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "OpenNova", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             script = root / "unified_source_collector.py"
             script.write_text("# fixture\n", encoding="utf-8")
 
@@ -165,7 +165,7 @@ class PipelineRunsTests(unittest.TestCase):
     def test_daily_pipeline_records_failed_step_and_failure_class(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "OpenNova", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             script = root / "step.py"
             script.write_text("", encoding="utf-8")
 
@@ -187,7 +187,7 @@ class PipelineRunsTests(unittest.TestCase):
 
     def test_reconcile_blocks_when_missing_dates_exceed_auto_limit(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "OpenNova", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             now = datetime(2026, 6, 29, 9, 0, tzinfo=ZoneInfo("UTC"))
 
             result = reconcile_pipeline_schedule(paths, now=now, apply=True, lookback_days=5, auto_limit_days=3)
@@ -202,7 +202,7 @@ class PipelineRunsTests(unittest.TestCase):
 
     def test_reconcile_auto_runs_when_missing_dates_are_within_limit(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "OpenNova", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             now = datetime(2026, 6, 24, 9, 0, tzinfo=ZoneInfo("UTC"))
             calls = []
 
@@ -226,7 +226,7 @@ class PipelineRunsTests(unittest.TestCase):
 
     def test_reconcile_plan_treats_completed_ledger_day_as_present(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "OpenNova", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             run_id = create_pipeline_run(paths, business_date="2026-06-22", run_kind="daily", requested_by="scheduler")
             finish_result = finish_pipeline_run(paths, run_id, status="completed")
             now = datetime(2026, 6, 24, 9, 0, tzinfo=ZoneInfo("UTC"))
@@ -238,7 +238,7 @@ class PipelineRunsTests(unittest.TestCase):
 
     def test_terminal_compare_and_set_does_not_overwrite_existing_terminal_status(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "OpenNova", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             run_id = create_pipeline_run(paths, business_date="2026-06-22", run_kind="daily", requested_by="scheduler")
             finish_pipeline_run(paths, run_id, status="failed", failure_class="cancelled")
 
@@ -256,7 +256,7 @@ class PipelineRunsTests(unittest.TestCase):
 
     def test_migration_creates_pipeline_runs_table(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "OpenNova", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             create_pipeline_run(paths, business_date="2026-06-22", run_kind="daily", requested_by="scheduler")
             with connect(paths, read_only=True) as connection:
                 row = connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='pipeline_runs'").fetchone()

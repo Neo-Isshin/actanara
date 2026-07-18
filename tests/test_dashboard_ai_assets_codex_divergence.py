@@ -49,7 +49,7 @@ class DashboardAiAssetsCodexDivergenceTests(unittest.TestCase):
             self.assertEqual(entries[0]["reasoning"], 4)
             self.assertEqual(entries[0]["legacyInputWithCache"], 13)
             self.assertEqual(entries[0]["legacyOutputWithReasoning"], 6)
-            self.assertEqual(entries[0]["usageGroup"], "open-nova")
+            self.assertEqual(entries[0]["usageGroup"], "actanara")
 
             self.assertEqual(aggregate["allTimeTokens"], 15)
             self.assertEqual(models[0]["tokens"], 15)
@@ -139,7 +139,7 @@ class DashboardAiAssetsCodexDivergenceTests(unittest.TestCase):
 
     def test_workspace_usage_hides_container_and_tool_buckets(self):
         entries = []
-        for group in ("open-nova", "DEV", "home", "SSD", "unknown", "Codex", ".codex"):
+        for group in ("actanara", "DEV", "home", "SSD", "unknown", "Codex", ".codex"):
             entries.append({
                 "input": 20_000_000,
                 "output": 1,
@@ -150,12 +150,12 @@ class DashboardAiAssetsCodexDivergenceTests(unittest.TestCase):
 
         workspaces = ai_assets._aggregate_by_workspace({"Codex": entries})
 
-        self.assertEqual([item["name"] for item in workspaces], ["open-nova"])
+        self.assertEqual([item["name"] for item in workspaces], ["actanara"])
 
     def test_ai_assets_codex_scan_uses_configured_external_tool_path(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             sessions = root / "configured-tools" / "codex" / "sessions"
             sessions.mkdir(parents=True)
             fixture = sessions / "rollout-configured.jsonl"
@@ -163,23 +163,23 @@ class DashboardAiAssetsCodexDivergenceTests(unittest.TestCase):
             write_settings({"externalTools": {"codex": {"sessionsRoot": str(sessions)}}}, paths)
 
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch.object(ai_assets, "WORKSPACE_USAGE_MIN_TOKENS", 0),
             ):
                 entries, session_count = ai_assets._scan_all_codex()
 
         self.assertEqual(session_count, 1)
         self.assertEqual(len(entries), 1)
-        self.assertEqual(entries[0]["usageGroup"], "open-nova")
+        self.assertEqual(entries[0]["usageGroup"], "actanara")
 
     def test_codex_runtime_source_cwd_uses_pyproject_name_not_source_directory(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             sessions = root / ".codex" / "sessions"
             sessions.mkdir(parents=True)
-            runtime_source = root / ".open-nova" / "app" / "source"
+            runtime_source = root / ".actanara" / "app" / "source"
             runtime_source.mkdir(parents=True)
-            (runtime_source / "pyproject.toml").write_text('[project]\nname = "open-nova"\n', encoding="utf-8")
+            (runtime_source / "pyproject.toml").write_text('[project]\nname = "actanara"\n', encoding="utf-8")
             fixture = sessions / "rollout-runtime-source.jsonl"
             _write_codex_fixture(fixture, cwd=str(runtime_source))
 
@@ -190,7 +190,7 @@ class DashboardAiAssetsCodexDivergenceTests(unittest.TestCase):
                 entries, session_count = ai_assets._scan_all_codex()
 
         self.assertEqual(session_count, 1)
-        self.assertEqual(entries[0]["usageGroup"], "open-nova")
+        self.assertEqual(entries[0]["usageGroup"], "actanara")
 
     def test_hermes_scan_preserves_session_model(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -257,7 +257,7 @@ class DashboardAiAssetsCodexDivergenceTests(unittest.TestCase):
                     "output": 1,
                     "cacheRead": 0,
                     "message_count": 1,
-                    "usageGroup": "open-nova",
+                    "usageGroup": "actanara",
                     "usageGroupSource": "codex-transcript-path",
                     "usageGroupConfidence": "high",
                 },
@@ -268,14 +268,14 @@ class DashboardAiAssetsCodexDivergenceTests(unittest.TestCase):
             rows = ai_assets._aggregate_by_workspace(entries)
             qa = ai_assets._workspace_attribution_qa(entries, rows)
 
-        self.assertEqual([row["name"] for row in rows], ["open-nova"])
+        self.assertEqual([row["name"] for row in rows], ["actanara"])
         self.assertEqual(qa["status"], "attention")
         self.assertEqual(qa["hiddenTokens"], 50_000_001)
         self.assertEqual(qa["lowConfidenceTokens"], 50_000_001)
         self.assertEqual(qa["codexTranscriptInferredTokens"], 20_000_001)
         self.assertEqual(qa["findings"][0]["id"], "hidden-workspace-usage")
 
-    def test_workspace_attribution_qa_reports_legacy_alias_merge(self):
+    def test_workspace_attribution_qa_does_not_report_alias_merge_for_canonical_name(self):
         entries = {
             "Codex": [
                 {
@@ -283,7 +283,7 @@ class DashboardAiAssetsCodexDivergenceTests(unittest.TestCase):
                     "output": 0,
                     "cacheRead": 0,
                     "message_count": 1,
-                    "usageGroup": "nova-diary-v2",
+                    "usageGroup": "actanara",
                     "usageGroupSource": "cwd",
                     "usageGroupConfidence": "high",
                 },
@@ -292,7 +292,7 @@ class DashboardAiAssetsCodexDivergenceTests(unittest.TestCase):
                     "output": 0,
                     "cacheRead": 0,
                     "message_count": 1,
-                    "usageGroup": "open-nova",
+                    "usageGroup": "actanara",
                     "usageGroupSource": "cwd",
                     "usageGroupConfidence": "high",
                 },
@@ -304,12 +304,12 @@ class DashboardAiAssetsCodexDivergenceTests(unittest.TestCase):
             qa = ai_assets._workspace_attribution_qa(entries, rows)
 
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["name"], "open-nova")
+        self.assertEqual(rows[0]["name"], "actanara")
         self.assertEqual(rows[0]["tokens"], 20_000_000)
         self.assertEqual(qa["status"], "ready")
-        self.assertEqual(qa["aliasMergedTokens"], 12_000_000)
-        self.assertIn("canonical-alias-merged", {item["id"] for item in qa["findings"]})
-        self.assertIn("split-workspace-names", {item["id"] for item in qa["findings"]})
+        self.assertEqual(qa["aliasMergedTokens"], 0)
+        self.assertNotIn("canonical-alias-merged", {item["id"] for item in qa["findings"]})
+        self.assertNotIn("split-workspace-names", {item["id"] for item in qa["findings"]})
 
     def test_claude_parser_infers_workspace_from_transcript_when_project_dir_is_container(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -388,9 +388,9 @@ class DashboardAiAssetsCodexDivergenceTests(unittest.TestCase):
     def test_gemini_parser_infers_workspace_from_transcript_when_label_is_container(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            project = root / "Volumes" / "Example" / "work" / "open-nova"
+            project = root / "Volumes" / "Example" / "work" / "actanara"
             project.mkdir(parents=True)
-            (project / "pyproject.toml").write_text('[project]\nname = "open-nova"\n', encoding="utf-8")
+            (project / "pyproject.toml").write_text('[project]\nname = "actanara"\n', encoding="utf-8")
             session = root / ".gemini" / "tmp" / "ssd" / "chats" / "session-test.jsonl"
             session.parent.mkdir(parents=True)
             session.write_text(
@@ -410,7 +410,7 @@ class DashboardAiAssetsCodexDivergenceTests(unittest.TestCase):
             entries = ai_assets._parse_gemini_usage_file(session, "Example")
 
         self.assertEqual(len(entries), 1)
-        self.assertEqual(entries[0]["usageGroup"], "open-nova")
+        self.assertEqual(entries[0]["usageGroup"], "actanara")
         self.assertEqual(entries[0]["usageGroupSource"], "gemini-transcript-path")
         self.assertEqual(entries[0]["usageGroupConfidence"], "high")
 
@@ -429,7 +429,7 @@ class DashboardAiAssetsCodexDivergenceTests(unittest.TestCase):
                             "cacheRead": 3,
                             "timestamp": "2026-05-19T04:00:00Z",
                             "model": "gpt-5.5",
-                            "usageGroup": "open-nova",
+                            "usageGroup": "actanara",
                         }
                     ]
                 },
@@ -442,7 +442,7 @@ class DashboardAiAssetsCodexDivergenceTests(unittest.TestCase):
         self.assertEqual(payload["models"][0]["name"], "gpt-5.5")
 
 
-def _write_codex_fixture(path: Path, *, include_reported_total: bool = False, cwd: str = "/workspace/example/open-nova") -> None:
+def _write_codex_fixture(path: Path, *, include_reported_total: bool = False, cwd: str = "/workspace/example/actanara") -> None:
     usage = {
         "input_tokens": 10,
         "output_tokens": 2,

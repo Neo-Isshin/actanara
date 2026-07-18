@@ -242,7 +242,7 @@ def plan_diary_layout_migration(root: Path) -> dict:
 
 
 def apply_diary_layout_migration(root: Path, *, confirmation_text: str) -> dict:
-    required = "MIGRATE OPEN NOVA DIARY LAYOUT"
+    required = "MIGRATE ACTANARA DIARY LAYOUT"
     if confirmation_text != required:
         raise ValueError(f"confirmationText must be exactly: {required}")
     plan = plan_diary_layout_migration(root)

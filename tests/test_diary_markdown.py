@@ -256,7 +256,7 @@ None
 """,
                 encoding="utf-8",
             )
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
             migrate(paths)
 
             first = materialize_diary_markdown_day(paths, date(2026, 5, 19), source_run_id=None)
@@ -295,7 +295,7 @@ None
             narrative.write_text("# 日记\n\n## 今日概要\nready\n", encoding="utf-8")
             technical.write_text("# 技术\n\n## 进展\nfirst\n", encoding="utf-8")
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -358,7 +358,7 @@ None
             source = old_day / "技术进展-260519.md"
             source.write_text("# 技术\n\n## 进展\nmove me\n", encoding="utf-8")
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -393,7 +393,7 @@ None
             narrative = preferred / "日记-260519.md"
             narrative.write_text("# preferred\n\n## 今日概要\nfirst\n", encoding="utf-8")
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -431,7 +431,7 @@ None
             technical.write_text("# 技术\n\n## 进展\nfirst\n", encoding="utf-8")
             learning.write_text("# 学习\n\n## 教训\nfirst\n", encoding="utf-8")
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -470,7 +470,7 @@ None
             day.mkdir(parents=True)
             (day / "日记-260519.md").write_text("# 日记\n\n## 今日概要\nready\n", encoding="utf-8")
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -500,7 +500,7 @@ None
             narrative = day / "日记-260519.md"
             narrative.write_text("# 日记\n\n## 今日概要\nfirst\n", encoding="utf-8")
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -538,7 +538,7 @@ None
             narrative = day / "日记-260519.md"
             narrative.write_text("# 日记\n\n## 今日概要\nready\n", encoding="utf-8")
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -573,7 +573,7 @@ None
             narrative.write_text("# 日记\n\n## 今日概要\nfirst\n", encoding="utf-8")
             technical.write_text("# 技术\n\n## 进展\nfirst\n", encoding="utf-8")
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -629,7 +629,7 @@ None
             ):
                 (day / filename).write_text(f"# {title}\n\n## Body\nready\n", encoding="utf-8")
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -683,7 +683,7 @@ None
                 encoding="utf-8",
             )
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -706,7 +706,7 @@ None
             day = diary_day_dir(diary_root, date(2026, 5, 19))
             day.mkdir(parents=True)
             (day / "日记-260519.md").write_text("# 2026年05月19日 日记\n\n## 今日概要\n新布局\n", encoding="utf-8")
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
             migrate(paths)
 
             result = materialize_diary_markdown_day(paths, date(2026, 5, 19), source_run_id=None)
@@ -734,7 +734,7 @@ None
                 encoding="utf-8",
             )
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=legacy).home,
+                initialize_home(root / "Actanara", legacy_diary_root=legacy).home,
                 generated_diary_root=generated,
             )
             migrate(paths)
@@ -818,7 +818,7 @@ None
 """,
                 encoding="utf-8",
             )
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
             migrate(paths)
             start = date(2026, 5, 19)
             end = date(2026, 5, 20)
@@ -856,14 +856,14 @@ None
   - 推送记录：2 个 commit 成功同步。
   - 质量提示：建议发布前回归测试。
 
-* **open-nova 前端架构解构**：gemini-cli 完成 Dashboard 前端拆分。
+* **actanara 前端架构解构**：gemini-cli 完成 Dashboard 前端拆分。
   - 提取规模：约 3,500 行代码。
   - 文件结构：新增 CSS 与 JS 文件。
   - 待验证项：确认静态文件服务路由。
 """,
                 encoding="utf-8",
             )
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
             migrate(paths)
             start = date(2026, 5, 19)
             materialize_diary_markdown_period_documents(paths, start, start, source_run_id=None)
@@ -912,7 +912,7 @@ None
 """,
                 encoding="utf-8",
             )
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
             migrate(paths)
             start = date(2026, 5, 19)
             end = date(2026, 5, 19)
@@ -971,7 +971,7 @@ Keep English prompts isolated.
                 encoding="utf-8",
             )
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -1019,7 +1019,7 @@ Keep English prompts isolated.
 """,
                 encoding="utf-8",
             )
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
             migrate(paths)
             start = date(2026, 5, 19)
             end = date(2026, 5, 19)
@@ -1030,7 +1030,7 @@ Keep English prompts isolated.
                 {
                     "kpi": {"totalTokens": 1200, "totalMessages": 12},
                     "dailyTokenSeries": [{"date": "2026-05-19", "tokens": 1200, "messages": 12}],
-                    "workspaceUsage": [{"name": "open-nova", "tokens": 1200, "messages": 12}],
+                    "workspaceUsage": [{"name": "actanara", "tokens": 1200, "messages": 12}],
                     "models": [{"name": "MiniMax-M3", "tokens": 1200}],
                     "assetHourlyHeatmap": {"dates": ["2026-05-19"], "periods": [{"hour": 23, "tokens": 300}]},
                     "taskStats": {"completed": 3, "inProgress": 1},
@@ -1053,7 +1053,7 @@ Keep English prompts isolated.
 
             def fake_generator(context):
                 contexts.append(context)
-                return "## LLM 周报\n\n- open-nova 本周投入最高。"
+                return "## LLM 周报\n\n- actanara 本周投入最高。"
 
             materialize_period_summary_snapshot(paths, start, end, source_run_id=None, generator=fake_generator)
             projection = read_period_projection(
@@ -1065,16 +1065,16 @@ Keep English prompts isolated.
 
             self.assertEqual(contexts[0]["kpi"]["totalTokens"], 1200)
             self.assertEqual(contexts[0]["previousKpi"]["totalTokens"], 800)
-            self.assertEqual(contexts[0]["currentPeriod"]["workspaceUsage"][0]["name"], "open-nova")
+            self.assertEqual(contexts[0]["currentPeriod"]["workspaceUsage"][0]["name"], "actanara")
             self.assertEqual(contexts[0]["currentPeriod"]["models"][0]["name"], "MiniMax-M3")
             self.assertEqual(contexts[0]["currentPeriod"]["topics"][0]["title"], "Runtime path hardening")
             self.assertEqual(contexts[0]["previousPeriod"]["kpi"]["totalTokens"], 800)
             self.assertEqual(contexts[0]["previousPeriod"]["period"]["startDate"], "2026-05-18")
             self.assertEqual(projection["metrics"]["generation"]["mode"], "llm")
-            self.assertEqual(projection["metrics"]["summary"]["lead"], "open-nova 本周投入最高。")
+            self.assertEqual(projection["metrics"]["summary"]["lead"], "actanara 本周投入最高。")
             self.assertEqual(projection["metrics"]["summary"]["highFrequencyTopics"], [])
             self.assertEqual(projection["metrics"]["highFrequencyTopics"], [])
-            self.assertEqual((diary_root / "diary-2026" / "diary-2026-05" / "summary-2026-W21-周报.md").read_text(encoding="utf-8"), "## LLM 周报\n\n- open-nova 本周投入最高。\n")
+            self.assertEqual((diary_root / "diary-2026" / "diary-2026-05" / "summary-2026-W21-周报.md").read_text(encoding="utf-8"), "## LLM 周报\n\n- actanara 本周投入最高。\n")
 
     def test_materialize_period_summary_snapshot_stores_llm_topics_from_structured_result(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1092,7 +1092,7 @@ Keep English prompts isolated.
 """,
                 encoding="utf-8",
             )
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
             migrate(paths)
             start = date(2026, 5, 19)
             end = date(2026, 5, 19)
@@ -1138,7 +1138,7 @@ Keep English prompts isolated.
 """,
                 encoding="utf-8",
             )
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
             migrate(paths)
             write_period_projection(
                 paths,
@@ -1189,8 +1189,8 @@ Keep English prompts isolated.
             )
 
         self.assertEqual(result, "## 本周期总览\n\n- ok")
-        self.assertNotIn("Open Nova", captured["system"])
-        self.assertNotIn("Open Nova", captured["prompt"])
+        self.assertNotIn("Actanara", captured["system"])
+        self.assertNotIn("Actanara", captured["prompt"])
         self.assertIn("currentPeriod 是本周期数据", captured["prompt"])
         self.assertIn("previousPeriod 是上周或上月数据", captured["prompt"])
         self.assertIn("highFrequencyTopics", captured["prompt"])
@@ -1209,7 +1209,7 @@ Keep English prompts isolated.
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"pipeline": {"languageProfile": "en", "englishEnabled": True}}, paths)
             with (
                 patch(

@@ -30,7 +30,7 @@ class SqliteCacheRebuildTests(unittest.TestCase):
             day = diary / "diary-2026-06-07"
             day.mkdir(parents=True)
             (day / "日记-260607.md").write_text("# 日记\n", encoding="utf-8")
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary).home, generated_diary_root=diary, legacy_diary_root=diary)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary).home, generated_diary_root=diary, legacy_diary_root=diary)
 
             plan = plan_sqlite_cache_rebuild(paths)
 
@@ -47,7 +47,7 @@ class SqliteCacheRebuildTests(unittest.TestCase):
             day = diary / "diary-2026-06-07"
             day.mkdir(parents=True)
             (day / "日记-260607.md").write_text("# 日记\n", encoding="utf-8")
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary).home, generated_diary_root=diary, legacy_diary_root=diary)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary).home, generated_diary_root=diary, legacy_diary_root=diary)
 
             with patch("data_foundation.sqlite_cache_rebuild.business_today", return_value=date(2026, 6, 9)):
                 plan = plan_sqlite_cache_rebuild(paths)
@@ -62,7 +62,7 @@ class SqliteCacheRebuildTests(unittest.TestCase):
             day = diary / "diary-2026-06-07"
             day.mkdir(parents=True)
             (day / "日记-260607.md").write_text("# 2026-06-07\n\n## 今日概要\n新缓存\n", encoding="utf-8")
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary).home, generated_diary_root=diary, legacy_diary_root=diary)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary).home, generated_diary_root=diary, legacy_diary_root=diary)
             migrate(paths)
             old_run = begin_ingestion_run(paths, trigger_type="old-cache", business_date=date(2026, 5, 14))
             write_dashboard_snapshot(paths, {"diary": {"count": 1}}, source_run_id=old_run)
@@ -89,8 +89,8 @@ class SqliteCacheRebuildTests(unittest.TestCase):
 
             self.assertEqual(result["status"], "completed")
             self.assertTrue(Path(result["backup"]["backupDir"]).exists())
-            self.assertTrue((Path(result["backup"]["backupDir"]) / "nova_data.sqlite3").exists())
-            self.assertGreaterEqual((Path(result["backup"]["backupDir"]) / "nova_data.sqlite3").stat().st_size, old_size)
+            self.assertTrue((Path(result["backup"]["backupDir"]) / "actanara_data.sqlite3").exists())
+            self.assertGreaterEqual((Path(result["backup"]["backupDir"]) / "actanara_data.sqlite3").stat().st_size, old_size)
             with connect(paths, read_only=True) as connection:
                 triggers = [row["trigger_type"] for row in connection.execute("SELECT trigger_type FROM ingestion_runs ORDER BY id")]
                 snapshot = connection.execute("SELECT payload_json FROM dashboard_snapshots WHERE snapshot_key = 'ai-assets:latest:non-rag'").fetchone()
@@ -108,7 +108,7 @@ class SqliteCacheRebuildTests(unittest.TestCase):
             day.mkdir(parents=True)
             (day / "日记-260607.md").write_text("# 2026-06-07\n\n## 今日概要\n恢复测试\n", encoding="utf-8")
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary).home,
                 generated_diary_root=diary,
                 legacy_diary_root=diary,
             )
@@ -148,7 +148,7 @@ class SqliteCacheRebuildTests(unittest.TestCase):
 
     def test_rebuild_requires_exact_confirmation_text(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             with self.assertRaises(ValueError):
                 rebuild_sqlite_cache(paths, confirmation_text="wrong")
 

@@ -1,4 +1,4 @@
-"""Runtime settings stored under the selected NOVA_HOME."""
+"""Runtime settings stored under the selected ACTANARA_HOME."""
 
 from __future__ import annotations
 
@@ -118,9 +118,9 @@ SETTINGS_AUTHORITY_GROUPS = (
         "manualDefaultPolicy": "checked-in defaults seed product identity and locale; operator edits persist in settings",
         "fields": (
             {"path": "general.appName", "defaultSource": "default_settings"},
-            {"path": "general.environment", "env": "NOVA_ENVIRONMENT", "defaultSource": "default_settings"},
+            {"path": "general.environment", "env": "ACTANARA_ENVIRONMENT", "defaultSource": "default_settings"},
             {"path": "general.timezone", "env": "TARGET_TIMEZONE", "defaultSource": "system timezone detection; config.TARGET_TIMEZONE fallback"},
-            {"path": "general.locale", "env": "NOVA_LOCALE", "defaultSource": "default_settings"},
+            {"path": "general.locale", "env": "ACTANARA_LOCALE", "defaultSource": "default_settings"},
             {"path": "general.workspaceRoot", "env": "WORKSPACE_DIR", "defaultSource": "config.WORKSPACE_DIR"},
             {"path": "general.tmpWorkspace", "env": "TMP_WORKSPACE", "defaultSource": "config.TMP_WORKSPACE"},
         ),
@@ -131,9 +131,9 @@ SETTINGS_AUTHORITY_GROUPS = (
         "writableVia": "runtime path validate/select/import-legacy controls",
         "manualDefaultPolicy": "selected runtime root is explicit operator state; derived paths follow the selected root",
         "fields": (
-            {"path": "paths.runtime.novaHome", "env": "NOVA_HOME", "defaultSource": "config.NOVA_HOME"},
-            {"path": "paths.runtime.database", "env": "NOVA_DATA_DB_PATH", "defaultSource": "$NOVA_HOME/data/nova_data.sqlite3"},
-            {"path": "paths.runtime.snapshots", "env": "NOVA_DATA_EXPORT_DIR", "defaultSource": "$NOVA_HOME/snapshots"},
+            {"path": "paths.runtime.actanaraHome", "env": "ACTANARA_HOME", "defaultSource": "config.ACTANARA_HOME"},
+            {"path": "paths.runtime.database", "env": "ACTANARA_DATA_DB_PATH", "defaultSource": "$ACTANARA_HOME/data/actanara_data.sqlite3"},
+            {"path": "paths.runtime.snapshots", "env": "ACTANARA_DATA_EXPORT_DIR", "defaultSource": "$ACTANARA_HOME/snapshots"},
             {"path": "paths.diary.legacyDiaryRoot", "env": "DIARY_OUTPUT_DIR", "defaultSource": "config.DIARY_OUTPUT_DIR"},
             {"path": "paths.install.workspace", "env": "WORKSPACE_DIR", "defaultSource": "config.WORKSPACE_DIR"},
             {"path": "paths.logsCacheTmp.tmp", "env": "TMP_WORKSPACE", "defaultSource": "config.TMP_WORKSPACE"},
@@ -202,14 +202,14 @@ SETTINGS_AUTHORITY_GROUPS = (
             {"path": "pipeline.englishEnabled", "defaultSource": "false; explicit gate before English diary pass execution", "writableVia": "installer/internal bootstrap only"},
             {"path": "pipeline.diarySchemaVersion", "defaultSource": "language-profile specific diary projection schema", "writableVia": "installer/internal bootstrap only"},
             {"path": "pipeline.promptPayloadProfile", "defaultSource": "language-profile specific prompt fixture namespace", "writableVia": "installer/internal bootstrap only"},
-            {"path": "pipeline.pythonExecutable", "env": "NOVA_PIPELINE_PYTHON", "defaultSource": "current interpreter or python3"},
+            {"path": "pipeline.pythonExecutable", "env": "ACTANARA_PIPELINE_PYTHON", "defaultSource": "current interpreter or python3"},
             {"path": "pipeline.workingDirectory", "env": "WORKSPACE_DIR", "defaultSource": "config.WORKSPACE_DIR"},
             {"path": "pipeline.dailyDateArgument", "defaultSource": "YYYY-MM-DD optional positional argument"},
-            {"path": "pipeline.skipFinalRagEnv", "env": "NOVA_PIPELINE_SKIP_FINAL_RAG", "defaultSource": "unset"},
+            {"path": "pipeline.skipFinalRagEnv", "env": "ACTANARA_PIPELINE_SKIP_FINAL_RAG", "defaultSource": "unset"},
             {"path": "pipeline.thinkingMode", "env": "LLM_THINKING_MODE", "defaultSource": "off"},
-            {"path": "pipeline.stepTimeoutSeconds", "env": "NOVA_PIPELINE_STEP_TIMEOUT_SECONDS", "defaultSource": "default_settings"},
+            {"path": "pipeline.stepTimeoutSeconds", "env": "ACTANARA_PIPELINE_STEP_TIMEOUT_SECONDS", "defaultSource": "default_settings"},
             {"path": "pipeline.stepTimeouts", "defaultSource": "default_settings"},
-            {"path": "pipeline.totalWatchdogSeconds", "env": "NOVA_PIPELINE_TOTAL_WATCHDOG_SECONDS", "defaultSource": "default_settings"},
+            {"path": "pipeline.totalWatchdogSeconds", "env": "ACTANARA_PIPELINE_TOTAL_WATCHDOG_SECONDS", "defaultSource": "default_settings"},
         ),
     },
     {
@@ -218,17 +218,17 @@ SETTINGS_AUTHORITY_GROUPS = (
         "writableVia": "operator settings API; launch scripts may use env as process-local overrides",
         "manualDefaultPolicy": "common local Dashboard defaults seed new homes; operator edits persist in settings",
         "fields": (
-            {"path": "dashboard.projectRoot", "env": "NOVA_DASHBOARD_PROJECT_ROOT", "defaultSource": "config.WORKSPACE_DIR"},
-            {"path": "dashboard.pythonExecutable", "env": "NOVA_DASHBOARD_PYTHON", "defaultSource": "default_settings"},
+            {"path": "dashboard.projectRoot", "env": "ACTANARA_DASHBOARD_PROJECT_ROOT", "defaultSource": "config.WORKSPACE_DIR"},
+            {"path": "dashboard.pythonExecutable", "env": "ACTANARA_DASHBOARD_PYTHON", "defaultSource": "default_settings"},
             {"path": "dashboard.appDir", "defaultSource": "$WORKSPACE_DIR/src/dashboard"},
-            {"path": "dashboard.host", "env": "NOVA_DASHBOARD_HOST", "defaultSource": "127.0.0.1"},
-            {"path": "dashboard.port", "env": "NOVA_DASHBOARD_PORT", "defaultSource": "3036"},
+            {"path": "dashboard.host", "env": "ACTANARA_DASHBOARD_HOST", "defaultSource": "127.0.0.1"},
+            {"path": "dashboard.port", "env": "ACTANARA_DASHBOARD_PORT", "defaultSource": "3036"},
             {"path": "dashboard.publicBaseUrl", "defaultSource": "http://127.0.0.1:${dashboard.port}"},
             {"path": "dashboard.allowedOrigins", "defaultSource": "[]; add explicit remote/nginx browser origins"},
             {"path": "dashboard.healthPath", "defaultSource": "/health"},
-            {"path": "dashboard.logsDir", "defaultSource": "~/Library/Logs/OpenNova"},
-            {"path": "dashboard.serviceLabel", "defaultSource": "com.open-nova.dashboard"},
-            {"path": "dashboard.watchdogLabel", "defaultSource": "com.open-nova.dashboard.watchdog"},
+            {"path": "dashboard.logsDir", "defaultSource": "~/Library/Logs/Actanara"},
+            {"path": "dashboard.serviceLabel", "defaultSource": "com.actanara.dashboard"},
+            {"path": "dashboard.watchdogLabel", "defaultSource": "com.actanara.dashboard.watchdog"},
         ),
     },
     {
@@ -256,7 +256,7 @@ SETTINGS_AUTHORITY_GROUPS = (
             {"path": "rag.mode", "diagnosticEnv": "NOVA_RAG_MODE", "defaultSource": "default_settings"},
             {"path": "rag.languageProfile", "diagnosticEnv": "NOVA_RAG_LANGUAGE_PROFILE", "defaultSource": "default_settings"},
             {"path": "rag.legacy.indexPath", "diagnosticEnv": "NOVA_RAG_LEGACY_INDEX", "defaultSource": "paths.rag.legacyRagIndex"},
-            {"path": "rag.v2.storePath", "diagnosticEnv": "NOVA_RAG_V2_STORE", "defaultSource": "$NOVA_HOME/reserved/rag/v2"},
+            {"path": "rag.v2.storePath", "diagnosticEnv": "NOVA_RAG_V2_STORE", "defaultSource": "$ACTANARA_HOME/reserved/rag/v2"},
             {"path": "rag.embedding.mode", "diagnosticEnv": "NOVA_RAG_EMBEDDING_PROVIDER", "defaultSource": "default_settings"},
             {"path": "rag.embedding.providerId", "diagnosticEnv": "NOVA_RAG_EMBEDDING_PROVIDER_ID", "defaultSource": "default_settings"},
             {"path": "rag.embedding.model", "diagnosticEnv": "NOVA_RAG_EMBEDDING_MODEL", "defaultSource": "default_settings"},
@@ -377,7 +377,7 @@ def default_settings(paths: RuntimePaths | None = None) -> dict:
         "schemaVersion": SETTINGS_SCHEMA_VERSION,
         "updatedAt": _now_iso(),
         "general": {
-            "appName": "Open Nova",
+            "appName": "Actanara",
             "environment": "local",
             "timezone": default_timezone,
             "locale": "zh-CN",
@@ -397,7 +397,7 @@ def default_settings(paths: RuntimePaths | None = None) -> dict:
             },
             "systemTimer": {
                 "provider": "launchd",
-                "label": "open-nova.daily",
+                "label": "actanara.daily",
                 "registered": False,
                 "registrationManagedBy": "manual",
             },
@@ -408,7 +408,7 @@ def default_settings(paths: RuntimePaths | None = None) -> dict:
                 "dashboardApp": str(workspace / "src" / "dashboard"),
             },
             "runtime": {
-                "novaHome": str(paths.home),
+                "actanaraHome": str(paths.home),
                 "database": str(paths.db_path),
                 "snapshots": str(paths.snapshots_dir),
                 "state": str(paths.state_dir),
@@ -507,7 +507,7 @@ def default_settings(paths: RuntimePaths | None = None) -> dict:
             "pythonExecutable": "python3",
             "workingDirectory": str(workspace),
             "dailyDateArgument": "YYYY-MM-DD",
-            "skipFinalRagEnv": "NOVA_PIPELINE_SKIP_FINAL_RAG",
+            "skipFinalRagEnv": "ACTANARA_PIPELINE_SKIP_FINAL_RAG",
             "thinkingMode": "off",
             "stepTimeoutSeconds": 1800,
             "stepTimeouts": {
@@ -527,9 +527,9 @@ def default_settings(paths: RuntimePaths | None = None) -> dict:
             "publicBaseUrl": "",
             "allowedOrigins": [],
             "healthPath": "/health",
-            "logsDir": str(Path.home() / "Library" / "Logs" / "OpenNova"),
-            "serviceLabel": "com.open-nova.dashboard",
-            "watchdogLabel": "com.open-nova.dashboard.watchdog",
+            "logsDir": str(Path.home() / "Library" / "Logs" / "Actanara"),
+            "serviceLabel": "com.actanara.dashboard",
+            "watchdogLabel": "com.actanara.dashboard.watchdog",
         },
         "externalTools": default_external_tool_settings(),
         "llmProvider": default_llm_provider_settings(),
@@ -538,9 +538,9 @@ def default_settings(paths: RuntimePaths | None = None) -> dict:
             "githubUrl": "",
             "i18n": "todo-protected-prompt-review-required",
             "cliCommands": [
-                "open-nova settings show",
-                "open-nova settings scheduler status",
-                "open-nova llm-provider show",
+                "actanara settings show",
+                "actanara settings scheduler status",
+                "actanara llm-provider show",
             ],
         },
     }
@@ -721,7 +721,7 @@ def _settings_secret_refs(settings: dict[str, Any]) -> dict[tuple[str, str, str]
     for ref in refs:
         normalized = {
             "backend": str(ref.get("backend") or ""),
-            "service": str(ref.get("service") or "open-nova"),
+            "service": str(ref.get("service") or "actanara"),
             "account": str(ref.get("account") or ""),
         }
         resource_id = (normalized["backend"], normalized["service"], normalized["account"])
@@ -1077,7 +1077,7 @@ def normalize_rag_settings_update(update: Any) -> dict:
     elif isinstance(secret_ref, dict):
         allowed = {
             "backend": str(secret_ref.get("backend") or "").strip(),
-            "service": str(secret_ref.get("service") or "open-nova").strip(),
+            "service": str(secret_ref.get("service") or "actanara").strip(),
             "account": str(secret_ref.get("account") or "").strip(),
         }
         if not allowed["backend"] or not allowed["account"]:
@@ -1264,8 +1264,8 @@ def _validate_paths_update(update: Any) -> None:
         if not isinstance(values, dict):
             raise ValueError(f"paths.{group} must be an object")
         for key, value in values.items():
-            if group == "runtime" and key == "novaHome":
-                raise ValueError("paths.runtime.novaHome is managed by the dedicated runtime path API")
+            if group == "runtime" and key == "actanaraHome":
+                raise ValueError("paths.runtime.actanaraHome is managed by the dedicated runtime path API")
             _validate_path_string(f"paths.{group}.{key}", value)
 
 
@@ -1554,7 +1554,7 @@ def _migrate_provider_secret_ref(
     target_ref = (
         {
             "backend": default_target_ref["backend"],
-            "service": str(secret_ref.get("service") or "open-nova"),
+            "service": str(secret_ref.get("service") or "actanara"),
             "account": account,
         }
         if account.startswith("settings-tx-")
@@ -1587,7 +1587,7 @@ def _sanitize_rag_embedding_secret(
         target_ref = (
             {
                 "backend": default_target_ref["backend"],
-                "service": str(secret_ref.get("service") or "open-nova"),
+                "service": str(secret_ref.get("service") or "actanara"),
                 "account": str(secret_ref.get("account") or ""),
             }
             if str(secret_ref.get("account") or "").startswith("settings-tx-")
@@ -1734,7 +1734,7 @@ def _secret_ref_migration_id(secret_ref: dict[str, Any]) -> str:
         json.dumps(
             {
                 "backend": str(secret_ref.get("backend") or ""),
-                "service": str(secret_ref.get("service") or "open-nova"),
+                "service": str(secret_ref.get("service") or "actanara"),
                 "account": str(secret_ref.get("account") or ""),
             },
             sort_keys=True,
@@ -1747,7 +1747,7 @@ def resolve_general_settings(paths: RuntimePaths | None = None) -> dict[str, Any
     settings = _read_settings_for_resolution(paths)
     general = settings.get("general") if isinstance(settings.get("general"), dict) else {}
     return {
-        "appName": str(general.get("appName") or "Open Nova"),
+        "appName": str(general.get("appName") or "Actanara"),
         "environment": str(general.get("environment") or "local"),
         "timezone": str(general.get("timezone") or config.TARGET_TIMEZONE),
         "locale": str(general.get("locale") or "zh-CN"),
@@ -1774,8 +1774,8 @@ def resolve_pipeline_settings(paths: RuntimePaths | None = None) -> dict[str, An
         "pythonExecutable": str(pipeline.get("pythonExecutable") or "python3"),
         "workingDirectory": str(Path(pipeline.get("workingDirectory") or config.WORKSPACE_DIR).expanduser().absolute()),
         "dailyDateArgument": str(pipeline.get("dailyDateArgument") or "YYYY-MM-DD"),
-        "skipFinalRagEnv": str(pipeline.get("skipFinalRagEnv") or "NOVA_PIPELINE_SKIP_FINAL_RAG"),
-        "skipFinalRag": os.getenv(str(pipeline.get("skipFinalRagEnv") or "NOVA_PIPELINE_SKIP_FINAL_RAG")),
+        "skipFinalRagEnv": str(pipeline.get("skipFinalRagEnv") or "ACTANARA_PIPELINE_SKIP_FINAL_RAG"),
+        "skipFinalRag": os.getenv(str(pipeline.get("skipFinalRagEnv") or "ACTANARA_PIPELINE_SKIP_FINAL_RAG")),
         "thinkingMode": str(pipeline.get("thinkingMode") or "off"),
         "stepTimeoutSeconds": default_step_timeout,
         "stepTimeouts": step_timeouts,
@@ -1831,9 +1831,9 @@ def resolve_dashboard_settings(paths: RuntimePaths | None = None) -> dict[str, A
         "allowedOrigins": allowed_origins,
         "healthPath": health_path,
         "url": f"http://{host}:{port}{health_path}",
-        "logsDir": str(Path(dashboard.get("logsDir") or Path.home() / "Library" / "Logs" / "OpenNova").expanduser().absolute()),
-        "serviceLabel": str(dashboard.get("serviceLabel") or "com.open-nova.dashboard"),
-        "watchdogLabel": str(dashboard.get("watchdogLabel") or "com.open-nova.dashboard.watchdog"),
+        "logsDir": str(Path(dashboard.get("logsDir") or Path.home() / "Library" / "Logs" / "Actanara").expanduser().absolute()),
+        "serviceLabel": str(dashboard.get("serviceLabel") or "com.actanara.dashboard"),
+        "watchdogLabel": str(dashboard.get("watchdogLabel") or "com.actanara.dashboard.watchdog"),
     }
 
 
@@ -2126,7 +2126,7 @@ def runtime_environment_overrides(paths: RuntimePaths | None = None) -> dict[str
     """Build child-process env values from settings while preserving explicit env overrides."""
     overrides: dict[str, str] = {}
     if paths is not None:
-        overrides["NOVA_HOME"] = str(paths.home)
+        overrides["ACTANARA_HOME"] = str(paths.home)
     for env_name, value in resolve_runtime_sources(paths).items():
         overrides[env_name] = value
     provider = resolve_llm_provider(paths, redact_secrets=False)
@@ -2219,7 +2219,7 @@ def settings_authority_inventory(paths: RuntimePaths | None = None, *, persist_d
         "precedence": ["settings.json", "managed runtime environment", "derived/default"],
         "settingsPath": settings.get("settingsPath"),
         "policy": {
-            "singleWriter": "$NOVA_HOME/config/settings.json for persisted runtime choices",
+            "singleWriter": "$ACTANARA_HOME/config/settings.json for persisted runtime choices",
             "envSemantics": "process-local bootstrap/secret injection or diagnostic noise; persisted settings remain normal authority",
             "manualVsDefault": "manual operator choices must be explicit; derived defaults must expose their source and auto value",
             "secretHandling": "API keys and secret-like values are redacted in read APIs",
@@ -2233,21 +2233,21 @@ def build_agent_schedule_prompt(settings: dict | None = None) -> str:
     schedule = settings.get("schedule", {})
     paths = settings.get("paths", {})
     runtime = paths.get("runtime", {}) if isinstance(paths, dict) else {}
-    nova_home = str(runtime.get("novaHome", config.NOVA_HOME))
-    pipeline_command = f'"{nova_home}/bin/open-nova" pipeline'
+    actanara_home = str(runtime.get("actanaraHome", config.ACTANARA_HOME))
+    pipeline_command = f'"{actanara_home}/bin/actanara" pipeline'
     aggregation_command = (
-        f'"{nova_home}/.venv/bin/python" '
-        f'"{nova_home}/app/source/advanced/pipeline/run_dashboard_foundation_refresh.py"'
+        f'"{actanara_home}/.venv/bin/python" '
+        f'"{actanara_home}/app/source/advanced/pipeline/run_dashboard_foundation_refresh.py"'
     )
     pipeline = settings.get("pipeline", {}) if isinstance(settings.get("pipeline"), dict) else {}
     language_profile = resolve_pipeline_language_profile(pipeline.get("languageProfile"))
     if language_profile.profile_id == "en":
         return "\n".join(
             [
-                "Act as the sole external scheduler for Open Nova. Trigger the two jobs below; Open Nova remains responsible for pipeline and snapshot logic.",
+                "Act as the sole external scheduler for Actanara. Trigger the two jobs below; Actanara remains responsible for pipeline and snapshot logic.",
                 "Prerequisite: enable this mode only after the managed system scheduler is disabled or uninstalled. Never run both schedulers.",
                 f"Timezone: {schedule.get('timezone', config.TARGET_TIMEZONE)}",
-                f"NOVA_HOME: {nova_home}",
+                f"ACTANARA_HOME: {actanara_home}",
                 f"Job 1 — daily pipeline at {schedule.get('dailyPipelineTime', '04:00')}: {pipeline_command}",
                 f"Job 2 — Dashboard Foundation aggregation at {schedule.get('dashboardAggregationTime', '04:30')}: {aggregation_command}",
                 "Execution rules: do not overlap runs; do not add --force unless the operator explicitly requests regeneration; inspect every exit status; retry at most once only for a clearly transient failure.",
@@ -2257,10 +2257,10 @@ def build_agent_schedule_prompt(settings: dict | None = None) -> str:
         )
     return "\n".join(
         [
-            "请作为 Open Nova 唯一的外部定时触发器，按下列计划触发两个任务；管线与 snapshot 逻辑仍由 Open Nova 自身负责。",
+            "请作为 Actanara 唯一的外部定时触发器，按下列计划触发两个任务；管线与 snapshot 逻辑仍由 Actanara 自身负责。",
             "前提：仅在系统托管 scheduler 已停用或卸载后启用此模式，严禁两套 scheduler 同时运行。",
             f"时区：{schedule.get('timezone', config.TARGET_TIMEZONE)}",
-            f"NOVA_HOME：{nova_home}",
+            f"ACTANARA_HOME：{actanara_home}",
             f"任务 1 — 每日管线，执行时间 {schedule.get('dailyPipelineTime', '04:00')}：{pipeline_command}",
             f"任务 2 — Dashboard Foundation 聚合，执行时间 {schedule.get('dashboardAggregationTime', '04:30')}：{aggregation_command}",
             "执行规则：禁止任务重叠；除非操作者明确要求重新生成，否则不要添加 --force；检查每次退出状态；仅在明确属于临时故障时最多重试一次。",

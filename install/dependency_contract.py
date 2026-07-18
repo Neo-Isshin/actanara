@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Strict runtime dependency contracts for Open Nova installs and updates.
+"""Strict runtime dependency contracts for Actanara installs and updates.
 
 This helper is intentionally stdlib-only.  It is safe to run before a Runtime
 venv exists and exposes a JSON-only CLI for installer orchestration.
@@ -27,14 +27,14 @@ from typing import Any, Iterable, Sequence
 from urllib.parse import unquote, urlsplit
 
 
-PRODUCT = "open-nova"
+PRODUCT = "actanara"
 LOCK_SCHEMA_VERSION = 1
 FINGERPRINT_SCHEMA_VERSION = 1
 MARKER_SCHEMA_VERSION = 1
 WHEELHOUSE_SCHEMA_VERSION = 1
-FINGERPRINT_ALGORITHM = "open-nova-runtime-dependencies-v1"
-MARKER_NAME = ".open-nova-dependencies.json"
-WHEELHOUSE_MANIFEST_NAME = ".open-nova-wheelhouse.json"
+FINGERPRINT_ALGORITHM = "actanara-runtime-dependencies-v1"
+MARKER_NAME = ".actanara-dependencies.json"
+WHEELHOUSE_MANIFEST_NAME = ".actanara-wheelhouse.json"
 MAX_JSON_BYTES = 16 * 1024 * 1024
 MAX_PYPROJECT_BYTES = 2 * 1024 * 1024
 MAX_SUBPROCESS_JSON_BYTES = 16 * 1024 * 1024
@@ -1029,7 +1029,7 @@ def _read_pyproject_contract(path: Path) -> dict[str, tuple[str, ...]]:
         raise _error("invalid-pyproject", "pyproject.toml is invalid") from exc
     project = payload.get("project")
     if not isinstance(project, dict) or project.get("name") != PRODUCT:
-        raise _error("invalid-pyproject", "pyproject.toml does not describe open-nova")
+        raise _error("invalid-pyproject", "pyproject.toml does not describe actanara")
     base = project.get("dependencies", [])
     optional = project.get("optional-dependencies", {})
     if not isinstance(base, list) or not isinstance(optional, dict):
@@ -2175,7 +2175,7 @@ def install_locked_dependencies(
     if status["status"] != "hit":
         raise _error("offline-cache-miss", "trusted dependency wheelhouse is unavailable")
     wheelhouse = Path(status["path"])
-    with tempfile.TemporaryDirectory(prefix="open-nova-locked-install-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="actanara-locked-install-") as temporary:
         requirement_path = Path(temporary) / "requirements.txt"
         requirement_path.write_text(hashed_requirements(selection), encoding="utf-8")
         command = [

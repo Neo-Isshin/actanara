@@ -137,7 +137,7 @@ class DashboardLiveTokenSemanticsTests(unittest.TestCase):
 
         def scanner(_today, _hour):
             rows = []
-            for group in ("open-nova", "nvm", "memories", ".opencode", "homebrew", "home", "SSD", "default", "Codex"):
+            for group in ("actanara", "nvm", "memories", ".opencode", "homebrew", "home", "SSD", "default", "Codex"):
                 rows.append(
                     {
                         "input": 4,
@@ -155,12 +155,12 @@ class DashboardLiveTokenSemanticsTests(unittest.TestCase):
         ):
             data = token_clock.get_token_clock_data()
 
-        self.assertEqual([item["name"] for item in data["workspaceUsage"]], ["open-nova"])
+        self.assertEqual([item["name"] for item in data["workspaceUsage"]], ["actanara"])
 
     def test_token_clock_codex_normalizes_cached_input_when_reported_total_excludes_cache_detail(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             sessions = root / "configured-tools" / "codex" / "sessions"
             sessions.mkdir(parents=True)
             fixture = sessions / "rollout-cached-input.jsonl"
@@ -168,7 +168,7 @@ class DashboardLiveTokenSemanticsTests(unittest.TestCase):
             write_settings({"externalTools": {"codex": {"sessionsRoot": str(sessions)}}}, paths)
 
             token_clock._file_cache = {}
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 entries = token_clock._scan_codex("2026-05-19", 12)
                 stats = token_clock._aggregate(token_clock._filter_today(entries, "2026-05-19"), 12)
 
@@ -183,7 +183,7 @@ class DashboardLiveTokenSemanticsTests(unittest.TestCase):
     def test_dashboard_live_collectors_use_configured_external_tool_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             agents_dir = root / "configured-tools" / "openclaw" / "agents"
             agents_dir.mkdir(parents=True)
             codex_sessions = root / "configured-tools" / "codex" / "sessions"
@@ -199,7 +199,7 @@ class DashboardLiveTokenSemanticsTests(unittest.TestCase):
             )
 
             agents_service.AGENTS_DIR = None
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 token_path = token_clock._external_tool_path("codex", "sessionsRoot")
                 agent_path = agents_service._agents_dir()
 
@@ -214,15 +214,15 @@ class DashboardLiveTokenSemanticsTests(unittest.TestCase):
 
     def test_token_clock_project_references_include_ssd_dev_root(self):
         with tempfile.TemporaryDirectory() as tmp:
-            project_root = Path(tmp) / "custom-project-parent" / "open-nova"
+            project_root = Path(tmp) / "custom-project-parent" / "actanara"
             file_path = project_root / "src" / "dashboard" / "app.py"
             file_path.parent.mkdir(parents=True)
             file_path.write_text("# fixture\n", encoding="utf-8")
-            (project_root / "pyproject.toml").write_text('[project]\nname = "open-nova"\n', encoding="utf-8")
+            (project_root / "pyproject.toml").write_text('[project]\nname = "actanara"\n', encoding="utf-8")
 
             project = token_clock._primary_referenced_project(f"editing {file_path}")
 
-        self.assertEqual(project, "open-nova")
+        self.assertEqual(project, "actanara")
 
     def test_token_clock_usage_group_helper_uses_shared_resolver(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -278,26 +278,26 @@ class DashboardLiveTokenSemanticsTests(unittest.TestCase):
     def test_token_clock_codex_runtime_source_cwd_uses_pyproject_name(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             sessions = root / "configured-tools" / "codex" / "sessions"
             sessions.mkdir(parents=True)
-            runtime_source = root / ".open-nova" / "app" / "source"
+            runtime_source = root / ".actanara" / "app" / "source"
             runtime_source.mkdir(parents=True)
-            (runtime_source / "pyproject.toml").write_text('[project]\nname = "open-nova"\n', encoding="utf-8")
+            (runtime_source / "pyproject.toml").write_text('[project]\nname = "actanara"\n', encoding="utf-8")
             fixture = sessions / "rollout-runtime-source.jsonl"
             _write_codex_fixture(fixture, include_reported_total=False, cwd=str(runtime_source))
             write_settings({"externalTools": {"codex": {"sessionsRoot": str(sessions)}}}, paths)
 
             token_clock._file_cache = {}
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 entries = token_clock._scan_codex("2026-05-19", 12)
 
-        self.assertEqual(entries[0]["usageGroup"], "open-nova")
+        self.assertEqual(entries[0]["usageGroup"], "actanara")
 
     def test_token_clock_codex_skips_files_older_than_today(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             sessions = root / "configured-tools" / "codex" / "sessions"
             sessions.mkdir(parents=True)
             old_file = sessions / "rollout-old.jsonl"
@@ -307,7 +307,7 @@ class DashboardLiveTokenSemanticsTests(unittest.TestCase):
             write_settings({"externalTools": {"codex": {"sessionsRoot": str(sessions)}}}, paths)
 
             token_clock._file_cache = {}
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 entries = token_clock._scan_codex("2026-05-19", 12)
 
         self.assertEqual(entries, [])
@@ -380,7 +380,7 @@ class DashboardLiveTokenSemanticsTests(unittest.TestCase):
     def test_realtime_tokens_use_configured_openclaw_agents_root(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             agents_dir = root / "configured-tools" / "openclaw" / "agents"
             sessions_dir = agents_dir / "fixture-agent" / "sessions"
             sessions_dir.mkdir(parents=True)
@@ -397,14 +397,14 @@ class DashboardLiveTokenSemanticsTests(unittest.TestCase):
 
             tokens.AGENTS_DIR = tokens._DEFAULT_AGENTS_DIR
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch("app.services.tz.hkt_today", return_value=date(2026, 6, 11)),
             ):
                 data = tokens.parse_by_date(days=30)
 
         self.assertEqual(data["2026-06-11:fixture-agent"], 15)
 
-def _write_codex_fixture(path: Path, *, include_reported_total: bool, cwd: str = "/tmp/open-nova") -> None:
+def _write_codex_fixture(path: Path, *, include_reported_total: bool, cwd: str = "/tmp/actanara") -> None:
     usage = {
         "input_tokens": 10,
         "output_tokens": 2,

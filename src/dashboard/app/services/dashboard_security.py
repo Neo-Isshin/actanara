@@ -13,9 +13,9 @@ from data_foundation.paths import load_paths
 from data_foundation.settings import resolve_dashboard_settings
 
 
-DASHBOARD_SESSION_COOKIE = "open_nova_dashboard_session"
-DASHBOARD_CSRF_COOKIE = "open_nova_dashboard_csrf"
-DASHBOARD_CSRF_HEADER = "x-open-nova-csrf"
+DASHBOARD_SESSION_COOKIE = "actanara_dashboard_session"
+DASHBOARD_CSRF_COOKIE = "actanara_dashboard_csrf"
+DASHBOARD_CSRF_HEADER = "x-actanara-csrf"
 DASHBOARD_SESSION_TTL_SECONDS = 12 * 60 * 60
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
@@ -183,7 +183,7 @@ def set_dashboard_session_cookies(response: Any, session_id: str, csrf_value: st
         httponly=False,
         **common,
     )
-    response.headers["X-Open-Nova-CSRF"] = csrf_value
+    response.headers["X-Actanara-CSRF"] = csrf_value
 
 
 def request_uses_secure_cookie(headers: dict[str, str] | Any, scheme: str = "http") -> bool:

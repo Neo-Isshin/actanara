@@ -3,27 +3,27 @@ set -euo pipefail
 
 SCRIPT_DIR="${0:A:h}"
 DEFAULT_SOURCE_ROOT="${SCRIPT_DIR:h}"
-SOURCE_ROOT="${NOVA_INSTALL_SOURCE_ROOT:-$DEFAULT_SOURCE_ROOT}"
-PYTHON_BIN="${NOVA_INSTALL_PYTHON:-python3}"
-PYTHON_AUTO_INSTALL="${NOVA_INSTALL_PYTHON_AUTO_INSTALL:-1}"
-PYTHON_CANDIDATES="${NOVA_INSTALL_PYTHON_CANDIDATES:-}"
+SOURCE_ROOT="${ACTANARA_INSTALL_SOURCE_ROOT:-$DEFAULT_SOURCE_ROOT}"
+PYTHON_BIN="${ACTANARA_INSTALL_PYTHON:-python3}"
+PYTHON_AUTO_INSTALL="${ACTANARA_INSTALL_PYTHON_AUTO_INSTALL:-1}"
+PYTHON_CANDIDATES="${ACTANARA_INSTALL_PYTHON_CANDIDATES:-}"
 PYTHON_INSTALL_PLANNED=0
-PYTHON_STANDALONE_RELEASE="${NOVA_INSTALL_PYTHON_STANDALONE_RELEASE:-20260623}"
-PYTHON_STANDALONE_VERSION="${NOVA_INSTALL_PYTHON_STANDALONE_VERSION:-3.13.14}"
-PYTHON_STANDALONE_BASE_URL="${NOVA_INSTALL_PYTHON_STANDALONE_BASE_URL:-https://github.com/astral-sh/python-build-standalone/releases/download/${PYTHON_STANDALONE_RELEASE}}"
-PYTHON_STANDALONE_URL="${NOVA_INSTALL_PYTHON_STANDALONE_URL:-}"
-PYTHON_STANDALONE_SHA256="${NOVA_INSTALL_PYTHON_STANDALONE_SHA256:-}"
-PYTHON_STANDALONE_DIR="${NOVA_INSTALL_PYTHON_STANDALONE_DIR:-}"
-CURL_BIN="${NOVA_INSTALL_CURL:-}"
-TAR_BIN="${NOVA_INSTALL_TAR:-}"
-SHASUM_BIN="${NOVA_INSTALL_SHASUM:-}"
-OPENSSL_BIN="${NOVA_INSTALL_OPENSSL:-}"
-RUNTIME_HOME="${NOVA_INSTALL_RUNTIME:-$HOME/.open-nova}"
-DIARY_OUTPUT_DIR="${NOVA_INSTALL_DIARY_OUTPUT:-}"
-DESKTOP_DIARY_LINK="${NOVA_INSTALL_DESKTOP_DIARY_LINK:-$HOME/Desktop/Open Nova}"
-REPORTS_OUTPUT_DIR="${NOVA_INSTALL_REPORTS_OUTPUT:-}"
-SNAPSHOTS_OUTPUT_DIR="${NOVA_INSTALL_SNAPSHOTS_OUTPUT:-}"
-ARCHIVES_OUTPUT_DIR="${NOVA_INSTALL_ARCHIVES_OUTPUT:-}"
+PYTHON_STANDALONE_RELEASE="${ACTANARA_INSTALL_PYTHON_STANDALONE_RELEASE:-20260623}"
+PYTHON_STANDALONE_VERSION="${ACTANARA_INSTALL_PYTHON_STANDALONE_VERSION:-3.13.14}"
+PYTHON_STANDALONE_BASE_URL="${ACTANARA_INSTALL_PYTHON_STANDALONE_BASE_URL:-https://github.com/astral-sh/python-build-standalone/releases/download/${PYTHON_STANDALONE_RELEASE}}"
+PYTHON_STANDALONE_URL="${ACTANARA_INSTALL_PYTHON_STANDALONE_URL:-}"
+PYTHON_STANDALONE_SHA256="${ACTANARA_INSTALL_PYTHON_STANDALONE_SHA256:-}"
+PYTHON_STANDALONE_DIR="${ACTANARA_INSTALL_PYTHON_STANDALONE_DIR:-}"
+CURL_BIN="${ACTANARA_INSTALL_CURL:-}"
+TAR_BIN="${ACTANARA_INSTALL_TAR:-}"
+SHASUM_BIN="${ACTANARA_INSTALL_SHASUM:-}"
+OPENSSL_BIN="${ACTANARA_INSTALL_OPENSSL:-}"
+RUNTIME_HOME="${ACTANARA_INSTALL_RUNTIME:-$HOME/.actanara}"
+DIARY_OUTPUT_DIR="${ACTANARA_INSTALL_DIARY_OUTPUT:-}"
+DESKTOP_DIARY_LINK="${ACTANARA_INSTALL_DESKTOP_DIARY_LINK:-$HOME/Desktop/Actanara}"
+REPORTS_OUTPUT_DIR="${ACTANARA_INSTALL_REPORTS_OUTPUT:-}"
+SNAPSHOTS_OUTPUT_DIR="${ACTANARA_INSTALL_SNAPSHOTS_OUTPUT:-}"
+ARCHIVES_OUTPUT_DIR="${ACTANARA_INSTALL_ARCHIVES_OUTPUT:-}"
 VENV_DIR=""
 NO_SCHEDULER=0
 NO_DASHBOARD_SERVER=0
@@ -36,40 +36,40 @@ ENABLE_DEV_TEST=0
 CREATE_DESKTOP_DIARY_LINK=1
 ENABLE_SHELL_PATH=1
 ENABLE_SKILL_REGISTRATION=0
-DASHBOARD_HOST="${NOVA_INSTALL_DASHBOARD_HOST:-127.0.0.1}"
-DASHBOARD_PORT="${NOVA_INSTALL_DASHBOARD_PORT:-${NOVA_DASHBOARD_PORT:-3036}}"
-DASHBOARD_PORT_AUTO="${NOVA_INSTALL_DASHBOARD_PORT_AUTO:-1}"
-DASHBOARD_PORT_CANDIDATES="${NOVA_INSTALL_DASHBOARD_PORT_CANDIDATES:-3036 8765 8766 8767 8768}"
-LSOF_BIN="${NOVA_INSTALL_LSOF:-}"
-INSTALL_TEST_MODE="${NOVA_INSTALL_TEST_MODE:-0}"
+DASHBOARD_HOST="${ACTANARA_INSTALL_DASHBOARD_HOST:-127.0.0.1}"
+DASHBOARD_PORT="${ACTANARA_INSTALL_DASHBOARD_PORT:-${ACTANARA_DASHBOARD_PORT:-3036}}"
+DASHBOARD_PORT_AUTO="${ACTANARA_INSTALL_DASHBOARD_PORT_AUTO:-1}"
+DASHBOARD_PORT_CANDIDATES="${ACTANARA_INSTALL_DASHBOARD_PORT_CANDIDATES:-3036 8765 8766 8767 8768}"
+LSOF_BIN="${ACTANARA_INSTALL_LSOF:-}"
+INSTALL_TEST_MODE="${ACTANARA_INSTALL_TEST_MODE:-0}"
 if [[ "$INSTALL_TEST_MODE" != "0" && "$INSTALL_TEST_MODE" != "1" ]]; then
-  print -r -- "NOVA_INSTALL_TEST_MODE must be 0 or 1" >&2
+  print -r -- "ACTANARA_INSTALL_TEST_MODE must be 0 or 1" >&2
   exit 2
 fi
 LAUNCHCTL_BIN=""
 if [[ "$INSTALL_TEST_MODE" == "1" ]]; then
-  LAUNCHCTL_BIN="${NOVA_INSTALL_LAUNCHCTL:-}"
+  LAUNCHCTL_BIN="${ACTANARA_INSTALL_LAUNCHCTL:-}"
 fi
-RAG_EMBEDDING_MODE="${NOVA_INSTALL_RAG_EMBEDDING_MODE:-local}"
-RAG_LOCAL_MODEL="${NOVA_INSTALL_RAG_LOCAL_MODEL:-intfloat/multilingual-e5-small}"
-RAG_LOCAL_DIMENSION="${NOVA_INSTALL_RAG_LOCAL_DIMENSION:-384}"
+RAG_EMBEDDING_MODE="${ACTANARA_INSTALL_RAG_EMBEDDING_MODE:-local}"
+RAG_LOCAL_MODEL="${ACTANARA_INSTALL_RAG_LOCAL_MODEL:-intfloat/multilingual-e5-small}"
+RAG_LOCAL_DIMENSION="${ACTANARA_INSTALL_RAG_LOCAL_DIMENSION:-384}"
 RAG_LOCAL_MODEL_SET=0
-if [[ -n "${NOVA_INSTALL_RAG_LOCAL_MODEL:-}" ]]; then
+if [[ -n "${ACTANARA_INSTALL_RAG_LOCAL_MODEL:-}" ]]; then
   RAG_LOCAL_MODEL_SET=1
 fi
-LLM_PROVIDER_MODE="${NOVA_INSTALL_LLM_PROVIDER_MODE:-custom}"
-LLM_PROVIDER="${NOVA_INSTALL_LLM_PROVIDER:-custom}"
-LLM_API="${NOVA_INSTALL_LLM_API:-openai-compatible}"
-LLM_ENDPOINT="${NOVA_INSTALL_LLM_ENDPOINT:-}"
-LLM_MODEL="${NOVA_INSTALL_LLM_MODEL:-}"
-LLM_API_KEY_ENV="${NOVA_INSTALL_LLM_API_KEY_ENV:-LLM_API_KEY}"
-LLM_API_KEY_VALUE="${NOVA_INSTALL_LLM_API_KEY_VALUE:-}"
-RAG_CLOUD_PROVIDER="${NOVA_INSTALL_RAG_CLOUD_PROVIDER:-openai-compatible}"
-RAG_CLOUD_ENDPOINT="${NOVA_INSTALL_RAG_CLOUD_ENDPOINT:-}"
-RAG_CLOUD_MODEL="${NOVA_INSTALL_RAG_CLOUD_MODEL:-}"
-RAG_CLOUD_DIMENSION="${NOVA_INSTALL_RAG_CLOUD_DIMENSION:-}"
-RAG_CLOUD_API_KEY_ENV="${NOVA_INSTALL_RAG_CLOUD_API_KEY_ENV:-NOVA_RAG_CLOUD_API_KEY}"
-INSTALL_LANGUAGE="${NOVA_INSTALL_LANGUAGE:-zh-CN}"
+LLM_PROVIDER_MODE="${ACTANARA_INSTALL_LLM_PROVIDER_MODE:-custom}"
+LLM_PROVIDER="${ACTANARA_INSTALL_LLM_PROVIDER:-custom}"
+LLM_API="${ACTANARA_INSTALL_LLM_API:-openai-compatible}"
+LLM_ENDPOINT="${ACTANARA_INSTALL_LLM_ENDPOINT:-}"
+LLM_MODEL="${ACTANARA_INSTALL_LLM_MODEL:-}"
+LLM_API_KEY_ENV="${ACTANARA_INSTALL_LLM_API_KEY_ENV:-LLM_API_KEY}"
+LLM_API_KEY_VALUE="${ACTANARA_INSTALL_LLM_API_KEY_VALUE:-}"
+RAG_CLOUD_PROVIDER="${ACTANARA_INSTALL_RAG_CLOUD_PROVIDER:-openai-compatible}"
+RAG_CLOUD_ENDPOINT="${ACTANARA_INSTALL_RAG_CLOUD_ENDPOINT:-}"
+RAG_CLOUD_MODEL="${ACTANARA_INSTALL_RAG_CLOUD_MODEL:-}"
+RAG_CLOUD_DIMENSION="${ACTANARA_INSTALL_RAG_CLOUD_DIMENSION:-}"
+RAG_CLOUD_API_KEY_ENV="${ACTANARA_INSTALL_RAG_CLOUD_API_KEY_ENV:-NOVA_RAG_CLOUD_API_KEY}"
+INSTALL_LANGUAGE="${ACTANARA_INSTALL_LANGUAGE:-zh-CN}"
 PIPELINE_LANGUAGE_PROFILE="zh"
 PIPELINE_ENGLISH_ENABLED=0
 PIPELINE_DIARY_SCHEMA_VERSION="diary-v1-zh"
@@ -108,7 +108,7 @@ DEPENDENCY_PROFILE_SETTINGS_SHA256=""
 DEPENDENCY_PROFILE_ACTIVE_VENV_TARGET=""
 DEPENDENCY_PROFILE_MARKER_STATUS=""
 DEPENDENCY_PROFILE_MARKER_SHA256=""
-WIZARD_MODE="${NOVA_INSTALL_WIZARD:-auto}"
+WIZARD_MODE="${ACTANARA_INSTALL_WIZARD:-auto}"
 YES=0
 WIZARD_CONFIRMED=0
 SUMMARY_ONLY=0
@@ -120,8 +120,8 @@ ID_BIN="$(command -v id 2>/dev/null || true)"
 if [[ -z "$ID_BIN" && -x "/usr/bin/id" ]]; then
   ID_BIN="/usr/bin/id"
 fi
-if [[ "$INSTALL_TEST_MODE" == "1" && -n "${NOVA_INSTALL_PLATFORM:-}" ]]; then
-  PLATFORM="$NOVA_INSTALL_PLATFORM"
+if [[ "$INSTALL_TEST_MODE" == "1" && -n "${ACTANARA_INSTALL_PLATFORM:-}" ]]; then
+  PLATFORM="$ACTANARA_INSTALL_PLATFORM"
 elif [[ -n "$UNAME_BIN" ]]; then
   PLATFORM="$("$UNAME_BIN" -s)"
 else
@@ -150,8 +150,8 @@ LANGUAGE_SELECTED=0
 SHELL_PATH_SET=0
 SELECTED_EXTERNAL_TOOLS=""
 CLI_SHIM=""
-USER_CLI_SHIM="${NOVA_INSTALL_USER_CLI_SHIM:-$HOME/.local/bin/open-nova}"
-SHELL_PATH_FILE="${NOVA_INSTALL_SHELL_PATH_FILE:-}"
+USER_CLI_SHIM="${ACTANARA_INSTALL_USER_CLI_SHIM:-$HOME/.local/bin/actanara}"
+SHELL_PATH_FILE="${ACTANARA_INSTALL_SHELL_PATH_FILE:-}"
 INSTALLER_LOG_FILE=""
 INSTALLER_LOG_ACTIVE=0
 STAGED_RELEASE_ID=""
@@ -175,33 +175,33 @@ UPDATE_MUTABLE_STATE_CAPTURED=0
 UPDATE_ROLLBACK_RUNNING=0
 UPDATE_COMMITTED=0
 UPDATE_TEST_MODE="${INSTALL_TEST_MODE}"
-UPDATE_TEST_FAIL_PHASE="${NOVA_INSTALL_TEST_FAIL_PHASE:-}"
-UPDATE_TEST_HOOK="${NOVA_INSTALL_TEST_HOOK:-}"
+UPDATE_TEST_FAIL_PHASE="${ACTANARA_INSTALL_TEST_FAIL_PHASE:-}"
+UPDATE_TEST_HOOK="${ACTANARA_INSTALL_TEST_HOOK:-}"
 UPDATE_TRANSACTION_HELPER="${SCRIPT_DIR}/update_transaction.py"
 DEPENDENCY_CONTRACT_HELPER="${SCRIPT_DIR}/dependency_contract.py"
 RUNTIME_DEPENDENCY_LOCK="${SOURCE_ROOT}/install/runtime-dependencies.lock.json"
 
 usage() {
   cat <<'EOF'
-Open Nova setup
+Actanara setup
 
 Usage:
   install/install.sh [options]
 
 Options:
-  --runtime PATH              Open Nova folder. Default: ~/.open-nova
-  --diary-output PATH         Diary folder. Default: <Open Nova folder>/artifacts/diary
-  --desktop-diary-link PATH   Desktop diary shortcut. Default: ~/Desktop/Open Nova
+  --runtime PATH              Actanara folder. Default: ~/.actanara
+  --diary-output PATH         Diary folder. Default: <Actanara folder>/artifacts/diary
+  --desktop-diary-link PATH   Desktop diary shortcut. Default: ~/Desktop/Actanara
   --no-desktop-diary-link     Do not create the Desktop diary shortcut.
-  --no-shell-path             Do not make open-nova available in new Terminal sessions.
+  --no-shell-path             Do not make actanara available in new Terminal sessions.
   --shell-path-file PATH      Terminal profile to update. Default: ~/.zprofile on macOS/zsh.
-  --reports-output PATH       Report folder. Default: <Open Nova folder>/artifacts/reports
-  --snapshots-output PATH     Snapshot folder. Default: <Open Nova folder>/snapshots
-  --archives-output PATH      Imported-source folder. Default: <Open Nova folder>/sources/archives
-  --source-root PATH          Use an existing local copy of Open Nova.
-  --python PATH               Python command for Open Nova. Default: python3
+  --reports-output PATH       Report folder. Default: <Actanara folder>/artifacts/reports
+  --snapshots-output PATH     Snapshot folder. Default: <Actanara folder>/snapshots
+  --archives-output PATH      Imported-source folder. Default: <Actanara folder>/sources/archives
+  --source-root PATH          Use an existing local copy of Actanara.
+  --python PATH               Python command for Actanara. Default: python3
   --no-python-auto-install    Do not prepare Python automatically when Python 3.11+ is missing.
-  --no-scheduler              Do not run Open Nova automatically each day.
+  --no-scheduler              Do not run Actanara automatically each day.
   --no-dashboard              Deprecated: use --no-dashboard-server.
   --no-dashboard-server       Install Dashboard without its background service.
   --dashboard-host HOST       Dashboard address. Default: 127.0.0.1.
@@ -230,9 +230,9 @@ Options:
                               Environment variable that contains the cloud memory API key.
   --language LOCALE           Setup language: zh-CN or en-US. Default: zh-CN.
   --dry-run                   Print the plan without writing files or running commands.
-  --upgrade                   Update an existing Open Nova installation.
-  --repair-existing           Rebuild a legacy Open Nova installation while preserving user data.
-  --source-only               Update Open Nova files without changing installed software.
+  --upgrade                   Update an existing Actanara installation.
+  --repair-existing           Rebuild a legacy Actanara installation while preserving user data.
+  --source-only               Update Actanara files without changing installed software.
   --force-rebuild             Reinstall required software during an update.
   --offline                   Install using previously downloaded files only.
   --result-json               Print one final JSON update result for automation.
@@ -243,7 +243,7 @@ Options:
   -h, --help                  Show this help.
 
 Privacy:
-  Open Nova reads the local activity and files you select to create diaries,
+  Actanara reads the local activity and files you select to create diaries,
   reports, and search memory. Sensitive information in those sources may also
   appear in generated content. API keys are stored securely and never printed.
 EOF
@@ -258,7 +258,7 @@ log() {
   if [[ -d "${log_file:h}" ]]; then
     print -r -- "==> $*" >> "$log_file"
   fi
-  if [[ "${NOVA_INSTALL_VERBOSE:-0}" == "1" ]]; then
+  if [[ "${ACTANARA_INSTALL_VERBOSE:-0}" == "1" ]]; then
     print -r -- "==> $*"
   fi
 }
@@ -292,7 +292,7 @@ emit_update_result() {
   local result_status="failed"
   if [[ "$rc" == "0" ]]; then result_status="completed"; fi
   UPDATE_RESULT_EMITTED=1
-  print -r -- "OPEN_NOVA_UPDATE_RESULT_JSON={\"schemaVersion\":1,\"status\":\"${result_status}\",\"updateMode\":\"${UPDATE_MODE}\",\"dependenciesInstalled\":${dependencies_installed},\"reusesRuntimeVenv\":${reuses_runtime_venv},\"sourceUpdated\":${source_updated},\"reason\":\"${UPDATE_REASON}\",\"cacheUsed\":${cache_used},\"servicesStopped\":${services_stopped},\"plannedDependenciesInstall\":${planned_dependencies_install},\"managedServiceDefinitionsNormalized\":${plists_normalized},\"rollbackComplete\":${rollback_complete},\"stateCertain\":${state_certain},\"stage\":\"${UPDATE_RESULT_STAGE}\"}"
+  print -r -- "ACTANARA_UPDATE_RESULT_JSON={\"schemaVersion\":1,\"status\":\"${result_status}\",\"updateMode\":\"${UPDATE_MODE}\",\"dependenciesInstalled\":${dependencies_installed},\"reusesRuntimeVenv\":${reuses_runtime_venv},\"sourceUpdated\":${source_updated},\"reason\":\"${UPDATE_REASON}\",\"cacheUsed\":${cache_used},\"servicesStopped\":${services_stopped},\"plannedDependenciesInstall\":${planned_dependencies_install},\"managedServiceDefinitionsNormalized\":${plists_normalized},\"rollbackComplete\":${rollback_complete},\"stateCertain\":${state_certain},\"stage\":\"${UPDATE_RESULT_STAGE}\"}"
 }
 
 warn() {
@@ -305,7 +305,7 @@ warn() {
   if [[ -d "${log_file:h}" ]]; then
     print -r -- "WARN: ${technical_message}" >> "$log_file"
   fi
-  if [[ "${NOVA_INSTALL_VERBOSE:-0}" == "1" ]]; then
+  if [[ "${ACTANARA_INSTALL_VERBOSE:-0}" == "1" ]]; then
     print -r -- "WARN: ${technical_message}" >&2
     return 0
   fi
@@ -334,12 +334,12 @@ error() {
   if [[ "$INSTALLER_LOG_ACTIVE" == "1" && -d "${log_file:h}" ]]; then
     print -r -- "ERROR: ${technical_message}" >> "$log_file"
   fi
-  if [[ "${NOVA_INSTALL_VERBOSE:-0}" == "1" ]]; then
+  if [[ "${ACTANARA_INSTALL_VERBOSE:-0}" == "1" ]]; then
     print -r -- "ERROR: ${technical_message}" >&2
   else
     case "$technical_message" in
       *"CLI shim"*) friendly_key="error_terminal_command" ;;
-      *"existing Open Nova Runtime state"*) friendly_key="error_existing_install" ;;
+      *"existing Actanara Runtime state"*) friendly_key="error_existing_install" ;;
       *"upgrade requires an existing runtime"*) friendly_key="error_update_missing" ;;
       *"language must"*) friendly_key="error_language" ;;
       *"Interactive wizard"*) friendly_key="error_terminal" ;;
@@ -407,7 +407,7 @@ progress_label() {
 friendly_step_label() {
   local technical_label="$1"
   case "$technical_label" in
-    "Runtime bootstrap apply") installer_text step_set_up_open_nova ;;
+    "Runtime bootstrap apply") installer_text step_set_up_actanara ;;
     "Runtime status doctor") installer_text step_check_files ;;
     "Installer doctor") installer_text step_check_components ;;
     "Pipeline doctor") installer_text step_check_diary ;;
@@ -586,7 +586,7 @@ installer_version() {
 render_installer_header() {
   local version=""
   version="$(installer_version)"
-  print -r -- "${TTY_BLUE}Open Nova ${version}${TTY_RESET}" > /dev/tty
+  print -r -- "${TTY_BLUE}Actanara ${version}${TTY_RESET}" > /dev/tty
   print -r -- "$(installer_text setup_title)" > /dev/tty
   print -r -- "────────────────────────────────────────" > /dev/tty
 }
@@ -597,7 +597,7 @@ render_console_header() {
   fi
   local version=""
   version="$(installer_version)"
-  print -r -- "${TTY_BLUE}Open Nova ${version}${TTY_RESET}"
+  print -r -- "${TTY_BLUE}Actanara ${version}${TTY_RESET}"
   print -r -- "$(installer_text setup_title)"
   print -r -- "────────────────────────────────────────"
 }
@@ -611,7 +611,7 @@ print_phase() {
 }
 
 print_installer_data_notice() {
-  log "Data notice: Open Nova processes local diaries, agent/tool history, and user-selected source material."
+  log "Data notice: Actanara processes local diaries, agent/tool history, and user-selected source material."
   log "Data notice: generated diaries, reports, snapshots, and indexes may preserve sensitive information already present in those inputs."
   log "Data notice: installer-managed settings store secret references or environment variable names, not secret values."
 }
@@ -630,11 +630,11 @@ installer_text() {
         no) print -r -- "No" ;;
         setup_title) print -r -- "Setup" ;;
         phase_checking) print -r -- "Checking your system" ;;
-        phase_preparing) print -r -- "Preparing Open Nova" ;;
-        phase_installing) print -r -- "Installing Open Nova" ;;
+        phase_preparing) print -r -- "Preparing Actanara" ;;
+        phase_installing) print -r -- "Installing Actanara" ;;
         phase_configuring) print -r -- "Setting up your features" ;;
         phase_verifying) print -r -- "Finishing up" ;;
-        step_prepare_folder) print -r -- "Preparing the Open Nova folder" ;;
+        step_prepare_folder) print -r -- "Preparing the Actanara folder" ;;
         step_prepare_output_folders) print -r -- "Preparing diaries and reports" ;;
         step_prepare_python_files) print -r -- "Preparing Python files" ;;
         step_prepare_python) print -r -- "Preparing Python" ;;
@@ -649,20 +649,20 @@ installer_text() {
         step_save_choices) print -r -- "Saving your choices" ;;
         step_save_ai_key) print -r -- "Saving your AI key securely" ;;
         step_diary_shortcut) print -r -- "Creating the Desktop diary shortcut" ;;
-        step_install_command) print -r -- "Installing the open-nova command" ;;
-        step_terminal_command) print -r -- "Making open-nova available in Terminal" ;;
-        step_prepare_files) print -r -- "Preparing Open Nova files" ;;
-        step_activate_files) print -r -- "Activating Open Nova files" ;;
+        step_install_command) print -r -- "Installing the actanara command" ;;
+        step_terminal_command) print -r -- "Making actanara available in Terminal" ;;
+        step_prepare_files) print -r -- "Preparing Actanara files" ;;
+        step_activate_files) print -r -- "Activating Actanara files" ;;
         step_finish_install) print -r -- "Finishing the installation" ;;
         step_check_install) print -r -- "Checking the installation" ;;
-        step_check_files) print -r -- "Checking Open Nova files" ;;
+        step_check_files) print -r -- "Checking Actanara files" ;;
         step_check_diary) print -r -- "Checking diary creation" ;;
         step_start_dashboard) print -r -- "Starting Dashboard" ;;
         step_start_memory) print -r -- "Starting memory and search" ;;
         step_connect_tools) print -r -- "Connecting selected tools" ;;
         step_check_update) print -r -- "Checking the update" ;;
         step_prepare_memory) print -r -- "Preparing memory and search" ;;
-        step_set_up_open_nova) print -r -- "Setting up Open Nova" ;;
+        step_set_up_actanara) print -r -- "Setting up Actanara" ;;
         step_set_up_daily) print -r -- "Setting up daily runs" ;;
         step_prepare_daily) print -r -- "Preparing daily runs" ;;
         step_enable_daily) print -r -- "Enabling daily runs" ;;
@@ -670,19 +670,19 @@ installer_text() {
         step_check_memory) print -r -- "Checking memory and search" ;;
         step_failed) print -r -- "This step did not finish. See the setup log:" ;;
         update_needs_full_install) print -r -- "This update also needs component changes; run a full update instead." ;;
-        warning_diary_shortcut) print -r -- "The Desktop diary shortcut was not changed; Open Nova can still be used normally." ;;
-        warning_terminal_command) print -r -- "The open-nova command could not be added to new Terminal sessions automatically." ;;
+        warning_diary_shortcut) print -r -- "The Desktop diary shortcut was not changed; Actanara can still be used normally." ;;
+        warning_terminal_command) print -r -- "The actanara command could not be added to new Terminal sessions automatically." ;;
         warning_dashboard_port) print -r -- "Dashboard will use the best available local address." ;;
         warning_python) print -r -- "Python could not be prepared safely; setup cannot continue." ;;
         warning_tool_connection) print -r -- "One selected tool could not be connected; you can retry from Dashboard Settings." ;;
         warning_dashboard_service_disabled) print -r -- "The Dashboard background service is turned off by your setup choices." ;;
-        warning_optional_step) print -r -- "An optional step was not completed; core Open Nova features are still available." ;;
+        warning_optional_step) print -r -- "An optional step was not completed; core Actanara features are still available." ;;
         warning_generic) print -r -- "Setup needs your attention. See the setup log for details." ;;
-        error_terminal_command) print -r -- "The open-nova command could not be installed." ;;
+        error_terminal_command) print -r -- "The actanara command could not be installed." ;;
         error_options) print -r -- "Some setup options cannot be used together. Run the setup with --help." ;;
-        error_existing_install) print -r -- "Open Nova is already installed in this folder. Use: open-nova update --apply" ;;
-        error_source_files) print -r -- "Required Open Nova files are missing or unreadable." ;;
-        error_update_missing) print -r -- "No existing Open Nova installation was found in the selected folder." ;;
+        error_existing_install) print -r -- "Actanara is already installed in this folder. Use: actanara update --apply" ;;
+        error_source_files) print -r -- "Required Actanara files are missing or unreadable." ;;
+        error_update_missing) print -r -- "No existing Actanara installation was found in the selected folder." ;;
         error_software) print -r -- "Required software could not be prepared or verified." ;;
         error_python) print -r -- "Python could not be prepared safely." ;;
         error_memory) print -r -- "Memory and search settings need attention before setup can continue." ;;
@@ -691,27 +691,27 @@ installer_text() {
         error_terminal) print -r -- "Interactive setup needs a Terminal. For automation, use --no-wizard." ;;
         error_ai_key) print -r -- "The AI key is not changed during an update. Save it after the update finishes." ;;
         error_ai_key_setting) print -r -- "The AI key setting is not valid." ;;
-        error_dashboard_required) print -r -- "Dashboard is included with Open Nova. Use --no-dashboard-server to leave its background service off." ;;
+        error_dashboard_required) print -r -- "Dashboard is included with Actanara. Use --no-dashboard-server to leave its background service off." ;;
         error_recovery) print -r -- "The update did not finish cleanly. Your previous installation was kept; see the setup log." ;;
-        error_repair_incomplete) print -r -- "Open Nova was rebuilt, but setup did not finish. Your data is safe; run the one-liner again." ;;
+        error_repair_incomplete) print -r -- "Actanara was rebuilt, but setup did not finish. Your data is safe; run the one-liner again." ;;
         error_setup) print -r -- "Setup could not finish safely. See the setup log for details." ;;
         next_steps) print -r -- "Next steps" ;;
         plan_summary) print -r -- "Setup plan" ;;
-        install_complete) print -r -- "Open Nova is ready." ;;
-        dry_run_complete) print -r -- "Your Open Nova setup plan is ready." ;;
-        upgrade_complete) print -r -- "Open Nova is up to date." ;;
-        upgrade_plan_complete) print -r -- "Your Open Nova update plan is ready." ;;
-        repair_complete) print -r -- "Open Nova was rebuilt. Your settings and data were kept." ;;
-        repair_plan_complete) print -r -- "Your Open Nova rebuild plan is ready." ;;
+        install_complete) print -r -- "Actanara is ready." ;;
+        dry_run_complete) print -r -- "Your Actanara setup plan is ready." ;;
+        upgrade_complete) print -r -- "Actanara is up to date." ;;
+        upgrade_plan_complete) print -r -- "Your Actanara update plan is ready." ;;
+        repair_complete) print -r -- "Actanara was rebuilt. Your settings and data were kept." ;;
+        repair_plan_complete) print -r -- "Your Actanara rebuild plan is ready." ;;
         repair_backup) print -r -- "Recovery backup" ;;
-        repair_incomplete) print -r -- "Open Nova was rebuilt, but setup did not finish. Your data is safe; run the one-liner again." ;;
-        update_no_changes) print -r -- "Open Nova is already up to date." ;;
-        source_update_complete) print -r -- "Open Nova files are up to date." ;;
-        source_update_plan_complete) print -r -- "Your Open Nova file update plan is ready." ;;
+        repair_incomplete) print -r -- "Actanara was rebuilt, but setup did not finish. Your data is safe; run the one-liner again." ;;
+        update_no_changes) print -r -- "Actanara is already up to date." ;;
+        source_update_complete) print -r -- "Actanara files are up to date." ;;
+        source_update_plan_complete) print -r -- "Your Actanara file update plan is ready." ;;
         update_plan_summary) print -r -- "Update plan" ;;
         update_summary) print -r -- "Update summary" ;;
         label_command) print -r -- "Command line" ;;
-        label_folder) print -r -- "Open Nova folder" ;;
+        label_folder) print -r -- "Actanara folder" ;;
         label_diary) print -r -- "Diaries" ;;
         label_dashboard) print -r -- "Dashboard" ;;
         label_daily) print -r -- "Daily runs" ;;
@@ -741,19 +741,19 @@ installer_text() {
         readiness_dashboard_missing) print -r -- "required Dashboard files are missing" ;;
         readiness_cloud_ready) print -r -- "cloud settings are ready" ;;
         readiness_cloud_later) print -r -- "finish cloud settings before the first sync" ;;
-        check_source_failed) print -r -- "required Open Nova files are missing" ;;
+        check_source_failed) print -r -- "required Actanara files are missing" ;;
         check_python_failed) print -r -- "Python 3.11 or newer is unavailable" ;;
         check_folder_failed) print -r -- "a selected folder is not writable" ;;
         check_dashboard_failed) print -r -- "the selected Dashboard port is unavailable" ;;
         check_failed) print -r -- "Setup cannot continue until the item above is resolved." ;;
         welcome)
-          print -r -- "Welcome to Open Nova. Dashboard, diaries, daily runs, and Nova-Task are included by default."
+          print -r -- "Welcome to Actanara. Dashboard, diaries, daily runs, and Nova-Task are included by default."
           print -r -- "Continue only if you understand that enabled features process local data and may use a small amount of your AI service allowance."
           ;;
         welcome_cancelled) print -r -- "Install cancelled from welcome screen" ;;
-        language_prompt) print -r -- "Choose the Open Nova language" ;;
+        language_prompt) print -r -- "Choose the Actanara language" ;;
         invalid_env) print -r -- "Invalid environment variable name. Press Return to try again." ;;
-        ai_key_next_step) print -r -- "Save the key in Dashboard Settings, or run: open-nova model key --value-stdin" ;;
+        ai_key_next_step) print -r -- "Save the key in Dashboard Settings, or run: actanara model key --value-stdin" ;;
         core_dependency_title) print -r -- "Ready to install" ;;
         core_dependency_action) print -r -- "checking your system" ;;
         rag_dependency_title) print -r -- "Memory and search" ;;
@@ -762,7 +762,7 @@ installer_text() {
         detecting_tools) print -r -- "Detecting tools... just a minute" ;;
         detected_tools) print -r -- "Detected tools" ;;
         tools_help)
-          print -r -- "Selected tools will be covered by Open Nova; unselected tools will not be collected."
+          print -r -- "Selected tools will be covered by Actanara; unselected tools will not be collected."
           print -r -- "Use Up/Down or j/k to move, Space to toggle, and Return to continue."
           ;;
         no_tools) print -r -- "No known tool paths were detected. Choose manual to add one." ;;
@@ -793,11 +793,11 @@ installer_text() {
         install_summary) print -r -- "Install summary" ;;
         proceed_upgrade)
           print -r -- "Proceed with upgrade now?"
-          print -r -- "Open Nova will keep your settings and data."
+          print -r -- "Actanara will keep your settings and data."
           ;;
         proceed_install)
           print -r -- "Proceed with install now?"
-          print -r -- "Open Nova will create its folder and set up your selected features."
+          print -r -- "Actanara will create its folder and set up your selected features."
           ;;
         upgrade_cancelled) print -r -- "Upgrade cancelled before making changes" ;;
         install_cancelled) print -r -- "Install cancelled before making changes" ;;
@@ -811,11 +811,11 @@ installer_text() {
         no) print -r -- "否" ;;
         setup_title) print -r -- "安装助手" ;;
         phase_checking) print -r -- "检查系统环境" ;;
-        phase_preparing) print -r -- "准备 Open Nova" ;;
-        phase_installing) print -r -- "安装 Open Nova" ;;
+        phase_preparing) print -r -- "准备 Actanara" ;;
+        phase_installing) print -r -- "安装 Actanara" ;;
         phase_configuring) print -r -- "配置所选功能" ;;
         phase_verifying) print -r -- "完成最后检查" ;;
-        step_prepare_folder) print -r -- "准备 Open Nova 文件夹" ;;
+        step_prepare_folder) print -r -- "准备 Actanara 文件夹" ;;
         step_prepare_output_folders) print -r -- "准备日记与报告文件夹" ;;
         step_prepare_python_files) print -r -- "准备 Python 文件" ;;
         step_prepare_python) print -r -- "准备 Python" ;;
@@ -830,20 +830,20 @@ installer_text() {
         step_save_choices) print -r -- "保存你的选择" ;;
         step_save_ai_key) print -r -- "安全保存 AI 密钥" ;;
         step_diary_shortcut) print -r -- "创建桌面日记快捷方式" ;;
-        step_install_command) print -r -- "安装 open-nova 命令" ;;
-        step_terminal_command) print -r -- "让新终端可以使用 open-nova" ;;
-        step_prepare_files) print -r -- "准备 Open Nova 文件" ;;
-        step_activate_files) print -r -- "启用 Open Nova 文件" ;;
+        step_install_command) print -r -- "安装 actanara 命令" ;;
+        step_terminal_command) print -r -- "让新终端可以使用 actanara" ;;
+        step_prepare_files) print -r -- "准备 Actanara 文件" ;;
+        step_activate_files) print -r -- "启用 Actanara 文件" ;;
         step_finish_install) print -r -- "完成安装" ;;
         step_check_install) print -r -- "检查安装结果" ;;
-        step_check_files) print -r -- "检查 Open Nova 文件" ;;
+        step_check_files) print -r -- "检查 Actanara 文件" ;;
         step_check_diary) print -r -- "检查日记创建" ;;
         step_start_dashboard) print -r -- "启动 Dashboard" ;;
         step_start_memory) print -r -- "启动记忆与搜索" ;;
         step_connect_tools) print -r -- "连接所选工具" ;;
         step_check_update) print -r -- "检查更新结果" ;;
         step_prepare_memory) print -r -- "准备记忆与搜索" ;;
-        step_set_up_open_nova) print -r -- "配置 Open Nova" ;;
+        step_set_up_actanara) print -r -- "配置 Actanara" ;;
         step_set_up_daily) print -r -- "配置每日自动运行" ;;
         step_prepare_daily) print -r -- "准备每日自动运行" ;;
         step_enable_daily) print -r -- "启用每日自动运行" ;;
@@ -851,20 +851,20 @@ installer_text() {
         step_check_memory) print -r -- "检查记忆与搜索" ;;
         step_failed) print -r -- "这个步骤未能完成，请查看安装日志：" ;;
         update_needs_full_install) print -r -- "本次更新还需要更新组件，请改用完整更新。" ;;
-        warning_diary_shortcut) print -r -- "桌面日记快捷方式未更改，Open Nova 仍可正常使用。" ;;
-        warning_terminal_command) print -r -- "未能自动让新终端识别 open-nova 命令。" ;;
+        warning_diary_shortcut) print -r -- "桌面日记快捷方式未更改，Actanara 仍可正常使用。" ;;
+        warning_terminal_command) print -r -- "未能自动让新终端识别 actanara 命令。" ;;
         warning_dashboard_port) print -r -- "Dashboard 将使用当前可用的本地地址。" ;;
         warning_python) print -r -- "无法安全准备 Python，安装不能继续。" ;;
         warning_tool_connection) print -r -- "一个所选工具未能连接，可稍后在 Dashboard 设置中重试。" ;;
         warning_dashboard_service_disabled) print -r -- "已按你的选择关闭 Dashboard 后台服务。" ;;
-        warning_optional_step) print -r -- "一个可选步骤未完成，Open Nova 核心功能仍可使用。" ;;
+        warning_optional_step) print -r -- "一个可选步骤未完成，Actanara 核心功能仍可使用。" ;;
         warning_generic) print -r -- "安装需要你留意，请查看安装日志了解详情。" ;;
-        error_terminal_command) print -r -- "未能安装 open-nova 命令。" ;;
+        error_terminal_command) print -r -- "未能安装 actanara 命令。" ;;
         error_options) print -r -- "部分安装选项不能同时使用，请通过 --help 查看用法。" ;;
-        error_existing_install) print -r -- "此文件夹中已安装 Open Nova，请运行：open-nova update --apply" ;;
-        error_source_files) print -r -- "缺少 Open Nova 所需文件，或文件无法读取。" ;;
-        error_update_missing) print -r -- "所选文件夹中未找到可更新的 Open Nova。" ;;
-        error_software) print -r -- "未能准备或确认 Open Nova 所需软件。" ;;
+        error_existing_install) print -r -- "此文件夹中已安装 Actanara，请运行：actanara update --apply" ;;
+        error_source_files) print -r -- "缺少 Actanara 所需文件，或文件无法读取。" ;;
+        error_update_missing) print -r -- "所选文件夹中未找到可更新的 Actanara。" ;;
+        error_software) print -r -- "未能准备或确认 Actanara 所需软件。" ;;
         error_python) print -r -- "未能安全准备 Python。" ;;
         error_memory) print -r -- "记忆与搜索设置需要先处理，安装才能继续。" ;;
         error_dashboard) print -r -- "所选 Dashboard 地址不可用。" ;;
@@ -872,27 +872,27 @@ installer_text() {
         error_terminal) print -r -- "交互式安装需要终端；自动化运行请使用 --no-wizard。" ;;
         error_ai_key) print -r -- "更新期间不会更改 AI 密钥；请在更新完成后保存密钥。" ;;
         error_ai_key_setting) print -r -- "AI 密钥设置无效。" ;;
-        error_dashboard_required) print -r -- "Dashboard 是 Open Nova 的内置功能；如不需要后台服务，请使用 --no-dashboard-server。" ;;
+        error_dashboard_required) print -r -- "Dashboard 是 Actanara 的内置功能；如不需要后台服务，请使用 --no-dashboard-server。" ;;
         error_recovery) print -r -- "更新未能完整结束；原安装已保留，请查看安装日志。" ;;
-        error_repair_incomplete) print -r -- "Open Nova 环境已重建，但配置未完成。原有数据仍安全，请重新运行 one-liner。" ;;
+        error_repair_incomplete) print -r -- "Actanara 环境已重建，但配置未完成。原有数据仍安全，请重新运行 one-liner。" ;;
         error_setup) print -r -- "安装未能安全完成，请查看安装日志了解详情。" ;;
         next_steps) print -r -- "接下来" ;;
         plan_summary) print -r -- "安装计划" ;;
-        install_complete) print -r -- "Open Nova 已准备就绪。" ;;
-        dry_run_complete) print -r -- "Open Nova 安装计划已生成。" ;;
-        upgrade_complete) print -r -- "Open Nova 已更新完成。" ;;
-        upgrade_plan_complete) print -r -- "Open Nova 更新计划已生成。" ;;
-        repair_complete) print -r -- "Open Nova 已完成重建，原有设置和数据均已保留。" ;;
-        repair_plan_complete) print -r -- "Open Nova 重建计划已生成。" ;;
+        install_complete) print -r -- "Actanara 已准备就绪。" ;;
+        dry_run_complete) print -r -- "Actanara 安装计划已生成。" ;;
+        upgrade_complete) print -r -- "Actanara 已更新完成。" ;;
+        upgrade_plan_complete) print -r -- "Actanara 更新计划已生成。" ;;
+        repair_complete) print -r -- "Actanara 已完成重建，原有设置和数据均已保留。" ;;
+        repair_plan_complete) print -r -- "Actanara 重建计划已生成。" ;;
         repair_backup) print -r -- "恢复备份" ;;
-        repair_incomplete) print -r -- "Open Nova 环境已重建，但配置未完成。原有数据仍安全，请重新运行 one-liner。" ;;
-        update_no_changes) print -r -- "Open Nova 已是最新状态。" ;;
-        source_update_complete) print -r -- "Open Nova 文件已更新。" ;;
-        source_update_plan_complete) print -r -- "Open Nova 文件更新计划已生成。" ;;
+        repair_incomplete) print -r -- "Actanara 环境已重建，但配置未完成。原有数据仍安全，请重新运行 one-liner。" ;;
+        update_no_changes) print -r -- "Actanara 已是最新状态。" ;;
+        source_update_complete) print -r -- "Actanara 文件已更新。" ;;
+        source_update_plan_complete) print -r -- "Actanara 文件更新计划已生成。" ;;
         update_plan_summary) print -r -- "更新计划" ;;
         update_summary) print -r -- "更新摘要" ;;
         label_command) print -r -- "命令行" ;;
-        label_folder) print -r -- "Open Nova 文件夹" ;;
+        label_folder) print -r -- "Actanara 文件夹" ;;
         label_diary) print -r -- "日记" ;;
         label_dashboard) print -r -- "Dashboard" ;;
         label_daily) print -r -- "每日自动运行" ;;
@@ -922,19 +922,19 @@ installer_text() {
         readiness_dashboard_missing) print -r -- "缺少 Dashboard 所需文件" ;;
         readiness_cloud_ready) print -r -- "云端设置已就绪" ;;
         readiness_cloud_later) print -r -- "请在首次同步前补全云端设置" ;;
-        check_source_failed) print -r -- "缺少 Open Nova 所需文件" ;;
+        check_source_failed) print -r -- "缺少 Actanara 所需文件" ;;
         check_python_failed) print -r -- "无法使用 Python 3.11 或更高版本" ;;
         check_folder_failed) print -r -- "一个所选文件夹不可写" ;;
         check_dashboard_failed) print -r -- "所选 Dashboard 端口不可用" ;;
         check_failed) print -r -- "请解决上方问题后重新运行安装。" ;;
         welcome)
-          print -r -- "欢迎使用 Open Nova。Dashboard、日记、每日自动运行和 Nova-Task 默认安装。"
+          print -r -- "欢迎使用 Actanara。Dashboard、日记、每日自动运行和 Nova-Task 默认安装。"
           print -r -- "请确认你理解：启用的功能会处理本地数据，并可能产生少量 AI 模型用量。"
           ;;
         welcome_cancelled) print -r -- "已在欢迎页取消安装" ;;
-        language_prompt) print -r -- "选择 Open Nova 界面语言" ;;
+        language_prompt) print -r -- "选择 Actanara 界面语言" ;;
         invalid_env) print -r -- "环境变量名无效。按 Return 后重试。" ;;
-        ai_key_next_step) print -r -- "请在 Dashboard 设置中保存密钥，或运行：open-nova model key --value-stdin" ;;
+        ai_key_next_step) print -r -- "请在 Dashboard 设置中保存密钥，或运行：actanara model key --value-stdin" ;;
         core_dependency_title) print -r -- "安装准备" ;;
         core_dependency_action) print -r -- "正在检查系统环境" ;;
         rag_dependency_title) print -r -- "记忆与搜索" ;;
@@ -943,7 +943,7 @@ installer_text() {
         detecting_tools) print -r -- "正在检测工具……请稍候" ;;
         detected_tools) print -r -- "已检测到的工具" ;;
         tools_help)
-          print -r -- "选中的工具会纳入 Open Nova 覆盖范围；未选中的工具不会被采集。"
+          print -r -- "选中的工具会纳入 Actanara 覆盖范围；未选中的工具不会被采集。"
           print -r -- "使用方向键或 j/k 移动，空格切换，按 Return 继续。"
           ;;
         no_tools) print -r -- "未检测到已知工具，可选择“手动添加”。" ;;
@@ -974,11 +974,11 @@ installer_text() {
         install_summary) print -r -- "安装摘要" ;;
         proceed_upgrade)
           print -r -- "现在继续升级吗？"
-          print -r -- "Open Nova 会保留你的设置和数据。"
+          print -r -- "Actanara 会保留你的设置和数据。"
           ;;
         proceed_install)
           print -r -- "现在继续安装吗？"
-          print -r -- "Open Nova 会创建自己的文件夹，并配置你选择的功能。"
+          print -r -- "Actanara 会创建自己的文件夹，并配置你选择的功能。"
           ;;
         upgrade_cancelled) print -r -- "升级已取消，尚未修改文件" ;;
         install_cancelled) print -r -- "安装已取消，尚未修改文件" ;;
@@ -1000,13 +1000,13 @@ print_tty_copy() {
   if [[ "$width" != <40-999> ]]; then
     width=80
   fi
-  if rendered="$(NOVA_INSTALL_COPY="$copy" NOVA_INSTALL_COPY_WIDTH="$width" "$PYTHON_BIN" -c '
+  if rendered="$(ACTANARA_INSTALL_COPY="$copy" ACTANARA_INSTALL_COPY_WIDTH="$width" "$PYTHON_BIN" -c '
 import os
 import re
 import unicodedata
 
-text = os.environ.get("NOVA_INSTALL_COPY", "")
-limit = max(32, int(os.environ.get("NOVA_INSTALL_COPY_WIDTH", "80")) - 2)
+text = os.environ.get("ACTANARA_INSTALL_COPY", "")
+limit = max(32, int(os.environ.get("ACTANARA_INSTALL_COPY_WIDTH", "80")) - 2)
 ansi = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 def width(value):
@@ -1325,11 +1325,11 @@ PY
 llm_model_catalog_rows() {
   local provider_id="$1"
   resolve_python_bin || return 0
-  NOVA_SELECTED_LLM_PROVIDER="$provider_id" PYTHONPATH="${SOURCE_ROOT}:${SOURCE_ROOT}/src" "${PYTHON_BIN}" - <<'PY'
+  ACTANARA_SELECTED_LLM_PROVIDER="$provider_id" PYTHONPATH="${SOURCE_ROOT}:${SOURCE_ROOT}/src" "${PYTHON_BIN}" - <<'PY'
 import os
 from data_foundation.llm_provider_catalog import find_provider
 
-provider = find_provider(os.environ.get("NOVA_SELECTED_LLM_PROVIDER"), require_enabled=True)
+provider = find_provider(os.environ.get("ACTANARA_SELECTED_LLM_PROVIDER"), require_enabled=True)
 if not provider:
     raise SystemExit(0)
 for model in provider.get("models") or []:
@@ -1749,7 +1749,7 @@ wizard_enabled() {
       return $?
       ;;
     *)
-      error "Invalid NOVA_INSTALL_WIZARD value: ${WIZARD_MODE}"
+      error "Invalid ACTANARA_INSTALL_WIZARD value: ${WIZARD_MODE}"
       exit 2
       ;;
   esac
@@ -1768,55 +1768,55 @@ apply_installer_settings_overlay() {
   mkdir -p "${log_file:h}"
   progress_start "$display_label"
   if ! {
-  NOVA_INSTALL_SOURCE_ROOT="${SOURCE_ROOT}" \
-  NOVA_INSTALL_DEPLOY_SOURCE_ROOT="${DEPLOY_SOURCE_ROOT}" \
-  NOVA_INSTALL_RUNTIME="${RUNTIME_HOME}" \
-  NOVA_INSTALL_UPGRADE="${UPGRADE}" \
-  NOVA_INSTALL_DIARY_OUTPUT="${DIARY_OUTPUT_DIR}" \
-  NOVA_INSTALL_DIARY_OUTPUT_SET="${DIARY_OUTPUT_SET}" \
-  NOVA_INSTALL_REPORTS_OUTPUT="${REPORTS_OUTPUT_DIR}" \
-  NOVA_INSTALL_REPORTS_OUTPUT_SET="${REPORTS_OUTPUT_SET}" \
-  NOVA_INSTALL_SNAPSHOTS_OUTPUT="${SNAPSHOTS_OUTPUT_DIR}" \
-  NOVA_INSTALL_SNAPSHOTS_OUTPUT_SET="${SNAPSHOTS_OUTPUT_SET}" \
-  NOVA_INSTALL_ARCHIVES_OUTPUT="${ARCHIVES_OUTPUT_DIR}" \
-  NOVA_INSTALL_ARCHIVES_OUTPUT_SET="${ARCHIVES_OUTPUT_SET}" \
-  NOVA_INSTALL_SELECTED_EXTERNAL_TOOLS="${SELECTED_EXTERNAL_TOOLS}" \
-  NOVA_INSTALL_ENABLE_SKILL_REGISTRATION="${ENABLE_SKILL_REGISTRATION}" \
-  NOVA_INSTALL_ENABLE_DASHBOARD="${ENABLE_DASHBOARD}" \
-  NOVA_INSTALL_ENABLE_DASHBOARD_SERVER="$([[ "$NO_DASHBOARD_SERVER" == "1" ]] && print 0 || print 1)" \
-  NOVA_INSTALL_DASHBOARD_SERVER_SET="${NO_DASHBOARD_SERVER_SET}" \
-  NOVA_INSTALL_DASHBOARD_HOST="${DASHBOARD_HOST}" \
-  NOVA_INSTALL_DASHBOARD_HOST_SET="${DASHBOARD_HOST_SET}" \
-  NOVA_INSTALL_DASHBOARD_PORT="${DASHBOARD_PORT}" \
-  NOVA_INSTALL_DASHBOARD_PORT_SET="${DASHBOARD_PORT_SET}" \
-  NOVA_INSTALL_ENABLE_NOVA_TASK="${ENABLE_NOVA_TASK}" \
-  NOVA_INSTALL_ENABLE_LLM_GENERATION="${ENABLE_LLM_GENERATION}" \
-  NOVA_INSTALL_LLM_SET="${LLM_SET}" \
-  NOVA_INSTALL_LLM_PROVIDER_MODE="${LLM_PROVIDER_MODE}" \
-  NOVA_INSTALL_LLM_PROVIDER="${LLM_PROVIDER}" \
-  NOVA_INSTALL_LLM_API="${LLM_API}" \
-  NOVA_INSTALL_LLM_ENDPOINT="${LLM_ENDPOINT}" \
-  NOVA_INSTALL_LLM_MODEL="${LLM_MODEL}" \
-  NOVA_INSTALL_LLM_API_KEY_ENV="${LLM_API_KEY_ENV}" \
-  NOVA_INSTALL_LANGUAGE="${INSTALL_LANGUAGE}" \
-  NOVA_INSTALL_LANGUAGE_SET="${LANGUAGE_SET}" \
-  NOVA_INSTALL_PIPELINE_LANGUAGE_PROFILE="${PIPELINE_LANGUAGE_PROFILE}" \
-  NOVA_INSTALL_PIPELINE_ENGLISH_ENABLED="${PIPELINE_ENGLISH_ENABLED}" \
-  NOVA_INSTALL_PIPELINE_DIARY_SCHEMA_VERSION="${PIPELINE_DIARY_SCHEMA_VERSION}" \
-  NOVA_INSTALL_PIPELINE_PROMPT_PAYLOAD_PROFILE="${PIPELINE_PROMPT_PAYLOAD_PROFILE}" \
-  NOVA_INSTALL_RAG_LANGUAGE_PROFILE="${RAG_LANGUAGE_PROFILE}" \
-  NOVA_INSTALL_ENABLE_RAG="${ENABLE_RAG}" \
-  NOVA_INSTALL_RAG_SET="${RAG_SET}" \
-  NOVA_INSTALL_RAG_EMBEDDING_MODE="${RAG_EMBEDDING_MODE}" \
-  NOVA_INSTALL_RAG_EMBEDDING_MODE_SET="${RAG_EMBEDDING_MODE_SET}" \
-  NOVA_INSTALL_RAG_LOCAL_MODEL="${RAG_LOCAL_MODEL}" \
-  NOVA_INSTALL_RAG_LOCAL_MODEL_SET="${RAG_LOCAL_MODEL_SET}" \
-  NOVA_INSTALL_RAG_LOCAL_DIMENSION="${RAG_LOCAL_DIMENSION}" \
-  NOVA_INSTALL_RAG_CLOUD_PROVIDER="${RAG_CLOUD_PROVIDER}" \
-  NOVA_INSTALL_RAG_CLOUD_ENDPOINT="${RAG_CLOUD_ENDPOINT}" \
-  NOVA_INSTALL_RAG_CLOUD_MODEL="${RAG_CLOUD_MODEL}" \
-  NOVA_INSTALL_RAG_CLOUD_DIMENSION="${RAG_CLOUD_DIMENSION}" \
-  NOVA_INSTALL_RAG_CLOUD_API_KEY_ENV="${RAG_CLOUD_API_KEY_ENV}" \
+  ACTANARA_INSTALL_SOURCE_ROOT="${SOURCE_ROOT}" \
+  ACTANARA_INSTALL_DEPLOY_SOURCE_ROOT="${DEPLOY_SOURCE_ROOT}" \
+  ACTANARA_INSTALL_RUNTIME="${RUNTIME_HOME}" \
+  ACTANARA_INSTALL_UPGRADE="${UPGRADE}" \
+  ACTANARA_INSTALL_DIARY_OUTPUT="${DIARY_OUTPUT_DIR}" \
+  ACTANARA_INSTALL_DIARY_OUTPUT_SET="${DIARY_OUTPUT_SET}" \
+  ACTANARA_INSTALL_REPORTS_OUTPUT="${REPORTS_OUTPUT_DIR}" \
+  ACTANARA_INSTALL_REPORTS_OUTPUT_SET="${REPORTS_OUTPUT_SET}" \
+  ACTANARA_INSTALL_SNAPSHOTS_OUTPUT="${SNAPSHOTS_OUTPUT_DIR}" \
+  ACTANARA_INSTALL_SNAPSHOTS_OUTPUT_SET="${SNAPSHOTS_OUTPUT_SET}" \
+  ACTANARA_INSTALL_ARCHIVES_OUTPUT="${ARCHIVES_OUTPUT_DIR}" \
+  ACTANARA_INSTALL_ARCHIVES_OUTPUT_SET="${ARCHIVES_OUTPUT_SET}" \
+  ACTANARA_INSTALL_SELECTED_EXTERNAL_TOOLS="${SELECTED_EXTERNAL_TOOLS}" \
+  ACTANARA_INSTALL_ENABLE_SKILL_REGISTRATION="${ENABLE_SKILL_REGISTRATION}" \
+  ACTANARA_INSTALL_ENABLE_DASHBOARD="${ENABLE_DASHBOARD}" \
+  ACTANARA_INSTALL_ENABLE_DASHBOARD_SERVER="$([[ "$NO_DASHBOARD_SERVER" == "1" ]] && print 0 || print 1)" \
+  ACTANARA_INSTALL_DASHBOARD_SERVER_SET="${NO_DASHBOARD_SERVER_SET}" \
+  ACTANARA_INSTALL_DASHBOARD_HOST="${DASHBOARD_HOST}" \
+  ACTANARA_INSTALL_DASHBOARD_HOST_SET="${DASHBOARD_HOST_SET}" \
+  ACTANARA_INSTALL_DASHBOARD_PORT="${DASHBOARD_PORT}" \
+  ACTANARA_INSTALL_DASHBOARD_PORT_SET="${DASHBOARD_PORT_SET}" \
+  ACTANARA_INSTALL_ENABLE_NOVA_TASK="${ENABLE_NOVA_TASK}" \
+  ACTANARA_INSTALL_ENABLE_LLM_GENERATION="${ENABLE_LLM_GENERATION}" \
+  ACTANARA_INSTALL_LLM_SET="${LLM_SET}" \
+  ACTANARA_INSTALL_LLM_PROVIDER_MODE="${LLM_PROVIDER_MODE}" \
+  ACTANARA_INSTALL_LLM_PROVIDER="${LLM_PROVIDER}" \
+  ACTANARA_INSTALL_LLM_API="${LLM_API}" \
+  ACTANARA_INSTALL_LLM_ENDPOINT="${LLM_ENDPOINT}" \
+  ACTANARA_INSTALL_LLM_MODEL="${LLM_MODEL}" \
+  ACTANARA_INSTALL_LLM_API_KEY_ENV="${LLM_API_KEY_ENV}" \
+  ACTANARA_INSTALL_LANGUAGE="${INSTALL_LANGUAGE}" \
+  ACTANARA_INSTALL_LANGUAGE_SET="${LANGUAGE_SET}" \
+  ACTANARA_INSTALL_PIPELINE_LANGUAGE_PROFILE="${PIPELINE_LANGUAGE_PROFILE}" \
+  ACTANARA_INSTALL_PIPELINE_ENGLISH_ENABLED="${PIPELINE_ENGLISH_ENABLED}" \
+  ACTANARA_INSTALL_PIPELINE_DIARY_SCHEMA_VERSION="${PIPELINE_DIARY_SCHEMA_VERSION}" \
+  ACTANARA_INSTALL_PIPELINE_PROMPT_PAYLOAD_PROFILE="${PIPELINE_PROMPT_PAYLOAD_PROFILE}" \
+  ACTANARA_INSTALL_RAG_LANGUAGE_PROFILE="${RAG_LANGUAGE_PROFILE}" \
+  ACTANARA_INSTALL_ENABLE_RAG="${ENABLE_RAG}" \
+  ACTANARA_INSTALL_RAG_SET="${RAG_SET}" \
+  ACTANARA_INSTALL_RAG_EMBEDDING_MODE="${RAG_EMBEDDING_MODE}" \
+  ACTANARA_INSTALL_RAG_EMBEDDING_MODE_SET="${RAG_EMBEDDING_MODE_SET}" \
+  ACTANARA_INSTALL_RAG_LOCAL_MODEL="${RAG_LOCAL_MODEL}" \
+  ACTANARA_INSTALL_RAG_LOCAL_MODEL_SET="${RAG_LOCAL_MODEL_SET}" \
+  ACTANARA_INSTALL_RAG_LOCAL_DIMENSION="${RAG_LOCAL_DIMENSION}" \
+  ACTANARA_INSTALL_RAG_CLOUD_PROVIDER="${RAG_CLOUD_PROVIDER}" \
+  ACTANARA_INSTALL_RAG_CLOUD_ENDPOINT="${RAG_CLOUD_ENDPOINT}" \
+  ACTANARA_INSTALL_RAG_CLOUD_MODEL="${RAG_CLOUD_MODEL}" \
+  ACTANARA_INSTALL_RAG_CLOUD_DIMENSION="${RAG_CLOUD_DIMENSION}" \
+  ACTANARA_INSTALL_RAG_CLOUD_API_KEY_ENV="${RAG_CLOUD_API_KEY_ENV}" \
   PYTHONPATH="${SOURCE_ROOT}:${SOURCE_ROOT}/src" \
   "${VENV_PY}" - <<'PY'
 import os
@@ -1825,17 +1825,17 @@ from pathlib import Path
 from data_foundation.paths import runtime_paths_for_home
 from data_foundation.settings import write_settings
 
-runtime = Path(os.environ["NOVA_INSTALL_RUNTIME"]).expanduser()
-deploy_source_root = Path(os.environ["NOVA_INSTALL_DEPLOY_SOURCE_ROOT"]).expanduser()
+runtime = Path(os.environ["ACTANARA_INSTALL_RUNTIME"]).expanduser()
+deploy_source_root = Path(os.environ["ACTANARA_INSTALL_DEPLOY_SOURCE_ROOT"]).expanduser()
 paths = runtime_paths_for_home(runtime)
 
-is_upgrade = os.environ["NOVA_INSTALL_UPGRADE"] == "1"
-enable_rag = os.environ["NOVA_INSTALL_ENABLE_RAG"] == "1"
-enable_llm = os.environ["NOVA_INSTALL_ENABLE_LLM_GENERATION"] == "1"
-enable_skill_registration = os.environ["NOVA_INSTALL_ENABLE_SKILL_REGISTRATION"] == "1"
-embedding_mode = os.environ["NOVA_INSTALL_RAG_EMBEDDING_MODE"]
-llm_provider_mode = os.environ["NOVA_INSTALL_LLM_PROVIDER_MODE"]
-selected_external_tools_raw = os.environ.get("NOVA_INSTALL_SELECTED_EXTERNAL_TOOLS", "")
+is_upgrade = os.environ["ACTANARA_INSTALL_UPGRADE"] == "1"
+enable_rag = os.environ["ACTANARA_INSTALL_ENABLE_RAG"] == "1"
+enable_llm = os.environ["ACTANARA_INSTALL_ENABLE_LLM_GENERATION"] == "1"
+enable_skill_registration = os.environ["ACTANARA_INSTALL_ENABLE_SKILL_REGISTRATION"] == "1"
+embedding_mode = os.environ["ACTANARA_INSTALL_RAG_EMBEDDING_MODE"]
+llm_provider_mode = os.environ["ACTANARA_INSTALL_LLM_PROVIDER_MODE"]
+selected_external_tools_raw = os.environ.get("ACTANARA_INSTALL_SELECTED_EXTERNAL_TOOLS", "")
 
 
 def flag(name: str) -> bool:
@@ -1849,24 +1849,24 @@ def first_install_or(flag_name: str) -> bool:
 rag_embedding = {
     "mode": embedding_mode,
     "provider": embedding_mode,
-    "providerId": "local" if embedding_mode == "local" else os.environ["NOVA_INSTALL_RAG_CLOUD_PROVIDER"],
-    "model": os.environ["NOVA_INSTALL_RAG_CLOUD_MODEL"] if embedding_mode == "cloud" else os.environ["NOVA_INSTALL_RAG_LOCAL_MODEL"],
+    "providerId": "local" if embedding_mode == "local" else os.environ["ACTANARA_INSTALL_RAG_CLOUD_PROVIDER"],
+    "model": os.environ["ACTANARA_INSTALL_RAG_CLOUD_MODEL"] if embedding_mode == "cloud" else os.environ["ACTANARA_INSTALL_RAG_LOCAL_MODEL"],
     "device": "auto",
 }
 if embedding_mode == "cloud":
-    dimension = os.environ["NOVA_INSTALL_RAG_CLOUD_DIMENSION"].strip()
+    dimension = os.environ["ACTANARA_INSTALL_RAG_CLOUD_DIMENSION"].strip()
     if dimension:
         rag_embedding["dimension"] = int(dimension)
-    rag_embedding["endpoint"] = os.environ["NOVA_INSTALL_RAG_CLOUD_ENDPOINT"]
-    rag_embedding["apiKeyEnv"] = os.environ["NOVA_INSTALL_RAG_CLOUD_API_KEY_ENV"]
+    rag_embedding["endpoint"] = os.environ["ACTANARA_INSTALL_RAG_CLOUD_ENDPOINT"]
+    rag_embedding["apiKeyEnv"] = os.environ["ACTANARA_INSTALL_RAG_CLOUD_API_KEY_ENV"]
 else:
-    dimension = os.environ["NOVA_INSTALL_RAG_LOCAL_DIMENSION"].strip()
+    dimension = os.environ["ACTANARA_INSTALL_RAG_LOCAL_DIMENSION"].strip()
     if dimension:
         rag_embedding["dimension"] = int(dimension)
 
 update = {
     "general": {
-        "locale": os.environ["NOVA_INSTALL_LANGUAGE"],
+        "locale": os.environ["ACTANARA_INSTALL_LANGUAGE"],
         "workspaceRoot": str(deploy_source_root),
         "tmpWorkspace": str(runtime / "state" / "tmp"),
     },
@@ -1876,8 +1876,8 @@ update = {
             "dashboardApp": str(deploy_source_root / "src" / "dashboard"),
         },
         "runtime": {
-            "novaHome": str(runtime),
-            "database": str(runtime / "data" / "nova_data.sqlite3"),
+            "actanaraHome": str(runtime),
+            "database": str(runtime / "data" / "actanara_data.sqlite3"),
         },
         "diary": {},
         "intermediate": {},
@@ -1904,46 +1904,46 @@ update = {
     },
 }
 
-if first_install_or("NOVA_INSTALL_LANGUAGE_SET"):
-    update["general"]["locale"] = os.environ["NOVA_INSTALL_LANGUAGE"]
+if first_install_or("ACTANARA_INSTALL_LANGUAGE_SET"):
+    update["general"]["locale"] = os.environ["ACTANARA_INSTALL_LANGUAGE"]
     update["pipeline"].update(
         {
-            "languageProfile": os.environ["NOVA_INSTALL_PIPELINE_LANGUAGE_PROFILE"],
-            "englishEnabled": os.environ["NOVA_INSTALL_PIPELINE_ENGLISH_ENABLED"] == "1",
-            "diarySchemaVersion": os.environ["NOVA_INSTALL_PIPELINE_DIARY_SCHEMA_VERSION"],
-            "promptPayloadProfile": os.environ["NOVA_INSTALL_PIPELINE_PROMPT_PAYLOAD_PROFILE"],
+            "languageProfile": os.environ["ACTANARA_INSTALL_PIPELINE_LANGUAGE_PROFILE"],
+            "englishEnabled": os.environ["ACTANARA_INSTALL_PIPELINE_ENGLISH_ENABLED"] == "1",
+            "diarySchemaVersion": os.environ["ACTANARA_INSTALL_PIPELINE_DIARY_SCHEMA_VERSION"],
+            "promptPayloadProfile": os.environ["ACTANARA_INSTALL_PIPELINE_PROMPT_PAYLOAD_PROFILE"],
         }
     )
-    update.setdefault("rag", {})["languageProfile"] = os.environ["NOVA_INSTALL_RAG_LANGUAGE_PROFILE"]
+    update.setdefault("rag", {})["languageProfile"] = os.environ["ACTANARA_INSTALL_RAG_LANGUAGE_PROFILE"]
 
-if first_install_or("NOVA_INSTALL_SNAPSHOTS_OUTPUT_SET"):
-    update["paths"]["runtime"]["snapshots"] = os.environ["NOVA_INSTALL_SNAPSHOTS_OUTPUT"]
-if first_install_or("NOVA_INSTALL_DIARY_OUTPUT_SET"):
-    update["paths"]["diary"]["generatedDiary"] = os.environ["NOVA_INSTALL_DIARY_OUTPUT"]
-    update["paths"]["diary"]["legacyDiaryRoot"] = os.environ["NOVA_INSTALL_DIARY_OUTPUT"]
-if first_install_or("NOVA_INSTALL_REPORTS_OUTPUT_SET"):
-    update["paths"]["diary"]["reports"] = os.environ["NOVA_INSTALL_REPORTS_OUTPUT"]
-if first_install_or("NOVA_INSTALL_ARCHIVES_OUTPUT_SET"):
-    update["paths"]["intermediate"]["archives"] = os.environ["NOVA_INSTALL_ARCHIVES_OUTPUT"]
+if first_install_or("ACTANARA_INSTALL_SNAPSHOTS_OUTPUT_SET"):
+    update["paths"]["runtime"]["snapshots"] = os.environ["ACTANARA_INSTALL_SNAPSHOTS_OUTPUT"]
+if first_install_or("ACTANARA_INSTALL_DIARY_OUTPUT_SET"):
+    update["paths"]["diary"]["generatedDiary"] = os.environ["ACTANARA_INSTALL_DIARY_OUTPUT"]
+    update["paths"]["diary"]["legacyDiaryRoot"] = os.environ["ACTANARA_INSTALL_DIARY_OUTPUT"]
+if first_install_or("ACTANARA_INSTALL_REPORTS_OUTPUT_SET"):
+    update["paths"]["diary"]["reports"] = os.environ["ACTANARA_INSTALL_REPORTS_OUTPUT"]
+if first_install_or("ACTANARA_INSTALL_ARCHIVES_OUTPUT_SET"):
+    update["paths"]["intermediate"]["archives"] = os.environ["ACTANARA_INSTALL_ARCHIVES_OUTPUT"]
 
-if first_install_or("NOVA_INSTALL_DASHBOARD_HOST_SET"):
-    update["dashboard"]["host"] = os.environ["NOVA_INSTALL_DASHBOARD_HOST"]
-if first_install_or("NOVA_INSTALL_DASHBOARD_PORT_SET"):
-    update["dashboard"]["port"] = int(os.environ["NOVA_INSTALL_DASHBOARD_PORT"])
-if first_install_or("NOVA_INSTALL_DASHBOARD_SERVER_SET"):
+if first_install_or("ACTANARA_INSTALL_DASHBOARD_HOST_SET"):
+    update["dashboard"]["host"] = os.environ["ACTANARA_INSTALL_DASHBOARD_HOST"]
+if first_install_or("ACTANARA_INSTALL_DASHBOARD_PORT_SET"):
+    update["dashboard"]["port"] = int(os.environ["ACTANARA_INSTALL_DASHBOARD_PORT"])
+if first_install_or("ACTANARA_INSTALL_DASHBOARD_SERVER_SET"):
     update["dashboard"]["server"] = {
-        "enabled": os.environ["NOVA_INSTALL_ENABLE_DASHBOARD_SERVER"] == "1",
+        "enabled": os.environ["ACTANARA_INSTALL_ENABLE_DASHBOARD_SERVER"] == "1",
     }
 
 if not is_upgrade:
     update["features"].update(
         {
-            "dashboard": os.environ["NOVA_INSTALL_ENABLE_DASHBOARD"] == "1",
-            "novaTask": os.environ["NOVA_INSTALL_ENABLE_NOVA_TASK"] == "1",
-            "taskAuditSink": os.environ["NOVA_INSTALL_ENABLE_NOVA_TASK"] == "1",
+            "dashboard": os.environ["ACTANARA_INSTALL_ENABLE_DASHBOARD"] == "1",
+            "novaTask": os.environ["ACTANARA_INSTALL_ENABLE_NOVA_TASK"] == "1",
+            "taskAuditSink": os.environ["ACTANARA_INSTALL_ENABLE_NOVA_TASK"] == "1",
         }
     )
-if first_install_or("NOVA_INSTALL_RAG_SET"):
+if first_install_or("ACTANARA_INSTALL_RAG_SET"):
     update["features"].update(
         {
             "rag": enable_rag,
@@ -1960,7 +1960,7 @@ if first_install_or("NOVA_INSTALL_RAG_SET"):
             },
         }
     )
-if first_install_or("NOVA_INSTALL_LLM_SET"):
+if first_install_or("ACTANARA_INSTALL_LLM_SET"):
     update["features"]["llmGeneration"] = enable_llm
 
 for group_name in ("features",):
@@ -2045,39 +2045,39 @@ if enable_rag and enable_skill_registration and selected_external_tools:
         "status": "installer-applied",
         "supportedNow": True,
         "purpose": "RAG辅助记忆系统",
-        "scope": "Installer apply and Dashboard-managed registration of the Open Nova nova-RAG skill into selected tools' global layer",
+        "scope": "Installer apply and Dashboard-managed registration of the Actanara nova-RAG skill into selected tools' global layer",
         "selectedTools": selected_external_tools,
         "dryRunEndpoint": "GET /api/settings/external-tools/rag-skill-registration/plan",
         "applyEndpoint": "POST /api/settings/external-tools/rag-skill-registration",
-        "confirmationTextRequired": "INSTALL OPEN NOVA RAG SKILL",
+        "confirmationTextRequired": "INSTALL ACTANARA RAG SKILL",
         "mutationPolicy": "installer writes missing skill files after final install confirmation; exact unmodified generated versions are backed up and upgraded; customized files are preserved unless Dashboard overwrite is explicitly confirmed",
     }
 
 if external_tools_update:
     update["externalTools"] = external_tools_update
 
-if first_install_or("NOVA_INSTALL_LLM_SET") and enable_llm:
+if first_install_or("ACTANARA_INSTALL_LLM_SET") and enable_llm:
     if llm_provider_mode == "preset":
         update["llmProvider"] = {
             "mode": "preset",
-            "provider": os.environ["NOVA_INSTALL_LLM_PROVIDER"],
-            "presetProvider": os.environ["NOVA_INSTALL_LLM_PROVIDER"],
-            "endpoint": os.environ["NOVA_INSTALL_LLM_ENDPOINT"],
-            "model": os.environ["NOVA_INSTALL_LLM_MODEL"],
-            "api": os.environ["NOVA_INSTALL_LLM_API"],
+            "provider": os.environ["ACTANARA_INSTALL_LLM_PROVIDER"],
+            "presetProvider": os.environ["ACTANARA_INSTALL_LLM_PROVIDER"],
+            "endpoint": os.environ["ACTANARA_INSTALL_LLM_ENDPOINT"],
+            "model": os.environ["ACTANARA_INSTALL_LLM_MODEL"],
+            "api": os.environ["ACTANARA_INSTALL_LLM_API"],
             "apiKey": "",
-            "apiKeyEnv": os.environ["NOVA_INSTALL_LLM_API_KEY_ENV"],
+            "apiKeyEnv": os.environ["ACTANARA_INSTALL_LLM_API_KEY_ENV"],
         }
     else:
         update["llmProvider"] = {
             "mode": "custom",
             "provider": "custom",
             "presetProvider": "",
-            "endpoint": os.environ["NOVA_INSTALL_LLM_ENDPOINT"],
-            "model": os.environ["NOVA_INSTALL_LLM_MODEL"],
-            "api": os.environ["NOVA_INSTALL_LLM_API"],
+            "endpoint": os.environ["ACTANARA_INSTALL_LLM_ENDPOINT"],
+            "model": os.environ["ACTANARA_INSTALL_LLM_MODEL"],
+            "api": os.environ["ACTANARA_INSTALL_LLM_API"],
             "apiKey": "",
-            "apiKeyEnv": os.environ["NOVA_INSTALL_LLM_API_KEY_ENV"],
+            "apiKeyEnv": os.environ["ACTANARA_INSTALL_LLM_API_KEY_ENV"],
         }
 
 write_settings(update, paths)
@@ -2100,7 +2100,7 @@ migrate_legacy_settings_for_repair() {
     --dashboard-enabled "${ENABLE_DASHBOARD}" \
     --dashboard-server-enabled "$(( 1 - NO_DASHBOARD_SERVER ))" \
     --rag-server-enabled "${REPAIR_RAG_SERVICE_ENABLED}" >/dev/null; then
-    error "legacy Open Nova Settings could not be migrated safely"
+    error "legacy Actanara Settings could not be migrated safely"
     return 1
   fi
 }
@@ -2121,7 +2121,7 @@ store_installer_llm_api_key_secret() {
   mkdir -p "${log_file:h}"
   progress_start "$label"
   print -r -- "" >> "$log_file"
-  print -r -- "## ${technical_label}: open-nova model key --value-stdin --runtime ${RUNTIME_HOME}" >> "$log_file"
+  print -r -- "## ${technical_label}: actanara model key --value-stdin --runtime ${RUNTIME_HOME}" >> "$log_file"
   if ! print -r -- "$LLM_API_KEY_VALUE" | "${VENV_PY}" -m data_foundation.cli \
     model key \
     --value-stdin \
@@ -2169,7 +2169,7 @@ create_desktop_diary_link() {
 }
 
 create_cli_shim() {
-  log "Creating open-nova CLI shim"
+  log "Creating actanara CLI shim"
   if [[ "$DRY_RUN" == "1" ]]; then
     progress_start "$(installer_text step_install_command)"
     progress_ok "$(installer_text step_install_command)"
@@ -2180,21 +2180,21 @@ create_cli_shim() {
   if ! cat > "${shim_tmp}" <<EOF
 #!/usr/bin/env zsh
 set -euo pipefail
-export NOVA_HOME="${RUNTIME_HOME}"
-export NOVA_LOCATION_FILE="${LOCATION_FILE}"
+export ACTANARA_HOME="${RUNTIME_HOME}"
+export ACTANARA_LOCATION_FILE="${LOCATION_FILE}"
 export PYTHONPATH="${DEPLOY_SOURCE_ROOT}:${DEPLOY_SOURCE_ROOT}/src"
 export PYTHONDONTWRITEBYTECODE="1"
-unset WORKSPACE_DIR DIARY_OUTPUT_DIR TMP_WORKSPACE NOVA_DATA_DB_PATH NOVA_DATA_EXPORT_DIR TASK_DB_PATH
+unset WORKSPACE_DIR DIARY_OUTPUT_DIR TMP_WORKSPACE ACTANARA_DATA_DB_PATH ACTANARA_DATA_EXPORT_DIR TASK_DB_PATH
 exec "${VENV_PY}" -m data_foundation.cli "\$@"
 EOF
   then
     rm -f "${shim_tmp}"
-    error "Open Nova CLI shim could not be staged: ${CLI_SHIM}"
+    error "Actanara CLI shim could not be staged: ${CLI_SHIM}"
     return 1
   fi
   if ! chmod +x "${shim_tmp}" || ! mv -f "${shim_tmp}" "${CLI_SHIM}"; then
     rm -f "${shim_tmp}"
-    error "Open Nova CLI shim could not be installed atomically: ${CLI_SHIM}"
+    error "Actanara CLI shim could not be installed atomically: ${CLI_SHIM}"
     return 1
   fi
   if mkdir -p "${USER_CLI_SHIM:h}" 2>/dev/null; then
@@ -2229,8 +2229,8 @@ ensure_cli_on_shell_path() {
   local shim_dir="${USER_CLI_SHIM:h}"
   local profile_path
   local path_expr
-  local marker_start="# >>> open-nova installer PATH >>>"
-  local marker_end="# <<< open-nova installer PATH <<<"
+  local marker_start="# >>> actanara installer PATH >>>"
+  local marker_end="# <<< actanara installer PATH <<<"
   profile_path="$(resolve_shell_path_file)"
   if [[ "$shim_dir" == "${HOME}/.local/bin" ]]; then
     path_expr="\$HOME/.local/bin"
@@ -2255,7 +2255,7 @@ ensure_cli_on_shell_path() {
   if ! {
     print -r -- ""
     print -r -- "$marker_start"
-    print -r -- "# Added by Open Nova installer so the open-nova CLI resolves in new shells."
+    print -r -- "# Added by Actanara installer so the actanara CLI resolves in new shells."
     print -r -- "export PATH=\"${path_expr}:\$PATH\""
     print -r -- "$marker_end"
   } >> "$profile_path" 2>/dev/null; then
@@ -2266,8 +2266,8 @@ ensure_cli_on_shell_path() {
 }
 
 export_runtime_environment() {
-export NOVA_HOME="${RUNTIME_HOME}"
-export NOVA_LOCATION_FILE="${LOCATION_FILE}"
+export ACTANARA_HOME="${RUNTIME_HOME}"
+export ACTANARA_LOCATION_FILE="${LOCATION_FILE}"
 export PYTHONPATH="${DEPLOY_SOURCE_ROOT}:${DEPLOY_SOURCE_ROOT}/src:${DEPLOY_SOURCE_ROOT}/src/dashboard"
 }
 
@@ -2305,20 +2305,20 @@ stage_runtime_source() {
       /usr/bin/env
       -i
       "PATH=/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-      "USER=open-nova-candidate"
-      "LOGNAME=open-nova-candidate"
+      "USER=actanara-candidate"
+      "LOGNAME=actanara-candidate"
       "SHELL=/bin/zsh"
       "LC_ALL=C"
       "LANG=C"
-      "NOVA_HOME=${UPDATE_VALIDATION_RUNTIME}"
-      "NOVA_LOCATION_FILE=${UPDATE_VALIDATION_RUNTIME}/location.json"
+      "ACTANARA_HOME=${UPDATE_VALIDATION_RUNTIME}"
+      "ACTANARA_LOCATION_FILE=${UPDATE_VALIDATION_RUNTIME}/location.json"
       "HOME=${UPDATE_VALIDATION_RUNTIME}/home"
       "TMPDIR=${UPDATE_VALIDATION_RUNTIME}/tmp"
       "XDG_CONFIG_HOME=${UPDATE_VALIDATION_RUNTIME}/xdg"
       "PIP_CONFIG_FILE=/dev/null"
       "PIP_CACHE_DIR=${UPDATE_VALIDATION_RUNTIME}/pip-cache"
       "PYTHONNOUSERSITE=1"
-      "OPEN_NOVA_SECRET_BACKEND=memory"
+      "ACTANARA_SECRET_BACKEND=memory"
       "PYTHONDONTWRITEBYTECODE=1"
       "${PYTHON_BIN}" "-"
     )
@@ -2471,7 +2471,7 @@ def split_sql_statements(body, version):
 
 
 if precreated:
-    marker = target / ".open-nova-update-owner"
+    marker = target / ".actanara-update-owner"
     if target.is_symlink() or not target.is_dir() or marker.is_symlink() or not marker.is_file():
         raise SystemExit("transaction source reservation is missing or unsafe")
     if any(path != marker for path in target.iterdir()):
@@ -2507,7 +2507,7 @@ def privacy_safe_source_locator(source_path):
 
 manifest = {
     "schemaVersion": 2,
-    "product": "open-nova",
+    "product": "actanara",
     "sourceLocator": privacy_safe_source_locator(source),
     "deployedSourceLocator": {"kind": "runtime-relative", "pathComponents": ["app", "source"]},
     "releaseLocator": {"kind": "runtime-relative", "pathComponents": ["app", "releases", release_target.name]},
@@ -2660,7 +2660,7 @@ try:
     )
 except Exception:
     pass
-(target / ".open-nova-runtime-source.json").write_text(
+(target / ".actanara-runtime-source.json").write_text(
     json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
     encoding="utf-8",
 )
@@ -2678,11 +2678,11 @@ if clean_result.get("status") != "passed":
 
 payload_files = []
 payload_digest = hashlib.sha256()
-manifest_path = target / ".open-nova-runtime-source.json"
+manifest_path = target / ".actanara-runtime-source.json"
 for payload_path in sorted(target.rglob("*")):
     if (
         payload_path == manifest_path
-        or payload_path.name == ".open-nova-update-owner"
+        or payload_path.name == ".actanara-update-owner"
         or not (payload_path.is_file() or payload_path.is_symlink())
     ):
         continue
@@ -2721,14 +2721,14 @@ PY
     error "runtime source staging failed before source pointer switch"
     return 1
   fi
-  if [[ ! -f "${release_tmp}/.open-nova-runtime-source.json" || ! -f "${release_tmp}/pyproject.toml" ]]; then
+  if [[ ! -f "${release_tmp}/.actanara-runtime-source.json" || ! -f "${release_tmp}/pyproject.toml" ]]; then
     if [[ "$transaction_owned_stage" != "1" ]]; then
       rm -rf "${release_tmp}"
     fi
     error "runtime source release failed validation before switch"
     return 1
   fi
-  if ! PYTHONDONTWRITEBYTECODE=1 "${PYTHON_BIN}" - "${release_tmp}/.open-nova-runtime-source.json" "${release_id}" <<'PY'
+  if ! PYTHONDONTWRITEBYTECODE=1 "${PYTHON_BIN}" - "${release_tmp}/.actanara-runtime-source.json" "${release_id}" <<'PY'
 import hashlib
 import json
 import re
@@ -2749,7 +2749,7 @@ if type(manifest.get("schemaVersion")) is not int or manifest.get("schemaVersion
     raise SystemExit("staged source manifest has an unsupported privacy schema")
 if set(manifest) != expected_fields:
     raise SystemExit("staged source manifest has an invalid exact schema")
-if manifest.get("product") != "open-nova" or manifest.get("deploymentMode") != "release-symlink":
+if manifest.get("product") != "actanara" or manifest.get("deploymentMode") != "release-symlink":
     raise SystemExit("staged source manifest has invalid release semantics")
 try:
     datetime.fromisoformat(manifest.get("copiedAt"))
@@ -2896,7 +2896,7 @@ for record in payload["files"]:
 candidate_entries = list(manifest_path.parent.rglob("*"))
 if any(item.is_symlink() for item in candidate_entries):
     raise SystemExit("staged source payload contains a symlink after release-clean scan")
-owner_marker = manifest_path.parent / ".open-nova-update-owner"
+owner_marker = manifest_path.parent / ".actanara-update-owner"
 actual_paths = {
     item.relative_to(manifest_path.parent).as_posix()
     for item in candidate_entries
@@ -3025,7 +3025,7 @@ promote_staged_runtime_source() {
   fi
   local release_target="${STAGED_RELEASE_TARGET}"
   if [[ -e "${DEPLOY_SOURCE_ROOT}" || -L "${DEPLOY_SOURCE_ROOT}" ]]; then
-    error "runtime source already exists; use --upgrade for an existing Open Nova Runtime"
+    error "runtime source already exists; use --upgrade for an existing Actanara Runtime"
     return 1
   fi
   if ! promote_fresh_runtime_pointer \
@@ -3035,7 +3035,7 @@ promote_staged_runtime_source() {
   then
     return 1
   fi
-  if [[ ! -f "${DEPLOY_SOURCE_ROOT}/.open-nova-runtime-source.json" ]]; then
+  if [[ ! -f "${DEPLOY_SOURCE_ROOT}/.actanara-runtime-source.json" ]]; then
     error "runtime source release switch failed validation; existing files were preserved"
     return 1
   fi
@@ -3091,7 +3091,7 @@ except (IndexError, OSError, RuntimeError):
 
 
 def manifest_and_verified_payload(root: Path):
-    manifest_path = root / ".open-nova-runtime-source.json"
+    manifest_path = root / ".actanara-runtime-source.json"
     if manifest_path.is_symlink() or not manifest_path.is_file():
         fail()
     try:
@@ -3101,7 +3101,7 @@ def manifest_and_verified_payload(root: Path):
     if (
         not isinstance(manifest, dict)
         or manifest.get("schemaVersion") != 2
-        or manifest.get("product") != "open-nova"
+        or manifest.get("product") != "actanara"
         or manifest.get("deploymentMode") != "release-symlink"
     ):
         fail()
@@ -3146,7 +3146,7 @@ def manifest_and_verified_payload(root: Path):
     actual_paths = {
         path.relative_to(root).as_posix()
         for path in root.rglob("*")
-        if path != manifest_path and path.name != ".open-nova-update-owner" and path.is_file()
+        if path != manifest_path and path.name != ".actanara-update-owner" and path.is_file()
     }
     if (
         any(path.is_symlink() for path in root.rglob("*"))
@@ -3178,7 +3178,7 @@ create_fresh_runtime_venv() {
     return 1
   fi
   if [[ "$DRY_RUN" != "1" && ( -e "$VENV_DIR" || -L "$VENV_DIR" ) ]]; then
-    error "runtime venv pointer already exists; use --upgrade for an existing Open Nova Runtime"
+    error "runtime venv pointer already exists; use --upgrade for an existing Actanara Runtime"
     return 1
   fi
   if [[ "$DRY_RUN" != "1" && ( -e "$venv_target" || -L "$venv_target" ) ]]; then
@@ -3504,7 +3504,7 @@ python_meets_minimum_version() {
 }
 
 standalone_python_target_arch() {
-  local machine="${NOVA_INSTALL_MACHINE:-}"
+  local machine="${ACTANARA_INSTALL_MACHINE:-}"
   if [[ -z "$machine" && -n "$UNAME_BIN" ]]; then
     machine="$("$UNAME_BIN" -m)"
   fi
@@ -3773,11 +3773,11 @@ require_repair_runtime_identity() {
     return 0
   fi
   if [[ -L "$RUNTIME_HOME" || ! -d "$RUNTIME_HOME" ]]; then
-    error "--repair-existing requires a legacy Open Nova Runtime: ${RUNTIME_HOME}"
+    error "--repair-existing requires a legacy Actanara Runtime: ${RUNTIME_HOME}"
     return 2
   fi
   if [[ ! -f "${RUNTIME_HOME}/config/settings.json" || -L "${RUNTIME_HOME}/config/settings.json" ]]; then
-    error "--repair-existing requires a legacy Open Nova Runtime with preservable Settings"
+    error "--repair-existing requires a legacy Actanara Runtime with preservable Settings"
     return 2
   fi
   local marker=""
@@ -3786,15 +3786,15 @@ require_repair_runtime_identity() {
     "${RUNTIME_HOME}/app/source" \
     "${RUNTIME_HOME}/.venv" \
     "${RUNTIME_HOME}/config/runtime.json" \
-    "${RUNTIME_HOME}/data/nova_data.sqlite3" \
-    "${RUNTIME_HOME}/bin/open-nova" \
-    "${RUNTIME_HOME}/bin/nova-diary"; do
+    "${RUNTIME_HOME}/data/actanara_data.sqlite3" \
+    "${RUNTIME_HOME}/bin/actanara" \
+    "${RUNTIME_HOME}/bin/actanara"; do
     if [[ -e "$marker" || -L "$marker" ]]; then
       (( marker_count += 1 ))
     fi
   done
   if (( marker_count == 0 )); then
-    error "--repair-existing requires a legacy Open Nova Runtime"
+    error "--repair-existing requires a legacy Actanara Runtime"
     return 2
   fi
 }
@@ -3804,7 +3804,7 @@ require_fresh_runtime_empty() {
     return 0
   fi
   if [[ -L "${RUNTIME_HOME}/app" || ( -e "${RUNTIME_HOME}/app" && ! -d "${RUNTIME_HOME}/app" ) ]]; then
-    error "existing Open Nova Runtime state requires --upgrade: ${RUNTIME_HOME}"
+    error "existing Actanara Runtime state requires --upgrade: ${RUNTIME_HOME}"
     return 2
   fi
   local marker=""
@@ -3817,10 +3817,10 @@ require_fresh_runtime_empty() {
     "${RUNTIME_HOME}/.venv" \
     "${RUNTIME_HOME}/config/runtime.json" \
     "${RUNTIME_HOME}/config/settings.json" \
-    "${RUNTIME_HOME}/data/nova_data.sqlite3" \
-    "${RUNTIME_HOME}/bin/open-nova"; do
+    "${RUNTIME_HOME}/data/actanara_data.sqlite3" \
+    "${RUNTIME_HOME}/bin/actanara"; do
     if [[ -e "$marker" || -L "$marker" ]]; then
-      error "existing Open Nova Runtime state requires --upgrade: ${RUNTIME_HOME}"
+      error "existing Actanara Runtime state requires --upgrade: ${RUNTIME_HOME}"
       return 2
     fi
   done
@@ -3839,7 +3839,7 @@ run_installer_preflight() {
     "pyproject.toml"
     "install/dependency_contract.py"
     "install/runtime-dependencies.lock.json"
-    "advanced/cli/open_nova.py"
+    "advanced/cli/actanara.py"
     "advanced/dashboard/dashboard_launch_agent.py"
     "advanced/dashboard/rag_server_launch_agent.py"
     "advanced/pipeline/run_daily_pipeline.py"
@@ -4024,7 +4024,7 @@ cleanup_runtime_source_artifacts() {
 
 run_runtime_dependency_check() {
   local missing_file="$1"
-  local dependency_nova_home="${RUNTIME_HOME}"
+  local dependency_actanara_home="${RUNTIME_HOME}"
   local dependency_location_file="${LOCATION_FILE}"
   local -a check_command
   check_command=("${VENV_PY}" -)
@@ -4038,17 +4038,17 @@ run_runtime_dependency_check() {
       /usr/bin/env
       -i
       "PATH=/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-      "USER=open-nova-candidate"
-      "LOGNAME=open-nova-candidate"
+      "USER=actanara-candidate"
+      "LOGNAME=actanara-candidate"
       "SHELL=/bin/zsh"
       "LC_ALL=C"
       "LANG=C"
-      "NOVA_INSTALL_DEPLOY_SOURCE_ROOT=${DEPLOY_SOURCE_ROOT}"
-      "NOVA_INSTALL_ENABLE_RAG=${ENABLE_RAG}"
-      "NOVA_INSTALL_RAG_EMBEDDING_MODE=${RAG_EMBEDDING_MODE}"
-      "NOVA_INSTALL_MISSING_DEPENDENCIES_FILE=${missing_file}"
-      "NOVA_HOME=${UPDATE_VALIDATION_RUNTIME}"
-      "NOVA_LOCATION_FILE=${UPDATE_VALIDATION_RUNTIME}/location.json"
+      "ACTANARA_INSTALL_DEPLOY_SOURCE_ROOT=${DEPLOY_SOURCE_ROOT}"
+      "ACTANARA_INSTALL_ENABLE_RAG=${ENABLE_RAG}"
+      "ACTANARA_INSTALL_RAG_EMBEDDING_MODE=${RAG_EMBEDDING_MODE}"
+      "ACTANARA_INSTALL_MISSING_DEPENDENCIES_FILE=${missing_file}"
+      "ACTANARA_HOME=${UPDATE_VALIDATION_RUNTIME}"
+      "ACTANARA_LOCATION_FILE=${UPDATE_VALIDATION_RUNTIME}/location.json"
       "PYTHONPATH=${DEPLOY_SOURCE_ROOT}:${DEPLOY_SOURCE_ROOT}/src:${DEPLOY_SOURCE_ROOT}/src/dashboard"
       "HOME=${UPDATE_VALIDATION_RUNTIME}/home"
       "TMPDIR=${UPDATE_VALIDATION_RUNTIME}/tmp"
@@ -4056,22 +4056,22 @@ run_runtime_dependency_check() {
       "PIP_CONFIG_FILE=/dev/null"
       "PIP_CACHE_DIR=${UPDATE_VALIDATION_RUNTIME}/pip-cache"
       "PYTHONNOUSERSITE=1"
-      "OPEN_NOVA_SECRET_BACKEND=memory"
+      "ACTANARA_SECRET_BACKEND=memory"
       "PYTHONDONTWRITEBYTECODE=1"
       "${VENV_PY}" -
     )
   fi
   if [[ "$UPDATE_TRANSACTION_ACTIVE" == "1" ]]; then
-    dependency_nova_home="${UPDATE_VALIDATION_RUNTIME}"
+    dependency_actanara_home="${UPDATE_VALIDATION_RUNTIME}"
     dependency_location_file="${UPDATE_VALIDATION_RUNTIME}/location.json"
   fi
   rm -f "${missing_file}"
-  NOVA_INSTALL_DEPLOY_SOURCE_ROOT="${DEPLOY_SOURCE_ROOT}" \
-  NOVA_INSTALL_ENABLE_RAG="${ENABLE_RAG}" \
-  NOVA_INSTALL_RAG_EMBEDDING_MODE="${RAG_EMBEDDING_MODE}" \
-  NOVA_INSTALL_MISSING_DEPENDENCIES_FILE="${missing_file}" \
-  NOVA_HOME="${dependency_nova_home}" \
-  NOVA_LOCATION_FILE="${dependency_location_file}" \
+  ACTANARA_INSTALL_DEPLOY_SOURCE_ROOT="${DEPLOY_SOURCE_ROOT}" \
+  ACTANARA_INSTALL_ENABLE_RAG="${ENABLE_RAG}" \
+  ACTANARA_INSTALL_RAG_EMBEDDING_MODE="${RAG_EMBEDDING_MODE}" \
+  ACTANARA_INSTALL_MISSING_DEPENDENCIES_FILE="${missing_file}" \
+  ACTANARA_HOME="${dependency_actanara_home}" \
+  ACTANARA_LOCATION_FILE="${dependency_location_file}" \
   PYTHONPATH="${DEPLOY_SOURCE_ROOT}:${DEPLOY_SOURCE_ROOT}/src:${DEPLOY_SOURCE_ROOT}/src/dashboard" \
   PYTHONDONTWRITEBYTECODE=1 \
     "${check_command[@]}" <<'PY'
@@ -4080,8 +4080,8 @@ import os
 import sys
 from pathlib import Path
 
-source_root = Path(os.environ["NOVA_INSTALL_DEPLOY_SOURCE_ROOT"])
-missing_file = Path(os.environ["NOVA_INSTALL_MISSING_DEPENDENCIES_FILE"])
+source_root = Path(os.environ["ACTANARA_INSTALL_DEPLOY_SOURCE_ROOT"])
+missing_file = Path(os.environ["ACTANARA_INSTALL_MISSING_DEPENDENCIES_FILE"])
 required_static = [
     source_root / "src" / "dashboard" / "app" / "static" / "index.html",
     source_root / "src" / "dashboard" / "app" / "static" / "css" / "style.css",
@@ -4094,12 +4094,12 @@ dashboard_checks = [
     ("croniter", "croniter>=2,<7", "Dashboard scheduler"),
 ]
 rag_checks = []
-if os.environ.get("NOVA_INSTALL_ENABLE_RAG") == "1":
+if os.environ.get("ACTANARA_INSTALL_ENABLE_RAG") == "1":
     rag_checks = [
         ("numpy", "numpy>=1.26,<3", "nova-RAG vectors"),
         ("pydantic", "pydantic>=2,<3", "nova-RAG API schema"),
     ]
-    if os.environ.get("NOVA_INSTALL_RAG_EMBEDDING_MODE") == "local":
+    if os.environ.get("ACTANARA_INSTALL_RAG_EMBEDDING_MODE") == "local":
         rag_checks[0:0] = [
             ("sentence_transformers", "sentence-transformers>=3,<6", "nova-RAG local embeddings"),
             ("torch", "torch>=2,<3", "nova-RAG local embeddings"),
@@ -4210,8 +4210,8 @@ run_external_rag_skill_registration_apply() {
   progress_start "$label"
   print -r -- "" >> "$log_file"
   print -r -- "## ${technical_label}" >> "$log_file"
-  if NOVA_HOME="${RUNTIME_HOME}" \
-    NOVA_LOCATION_FILE="${LOCATION_FILE}" \
+  if ACTANARA_HOME="${RUNTIME_HOME}" \
+    ACTANARA_LOCATION_FILE="${LOCATION_FILE}" \
     PYTHONPATH="${DEPLOY_SOURCE_ROOT}:${DEPLOY_SOURCE_ROOT}/src:${DEPLOY_SOURCE_ROOT}/src/dashboard" \
     "${VENV_PY}" - >> "$log_file" 2>&1 <<'PY'
 import json
@@ -4253,7 +4253,7 @@ PY
     progress_ok "$label"
   else
     progress_fail "$(installer_text step_failed) ${log_file}"
-    warn "Open Nova installation completed, but external nova-RAG skill registration failed; retry from Dashboard Settings."
+    warn "Actanara installation completed, but external nova-RAG skill registration failed; retry from Dashboard Settings."
   fi
 }
 
@@ -4264,7 +4264,7 @@ maybe_fail_update_phase() {
   fi
   if [[ -n "$UPDATE_TEST_HOOK" ]]; then
     if [[ "$UPDATE_TEST_HOOK" != /* || ! -x "$UPDATE_TEST_HOOK" ]]; then
-      print -r -- "NOVA_INSTALL_TEST_HOOK must be an absolute executable path" >&2
+      print -r -- "ACTANARA_INSTALL_TEST_HOOK must be an absolute executable path" >&2
       return 2
     fi
     "$UPDATE_TEST_HOOK" "$phase"
@@ -4273,7 +4273,7 @@ maybe_fail_update_phase() {
     return 0
   fi
   if [[ "$UPDATE_TEST_FAIL_PHASE" == *[^a-z0-9-]* ]]; then
-    print -r -- "NOVA_INSTALL_TEST_FAIL_PHASE must be a stable lowercase phase id" >&2
+    print -r -- "ACTANARA_INSTALL_TEST_FAIL_PHASE must be a stable lowercase phase id" >&2
     return 2
   fi
   if [[ "$UPDATE_TEST_FAIL_PHASE" == "$phase" ]]; then
@@ -4777,20 +4777,20 @@ run_update_candidate_cmd() {
     --phase "$phase" \
     -- /usr/bin/env -i \
     "PATH=/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
-    "USER=open-nova-candidate" \
-    "LOGNAME=open-nova-candidate" \
+    "USER=actanara-candidate" \
+    "LOGNAME=actanara-candidate" \
     "SHELL=/bin/zsh" \
     "LC_ALL=C" \
     "LANG=C" \
-    "NOVA_HOME=${UPDATE_VALIDATION_RUNTIME}" \
-    "NOVA_LOCATION_FILE=${UPDATE_VALIDATION_RUNTIME}/location.json" \
+    "ACTANARA_HOME=${UPDATE_VALIDATION_RUNTIME}" \
+    "ACTANARA_LOCATION_FILE=${UPDATE_VALIDATION_RUNTIME}/location.json" \
     "HOME=${UPDATE_VALIDATION_RUNTIME}/home" \
     "TMPDIR=${UPDATE_VALIDATION_RUNTIME}/tmp" \
     "XDG_CONFIG_HOME=${UPDATE_VALIDATION_RUNTIME}/xdg" \
     "PIP_CONFIG_FILE=/dev/null" \
     "PIP_CACHE_DIR=${UPDATE_VALIDATION_RUNTIME}/pip-cache" \
     "PYTHONNOUSERSITE=1" \
-    "OPEN_NOVA_SECRET_BACKEND=memory" \
+    "ACTANARA_SECRET_BACKEND=memory" \
     "PYTHONDONTWRITEBYTECODE=1" \
     "$@"
 }
@@ -4828,7 +4828,7 @@ update_exit_handler() {
       UPDATE_STATE_CERTAIN=0
       UPDATE_SOURCE_UPDATED=-1
       UPDATE_PLISTS_NORMALIZED=-1
-      error "Open Nova update rollback was incomplete; inspect the preserved transaction journal: ${UPDATE_TRANSACTION_JOURNAL}"
+      error "Actanara update rollback was incomplete; inspect the preserved transaction journal: ${UPDATE_TRANSACTION_JOURNAL}"
       original_rc=70
     else
       UPDATE_SOURCE_UPDATED=0
@@ -4836,7 +4836,7 @@ update_exit_handler() {
       UPDATE_ROLLBACK_COMPLETE=1
       UPDATE_REASON="update-failed-rolled-back"
       UPDATE_RESULT_STAGE="rollback-complete"
-      error "Open Nova update failed; rollback restored the prior source, venv, control files, and services"
+      error "Actanara update failed; rollback restored the prior source, venv, control files, and services"
     fi
   elif [[ "$REPAIR_EXISTING" == "1" && "$UPDATE_COMMITTED" == "1" && "$REPAIR_CONFIGURATION_COMPLETE" != "1" && -n "$REPAIR_BACKUP_DIR" ]]; then
     error "repair configuration is incomplete"
@@ -5012,20 +5012,20 @@ run_update_candidate_doctor() {
     -- \
     /usr/bin/env -i \
       PATH=/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin \
-      USER=open-nova-candidate \
-      LOGNAME=open-nova-candidate \
+      USER=actanara-candidate \
+      LOGNAME=actanara-candidate \
       SHELL=/bin/zsh \
       LC_ALL=C \
       LANG=C \
-      NOVA_HOME="${RUNTIME_HOME}" \
-      NOVA_LOCATION_FILE="${LOCATION_FILE}" \
+      ACTANARA_HOME="${RUNTIME_HOME}" \
+      ACTANARA_LOCATION_FILE="${LOCATION_FILE}" \
       HOME="${UPDATE_VALIDATION_RUNTIME}/home" \
       TMPDIR="${UPDATE_VALIDATION_RUNTIME}/tmp" \
       XDG_CONFIG_HOME="${UPDATE_VALIDATION_RUNTIME}/xdg" \
       PIP_CONFIG_FILE=/dev/null \
       PIP_CACHE_DIR="${UPDATE_VALIDATION_RUNTIME}/pip-cache" \
       PYTHONNOUSERSITE=1 \
-      OPEN_NOVA_SECRET_BACKEND=memory \
+      ACTANARA_SECRET_BACKEND=memory \
       PYTHONPATH="${DEPLOY_SOURCE_ROOT}:${DEPLOY_SOURCE_ROOT}/src:${DEPLOY_SOURCE_ROOT}/src/dashboard" \
       PYTHONDONTWRITEBYTECODE=1 \
       "${VENV_PY}" -m data_foundation.cli \
@@ -5353,12 +5353,12 @@ run_guarded_update_transaction() {
 
 print_useful_commands() {
   print -r -- "$(installer_text next_steps)"
-  print -r -- "  open-nova"
-  print -r -- "  open-nova doctor"
+  print -r -- "  actanara"
+  print -r -- "  actanara doctor"
   if [[ "$NO_DASHBOARD_SERVER" != "1" ]]; then
-    print -r -- "  open-nova dashboard restart"
+    print -r -- "  actanara dashboard restart"
   fi
-  print -r -- "  open-nova update --dry-run"
+  print -r -- "  actanara update --dry-run"
 }
 
 print_completion() {
@@ -5523,7 +5523,7 @@ print_install_summary() {
   local llm_status=""
   local rag_detail=""
   local summary_status="ok"
-  local command_detail="open-nova"
+  local command_detail="actanara"
   local connected_tools=""
 
   print -r -- ""
@@ -6024,10 +6024,10 @@ SNAPSHOTS_OUTPUT_DIR="${SNAPSHOTS_OUTPUT_DIR:A}"
 ARCHIVES_OUTPUT_DIR="${ARCHIVES_OUTPUT_DIR:A}"
 VENV_DIR="${RUNTIME_HOME}/.venv"
 VENV_PY="${VENV_DIR}/bin/python"
-CLI_SHIM="${RUNTIME_HOME}/bin/open-nova"
+CLI_SHIM="${RUNTIME_HOME}/bin/actanara"
 DEPLOY_SOURCE_ROOT="${RUNTIME_HOME}/app/source"
 INSTALLER_LOG_FILE="${RUNTIME_HOME}/state/logs/installer-v2.log"
-LOCATION_FILE="${NOVA_LOCATION_FILE:-$HOME/.config/open-nova/location.json}"
+LOCATION_FILE="${ACTANARA_LOCATION_FILE:-$HOME/.config/actanara/location.json}"
 if [[ "$UPGRADE" == "1" && ! -d "$RUNTIME_HOME" && "$DRY_RUN" != "1" ]]; then
   error "--upgrade requires an existing runtime: ${RUNTIME_HOME}"
   exit 2
@@ -6071,7 +6071,7 @@ esac
 
 require_fresh_runtime_empty || exit 2
 INSTALLER_LOG_ACTIVE=1
-log "Open Nova installer v2"
+log "Actanara installer v2"
 print_installer_data_notice
 if [[ "$WIZARD_CONFIRMED" != "1" || ! -t 1 ]]; then
   render_console_header
@@ -6152,7 +6152,7 @@ if [[ "$UPGRADE" == "1" ]]; then
   print_phase phase_installing
   run_guarded_update_transaction
   if [[ "$UPDATE_NOOP" == "1" ]]; then
-    log "Open Nova update is a no-op; source payload and dependency contract are already active"
+    log "Actanara update is a no-op; source payload and dependency contract are already active"
     COMPLETION_TEXT="$(installer_text update_no_changes)"
     print_completion
     exit 0
@@ -6176,7 +6176,7 @@ if [[ "$UPGRADE" == "1" ]]; then
       log "source-only dry-run complete; no source pointer, settings, dependencies, LaunchAgents, or RAG manifests were changed"
       COMPLETION_TEXT="$(installer_text source_update_plan_complete)"
     else
-      log "Open Nova runtime source-only sync complete; the prior managed service state was restored"
+      log "Actanara runtime source-only sync complete; the prior managed service state was restored"
       log "Settings, dependencies, Keychain references, and user data were not changed; legacy Python LaunchAgents may receive cache-suppression environment metadata"
       COMPLETION_TEXT="$(installer_text source_update_complete)"
     fi
@@ -6224,7 +6224,7 @@ runtime_apply_args=(
   onboarding runtime-apply
   --runtime "${RUNTIME_HOME}"
   --select-active-runtime
-  --confirmation-text "APPLY OPEN NOVA ONBOARDING"
+  --confirmation-text "APPLY ACTANARA ONBOARDING"
   --json
 )
 if [[ "$UPGRADE" != "1" || "$LANGUAGE_SET" == "1" ]]; then
@@ -6236,21 +6236,21 @@ run_external_rag_skill_registration_apply
 store_installer_llm_api_key_secret
 
 if [[ "$PLATFORM" == "Darwin" && "$NO_SCHEDULER" != "1" ]]; then
-  log "Registering managed Open Nova scheduler LaunchAgents"
+  log "Registering managed Actanara scheduler LaunchAgents"
   if [[ "$UPGRADE" == "1" ]]; then
     run_json_cmd "Scheduler LaunchAgent plist write" \
       "${VENV_PY}" -m data_foundation.cli \
       onboarding apply \
       --scheduler-plist-apply \
       --runtime "${RUNTIME_HOME}" \
-      --confirmation-text "WRITE OPEN NOVA LAUNCHAGENTS" \
+      --confirmation-text "WRITE ACTANARA LAUNCHAGENTS" \
       --json
     run_json_cmd "Scheduler LaunchAgent registration" \
       "${VENV_PY}" -m data_foundation.cli \
       onboarding apply \
       --scheduler-register-apply \
       --runtime "${RUNTIME_HOME}" \
-      --confirmation-text "REGISTER OPEN NOVA SCHEDULER" \
+      --confirmation-text "REGISTER ACTANARA SCHEDULER" \
       --json
   else
     run_optional_json_cmd "Scheduler LaunchAgent plist write" \
@@ -6258,14 +6258,14 @@ if [[ "$PLATFORM" == "Darwin" && "$NO_SCHEDULER" != "1" ]]; then
       onboarding apply \
       --scheduler-plist-apply \
       --runtime "${RUNTIME_HOME}" \
-      --confirmation-text "WRITE OPEN NOVA LAUNCHAGENTS" \
+      --confirmation-text "WRITE ACTANARA LAUNCHAGENTS" \
       --json
     run_optional_json_cmd "Scheduler LaunchAgent registration" \
       "${VENV_PY}" -m data_foundation.cli \
       onboarding apply \
       --scheduler-register-apply \
       --runtime "${RUNTIME_HOME}" \
-      --confirmation-text "REGISTER OPEN NOVA SCHEDULER" \
+      --confirmation-text "REGISTER ACTANARA SCHEDULER" \
       --json
   fi
 elif [[ "$NO_SCHEDULER" == "1" ]]; then
@@ -6309,8 +6309,8 @@ elif [[ "$DEPLOY_EMBEDDING_SERVER" == "1" ]]; then
     cat > "${JOB_SCRIPT}" <<EOF
 #!/usr/bin/env zsh
 set -euo pipefail
-export NOVA_HOME="${RUNTIME_HOME}"
-export NOVA_LOCATION_FILE="${LOCATION_FILE}"
+export ACTANARA_HOME="${RUNTIME_HOME}"
+export ACTANARA_LOCATION_FILE="${LOCATION_FILE}"
 export PYTHONPATH="${DEPLOY_SOURCE_ROOT}:${DEPLOY_SOURCE_ROOT}/src"
 "${VENV_PY}" - <<'PY'
 from agentic_rag.rag_server_lifecycle import start_rag_server

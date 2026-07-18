@@ -1,7 +1,7 @@
 """时区工具 — 统一 UTC→本地业务时区转换与日界判定
 
 默认日记日界规则仍为 Asia/Hong_Kong 04:00 ~ 次日 04:00。
-时区通过 Nova settings / TARGET_TIMEZONE 解析，旧函数名保留兼容。
+时区通过 Actanara settings / TARGET_TIMEZONE 解析，旧函数名保留兼容。
 """
 from datetime import date, datetime, timedelta
 from typing import Tuple

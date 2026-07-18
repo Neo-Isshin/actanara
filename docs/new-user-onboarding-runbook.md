@@ -1,8 +1,8 @@
-# Open Nova Installation Guide
+# Actanara Installation Guide
 
 This guide covers a new installation, the first health checks, and supported
 updates. GitHub Releases in
-[`Neo-Isshin/open-nova`](https://github.com/Neo-Isshin/open-nova) are the
+[`Neo-Isshin/actanara`](https://github.com/Neo-Isshin/actanara) are the
 canonical public install and update authority.
 
 ## Requirements
@@ -13,17 +13,17 @@ canonical public install and update authority.
 - an LLM provider endpoint and credential if diary generation will call an
   external provider.
 
-The default Runtime is `~/.open-nova`. Open Nova keeps application releases,
+The default Runtime is `~/.actanara`. Actanara keeps application releases,
 the active virtual environment, Settings, SQLite data, logs, generated assets,
 and rollback state below that Runtime. The installer records the active Runtime
-in `~/.config/open-nova/location.json`.
+in `~/.config/actanara/location.json`.
 
 ## One-line install or refresh
 
 Run the public installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/open-nova/main/install/bootstrap.sh | zsh
+curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/actanara/main/install/bootstrap.sh | zsh
 ```
 
 GitHub serves the maintained bootstrap from `main`. The launcher resolves the
@@ -95,20 +95,20 @@ or in a command that will be retained in shell history.
 The Runtime command shim is:
 
 ```text
-~/.open-nova/bin/open-nova
+~/.actanara/bin/actanara
 ```
 
-The installer also attempts to link it at `~/.local/bin/open-nova` and adds a
+The installer also attempts to link it at `~/.local/bin/actanara` and adds a
 managed PATH block to the selected shell profile. Use `--no-shell-path` to skip
 that profile edit, or `--shell-path-file /path/to/profile` to choose a file.
 
 Start a new shell, then verify:
 
 ```bash
-open-nova doctor
-open-nova onboard status
-open-nova model show
-open-nova config show
+actanara doctor
+actanara onboard status
+actanara model show
+actanara config show
 ```
 
 The installer also runs its post-install doctor before declaring success. Any
@@ -125,7 +125,7 @@ When nova-RAG local mode is enabled, its service normally uses loopback port
 `3037`. External Agent integrations must use the read-only API described in
 [rag-external-agent-contract.md](rag-external-agent-contract.md).
 
-Open Nova does not expose these services to a public network by default. Keep
+Actanara does not expose these services to a public network by default. Keep
 the loopback binding unless you have separately configured authenticated,
 private network access.
 
@@ -134,13 +134,13 @@ private network access.
 Preview an update:
 
 ```bash
-open-nova update --dry-run
+actanara update --dry-run
 ```
 
 Apply the latest stable Release:
 
 ```bash
-open-nova update --apply
+actanara update --apply
 ```
 
 The default updater accepts only a stable GitHub Release whose tag resolves to
@@ -168,11 +168,11 @@ service changes rather than guessing a dependency selection.
 Operational controls are:
 
 ```bash
-open-nova update --dry-run
-open-nova update --apply --offline --ref <full-commit-sha>
-open-nova update --apply --offline --source-root /path/to/source
-open-nova update --apply --source-only
-open-nova update --apply --force-rebuild
+actanara update --dry-run
+actanara update --apply --offline --ref <full-commit-sha>
+actanara update --apply --offline --source-root /path/to/source
+actanara update --apply --source-only
+actanara update --apply --force-rebuild
 ```
 
 `--source-only` fails closed unless reuse is proven. `--force-rebuild` always
@@ -184,7 +184,7 @@ service stop when it is missing or altered. Settings, SQLite, logs, generated us
 configuration, and rollback metadata remain Runtime-owned and are preserved.
 If activation or health verification fails, the transaction restores the
 previous active source, venv, and service state. Product version reporting comes
-from the active source manifest; stale `open_nova-*.dist-info` in a reused venv
+from the active source manifest; stale `actanara-*.dist-info` in a reused venv
 is not authoritative and is not refreshed in place.
 
 ## Backup and recovery
@@ -196,9 +196,9 @@ for its WAL/SHM state.
 Useful read-only checks are:
 
 ```bash
-open-nova doctor
-open-nova doctor --scheduler
-open-nova update --dry-run
+actanara doctor
+actanara doctor --scheduler
+actanara update --dry-run
 ```
 
 Do not move or reuse a published version tag. If a published artifact or

@@ -1,8 +1,8 @@
-# Open Nova v1.0.1 Public Source Boundary
+# Actanara v1.0.1 Public Source Boundary
 
 Status: current public-source and Runtime-payload contract.
 
-Open Nova publishes product source, user documentation, and long-term
+Actanara publishes product source, user documentation, and long-term
 regression tests. It excludes private development history, internal audit
 ledgers, one-time evidence harnesses, local Runtime data, dependencies, build
 outputs, and credentials.
@@ -61,9 +61,9 @@ for each promoted Runtime source snapshot.
 
 | Setting | Default |
 | --- | --- |
-| Runtime home | `~/.open-nova` |
-| Active Runtime pointer | `~/.config/open-nova/location.json` |
-| Generated diary output | `~/.open-nova/artifacts/diary` |
-| CLI shim | `~/.open-nova/bin/open-nova`, optionally linked to `~/.local/bin/open-nova` |
-| macOS Scheduler label prefix | `open-nova.daily.` |
-| Dashboard LaunchAgent labels | `com.open-nova.dashboard`, `com.open-nova.dashboard.watchdog` |
+| Runtime home | `~/.actanara` |
+| Active Runtime pointer | `~/.config/actanara/location.json` |
+| Generated diary output | `~/.actanara/artifacts/diary` |
+| CLI shim | `~/.actanara/bin/actanara`, optionally linked to `~/.local/bin/actanara` |
+| macOS Scheduler label prefix | `actanara.daily.` |
+| Dashboard LaunchAgent labels | `com.actanara.dashboard`, `com.actanara.dashboard.watchdog` |

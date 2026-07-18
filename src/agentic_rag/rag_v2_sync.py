@@ -408,7 +408,7 @@ def _server_embedding_fn(settings: RagSettings, *, timeout_seconds: float = 600.
             data=payload,
             headers={
                 "Content-Type": "application/json",
-                "X-Open-Nova-RAG-Internal-Token": internal_credential,
+                "X-Actanara-RAG-Internal-Token": internal_credential,
             },
             method="POST",
         )

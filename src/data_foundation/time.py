@@ -1,4 +1,4 @@
-"""Nova business day handling with settings-backed timezone resolution."""
+"""Actanara business day handling with settings-backed timezone resolution."""
 
 from __future__ import annotations
 

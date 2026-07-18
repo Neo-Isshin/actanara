@@ -5,22 +5,22 @@ if true; then
 set -euo pipefail
 
 BOOTSTRAP_DIR="${0:A:h}"
-DEFAULT_CACHE_ROOT="${NOVA_INSTALL_CACHE_ROOT:-$HOME/.cache/open-nova/installer}"
-CACHE_ROOT_EXPLICIT=$([[ -n "${NOVA_INSTALL_CACHE_ROOT:-}" ]] && print 1 || print 0)
-DEFAULT_SOURCE_URL="https://github.com/Neo-Isshin/open-nova.git"
-SOURCE_ROOT="${NOVA_INSTALL_SOURCE_ROOT:-}"
-SOURCE_URL="${NOVA_INSTALL_SOURCE_URL:-}"
-SOURCE_REF="${NOVA_INSTALL_REF:-}"
+DEFAULT_CACHE_ROOT="${ACTANARA_INSTALL_CACHE_ROOT:-$HOME/.cache/actanara/installer}"
+CACHE_ROOT_EXPLICIT=$([[ -n "${ACTANARA_INSTALL_CACHE_ROOT:-}" ]] && print 1 || print 0)
+DEFAULT_SOURCE_URL="https://github.com/Neo-Isshin/actanara.git"
+SOURCE_ROOT="${ACTANARA_INSTALL_SOURCE_ROOT:-}"
+SOURCE_URL="${ACTANARA_INSTALL_SOURCE_URL:-}"
+SOURCE_REF="${ACTANARA_INSTALL_REF:-}"
 FOLLOW_OFFICIAL_MAIN=0
-GIT_BIN="${NOVA_INSTALL_GIT:-git}"
-PLUTIL_BIN="${NOVA_INSTALL_PLUTIL:-/usr/bin/plutil}"
-ZSH_BIN="${NOVA_INSTALL_ZSH:-${ZSH_VERSION:+/bin/zsh}}"
+GIT_BIN="${ACTANARA_INSTALL_GIT:-git}"
+PLUTIL_BIN="${ACTANARA_INSTALL_PLUTIL:-/usr/bin/plutil}"
+ZSH_BIN="${ACTANARA_INSTALL_ZSH:-${ZSH_VERSION:+/bin/zsh}}"
 DRY_RUN=0
 OFFLINE=0
 INSTALL_ARGS=()
 CACHE_SOURCE=0
 BOOTSTRAP_LOG_FILE=""
-BOOTSTRAP_LANGUAGE="${NOVA_INSTALL_LANGUAGE:-zh-CN}"
+BOOTSTRAP_LANGUAGE="${ACTANARA_INSTALL_LANGUAGE:-zh-CN}"
 SPARSE_PATHS=(
   "/pyproject.toml"
   "/MANIFEST.in"
@@ -42,18 +42,18 @@ OFFLINE_SOURCE_PATHS=(
 
 usage() {
   cat <<'EOF'
-Open Nova setup
+Actanara setup
 
 Usage:
   install/bootstrap.sh [bootstrap-options] [-- installer-options]
 
 Preparation options:
-  --source-root PATH       Use an existing local copy of Open Nova.
-  --source-url URL         Download Open Nova from this URL.
-                          Default: https://github.com/Neo-Isshin/open-nova.git
+  --source-root PATH       Use an existing local copy of Actanara.
+  --source-url URL         Download Actanara from this URL.
+                          Default: https://github.com/Neo-Isshin/actanara.git
   --ref VERSION           Use an exact 40- or 64-character version ID.
                           Omit it to use the latest official main version.
-  --cache-root PATH        Download cache folder. Default: ~/.cache/open-nova/installer
+  --cache-root PATH        Download cache folder. Default: ~/.cache/actanara/installer
   --git PATH              Git executable. Default: git
   --offline               Use local or previously downloaded files only.
   --dry-run               Preview preparation and setup without writing files.
@@ -69,32 +69,32 @@ bootstrap_text() {
     en|en-US|en_US)
       case "$key" in
         preparing_folder) print -r -- "Preparing the download folder" ;;
-        downloading) print -r -- "Downloading Open Nova" ;;
-        checking_updates) print -r -- "Checking the selected Open Nova version" ;;
+        downloading) print -r -- "Downloading Actanara" ;;
+        checking_updates) print -r -- "Checking the selected Actanara version" ;;
         preparing_files) print -r -- "Preparing installation files" ;;
         latest_ready) print -r -- "Latest version downloaded" ;;
         cache_ready) print -r -- "Previously downloaded files are ready" ;;
         cache_isolated) print -r -- "The previous download folder was kept; using a new download folder" ;;
-        existing_ready) print -r -- "Existing Open Nova data will be kept and updated" ;;
-        legacy_repair_prompt) print -r -- "This Open Nova installation cannot be updated directly. Reinstall it in place? Your data and settings will be kept; only the runtime and dependencies will be rebuilt. [Y/n]" ;;
-        legacy_repair_ready) print -r -- "Existing Open Nova data and settings will be kept while the runtime and dependencies are rebuilt" ;;
-        legacy_repair_cancelled) print -r -- "Open Nova recovery cancelled; existing files were not changed" ;;
-        legacy_repair_confirmation_required) print -r -- "An earlier Open Nova installation needs confirmation. Run again with --yes to keep its data and settings and rebuild the runtime." ;;
+        existing_ready) print -r -- "Existing Actanara data will be kept and updated" ;;
+        legacy_repair_prompt) print -r -- "This Actanara installation cannot be updated directly. Reinstall it in place? Your data and settings will be kept; only the runtime and dependencies will be rebuilt. [Y/n]" ;;
+        legacy_repair_ready) print -r -- "Existing Actanara data and settings will be kept while the runtime and dependencies are rebuilt" ;;
+        legacy_repair_cancelled) print -r -- "Actanara recovery cancelled; existing files were not changed" ;;
+        legacy_repair_confirmation_required) print -r -- "An earlier Actanara installation needs confirmation. Run again with --yes to keep its data and settings and rebuild the runtime." ;;
         legacy_repair_answer_invalid) print -r -- "Please answer Y or N." ;;
-        starting) print -r -- "Starting Open Nova setup" ;;
-        starting_update) print -r -- "Starting Open Nova update" ;;
-        step_failed) print -r -- "Could not prepare Open Nova. Run again with NOVA_INSTALL_VERBOSE=1 for details." ;;
+        starting) print -r -- "Starting Actanara setup" ;;
+        starting_update) print -r -- "Starting Actanara update" ;;
+        step_failed) print -r -- "Could not prepare Actanara. Run again with ACTANARA_INSTALL_VERBOSE=1 for details." ;;
         options_conflict) print -r -- "Some preparation options cannot be used together. Run with --help." ;;
-        runtime_incomplete) print -r -- "This Open Nova folder is incomplete and cannot be updated safely." ;;
-        service_unmatched) print -r -- "An Open Nova background service exists, but its installation folder could not be found." ;;
-        location_invalid) print -r -- "The saved Open Nova location could not be read safely." ;;
-        version_unavailable) print -r -- "The selected Open Nova version could not be verified." ;;
-        version_invalid) print -r -- "Choose an exact Open Nova version ID." ;;
-        offline_missing) print -r -- "The required Open Nova files are not available offline." ;;
-        cache_mismatch) print -r -- "This download folder belongs to a different Open Nova source. Choose another folder." ;;
-        git_missing) print -r -- "Git is required to download Open Nova." ;;
-        files_missing) print -r -- "Required Open Nova installation files are missing." ;;
-        shell_missing) print -r -- "zsh is required to start Open Nova setup." ;;
+        runtime_incomplete) print -r -- "This Actanara folder is incomplete and cannot be updated safely." ;;
+        service_unmatched) print -r -- "An Actanara background service exists, but its installation folder could not be found." ;;
+        location_invalid) print -r -- "The saved Actanara location could not be read safely." ;;
+        version_unavailable) print -r -- "The selected Actanara version could not be verified." ;;
+        version_invalid) print -r -- "Choose an exact Actanara version ID." ;;
+        offline_missing) print -r -- "The required Actanara files are not available offline." ;;
+        cache_mismatch) print -r -- "This download folder belongs to a different Actanara source. Choose another folder." ;;
+        git_missing) print -r -- "Git is required to download Actanara." ;;
+        files_missing) print -r -- "Required Actanara installation files are missing." ;;
+        shell_missing) print -r -- "zsh is required to start Actanara setup." ;;
         option_value_missing) print -r -- "One setup option is missing its value. Run with --help." ;;
         *) print -r -- "$key" ;;
       esac
@@ -102,32 +102,32 @@ bootstrap_text() {
     *)
       case "$key" in
         preparing_folder) print -r -- "准备下载文件夹" ;;
-        downloading) print -r -- "下载 Open Nova" ;;
-        checking_updates) print -r -- "检查所选 Open Nova 版本" ;;
+        downloading) print -r -- "下载 Actanara" ;;
+        checking_updates) print -r -- "检查所选 Actanara 版本" ;;
         preparing_files) print -r -- "准备安装文件" ;;
         latest_ready) print -r -- "已获取最新版本" ;;
         cache_ready) print -r -- "已准备此前下载的文件" ;;
         cache_isolated) print -r -- "已保留原下载文件夹，将使用新的下载文件夹" ;;
-        existing_ready) print -r -- "已保留现有 Open Nova 数据，将直接更新" ;;
-        legacy_repair_prompt) print -r -- "当前 Open Nova 不能直接升级，是否进行覆盖安装？现有数据与设置不会丢失，只会重建运行环境与依赖。 [Y/n]" ;;
-        legacy_repair_ready) print -r -- "将保留现有 Open Nova 数据与设置，并重建运行环境与依赖" ;;
-        legacy_repair_cancelled) print -r -- "已取消 Open Nova 恢复，现有文件未作修改" ;;
-        legacy_repair_confirmation_required) print -r -- "检测到较早版本的 Open Nova。请添加 --yes 后重试，以保留现有数据与设置并重建运行环境。" ;;
+        existing_ready) print -r -- "已保留现有 Actanara 数据，将直接更新" ;;
+        legacy_repair_prompt) print -r -- "当前 Actanara 不能直接升级，是否进行覆盖安装？现有数据与设置不会丢失，只会重建运行环境与依赖。 [Y/n]" ;;
+        legacy_repair_ready) print -r -- "将保留现有 Actanara 数据与设置，并重建运行环境与依赖" ;;
+        legacy_repair_cancelled) print -r -- "已取消 Actanara 恢复，现有文件未作修改" ;;
+        legacy_repair_confirmation_required) print -r -- "检测到较早版本的 Actanara。请添加 --yes 后重试，以保留现有数据与设置并重建运行环境。" ;;
         legacy_repair_answer_invalid) print -r -- "请输入 Y 或 N。" ;;
-        starting) print -r -- "启动 Open Nova 安装" ;;
-        starting_update) print -r -- "启动 Open Nova 更新" ;;
-        step_failed) print -r -- "未能准备 Open Nova，可设置 NOVA_INSTALL_VERBOSE=1 后重试以查看详情。" ;;
+        starting) print -r -- "启动 Actanara 安装" ;;
+        starting_update) print -r -- "启动 Actanara 更新" ;;
+        step_failed) print -r -- "未能准备 Actanara，可设置 ACTANARA_INSTALL_VERBOSE=1 后重试以查看详情。" ;;
         options_conflict) print -r -- "部分准备选项不能同时使用，请通过 --help 查看用法。" ;;
-        runtime_incomplete) print -r -- "此 Open Nova 文件夹不完整，无法安全更新。" ;;
-        service_unmatched) print -r -- "检测到 Open Nova 后台服务，但未找到对应的安装文件夹。" ;;
-        location_invalid) print -r -- "无法安全读取已保存的 Open Nova 位置。" ;;
-        version_unavailable) print -r -- "未能确认所选 Open Nova 版本。" ;;
-        version_invalid) print -r -- "请选择完整、准确的 Open Nova 版本 ID。" ;;
-        offline_missing) print -r -- "离线状态下缺少所需 Open Nova 文件。" ;;
-        cache_mismatch) print -r -- "此下载文件夹属于其他 Open Nova 来源，请选择另一文件夹。" ;;
-        git_missing) print -r -- "下载 Open Nova 需要 Git。" ;;
-        files_missing) print -r -- "缺少 Open Nova 安装所需文件。" ;;
-        shell_missing) print -r -- "启动 Open Nova 安装需要 zsh。" ;;
+        runtime_incomplete) print -r -- "此 Actanara 文件夹不完整，无法安全更新。" ;;
+        service_unmatched) print -r -- "检测到 Actanara 后台服务，但未找到对应的安装文件夹。" ;;
+        location_invalid) print -r -- "无法安全读取已保存的 Actanara 位置。" ;;
+        version_unavailable) print -r -- "未能确认所选 Actanara 版本。" ;;
+        version_invalid) print -r -- "请选择完整、准确的 Actanara 版本 ID。" ;;
+        offline_missing) print -r -- "离线状态下缺少所需 Actanara 文件。" ;;
+        cache_mismatch) print -r -- "此下载文件夹属于其他 Actanara 来源，请选择另一文件夹。" ;;
+        git_missing) print -r -- "下载 Actanara 需要 Git。" ;;
+        files_missing) print -r -- "缺少 Actanara 安装所需文件。" ;;
+        shell_missing) print -r -- "启动 Actanara 安装需要 zsh。" ;;
         option_value_missing) print -r -- "一个安装选项缺少内容，请通过 --help 查看用法。" ;;
         *) print -r -- "$key" ;;
       esac
@@ -158,7 +158,7 @@ bootstrap_problem() {
   if [[ -n "$BOOTSTRAP_LOG_FILE" && -d "${BOOTSTRAP_LOG_FILE:h}" ]]; then
     print -r -- "ERROR: ${technical_message}" >> "$BOOTSTRAP_LOG_FILE"
   fi
-  if [[ "${NOVA_INSTALL_VERBOSE:-0}" == "1" ]]; then
+  if [[ "${ACTANARA_INSTALL_VERBOSE:-0}" == "1" ]]; then
     print -r -- "ERROR: ${technical_message}" >&2
   else
     print -r -- "  ✕ $(bootstrap_text "$key")" >&2
@@ -176,14 +176,14 @@ log() {
   if [[ -n "$BOOTSTRAP_LOG_FILE" && -d "${BOOTSTRAP_LOG_FILE:h}" ]]; then
     print -r -- "==> $*" >> "$BOOTSTRAP_LOG_FILE"
   fi
-  if [[ "${NOVA_INSTALL_VERBOSE:-0}" == "1" ]]; then
+  if [[ "${ACTANARA_INSTALL_VERBOSE:-0}" == "1" ]]; then
     print -r -- "==> $*"
   fi
 }
 
 run_cmd() {
   local label="$(bootstrap_command_label "$@")"
-  if [[ "${NOVA_INSTALL_VERBOSE:-0}" == "1" ]]; then
+  if [[ "${ACTANARA_INSTALL_VERBOSE:-0}" == "1" ]]; then
     print -r -- "+ ${label}"
   fi
   if [[ "$DRY_RUN" == "1" ]]; then
@@ -233,7 +233,7 @@ git_exec() {
 
 run_git_cmd() {
   local label="$(bootstrap_command_label "$@")"
-  if [[ "${NOVA_INSTALL_VERBOSE:-0}" == "1" ]]; then
+  if [[ "${ACTANARA_INSTALL_VERBOSE:-0}" == "1" ]]; then
     print -r -- "+ ${label}"
   fi
   if [[ "$DRY_RUN" == "1" ]]; then
@@ -305,7 +305,7 @@ verify_offline_source_cache() {
   done
 
   local inventory_file=""
-  inventory_file="$(mktemp "${TMPDIR:-/tmp}/open-nova-offline-cache.XXXXXXXX")" || {
+  inventory_file="$(mktemp "${TMPDIR:-/tmp}/actanara-offline-cache.XXXXXXXX")" || {
     bootstrap_problem offline_missing "unable to create a private offline source inventory"
     return 2
   }
@@ -406,11 +406,11 @@ parse_installer_safety_args() {
   INSTALLER_UPGRADE=0
   INSTALLER_REPAIR=0
   INSTALLER_SPECIAL_UPDATE=0
-  INSTALLER_RUNTIME="${NOVA_INSTALL_RUNTIME:-$HOME/.open-nova}"
+  INSTALLER_RUNTIME="${ACTANARA_INSTALL_RUNTIME:-$HOME/.actanara}"
   INSTALLER_RUNTIME_ARG=0
   INSTALLER_RUNTIME_ENV=0
   INSTALLER_YES=0
-  if [[ -n "${NOVA_INSTALL_RUNTIME:-}" ]]; then
+  if [[ -n "${ACTANARA_INSTALL_RUNTIME:-}" ]]; then
     INSTALLER_RUNTIME_ENV=1
   fi
   local index=1
@@ -533,7 +533,7 @@ normalize_runtime_candidate() {
 canonical_source_url() {
   local value="$1"
   case "$value" in
-    "https://github.com/Neo-Isshin/open-nova"|"https://github.com/Neo-Isshin/open-nova/"|"https://github.com/Neo-Isshin/open-nova.git"|"https://github.com/Neo-Isshin/open-nova.git/")
+    "https://github.com/Neo-Isshin/actanara"|"https://github.com/Neo-Isshin/actanara/"|"https://github.com/Neo-Isshin/actanara.git"|"https://github.com/Neo-Isshin/actanara.git/")
       print -rn -- "$DEFAULT_SOURCE_URL"
       ;;
     *)
@@ -548,7 +548,7 @@ source_urls_match() {
   [[ "$(canonical_source_url "$existing")" == "$(canonical_source_url "$requested")" ]]
 }
 
-runtime_has_open_nova_marker() {
+runtime_has_actanara_marker() {
   local candidate="$1"
   local marker=""
   for marker in \
@@ -556,8 +556,8 @@ runtime_has_open_nova_marker() {
     "${candidate}/.venv" \
     "${candidate}/config/runtime.json" \
     "${candidate}/config/settings.json" \
-    "${candidate}/data/nova_data.sqlite3" \
-    "${candidate}/bin/open-nova"; do
+    "${candidate}/data/actanara_data.sqlite3" \
+    "${candidate}/bin/actanara"; do
     if [[ -e "$marker" || -L "$marker" ]]; then
       return 0
     fi
@@ -620,7 +620,7 @@ runtime_source_manifest_path() {
     return 1
   fi
   [[ -d "$source_target" && ! -L "$source_target" ]] || return 1
-  manifest="${source_target}/.open-nova-runtime-source.json"
+  manifest="${source_target}/.actanara-runtime-source.json"
   [[ -f "$manifest" && ! -L "$manifest" ]] || return 1
   manifest_size="$(/usr/bin/wc -c < "$manifest" | /usr/bin/tr -d '[:space:]')" || return 1
   [[ "$manifest_size" =~ "^[0-9]+$" ]] || return 1
@@ -636,10 +636,10 @@ runtime_has_explicit_foreign_manifest() {
   manifest="$(runtime_source_manifest_path "$candidate")" || return 1
   manifest_payload="$(<"$manifest")" || return 1
   product="$(extract_json_string "$manifest_payload" "product")" || return 1
-  [[ "$product" != "open-nova" ]]
+  [[ "$product" != "actanara" ]]
 }
 
-runtime_is_updateable_open_nova() {
+runtime_is_updateable_actanara() {
   local candidate="$1"
   local manifest=""
   local manifest_payload=""
@@ -656,7 +656,7 @@ runtime_is_updateable_open_nova() {
   manifest_payload="$(<"$manifest")" || return 1
   product="$(extract_json_string "$manifest_payload" "product")" || return 1
   deployment_mode="$(extract_json_string "$manifest_payload" "deploymentMode")" || return 1
-  [[ "$product" == "open-nova" && "$deployment_mode" == "release-symlink" ]]
+  [[ "$product" == "actanara" && "$deployment_mode" == "release-symlink" ]]
 }
 
 confirm_legacy_runtime_repair() {
@@ -666,11 +666,11 @@ confirm_legacy_runtime_repair() {
   local answer=""
   while true; do
     if ! print -rn -- "$(bootstrap_text legacy_repair_prompt) " 2>/dev/null > /dev/tty; then
-      bootstrap_problem legacy_repair_confirmation_required "legacy Open Nova repair requires confirmation or --yes"
+      bootstrap_problem legacy_repair_confirmation_required "legacy Actanara repair requires confirmation or --yes"
       return 2
     fi
     if ! IFS= read -r answer 2>/dev/null < /dev/tty; then
-      bootstrap_problem legacy_repair_confirmation_required "legacy Open Nova repair confirmation could not be read; rerun with --yes"
+      bootstrap_problem legacy_repair_confirmation_required "legacy Actanara repair confirmation could not be read; rerun with --yes"
       return 2
     fi
     case "${answer:l}" in
@@ -689,31 +689,31 @@ confirm_legacy_runtime_repair() {
 }
 
 read_saved_runtime_location() {
-  local location_file="${NOVA_LOCATION_FILE:-$HOME/.config/open-nova/location.json}"
+  local location_file="${ACTANARA_LOCATION_FILE:-$HOME/.config/actanara/location.json}"
   local location_payload=""
   local pointed_runtime=""
   if ! location_file="$(normalize_runtime_candidate "$location_file")"; then
-    bootstrap_problem location_invalid "cannot safely resolve the saved Open Nova location"
+    bootstrap_problem location_invalid "cannot safely resolve the saved Actanara location"
     return 2
   fi
   if [[ -e "$location_file" || -L "$location_file" ]]; then
     if [[ ! -f "$location_file" || -L "$location_file" ]]; then
-      bootstrap_problem location_invalid "saved Open Nova location is not a regular file: ${location_file}"
+      bootstrap_problem location_invalid "saved Actanara location is not a regular file: ${location_file}"
       return 2
     fi
     local location_size=""
     location_size="$(/usr/bin/wc -c < "$location_file" | /usr/bin/tr -d '[:space:]')" || return 2
     if [[ ! "$location_size" =~ "^[0-9]+$" ]] || (( location_size > 65536 )); then
-      bootstrap_problem location_invalid "saved Open Nova location is invalid: ${location_file}"
+      bootstrap_problem location_invalid "saved Actanara location is invalid: ${location_file}"
       return 2
     fi
     location_payload="$(<"$location_file")" || return 2
-    if ! pointed_runtime="$(extract_json_string "$location_payload" "novaHome")"; then
-      bootstrap_problem location_invalid "saved Open Nova location could not be parsed: ${location_file}"
+    if ! pointed_runtime="$(extract_json_string "$location_payload" "actanaraHome")"; then
+      bootstrap_problem location_invalid "saved Actanara location could not be parsed: ${location_file}"
       return 2
     fi
     if [[ "$pointed_runtime" != /* || "$pointed_runtime" == *$'\n'* || "$pointed_runtime" == *$'\r'* ]]; then
-      bootstrap_problem location_invalid "saved Open Nova location is not an absolute path: ${location_file}"
+      bootstrap_problem location_invalid "saved Actanara location is not an absolute path: ${location_file}"
       return 2
     fi
   fi
@@ -728,8 +728,8 @@ select_installer_mode_before_source_writes() {
   local repair_pending_status=1
 
   if [[ "$INSTALLER_RUNTIME_ARG" != "1" && "$INSTALLER_RUNTIME_ENV" != "1" ]]; then
-    if [[ -n "${NOVA_HOME:-}" ]]; then
-      selected_runtime="$NOVA_HOME"
+    if [[ -n "${ACTANARA_HOME:-}" ]]; then
+      selected_runtime="$ACTANARA_HOME"
     else
       pointed_runtime="$(read_saved_runtime_location)" || return $?
       if [[ -n "$pointed_runtime" ]]; then
@@ -738,7 +738,7 @@ select_installer_mode_before_source_writes() {
     fi
   fi
   if ! normalized_runtime="$(normalize_runtime_candidate "$selected_runtime")"; then
-    bootstrap_problem location_invalid "cannot safely resolve the selected Open Nova folder"
+    bootstrap_problem location_invalid "cannot safely resolve the selected Actanara folder"
     return 2
   fi
   if [[ "$INSTALLER_RUNTIME_ARG" != "1" ]]; then
@@ -746,10 +746,10 @@ select_installer_mode_before_source_writes() {
   fi
 
   if runtime_root_is_unsafe "$normalized_runtime"; then
-    bootstrap_problem runtime_incomplete "selected Open Nova Runtime root is a symlink or non-directory: ${normalized_runtime}"
+    bootstrap_problem runtime_incomplete "selected Actanara Runtime root is a symlink or non-directory: ${normalized_runtime}"
     return 2
   fi
-  if runtime_has_open_nova_marker "$normalized_runtime"; then
+  if runtime_has_actanara_marker "$normalized_runtime"; then
     if runtime_has_explicit_foreign_manifest "$normalized_runtime"; then
       bootstrap_problem runtime_incomplete "selected Runtime source manifest belongs to another product: ${normalized_runtime}"
       return 2
@@ -762,7 +762,7 @@ select_installer_mode_before_source_writes() {
       bootstrap_problem runtime_incomplete "selected Runtime repair marker is unsafe: ${normalized_runtime}"
       return 2
     fi
-    if [[ "$repair_pending_status" != "0" ]] && runtime_is_updateable_open_nova "$normalized_runtime"; then
+    if [[ "$repair_pending_status" != "0" ]] && runtime_is_updateable_actanara "$normalized_runtime"; then
       if [[ "$INSTALLER_UPGRADE" == "1" ]]; then
         return 0
       fi
@@ -796,9 +796,9 @@ select_installer_mode_before_source_writes() {
   fi
 
   local launch_agent=""
-  for launch_agent in "$HOME"/Library/LaunchAgents/com.open-nova*.plist(N); do
+  for launch_agent in "$HOME"/Library/LaunchAgents/com.actanara*.plist(N); do
     if [[ -e "$launch_agent" || -L "$launch_agent" ]]; then
-      bootstrap_problem service_unmatched "existing Open Nova background service has no selected Runtime: ${launch_agent}"
+      bootstrap_problem service_unmatched "existing Actanara background service has no selected Runtime: ${launch_agent}"
       return 2
     fi
   done
@@ -990,7 +990,7 @@ if [[ -z "$SOURCE_ROOT" ]]; then
       bootstrap_problem offline_missing "offline source cache is missing: ${SOURCE_ROOT}"
       exit 2
     fi
-    log "Downloading the selected Open Nova version"
+    log "Downloading the selected Actanara version"
     run_cmd mkdir -p "${cache_root}"
     if [[ "$DRY_RUN" != "1" ]]; then
       prepare_bootstrap_log "$cache_root"
@@ -1053,7 +1053,7 @@ bootstrap_start_key="starting"
 if [[ "$INSTALLER_UPGRADE" == "1" ]]; then
   bootstrap_start_key="starting_update"
 fi
-if [[ "${NOVA_INSTALL_VERBOSE:-0}" == "1" ]]; then
+if [[ "${ACTANARA_INSTALL_VERBOSE:-0}" == "1" ]]; then
   print -r -- "+ $(bootstrap_text "$bootstrap_start_key")"
 fi
 bootstrap_ok "$(bootstrap_text "$bootstrap_start_key")"

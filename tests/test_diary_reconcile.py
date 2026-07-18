@@ -41,7 +41,7 @@ class DiaryReconcileTests(unittest.TestCase):
                 encoding="utf-8",
             )
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary").home,
+                initialize_home(root / "Actanara").home,
                 generated_diary_root=old_diary,
                 legacy_diary_root=old_diary,
             )
@@ -154,7 +154,7 @@ class DiaryReconcileTests(unittest.TestCase):
             day = diary_root / "diary-2026-06-05"
             day.mkdir(parents=True)
             (day / "日记-260605.md").write_text("# 日记\n\n## 今日概要\n修复 token 热力图\n", encoding="utf-8")
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
             migrate(paths)
 
             fake_result = SimpleNamespace(
@@ -180,10 +180,10 @@ class DiaryReconcileTests(unittest.TestCase):
             day = diary_root / "diary-2026-06-05"
             day.mkdir(parents=True)
             (day / "日记-260605.md").write_text("# 日记\n", encoding="utf-8")
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
             migrate(paths)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 result = dashboard_settings.diary_path_consistency()
 
             self.assertEqual(result["status"], "mismatch")

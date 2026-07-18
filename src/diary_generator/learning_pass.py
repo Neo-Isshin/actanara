@@ -126,7 +126,7 @@ def call_llm(prompt):
 
 
 def _debug_dir():
-    return Path(config.NOVA_HOME) / "state" / "logs" / "learning-pass"
+    return Path(config.ACTANARA_HOME) / "state" / "logs" / "learning-pass"
 
 
 def save_learning_debug_output(date_str, raw_output, label="parse-failure"):

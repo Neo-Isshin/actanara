@@ -504,8 +504,8 @@ def assemble_final_markdown(date_str, llm_content, all_stats, filtered_entries):
     return "\n".join(md)
 
 QUALITY_GATE_TOKENS = PIPELINE_GATE_TOKENS
-MAX_GATE_SPLIT_CHUNKS = max(1, _positive_int(os.getenv("NOVA_NARRATIVE_MAX_GATE_SPLIT_CHUNKS"), 256))
-MAX_FINAL_PRECOMPRESS_CHUNKS = max(1, _positive_int(os.getenv("NOVA_NARRATIVE_MAX_FINAL_PRECOMPRESS_CHUNKS"), 256))
+MAX_GATE_SPLIT_CHUNKS = max(1, _positive_int(os.getenv("ACTANARA_NARRATIVE_MAX_GATE_SPLIT_CHUNKS"), 256))
+MAX_FINAL_PRECOMPRESS_CHUNKS = max(1, _positive_int(os.getenv("ACTANARA_NARRATIVE_MAX_FINAL_PRECOMPRESS_CHUNKS"), 256))
 TRUNCATE_SEQUENCE = (400, 300, 200, 100)
 BROAD_TIME_SLOTS = (
     ("凌晨(00-04)", 0, 4),

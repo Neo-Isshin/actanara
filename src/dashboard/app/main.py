@@ -38,7 +38,7 @@ from data_foundation.source_identity import loaded_source_commit
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
 logger = logging.getLogger("dashboard")
 
-app = FastAPI(title="Open Nova Dashboard", version="3.5")
+app = FastAPI(title="Actanara Dashboard", version="3.5")
 _security_sessions = DashboardSessionStore()
 _security_config = dashboard_security_config()
 _LOADED_SOURCE_COMMIT = loaded_source_commit(__file__)
@@ -102,7 +102,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["Content-Type", DASHBOARD_CSRF_HEADER],
-    expose_headers=["X-Open-Nova-CSRF"],
+    expose_headers=["X-Actanara-CSRF"],
 )
 
 APP_DIR = Path(__file__).parent

@@ -24,8 +24,8 @@ from .time import resolve_timezone
 
 
 PRODUCT_PROFILE_DEFINITIONS: dict[str, dict[str, Any]] = {
-    "open-nova": {
-        "label": "Open Nova",
+    "actanara": {
+        "label": "Actanara",
         "defaultEnabled": True,
         "required": True,
         "description": "Diary generation pipeline and core runtime.",
@@ -62,16 +62,16 @@ PRODUCT_PROFILE_DEFINITIONS: dict[str, dict[str, Any]] = {
 }
 
 PROFILE_ORDER = tuple(PRODUCT_PROFILE_DEFINITIONS.keys())
-REQUIRED_PROFILE_IDS = ("open-nova", "dashboard", "nova-task")
+REQUIRED_PROFILE_IDS = ("actanara", "dashboard", "nova-task")
 DEFAULT_PROFILE_IDS = REQUIRED_PROFILE_IDS
 
 PRODUCT_DEPENDENCY_GROUPS: dict[str, dict[str, Any]] = {
-    "open-nova": {
-        "label": "Open Nova core",
+    "actanara": {
+        "label": "Actanara core",
         "required": True,
         "installDefault": True,
         "legacyDependencyProfiles": ("core-foundation",),
-        "requirementSets": ("open-nova-core",),
+        "requirementSets": ("actanara-core",),
         "providerInputs": ("output-path", "llm-provider", "llm-api-key"),
         "description": "Core runtime and diary generation pipeline dependencies.",
     },
@@ -116,14 +116,14 @@ PRODUCT_DEPENDENCY_GROUPS: dict[str, dict[str, Any]] = {
 PACKAGING_GROUP_DEFINITIONS: dict[str, dict[str, Any]] = {
     "base": {
         "label": "Base runtime",
-        "profile": "open-nova",
-        "requirementSet": "open-nova-core",
+        "profile": "actanara",
+        "requirementSet": "actanara-core",
         "dependencySource": "current-detection",
         "currentDetection": "detected-now",
         "currentChecks": ("python3", "sqlite3", "zoneinfo"),
         "futureCandidates": ("core diary pipeline runtime packages after source audit",),
         "providerInputs": (),
-        "description": "Required Open Nova core runtime and diary pipeline dependency group.",
+        "description": "Required Actanara core runtime and diary pipeline dependency group.",
     },
     "dashboard": {
         "label": "Dashboard runtime",
@@ -221,9 +221,9 @@ RAG_CLOUD_CONFIG_FIELDS = (
 )
 
 REQUIREMENT_SET_DEFINITIONS: dict[str, dict[str, Any]] = {
-    "open-nova-core": {
-        "label": "Open Nova core",
-        "profile": "open-nova",
+    "actanara-core": {
+        "label": "Actanara core",
+        "profile": "actanara",
         "legacyDependencyProfiles": ("core-foundation",),
         "providerInputs": ("output-path", "llm-provider", "llm-api-key"),
         "description": "Python runtime, standard library support and core diary pipeline prerequisites.",
@@ -360,7 +360,7 @@ def onboarding_one_liner_dry_run(selected: list[str] | None = None, paths: Runti
         "installerV2Plan": installer_v2_plan,
         "oneLinerV1Command": one_liner_command,
         "commandDraft": {
-            "id": "open-nova-onboarding-one-liner",
+            "id": "actanara-onboarding-one-liner",
             "argv": one_liner_command["argv"],
             "display": one_liner_command["display"],
             "copyPasteReady": True,
@@ -368,8 +368,8 @@ def onboarding_one_liner_dry_run(selected: list[str] | None = None, paths: Runti
             "reason": "Runtime apply command is available behind exact confirmation.",
         },
         "blockedApplyCommand": {
-            "argv": ["open-nova", "onboarding", "apply"],
-            "display": "open-nova onboarding apply",
+            "argv": ["actanara", "onboarding", "apply"],
+            "display": "actanara onboarding apply",
             "implemented": True,
             "blocked": True,
             "exitCode": 1,
@@ -387,7 +387,7 @@ def onboarding_one_liner_dry_run(selected: list[str] | None = None, paths: Runti
             "mutatesPromptPayloads": False,
             "changesRagAuthority": False,
             "changesNovaTaskAuthority": False,
-            "futureConfirmationPhrase": "APPLY OPEN NOVA ONBOARDING",
+            "futureConfirmationPhrase": "APPLY ACTANARA ONBOARDING",
             "oneLinerApplyImplemented": True,
             "oneLinerApplyCommand": one_liner_command["display"],
             "safetyPolicy": safety_policy,
@@ -415,32 +415,32 @@ def onboarding_one_liner_dry_run(selected: list[str] | None = None, paths: Runti
 
 def _default_runtime_target() -> dict[str, Any]:
     return {
-        "id": "user-home-dot-open-nova",
+        "id": "user-home-dot-actanara",
         "path": str(default_oneliner_runtime_home()),
         "source": "one-liner-default",
         "requiresExplicitUseDefaultRuntimeFlag": True,
         "isInstallDirectory": True,
         "bootstrapPointerIsInstallDirectory": False,
-        "bootstrapPointerPath": "~/.config/open-nova/location.json",
+        "bootstrapPointerPath": "~/.config/actanara/location.json",
     }
 
 
 def _one_liner_v1_command_plan(selected_profiles: list[str]) -> dict[str, Any]:
     argv = [
-        "open-nova",
+        "actanara",
         "onboarding",
         "runtime-apply",
         "--use-default-runtime",
         "--language",
         "zh-CN",
         "--confirmation-text",
-        "APPLY OPEN NOVA ONBOARDING",
+        "APPLY ACTANARA ONBOARDING",
     ]
     for profile_id in selected_profiles:
-        if profile_id != "open-nova":
+        if profile_id != "actanara":
             argv.extend(["--profile", profile_id])
     return {
-        "id": "open-nova-onboarding-one-liner-v1",
+        "id": "actanara-onboarding-one-liner-v1",
         "argv": argv,
         "display": " ".join(argv),
         "copyPasteReady": True,
@@ -452,7 +452,7 @@ def _one_liner_v1_command_plan(selected_profiles: list[str]) -> dict[str, Any]:
         "callsLaunchctl": False,
         "installsDependencies": False,
         "notes": [
-            "Creates or updates ~/.open-nova runtime files after exact confirmation.",
+            "Creates or updates ~/.actanara runtime files after exact confirmation.",
             "Leaves active runtime selection opt-in via --select-active-runtime.",
             "Does not register launchd jobs unless --with-scheduler and scheduler confirmation are provided.",
         ],
@@ -476,9 +476,9 @@ def scheduler_apply_approval_contract(scheduler_plan: dict[str, Any] | None = No
         "plistWriteApplyImplemented": True,
         "managedPlistSerializationRequired": True,
         "managedPlistSerializationReady": bool(scheduler.get("managedPlistSerializationReady")),
-        "plistWriteConfirmationPhrase": "WRITE OPEN NOVA LAUNCHAGENTS",
-        "registrationConfirmationPhrase": "REGISTER OPEN NOVA SCHEDULER",
-        "rollbackConfirmationPhrase": "UNREGISTER OPEN NOVA SCHEDULER",
+        "plistWriteConfirmationPhrase": "WRITE ACTANARA LAUNCHAGENTS",
+        "registrationConfirmationPhrase": "REGISTER ACTANARA SCHEDULER",
+        "rollbackConfirmationPhrase": "UNREGISTER ACTANARA SCHEDULER",
         "requiresFakeHomeForSandbox": True,
         "requiresExplicitRuntime": True,
         "requiresExplicitOperatorApprovalForRealWrites": True,
@@ -491,8 +491,8 @@ def scheduler_apply_approval_contract(scheduler_plan: dict[str, Any] | None = No
         },
         "jobLabels": [job.get("label") for job in jobs if job.get("label")],
         "managedPlistCount": len([job for job in jobs if job.get("managedPlist")]),
-        "auditPath": "$NOVA_HOME/state/onboarding/onboarding-audit.jsonl",
-        "rollbackPath": "$NOVA_HOME/state/onboarding/scheduler-sandbox-rollback-plan.json",
+        "auditPath": "$ACTANARA_HOME/state/onboarding/onboarding-audit.jsonl",
+        "rollbackPath": "$ACTANARA_HOME/state/onboarding/scheduler-sandbox-rollback-plan.json",
         "pathPolicy": {
             "sandboxTarget": "$FAKE_HOME/Library/LaunchAgents",
             "realTarget": "~/Library/LaunchAgents",
@@ -540,18 +540,18 @@ def onboarding_one_liner_apply(
     }
     if with_scheduler and runtime_payload.get("exitCode") == 0:
         scheduler_registration["requested"] = True
-        if str(scheduler_confirmation_text or "") != "REGISTER OPEN NOVA SCHEDULER":
+        if str(scheduler_confirmation_text or "") != "REGISTER ACTANARA SCHEDULER":
             scheduler_registration.update(
                 {
                     "status": "scheduler-confirmation-missing",
-                    "requiredConfirmationPhrase": "REGISTER OPEN NOVA SCHEDULER",
+                    "requiredConfirmationPhrase": "REGISTER ACTANARA SCHEDULER",
                 }
             )
         else:
             scheduler_plist_payload = onboarding_apply_scheduler_plist_write(
                 selected,
                 runtime_paths,
-                confirmation_text="WRITE OPEN NOVA LAUNCHAGENTS",
+                confirmation_text="WRITE ACTANARA LAUNCHAGENTS",
                 launch_agent_home=launch_agent_home,
             )
             if scheduler_plist_payload.get("exitCode") == 0:
@@ -637,7 +637,7 @@ def onboarding_one_liner_status(paths: RuntimePaths | None = None) -> dict[str, 
         "statusOnly": True,
         "status": "initialized" if runtime_initialized else "not-initialized",
         "runtime": {
-            "novaHome": str(runtime_paths.home),
+            "actanaraHome": str(runtime_paths.home),
             "exists": runtime_paths.home.exists(),
             "initialized": runtime_initialized,
         },
@@ -708,7 +708,7 @@ def onboarding_rollback_plan_status(paths: RuntimePaths | None = None) -> dict[s
         "readOnly": True,
         "rollbackPlanOnly": True,
         "status": "available" if existing else "missing",
-        "runtime": {"novaHome": str(runtime_paths.home)},
+        "runtime": {"actanaraHome": str(runtime_paths.home)},
         "plans": plans,
         "executionPolicy": {
             "executesRollback": False,
@@ -744,7 +744,7 @@ def onboarding_apply_scheduler_sandbox(
     if fake_home.resolve() == Path.home().resolve():
         raise ValueError("scheduler sandbox apply fake home cannot be the real current HOME")
 
-    required_phrase = "REGISTER OPEN NOVA SCHEDULER"
+    required_phrase = "REGISTER ACTANARA SCHEDULER"
     confirmation_accepted = str(confirmation_text or "") == required_phrase
     if not confirmation_accepted:
         return {
@@ -813,7 +813,7 @@ def onboarding_apply_scheduler_sandbox(
         "confirmationAccepted": True,
         "requiredConfirmationPhrase": required_phrase,
         "runtime": {
-            "novaHome": str(runtime_paths.home),
+            "actanaraHome": str(runtime_paths.home),
             "auditPath": str(audit_path),
             "rollbackPath": str(rollback_path),
         },
@@ -845,7 +845,7 @@ def onboarding_apply_scheduler_plist_write(
     if paths is None:
         raise ValueError("scheduler plist apply requires an explicit runtime path")
 
-    required_phrase = "WRITE OPEN NOVA LAUNCHAGENTS"
+    required_phrase = "WRITE ACTANARA LAUNCHAGENTS"
     confirmation_accepted = str(confirmation_text or "") == required_phrase
     if not confirmation_accepted:
         return {
@@ -925,7 +925,7 @@ def onboarding_apply_scheduler_plist_write(
         "confirmationAccepted": True,
         "requiredConfirmationPhrase": required_phrase,
         "runtime": {
-            "novaHome": str(runtime_paths.home),
+            "actanaraHome": str(runtime_paths.home),
             "auditPath": str(audit_path),
             "rollbackPath": str(rollback_path),
         },
@@ -959,7 +959,7 @@ def onboarding_apply_scheduler_register(
     if paths is None:
         raise ValueError("scheduler register apply requires an explicit runtime path")
 
-    required_phrase = "REGISTER OPEN NOVA SCHEDULER"
+    required_phrase = "REGISTER ACTANARA SCHEDULER"
     confirmation_accepted = str(confirmation_text or "") == required_phrase
     if not confirmation_accepted:
         return {
@@ -1092,7 +1092,7 @@ def onboarding_apply_scheduler_register(
         "confirmationAccepted": True,
         "requiredConfirmationPhrase": required_phrase,
         "runtime": {
-            "novaHome": str(runtime_paths.home),
+            "actanaraHome": str(runtime_paths.home),
             "auditPath": str(audit_path),
             "rollbackPath": str(rollback_path),
         },
@@ -1126,7 +1126,7 @@ def onboarding_apply_scheduler_unregister(
     if paths is None:
         raise ValueError("scheduler unregister apply requires an explicit runtime path")
 
-    required_phrase = "UNREGISTER OPEN NOVA SCHEDULER"
+    required_phrase = "UNREGISTER ACTANARA SCHEDULER"
     confirmation_accepted = str(confirmation_text or "") == required_phrase
     if not confirmation_accepted:
         return {
@@ -1226,7 +1226,7 @@ def onboarding_apply_scheduler_unregister(
         "confirmationAccepted": True,
         "requiredConfirmationPhrase": required_phrase,
         "runtime": {
-            "novaHome": str(runtime_paths.home),
+            "actanaraHome": str(runtime_paths.home),
             "auditPath": str(audit_path),
             "rollbackPath": str(rollback_path),
         },
@@ -1306,7 +1306,7 @@ def onboarding_release_gate(
         _release_gate(
             "default-runtime-target",
             "passed",
-            "User-facing runtime default target is ~/.open-nova and requires explicit opt-in.",
+            "User-facing runtime default target is ~/.actanara and requires explicit opt-in.",
             evidence=dry_run.get("defaultRuntimeTarget") or {},
         ),
         _release_gate(
@@ -1464,8 +1464,8 @@ def onboarding_one_liner_release_gate(
         ),
         _release_gate(
             "default-runtime-target",
-            "passed" if (dry_run.get("defaultRuntimeTarget") or {}).get("path", "").endswith(".open-nova") else "failed",
-            "Default runtime bootstrap target is ~/.open-nova.",
+            "passed" if (dry_run.get("defaultRuntimeTarget") or {}).get("path", "").endswith(".actanara") else "failed",
+            "Default runtime bootstrap target is ~/.actanara.",
             evidence=dry_run.get("defaultRuntimeTarget") or {},
         ),
         _release_gate(
@@ -1568,7 +1568,7 @@ def onboarding_one_liner_validation_matrix(paths: RuntimePaths | None = None) ->
         _validation_case(
             "minimal-v1-release-gate",
             "Minimal runtime bootstrap release gate passes.",
-            "open-nova onboarding runtime-release-gate --json",
+            "actanara onboarding runtime-release-gate --json",
             expected_status="passed",
             expected_exit_code=0,
             observed_status=minimal_gate.get("status"),
@@ -1578,7 +1578,7 @@ def onboarding_one_liner_validation_matrix(paths: RuntimePaths | None = None) ->
         _validation_case(
             "scheduler-opt-in-release-gate",
             "Scheduler opt-in runtime bootstrap gates pass without making scheduler mandatory.",
-            "open-nova onboarding runtime-release-gate --with-scheduler --json",
+            "actanara onboarding runtime-release-gate --with-scheduler --json",
             expected_status="passed",
             expected_exit_code=0,
             observed_status=scheduler_gate.get("status"),
@@ -1588,7 +1588,7 @@ def onboarding_one_liner_validation_matrix(paths: RuntimePaths | None = None) ->
         _validation_case(
             "rag-out-of-minimal-v1-scope",
             "Selecting nova-rag blocks the minimal runtime bootstrap release gate.",
-            "open-nova onboarding runtime-release-gate --profile nova-rag --json",
+            "actanara onboarding runtime-release-gate --profile nova-rag --json",
             expected_status="blocked",
             expected_exit_code=1,
             observed_status=rag_gate.get("status"),
@@ -1597,8 +1597,8 @@ def onboarding_one_liner_validation_matrix(paths: RuntimePaths | None = None) ->
         ),
         _validation_case(
             "default-runtime-apply-contract",
-            "Default runtime apply targets ~/.open-nova and keeps scheduler/dependencies opt-in or disabled.",
-            "open-nova onboarding runtime-apply --use-default-runtime --language zh-CN --confirmation-text 'APPLY OPEN NOVA ONBOARDING' --json",
+            "Default runtime apply targets ~/.actanara and keeps scheduler/dependencies opt-in or disabled.",
+            "actanara onboarding runtime-apply --use-default-runtime --language zh-CN --confirmation-text 'APPLY ACTANARA ONBOARDING' --json",
             expected_status="contract-ready",
             expected_exit_code=0,
             observed_status="contract-ready",
@@ -1614,7 +1614,7 @@ def onboarding_one_liner_validation_matrix(paths: RuntimePaths | None = None) ->
         _validation_case(
             "clean-deployment-artifact-scan",
             "New-user deployment release gate rejects checked-in runtime artifacts and raw secrets.",
-            "open-nova onboarding runtime-release-gate --json",
+            "actanara onboarding runtime-release-gate --json",
             expected_status="passed",
             expected_exit_code=0,
             observed_status=clean_check.get("status"),
@@ -1721,7 +1721,7 @@ def onboarding_apply_blocked(
         "profileModel": "product-v2",
         "selectedProfiles": selected_profiles,
         "exitCode": 1,
-        "message": "Open Nova onboarding apply is not implemented and is blocked by design.",
+        "message": "Actanara onboarding apply is not implemented and is blocked by design.",
         "requiresApproval": "separate explicit implementation approval",
         "noSideEffects": True,
         "safetyPolicy": safety_policy,
@@ -1740,7 +1740,7 @@ def onboarding_apply_blocked(
             "mutatesPromptPayloads": False,
             "changesRagAuthority": False,
             "changesNovaTaskAuthority": False,
-            "requiredConfirmationPhrase": "APPLY OPEN NOVA ONBOARDING",
+            "requiredConfirmationPhrase": "APPLY ACTANARA ONBOARDING",
             "confirmationAccepted": bool(preflight.get("confirmationAccepted")),
             "safetyPolicy": safety_policy,
         },
@@ -1766,7 +1766,7 @@ def onboarding_apply_sandbox(
         apply_contract=contract,
         paths=paths,
     )
-    required_phrase = preflight.get("requiredConfirmationPhrase") or "APPLY OPEN NOVA ONBOARDING"
+    required_phrase = preflight.get("requiredConfirmationPhrase") or "APPLY ACTANARA ONBOARDING"
     if not preflight.get("confirmationAccepted"):
         return _sandbox_apply_rejected(
             selected_profiles,
@@ -1844,7 +1844,7 @@ def onboarding_apply_sandbox(
         "exitCode": 0,
         "selectedProfiles": selected_profiles,
         "runtime": {
-            "novaHome": str(runtime_paths.home),
+            "actanaraHome": str(runtime_paths.home),
             "settingsPath": settings.get("settingsPath"),
             "auditPath": str(audit_path),
             "rollbackPath": str(rollback_path),
@@ -1923,7 +1923,7 @@ def onboarding_apply_runtime_bootstrap(
         apply_contract=contract,
         paths=paths,
     )
-    required_phrase = preflight.get("requiredConfirmationPhrase") or "APPLY OPEN NOVA ONBOARDING"
+    required_phrase = preflight.get("requiredConfirmationPhrase") or "APPLY ACTANARA ONBOARDING"
     if not preflight.get("confirmationAccepted"):
         return _runtime_bootstrap_rejected(
             selected_profiles,
@@ -1980,7 +1980,7 @@ def onboarding_apply_runtime_bootstrap(
                 "id": "select-active-runtime",
                 "status": "applied",
                 "target": selection_result.get("bootstrapPath"),
-                "selectedNovaHome": selection_result.get("novaHome"),
+                "selectedActanaraHome": selection_result.get("actanaraHome"),
             }
         )
 
@@ -2010,7 +2010,7 @@ def onboarding_apply_runtime_bootstrap(
         "exitCode": 0,
         "selectedProfiles": selected_profiles,
         "runtime": {
-            "novaHome": str(runtime_paths.home),
+            "actanaraHome": str(runtime_paths.home),
             "settingsPath": settings.get("settingsPath"),
             "auditPath": str(audit_path),
             "rollbackPath": str(rollback_path),
@@ -2059,7 +2059,7 @@ def onboarding_apply_preflight(
     """Return no-side-effect apply preflight checks for the blocked apply command."""
     normalized_profiles = normalize_onboarding_profiles(selected_profiles)
     contract = apply_contract or onboarding_apply_write_contract(normalized_profiles)
-    required_phrase = ((contract.get("writePlan") or {}).get("confirmationPhrase")) or "APPLY OPEN NOVA ONBOARDING"
+    required_phrase = ((contract.get("writePlan") or {}).get("confirmationPhrase")) or "APPLY ACTANARA ONBOARDING"
     provided = confirmation_text is not None
     confirmation_accepted = str(confirmation_text or "") == required_phrase
     required_inputs = required_onboarding_inputs(normalized_profiles, paths)
@@ -2269,12 +2269,12 @@ def _sandbox_rollback_payload(
         "sandboxOnly": True,
         "rollbackImplemented": False,
         "selectedProfiles": selected_profiles,
-        "runtime": {"novaHome": str(paths.home)},
+        "runtime": {"actanaraHome": str(paths.home)},
         "sourceOperationResults": operation_results,
         "contractRollbackPlan": contract.get("rollbackPlan"),
         "manualRollbackNotes": [
             "Sandbox apply does not provide an executable rollback command.",
-            "Delete the sandbox NOVA_HOME directory if it was created only for this test.",
+            "Delete the sandbox ACTANARA_HOME directory if it was created only for this test.",
         ],
     }
 
@@ -2292,7 +2292,7 @@ def _runtime_bootstrap_rollback_payload(
         "runtimeBootstrapOnly": True,
         "rollbackImplemented": False,
         "selectedProfiles": selected_profiles,
-        "runtime": {"novaHome": str(paths.home)},
+        "runtime": {"actanaraHome": str(paths.home)},
         "sourceOperationResults": operation_results,
         "deferredOperations": deferred_operations,
         "selectionRollback": {
@@ -2303,7 +2303,7 @@ def _runtime_bootstrap_rollback_payload(
         "contractRollbackPlan": contract.get("rollbackPlan"),
         "manualRollbackNotes": [
             "Runtime bootstrap apply does not provide an executable rollback command.",
-            "Delete the explicit NOVA_HOME directory if it was created only for onboarding bootstrap.",
+            "Delete the explicit ACTANARA_HOME directory if it was created only for onboarding bootstrap.",
         ],
     }
 
@@ -2320,7 +2320,7 @@ def _scheduler_sandbox_rollback_payload(
         "schedulerSandboxOnly": True,
         "rollbackImplemented": False,
         "selectedProfiles": selected_profiles,
-        "runtime": {"novaHome": str(paths.home)},
+        "runtime": {"actanaraHome": str(paths.home)},
         "schedulerHome": str(fake_home),
         "sourceOperationResults": operation_results,
         "managedLabels": [job.get("label") for job in scheduler_plan.get("jobs") or [] if job.get("label")],
@@ -2344,7 +2344,7 @@ def _scheduler_plist_write_rollback_payload(
         "schedulerPlistWriteOnly": True,
         "rollbackImplemented": False,
         "selectedProfiles": selected_profiles,
-        "runtime": {"novaHome": str(paths.home)},
+        "runtime": {"actanaraHome": str(paths.home)},
         "launchAgentHome": str(launch_agent_home),
         "sourceOperationResults": operation_results,
         "managedLabels": [job.get("label") for job in scheduler_plan.get("jobs") or [] if job.get("label")],
@@ -2411,7 +2411,7 @@ def _scheduler_register_failed_payload(
         "exitCode": 1,
         "selectedProfiles": selected_profiles,
         "reason": reason,
-        "runtime": {"novaHome": str(paths.home)},
+        "runtime": {"actanaraHome": str(paths.home)},
         "schedulerPlan": scheduler_plan,
         "schedulerApprovalContract": approval_contract,
         "operationResults": operation_results,
@@ -2433,7 +2433,7 @@ def _scheduler_register_rollback_payload(
         "rollbackImplemented": True,
         "automaticCompensation": True,
         "selectedProfiles": selected_profiles,
-        "runtime": {"novaHome": str(paths.home)},
+        "runtime": {"actanaraHome": str(paths.home)},
         "launchAgentHome": str(launch_agent_home),
         "launchctlDomain": domain,
         "sourceOperationResults": operation_results,
@@ -2441,7 +2441,7 @@ def _scheduler_register_rollback_payload(
         "manualRollbackNotes": [
             "The handoff journal automatically restores both launchd jobs, plist bytes/modes, and the Settings preimage when commit fails.",
             "After a committed registration, run the confirmed scheduler unregister command for an operator rollback.",
-            "Do not remove non-Nova launchd jobs.",
+            "Do not remove non-Actanara launchd jobs.",
         ],
         "commandPreview": [
             ["launchctl", "bootout", domain, item.get("plistPath")]
@@ -2507,7 +2507,7 @@ def _scheduler_unregister_failed_payload(
         "exitCode": 1,
         "selectedProfiles": selected_profiles,
         "reason": reason,
-        "runtime": {"novaHome": str(paths.home)},
+        "runtime": {"actanaraHome": str(paths.home)},
         "schedulerPlan": scheduler_plan,
         "operationResults": operation_results,
         "safetyPolicy": _scheduler_unregister_safety_policy(calls_launchctl=bool(operation_results)),
@@ -2528,7 +2528,7 @@ def _scheduler_unregister_rollback_payload(
         "rollbackImplemented": True,
         "automaticCompensation": True,
         "selectedProfiles": selected_profiles,
-        "runtime": {"novaHome": str(paths.home)},
+        "runtime": {"actanaraHome": str(paths.home)},
         "launchAgentHome": str(launch_agent_home),
         "launchctlDomain": domain,
         "sourceOperationResults": operation_results,
@@ -2592,7 +2592,7 @@ def _scheduler_base_label_from_jobs(jobs: list[dict[str, Any]]) -> str:
         for label in labels:
             if label.endswith(suffix):
                 return label[: -len(suffix)]
-    return "open-nova.daily"
+    return "actanara.daily"
 
 
 def _launchctl_gui_domain() -> str:
@@ -2850,19 +2850,19 @@ def _one_liner_next_steps(runtime_initialized: bool, artifacts: dict[str, Any]) 
             {
                 "id": "run-runtime-apply",
                 "status": "recommended",
-                "command": "open-nova onboarding runtime-apply --use-default-runtime --language zh-CN --confirmation-text 'APPLY OPEN NOVA ONBOARDING'",
+                "command": "actanara onboarding runtime-apply --use-default-runtime --language zh-CN --confirmation-text 'APPLY ACTANARA ONBOARDING'",
             }
         ]
     steps = [
         {
             "id": "run-settings-doctor",
             "status": "recommended",
-            "command": "open-nova settings doctor --runtime <nova-home>",
+            "command": "actanara settings doctor --runtime <actanara-home>",
         },
         {
             "id": "review-rollback-plan",
             "status": "recommended",
-            "command": "open-nova onboarding rollback-plan --runtime <nova-home>",
+            "command": "actanara onboarding rollback-plan --runtime <actanara-home>",
         },
     ]
     if not artifacts.get("schedulerSandboxRollback", {}).get("exists"):
@@ -2870,7 +2870,7 @@ def _one_liner_next_steps(runtime_initialized: bool, artifacts: dict[str, Any]) 
             {
                 "id": "optional-scheduler-sandbox",
                 "status": "optional",
-                "command": "open-nova onboarding apply --scheduler-sandbox-apply --runtime <nova-home> --scheduler-home <fake-home> --confirmation-text 'REGISTER OPEN NOVA SCHEDULER'",
+                "command": "actanara onboarding apply --scheduler-sandbox-apply --runtime <actanara-home> --scheduler-home <fake-home> --confirmation-text 'REGISTER ACTANARA SCHEDULER'",
             }
         )
     return steps
@@ -2952,50 +2952,50 @@ def _operator_approval_items() -> list[dict[str, Any]]:
         _approval_item(
             "approve-settings-writes",
             "Settings writes",
-            "Allow future apply to persist approved onboarding settings under selected NOVA_HOME only.",
-            confirmation="APPLY OPEN NOVA ONBOARDING",
+            "Allow future apply to persist approved onboarding settings under selected ACTANARA_HOME only.",
+            confirmation="APPLY ACTANARA ONBOARDING",
         ),
         _approval_item(
             "approve-runtime-directory-writes",
             "Runtime directory writes",
-            "Allow future apply to create selected NOVA_HOME runtime directories.",
-            confirmation="APPLY OPEN NOVA ONBOARDING",
+            "Allow future apply to create selected ACTANARA_HOME runtime directories.",
+            confirmation="APPLY ACTANARA ONBOARDING",
         ),
         _approval_item(
             "approve-audit-writes",
             "Audit writes",
             "Allow future apply to append redacted audit events under selected runtime state.",
-            confirmation="APPLY OPEN NOVA ONBOARDING",
+            confirmation="APPLY ACTANARA ONBOARDING",
         ),
         _approval_item(
             "approve-rollback-command",
             "Rollback command",
             "Allow a future rollback command that only executes allowlisted rollback operations.",
-            confirmation="ROLLBACK OPEN NOVA ONBOARDING",
+            confirmation="ROLLBACK ACTANARA ONBOARDING",
         ),
         _approval_item(
             "approve-launchd-registration",
             "macOS launchd registration",
             "Allow future scheduler registration using user-level launchd only.",
-            confirmation="REGISTER OPEN NOVA SCHEDULER",
+            confirmation="REGISTER ACTANARA SCHEDULER",
         ),
         _approval_item(
             "approve-launchd-unregister",
             "macOS launchd unregister",
             "Allow future scheduler unregister/rollback for managed launchd jobs.",
-            confirmation="UNREGISTER OPEN NOVA SCHEDULER",
+            confirmation="UNREGISTER ACTANARA SCHEDULER",
         ),
         _approval_item(
             "approve-rag-provider-readiness-policy",
             "nova-RAG provider readiness policy",
             "Approve that final nova-RAG sync runs only with local/cloud embedding provider readiness.",
-            confirmation="APPLY OPEN NOVA ONBOARDING",
+            confirmation="APPLY ACTANARA ONBOARDING",
         ),
         _approval_item(
             "approve-cloud-rag-config-surface",
             "Cloud RAG config surface",
             "Approve cloud provider config fields while keeping secret values out of persisted settings.",
-            confirmation="APPLY OPEN NOVA ONBOARDING",
+            confirmation="APPLY ACTANARA ONBOARDING",
         ),
     ]
 
@@ -3055,15 +3055,15 @@ def required_onboarding_inputs(selected_profiles: list[str], paths: RuntimePaths
     inputs = [
         {
             "id": "output-path",
-            "profile": "open-nova",
+            "profile": "actanara",
             "required": True,
             "status": input_state["output-path"]["status"],
-            "description": "Output/runtime path for all durable Open Nova state.",
+            "description": "Output/runtime path for all durable Actanara state.",
             "source": input_state["output-path"]["source"],
         },
         {
             "id": "llm-provider",
-            "profile": "open-nova",
+            "profile": "actanara",
             "required": True,
             "status": input_state["llm-provider"]["status"],
             "description": "Diary generation LLM provider from the provider catalog.",
@@ -3071,7 +3071,7 @@ def required_onboarding_inputs(selected_profiles: list[str], paths: RuntimePaths
         },
         {
             "id": "llm-api-key",
-            "profile": "open-nova",
+            "profile": "actanara",
             "required": True,
             "status": input_state["llm-api-key"]["status"],
             "description": "LLM API key or approved credential input.",
@@ -3381,12 +3381,12 @@ def installer_v2_contract(
             "writesLaunchAgentsInCurrentPhase": False,
             "callsLaunchctlInCurrentPhase": False,
             "managedLabelsOnly": True,
-            "managedLabelPrefix": "open-nova.daily.",
+            "managedLabelPrefix": "actanara.daily.",
             "unsupportedPlatformBehavior": "skip-scheduler-registration",
         },
         "runtime": {
-            "installTarget": "~/.open-nova",
-            "activeRuntimePointer": "~/.config/open-nova/location.json",
+            "installTarget": "~/.actanara",
+            "activeRuntimePointer": "~/.config/actanara/location.json",
         },
         "sourcePackagingPlan": {
             "packageManager": packaging.get("packageManager"),
@@ -3422,8 +3422,8 @@ def format_onboarding_subsystem_plan(payload: dict[str, Any]) -> str:
             ("Required software", "Ready" if not summary.get("missingRequired") else f"{summary.get('missingRequired')} missing"),
             ("Automatic runs", "Available" if scheduler.get("supported") else "Not available"),
         ),
-        sections=(("What Open Nova will do", [_friendly_setup_action(item.get("id")) for item in payload.get("actions") or []]),),
-        next_steps=("open-nova onboarding runtime-dry-run",),
+        sections=(("What Actanara will do", [_friendly_setup_action(item.get("id")) for item in payload.get("actions") or []]),),
+        next_steps=("actanara onboarding runtime-dry-run",),
     )
 
 
@@ -3442,7 +3442,7 @@ def format_onboarding_one_liner_dry_run(payload: dict[str, Any]) -> str:
             ("Features", ", ".join(_selected_profile_labels(payload))),
             ("Steps", len(steps)),
         ),
-        sections=(("What Open Nova will do", steps),),
+        sections=(("What Actanara will do", steps),),
         next_steps=((command_draft.get("display"),) if command_draft.get("display") else ()),
     )
 
@@ -3487,7 +3487,7 @@ def format_onboarding_apply_blocked(payload: dict[str, Any]) -> str:
             ("Result", (_friendly_apply_message(payload, policy),)),
             ("Changes", changes),
         ),
-        next_steps=(("open-nova doctor",) if succeeded else ("open-nova onboard status",)),
+        next_steps=(("actanara doctor",) if succeeded else ("actanara onboard status",)),
     )
 
 
@@ -3503,7 +3503,7 @@ def format_onboarding_one_liner_status(payload: dict[str, Any]) -> str:
         "Setup status",
         fields=(
             ("Status", status_label(payload.get("status"))),
-            ("Data folder", runtime.get("novaHome", "—")),
+            ("Data folder", runtime.get("actanaraHome", "—")),
             ("Setup files", f"{summary.get('present', 0)} available"),
             ("Recovery", "Available" if summary.get("hasRollbackPlan") else "Not available"),
         ),
@@ -3529,7 +3529,7 @@ def format_onboarding_rollback_plan_status(payload: dict[str, Any]) -> str:
             ("Available actions", summary.get("operations", 0)),
         ),
         sections=(("Recovery files", available),),
-        next_steps=(() if available else ("open-nova onboard status",)),
+        next_steps=(() if available else ("actanara onboard status",)),
     )
 
 
@@ -3549,7 +3549,7 @@ def format_onboarding_release_gate(payload: dict[str, Any]) -> str:
             ("Needs attention", int(summary.get("blocked", 0)) + int(summary.get("failed", 0))),
         ),
         sections=(("Before continuing", [_friendly_gate(gate_id) for gate_id in blocking]),),
-        next_steps=(() if not blocking else ("open-nova onboard status",)),
+        next_steps=(() if not blocking else ("actanara onboard status",)),
     )
 
 
@@ -3576,7 +3576,7 @@ def format_onboarding_one_liner_validation_matrix(payload: dict[str, Any]) -> st
             ("Failed", summary.get("failed", 0)),
         ),
         sections=(("Checks", cases),),
-        next_steps=(() if not summary.get("failed") else ("open-nova onboard status",)),
+        next_steps=(() if not summary.get("failed") else ("actanara onboard status",)),
     )
 
 
@@ -3596,7 +3596,7 @@ def format_onboarding_approval_packet(payload: dict[str, Any]) -> str:
             ("Checks remaining", summary.get("blockingGates", 0)),
         ),
         sections=(("Before continuing", items),),
-        next_steps=("open-nova onboarding apply --help",),
+        next_steps=("actanara onboarding apply --help",),
     )
 
 
@@ -3606,7 +3606,7 @@ def dump_onboarding_approval_packet_json(payload: dict[str, Any]) -> str:
 
 def _selected_profile_labels(payload: dict[str, Any]) -> list[str]:
     labels = {
-        "open-nova": "Daily diary",
+        "actanara": "Daily diary",
         "dashboard": "Dashboard",
         "nova-rag": "Memory search",
         "nova-task": "Tasks",
@@ -3617,10 +3617,10 @@ def _selected_profile_labels(payload: dict[str, Any]) -> list[str]:
 
 def _friendly_setup_action(value: object) -> str:
     actions = {
-        "select-output-path": "Choose where Open Nova stores its data",
-        "create-runtime-home": "Prepare the Open Nova data folder",
+        "select-output-path": "Choose where Actanara stores its data",
+        "create-runtime-home": "Prepare the Actanara data folder",
         "create-python-venv": "Prepare required components",
-        "install-open-nova-requirements": "Install the software Open Nova needs",
+        "install-actanara-requirements": "Install the software Actanara needs",
         "configure-llm-provider": "Choose an AI model and add its API key",
         "install-dashboard-requirements": "Prepare Dashboard",
         "start-dashboard": "Start Dashboard when setup is complete",
@@ -3628,14 +3628,14 @@ def _friendly_setup_action(value: object) -> str:
         "derive-rag-requirements": "Prepare memory search",
         "enable-rag-pipeline-step": "Update memory after each diary",
         "skip-rag-pipeline-step": "Leave memory search turned off",
-        "enable-nova-task-authority": "Prepare Open Nova tasks",
-        "skip-nova-task-materialization": "Leave Open Nova tasks turned off",
+        "enable-nova-task-authority": "Prepare Actanara tasks",
+        "skip-nova-task-materialization": "Leave Actanara tasks turned off",
         "derive-scheduler-provider": "Check whether automatic daily runs are available",
         "install-dev-test-tools": "Install optional developer tools",
         "run-onboarding-doctor": "Check that setup finished successfully",
         "linux-scheduler-registration-blocked": "Leave automatic daily runs off on this system",
     }
-    return actions.get(str(value or ""), "Prepare the selected Open Nova feature")
+    return actions.get(str(value or ""), "Prepare the selected Actanara feature")
 
 
 def _friendly_apply_message(payload: dict[str, Any], policy: dict[str, Any]) -> str:
@@ -3643,8 +3643,8 @@ def _friendly_apply_message(payload: dict[str, Any], policy: dict[str, Any]) -> 
         return "Setup was not changed. Review the remaining step and try again."
     if payload.get("oneLinerApply"):
         if policy.get("registersScheduler") or policy.get("callsLaunchctl"):
-            return "Open Nova is ready, including automatic daily runs."
-        return "Open Nova is ready. Automatic daily runs were left off."
+            return "Actanara is ready, including automatic daily runs."
+        return "Actanara is ready. Automatic daily runs were left off."
     if payload.get("schedulerRegisterApply"):
         return "Automatic daily runs are enabled."
     if payload.get("schedulerUnregisterApply"):
@@ -3653,7 +3653,7 @@ def _friendly_apply_message(payload: dict[str, Any], policy: dict[str, Any]) -> 
         return "Automatic daily-run files are ready."
     if payload.get("sandboxApply"):
         return "The test setup completed in the selected folder."
-    return "Open Nova is ready in the selected data folder."
+    return "Actanara is ready in the selected data folder."
 
 
 def _friendly_recovery_name(value: object) -> str:
@@ -3661,8 +3661,8 @@ def _friendly_recovery_name(value: object) -> str:
     if "scheduler" in text:
         return "Automatic daily runs"
     if "runtime" in text or "bootstrap" in text:
-        return "Open Nova data folder"
-    return "Open Nova setup"
+        return "Actanara data folder"
+    return "Actanara setup"
 
 
 def _friendly_gate(value: object) -> str:
@@ -3676,7 +3676,7 @@ def _friendly_gate(value: object) -> str:
     if "dependency" in text or "package" in text:
         return "Install the required software"
     if "runtime" in text or "default" in text:
-        return "Choose and prepare the Open Nova data folder"
+        return "Choose and prepare the Actanara data folder"
     if "clean" in text:
         return "Remove files that should not be included"
     return "Finish the remaining setup check"
@@ -3689,7 +3689,7 @@ def _friendly_validation_case(value: object) -> str:
     if "rag" in text:
         return "Memory-search setup"
     if "default" in text or "runtime" in text:
-        return "Open Nova data-folder setup"
+        return "Actanara data-folder setup"
     if "clean" in text:
         return "Clean installation"
     return "Setup behavior"
@@ -3700,21 +3700,21 @@ def _allowlist_write_plan(selected_profiles: list[str], scheduler_plan: dict[str
         _write_operation(
             "create-runtime-home",
             "runtime-directory",
-            "$NOVA_HOME",
-            "Create selected Nova runtime home after output path confirmation.",
+            "$ACTANARA_HOME",
+            "Create selected Actanara runtime home after output path confirmation.",
             rollback="remove-created-empty-runtime-directories",
         ),
         _write_operation(
             "create-runtime-state-dirs",
             "runtime-directory",
-            "$NOVA_HOME/state/{logs,cache,tmp,backups,onboarding}",
-            "Create runtime state subdirectories under selected NOVA_HOME.",
+            "$ACTANARA_HOME/state/{logs,cache,tmp,backups,onboarding}",
+            "Create runtime state subdirectories under selected ACTANARA_HOME.",
             rollback="remove-created-empty-state-directories",
         ),
         _write_operation(
             "write-runtime-settings",
             "settings-file",
-            "$NOVA_HOME/config/settings.json",
+            "$ACTANARA_HOME/config/settings.json",
             "Persist approved onboarding settings after exact confirmation.",
             future_writes_settings=True,
             rollback="restore-settings-backup-or-remove-created-settings-file",
@@ -3725,7 +3725,7 @@ def _allowlist_write_plan(selected_profiles: list[str], scheduler_plan: dict[str
             _write_operation(
                 "write-rag-provider-settings",
                 "settings-file",
-                "$NOVA_HOME/config/settings.json:rag",
+                "$ACTANARA_HOME/config/settings.json:rag",
                 "Persist nova-RAG provider references only after provider readiness is satisfied.",
                 future_writes_settings=True,
                 rollback="restore-prior-rag-settings-from-audit-backup",
@@ -3736,7 +3736,7 @@ def _allowlist_write_plan(selected_profiles: list[str], scheduler_plan: dict[str
             _write_operation(
                 "initialize-nova-task-state",
                 "runtime-state",
-                "$NOVA_HOME/state/nova-task",
+                "$ACTANARA_HOME/state/nova-task",
                 "Initialize Nova-Task authority runtime state without enabling frozen legacy task scripts.",
                 rollback="remove-created-nova-task-runtime-state-if-empty",
             )
@@ -3747,7 +3747,7 @@ def _allowlist_write_plan(selected_profiles: list[str], scheduler_plan: dict[str
             _write_operation(
                 f"write-scheduler-plist:{job.get('kind') or 'job'}",
                 "scheduler-plist",
-                job.get("plistPath") or "~/Library/LaunchAgents/open-nova.daily.plist",
+                job.get("plistPath") or "~/Library/LaunchAgents/actanara.daily.plist",
                 "Future scheduler registration plist write; still blocked in this phase.",
                 future_registers_scheduler=True,
                 rollback="bootout-launchd-job-and-remove-created-plist",
@@ -3759,7 +3759,7 @@ def _allowlist_write_plan(selected_profiles: list[str], scheduler_plan: dict[str
         "writesAllowed": False,
         "applyImplemented": False,
         "allowlistVersion": "v1-read-only",
-        "confirmationPhrase": "APPLY OPEN NOVA ONBOARDING",
+        "confirmationPhrase": "APPLY ACTANARA ONBOARDING",
         "exactConfirmationRequired": True,
         "nonInteractiveYesAllowed": False,
         "productionPathWritesAllowed": False,
@@ -3815,7 +3815,7 @@ def _audit_schema_plan(write_plan: dict[str, Any]) -> dict[str, Any]:
         "auditRequired": True,
         "auditImplemented": False,
         "writesAudit": False,
-        "auditPath": "$NOVA_HOME/state/onboarding/onboarding-audit.jsonl",
+        "auditPath": "$ACTANARA_HOME/state/onboarding/onboarding-audit.jsonl",
         "eventSchema": {
             "eventId": "stable uuid or monotonic audit id",
             "timestamp": "ISO-8601 UTC timestamp",
@@ -3858,8 +3858,8 @@ def _rollback_schema_plan(write_plan: dict[str, Any]) -> dict[str, Any]:
         "rollbackRequired": True,
         "rollbackImplemented": False,
         "writesAllowed": False,
-        "confirmationPhrase": "UNREGISTER OPEN NOVA SCHEDULER",
-        "generalRollbackConfirmationPhrase": "ROLLBACK OPEN NOVA ONBOARDING",
+        "confirmationPhrase": "UNREGISTER ACTANARA SCHEDULER",
+        "generalRollbackConfirmationPhrase": "ROLLBACK ACTANARA ONBOARDING",
         "operations": operations,
         "summary": {
             "operations": len(operations),
@@ -3899,11 +3899,11 @@ def _one_liner_scheduler_plan(scheduler: dict[str, Any]) -> dict[str, Any]:
         "selected": scheduler.get("selected"),
         "supported": scheduler.get("supported"),
         "registered": scheduler.get("registered"),
-        "confirmationPhrase": "REGISTER OPEN NOVA SCHEDULER",
+        "confirmationPhrase": "REGISTER ACTANARA SCHEDULER",
         "auditRequired": True,
-        "auditPath": "$NOVA_HOME/state/onboarding/onboarding-audit.jsonl",
+        "auditPath": "$ACTANARA_HOME/state/onboarding/onboarding-audit.jsonl",
         "rollbackRequired": True,
-        "rollbackConfirmationPhrase": "UNREGISTER OPEN NOVA SCHEDULER",
+        "rollbackConfirmationPhrase": "UNREGISTER ACTANARA SCHEDULER",
         "plistPathPreview": first_job.get("plistPath"),
         "labelPreview": first_job.get("label"),
         "programPreview": first_job.get("program"),
@@ -4176,9 +4176,9 @@ def _available_profiles() -> list[dict[str, Any]]:
 def _planned_actions(selected_profiles: list[str], scheduler_preview: dict[str, Any]) -> list[dict[str, Any]]:
     actions = [
         _action("select-output-path", "Require the user to choose the output/runtime path before apply.", mode="required-input"),
-        _action("create-runtime-home", "Validate or initialize NOVA_HOME directory structure.", writes=["$NOVA_HOME"]),
+        _action("create-runtime-home", "Validate or initialize ACTANARA_HOME directory structure.", writes=["$ACTANARA_HOME"]),
         _action("create-python-venv", "Create an isolated project Python virtual environment.", writes=[".venv"]),
-        _action("install-open-nova-requirements", "Install Open Nova pipeline/core requirements into the project virtual environment."),
+        _action("install-actanara-requirements", "Install Actanara pipeline/core requirements into the project virtual environment."),
         _action("configure-llm-provider", "Require LLM provider and API key before production diary generation.", mode="required-input"),
     ]
     if "dashboard" in selected_profiles:

@@ -68,8 +68,8 @@ class DashboardAiAssetsStateTests(unittest.TestCase):
     @staticmethod
     def _paths(root: Path):
         return SimpleNamespace(
-            home=root / "NovaDiary",
-            db_path=root / "NovaDiary" / "foundation.sqlite3",
+            home=root / "Actanara",
+            db_path=root / "Actanara" / "foundation.sqlite3",
             diary_dir=root / "Diary",
         )
 
@@ -185,7 +185,7 @@ class DashboardAiAssetsStateTests(unittest.TestCase):
                 "dataFreshness": {"aiAssets": {"source": "foundation"}},
             }
         )
-        paths = self._paths(Path("/tmp/open-nova-ai-assets-state-test"))
+        paths = self._paths(Path("/tmp/actanara-ai-assets-state-test"))
         with (
             patch.object(ai_assets, "load_paths", return_value=paths),
             patch.object(ai_assets, "resolve_runtime_source", return_value="foundation"),
@@ -225,7 +225,7 @@ class DashboardAiAssetsStateTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary")
+            paths = initialize_home(root / "Actanara")
             malformed_path = root / "malformed.jsonl"
             malformed_path.write_text("not-json\n{truncated\n", encoding="utf-8")
             source = {
@@ -293,7 +293,7 @@ class DashboardAiAssetsStateTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary")
+            paths = initialize_home(root / "Actanara")
             source_root = root / "claude-project"
             source_root.mkdir()
             ready_path = source_root / "ready.jsonl"

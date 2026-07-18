@@ -1,4 +1,4 @@
-# Open Nova Local Operations Runbook
+# Actanara Local Operations Runbook
 
 <p align="center">
   <img src="https://img.shields.io/badge/Language-English%20·%20Current-2563EB?style=for-the-badge" alt="Current language: English">
@@ -8,7 +8,7 @@
 **English** · [简体中文](local-operations-runbook.zh-CN.md) · [Back to the English README](../README.md)
 
 Status: Public operator guide<br>
-Scope: Open Nova · Local macOS runtime
+Scope: Actanara · Local macOS runtime
 
 ## 1. Purpose
 
@@ -53,7 +53,7 @@ The installer detects supported agent-runtime paths and asks the operator which 
 Use the public one-liner:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/open-nova/main/install/bootstrap.sh | zsh
+curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/actanara/main/install/bootstrap.sh | zsh
 ```
 
 The command keeps source selection exact while hiding source plumbing from the user:
@@ -84,17 +84,17 @@ The public installer locale uses `zh-CN` or `en-US`; the runtime's internal Pipe
 
 | Path | Purpose |
 | :--- | :--- |
-| `~/.cache/open-nova/installer` | Installation source cache |
-| `~/.open-nova` | Runtime, virtual environment, settings, database, logs, secrets, and generated assets |
-| `~/.config/open-nova/location.json` | Active runtime pointer |
-| `~/.local/bin/open-nova` | User-facing CLI entry on `PATH` |
+| `~/.cache/actanara/installer` | Installation source cache |
+| `~/.actanara` | Runtime, virtual environment, settings, database, logs, secrets, and generated assets |
+| `~/.config/actanara/location.json` | Active runtime pointer |
+| `~/.local/bin/actanara` | User-facing CLI entry on `PATH` |
 | `~/.zprofile` | Marked `PATH` block; disable during installation with `--no-shell-path` |
-| `~/Desktop/Open Nova` | Desktop shortcut to the diary directory, created by default |
+| `~/Desktop/Actanara` | Desktop shortcut to the diary directory, created by default |
 | `~/Library/LaunchAgents/` | Dashboard, Scheduler, and optional RAG services |
 
-Provider keys are stored in `$NOVA_HOME/state/secrets`. The secrets directory uses mode `0700`, and each secret file uses mode `0600`.
+Provider keys are stored in `$ACTANARA_HOME/state/secrets`. The secrets directory uses mode `0700`, and each secret file uses mode `0600`.
 
-Legacy `macos-keychain` references are used only for compatibility migration: readable secrets are copied to the runtime secret store, but Open Nova does not automatically delete old Keychain items. If a legacy secret cannot be read, enter the provider key again in the Dashboard.
+Legacy `macos-keychain` references are used only for compatibility migration: readable secrets are copied to the runtime secret store, but Actanara does not automatically delete old Keychain items. If a legacy secret cannot be read, enter the provider key again in the Dashboard.
 
 ## 6. Installation Summary and Basic Verification
 
@@ -111,19 +111,19 @@ If `3036` is occupied, the installer selects another port. Always use the instal
 Run these read-only commands first:
 
 ```bash
-open-nova doctor
-open-nova model show
-open-nova onboard status
-open-nova config show
+actanara doctor
+actanara model show
+actanara onboard status
+actanara config show
 ```
 
 Inspect individual subsystems:
 
 ```bash
-open-nova doctor --installer
-open-nova doctor --pipeline
-open-nova doctor --scheduler
-open-nova doctor --rag
+actanara doctor --installer
+actanara doctor --pipeline
+actanara doctor --scheduler
+actanara doctor --rag
 ```
 
 A warning does not always block operation. Resolve errors and explicit readiness failures first. Focus on the runtime pointer, Provider, Dashboard, scheduler, and optional RAG Server.
@@ -140,8 +140,8 @@ A warning does not always block operation. Resolve errors and explicit readiness
 Then run:
 
 ```bash
-open-nova model show
-open-nova doctor --pipeline
+actanara model show
+actanara doctor --pipeline
 ```
 
 Never put a real key in a README, Issue, log, shell history, Git-tracked file, or ordinary settings field. When an external LLM or cloud embedding provider is configured, relevant derived work content is sent according to the selected endpoint and provider data policy.
@@ -179,20 +179,20 @@ After completion, inspect:
 Run manually:
 
 ```bash
-open-nova pipeline
-open-nova pipeline YYYY-MM-DD
+actanara pipeline
+actanara pipeline YYYY-MM-DD
 ```
 
-Without a date, `open-nova pipeline` processes the **previous calendar day in the configured time zone**; it is not a shortcut for processing today. Use `YYYY-MM-DD` when specifying a date.
+Without a date, `actanara pipeline` processes the **previous calendar day in the configured time zone**; it is not a shortcut for processing today. Use `YYYY-MM-DD` when specifying a date.
 
 The Pipeline writes diaries, reports, and Foundation data. If the target date has already been generated completely, only an explicit `--force` regenerates it from the frozen Foundation input.
 
-Open Nova attributes workspaces using execution evidence from external runtimes. It does not treat the CLI's current directory as the sole attribution source.
+Actanara attributes workspaces using execution evidence from external runtimes. It does not treat the CLI's current directory as the sole attribution source.
 
 Check managed scheduling:
 
 ```bash
-open-nova doctor --scheduler
+actanara doctor --scheduler
 ```
 
 If an external automation system will invoke the Pipeline, prevent duplicate execution with the installer-managed schedule.
@@ -212,19 +212,19 @@ Use the Dashboard to:
 If the service becomes unavailable:
 
 ```bash
-open-nova dashboard restart
-open-nova doctor --installer
+actanara dashboard restart
+actanara doctor --installer
 ```
 
-Do not assume the Dashboard always uses port `3036`. Check the installation summary or `open-nova config show` first.
+Do not assume the Dashboard always uses port `3036`. Check the installation summary or `actanara config show` first.
 
 ## 11. Nova-Task Operations
 
 Open the task board in the Dashboard. The CLI `task` command only reads and prints task statistics; it does not open the interface:
 
 ```bash
-open-nova task
-open-nova task --json
+actanara task
+actanara task --json
 ```
 
 Nova-Task is a Beta subsystem. It derives a task structure from real runtime activity, conversations, file changes, tool results, and execution evidence.
@@ -241,14 +241,14 @@ Operating principles:
 Check status:
 
 ```bash
-open-nova doctor --rag
+actanara doctor --rag
 ```
 
 Search local memory:
 
 ```bash
-open-nova search "deployment issue" --top-k 5
-open-nova search "deployment issue" --top-k 5 --json
+actanara search "deployment issue" --top-k 5
+actanara search "deployment issue" --top-k 5 --json
 ```
 
 Automation consuming JSON output should check the `available` field. When RAG is unavailable, the command may still return a successful structured status response.
@@ -256,8 +256,8 @@ Automation consuming JSON output should check the `available` field. When RAG is
 Preview maintenance operations first:
 
 ```bash
-open-nova rag-update --dry-run
-open-nova rag-rebuild --dry-run
+actanara rag-update --dry-run
+actanara rag-rebuild --dry-run
 ```
 
 External agent runtimes should prefer the Dashboard's read-only facade:
@@ -278,19 +278,19 @@ The external-runtime contract allows only health checks, statistics, contract re
 View the update plan:
 
 ```bash
-open-nova update
+actanara update
 ```
 
 Run a no-change preview:
 
 ```bash
-open-nova update --dry-run
+actanara update --dry-run
 ```
 
 Apply a protected update:
 
 ```bash
-open-nova update --apply
+actanara update --apply
 ```
 
 - With no arguments, the command displays only the plan;
@@ -309,28 +309,28 @@ into the active venv. A legacy Runtime with no marker takes the rebuild path;
 malformed or unsafe profile evidence fails closed before service changes.
 
 ```bash
-open-nova update --apply --offline --ref <full-commit-sha>        # cached remote commit
-open-nova update --apply --offline --source-root /path/to/source  # local checkout
-open-nova update --apply --source-only                            # require venv reuse or fail closed
-open-nova update --apply --force-rebuild                          # require a new locked candidate venv
+actanara update --apply --offline --ref <full-commit-sha>        # cached remote commit
+actanara update --apply --offline --source-root /path/to/source  # local checkout
+actanara update --apply --source-only                            # require venv reuse or fail closed
+actanara update --apply --force-rebuild                          # require a new locked candidate venv
 ```
 
 Offline remote selection requires a full commit already present under the
 installer `--cache-root`; offline mode never resolves `latest`. An offline
 rebuild also fails before service stop when the trusted cache under
-`~/.open-nova/app/dependency-cache/v1` is incomplete or altered.
+`~/.actanara/app/dependency-cache/v1` is incomplete or altered.
 
 Select an immutable full commit:
 
 ```bash
-open-nova update --dry-run --ref <full-commit-sha>
-open-nova update --apply --ref <full-commit-sha>
+actanara update --dry-run --ref <full-commit-sha>
+actanara update --apply --ref <full-commit-sha>
 ```
 
 Before updating:
 
 1. Confirm that the Pipeline and background tasks have finished;
-2. Save the output of `open-nova doctor`;
+2. Save the output of `actanara doctor`;
 3. Back up runtime settings and important generated assets;
 4. Record the current runtime and commit;
 5. Run the plan or Dry Run first.
@@ -340,9 +340,9 @@ Before updating:
 Check these locations first:
 
 ```text
-~/.open-nova/state/logs/
-~/.open-nova/config/settings.json
-~/.config/open-nova/location.json
+~/.actanara/state/logs/
+~/.actanara/config/settings.json
+~/.config/actanara/location.json
 ```
 
 Troubleshoot in this order:
@@ -350,8 +350,8 @@ Troubleshoot in this order:
 1. Is the runtime pointer correct?
 2. Does the Dashboard URL and port match the installation summary?
 3. Does the LLM Provider test pass?
-4. Does `$NOVA_HOME/state/secrets` use mode `0700`, with secret files using `0600`?
-5. Do the Pipeline and LaunchAgents use the same `NOVA_HOME`?
+4. Does `$ACTANARA_HOME/state/secrets` use mode `0700`, with secret files using `0600`?
+5. Do the Pipeline and LaunchAgents use the same `ACTANARA_HOME`?
 6. Do external-tool paths exist, and are they enabled?
 7. Is the Scheduler duplicated, missing, or failing?
 8. Are the RAG Server and active index ready?
@@ -370,10 +370,10 @@ When filing an Issue, include commands, necessary output, log paths, the runtime
 
 ## 16. Uninstallation Boundary
 
-Open Nova does not currently include a product-level one-command uninstaller. Do not remove only `~/.open-nova`, because this can leave behind:
+Actanara does not currently include a product-level one-command uninstaller. Do not remove only `~/.actanara`, because this can leave behind:
 
 - macOS LaunchAgents;
-- The `~/.local/bin/open-nova` CLI shim;
+- The `~/.local/bin/actanara` CLI shim;
 - The runtime location pointer;
 - The marked `PATH` block in `~/.zprofile`;
 - The desktop shortcut;
@@ -385,7 +385,7 @@ Until a verified uninstall workflow is published, keep the runtime or make a com
 
 - [ ] The Dashboard is reachable, and its URL matches the installation summary;
 - [ ] The LLM Provider test passes;
-- [ ] `open-nova doctor` reports no blocking errors;
+- [ ] `actanara doctor` reports no blocking errors;
 - [ ] Scheduler status matches expectations;
 - [ ] The first historical backfill is complete or observable;
 - [ ] Diaries, AI Assets, and Nova-Task contain expected data;
@@ -400,4 +400,4 @@ Until a verified uninstall workflow is published, keep the runtime or make a com
 - [New User Onboarding Runbook](new-user-onboarding-runbook.md)
 - [CLI Product Boundary](cli-boundary.md)
 - [nova-RAG External Agent Runtime Contract](rag-external-agent-contract.md)
-- [GitHub Releases](https://github.com/Neo-Isshin/open-nova/releases)
+- [GitHub Releases](https://github.com/Neo-Isshin/actanara/releases)

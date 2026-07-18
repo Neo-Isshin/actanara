@@ -34,7 +34,7 @@ test-results/
 tmp/
 .playwright-cli/
 
-# Generated Nova/Open Nova artifacts
+# Generated Nova/Actanara artifacts
 artifacts/
 snapshots/
 state/

@@ -24,7 +24,7 @@ class TaskMutationAuditTests(unittest.TestCase):
             before = "## Active\n### Diary\n- [ ] **[T-260527-001]** Publish audit\n"
             after = "## Active\n### Diary\n- [x] **[T-260527-001]** Publish audit\n"
             board.write_text(after, encoding="utf-8")
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
 
             run_id = record_authoritative_board_mutation(
                 paths,
@@ -55,8 +55,8 @@ class TaskMutationAuditTests(unittest.TestCase):
     def test_dashboard_audit_sink_uses_settings_authority_not_archived_env_override(self):
         with tempfile.TemporaryDirectory() as tmp:
             board = Path(tmp) / "TASK_BOARD.md"
-            paths = initialize_home(Path(tmp) / "NovaDiary")
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home), "TASK_AUDIT_SINK": "legacy"}):
+            paths = initialize_home(Path(tmp) / "Actanara")
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home), "TASK_AUDIT_SINK": "legacy"}):
                 self.assertIsNotNone(
                     dashboard_foundation.audit_task_board_mutation(
                         board_path=board,
@@ -69,7 +69,7 @@ class TaskMutationAuditTests(unittest.TestCase):
 
             write_settings({"runtimeSources": {"taskAuditSink": "legacy"}}, paths)
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch.object(dashboard_foundation, "record_authoritative_board_mutation", return_value=41) as record,
             ):
                 self.assertIsNone(

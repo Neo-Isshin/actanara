@@ -19,16 +19,16 @@ from .onboarding_plan import (
 )
 from .paths import RuntimePaths, load_paths
 from .scheduler_preview import preview_system_timer
-from .settings_status import nova_settings_status
+from .settings_status import actanara_settings_status
 
 
-_MODEL_KEY_STEP = "open-nova model key --value-stdin"
+_MODEL_KEY_STEP = "actanara model key --value-stdin"
 
 
-def nova_onboarding_status(paths: RuntimePaths | None = None, selected_profiles: list[str] | None = None) -> dict[str, Any]:
+def actanara_onboarding_status(paths: RuntimePaths | None = None, selected_profiles: list[str] | None = None) -> dict[str, Any]:
     """Return a read-only, product-facing onboarding readiness payload."""
     runtime_paths = paths or load_paths()
-    status = nova_settings_status(runtime_paths)
+    status = actanara_settings_status(runtime_paths)
     scheduler_preview = preview_system_timer(runtime_paths)
     selected_profile_ids = normalize_onboarding_profiles(selected_profiles or default_onboarding_profiles())
     dependencies = dependency_profiles_status(dependency_profiles_for_product_profiles(selected_profile_ids))
@@ -73,7 +73,7 @@ def nova_onboarding_status(paths: RuntimePaths | None = None, selected_profiles:
     }
 
 
-def format_nova_onboarding_status(payload: dict[str, Any]) -> str:
+def format_actanara_onboarding_status(payload: dict[str, Any]) -> str:
     runtime = payload.get("runtime") or {}
     general = payload.get("general") or {}
     readiness = payload.get("readiness") or {}
@@ -89,8 +89,8 @@ def format_nova_onboarding_status(payload: dict[str, Any]) -> str:
         "Setup status",
         fields=(
             ("Status", status_label(readiness.get("status"))),
-            ("Data folder", runtime.get("novaHome", "—")),
-            ("Features", ", ".join(selected) or "Open Nova"),
+            ("Data folder", runtime.get("actanaraHome", "—")),
+            ("Features", ", ".join(selected) or "Actanara"),
             ("Timezone", general.get("timezone", "—")),
             ("Memory search", "Included" if rag.get("enabled") else "Off"),
             ("Automatic runs", "Enabled" if scheduler.get("registered") else "Not enabled"),
@@ -102,12 +102,12 @@ def format_nova_onboarding_status(payload: dict[str, Any]) -> str:
 
 def _profile_label(value: object) -> str:
     return {
-        "open-nova": "Daily diary",
+        "actanara": "Daily diary",
         "dashboard": "Dashboard",
         "nova-rag": "Memory search",
         "nova-task": "Tasks",
         "dev-test": "Developer tools",
-    }.get(str(value or ""), str(value or "Open Nova"))
+    }.get(str(value or ""), str(value or "Actanara"))
 
 
 def _friendly_onboarding_check(check: dict[str, Any]) -> str:
@@ -129,15 +129,15 @@ def _friendly_onboarding_check(check: dict[str, Any]) -> str:
 
 def _pending_input_step(value: object) -> str:
     return {
-        "output-path": "Choose where Open Nova stores its data",
-        "llm-provider": "open-nova model set --help",
+        "output-path": "Choose where Actanara stores its data",
+        "llm-provider": "actanara model set --help",
         "llm-api-key": _MODEL_KEY_STEP,
         "rag-provider": "Choose local or cloud memory search in Dashboard settings",
         "rag-embedding-model": "Choose a model for memory search in Dashboard settings",
     }.get(str(value or ""), "Finish the remaining setup choice")
 
 
-def dump_nova_onboarding_status_json(payload: dict[str, Any]) -> str:
+def dump_actanara_onboarding_status_json(payload: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
 
 
@@ -170,7 +170,7 @@ def _readiness_checks(
     rag_selected = "nova-rag" in selected_profiles
     pending_required_inputs = [item for item in required_inputs if item.get("required") and item.get("status") == "pending"]
     checks = [
-        _check("runtime-home", bool(((runtime.get("validation") or {}).get("valid"))), "error", f"runtime home {runtime.get('novaHome')} is initialized"),
+        _check("runtime-home", bool(((runtime.get("validation") or {}).get("valid"))), "error", f"runtime home {runtime.get('actanaraHome')} is initialized"),
         _check("settings-file", bool(settings_path and Path(str(settings_path)).exists()), "error", f"settings file {settings_path} is present"),
         _check(
             "dependencies",

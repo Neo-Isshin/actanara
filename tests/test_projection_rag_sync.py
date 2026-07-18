@@ -38,7 +38,7 @@ class ProjectionRagSyncTests(unittest.TestCase):
                 encoding="utf-8",
             )
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )

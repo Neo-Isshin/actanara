@@ -355,7 +355,7 @@ def _expected_source(source_set: str, *, settings: RagSettings) -> dict[str, Any
             "kind": "glob",
             "pattern": diary_root / "__diary_daily" / "*" / "_filtered" / "*" / "*.jsonl",
             "required": True,
-            "authority": "Open Nova cleaned dialogue pipeline output.",
+            "authority": "Actanara cleaned dialogue pipeline output.",
         },
         "lessons": {
             "kind": "file",

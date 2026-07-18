@@ -1,4 +1,4 @@
-"""Nova system component registry.
+"""Actanara system component registry.
 
 This registry records local system surfaces such as Dashboard, RAG v2,
 Foundation pipeline and skill inventories. It is operational metadata only; it
@@ -39,9 +39,9 @@ def default_system_components(paths: RuntimePaths | None = None) -> list[dict[st
     return [
         {
             "component_key": "foundation.sqlite",
-            "display_name": "Nova Data Foundation SQLite",
+            "display_name": "Actanara Data Foundation SQLite",
             "component_type": "foundation",
-            "authority": "NOVA_HOME",
+            "authority": "ACTANARA_HOME",
             "status": "active",
             "version": REGISTRY_VERSION,
             "capabilities": ["sqlite-read-model", "snapshot-store", "materialization-state"],
@@ -110,7 +110,7 @@ def default_system_components(paths: RuntimePaths | None = None) -> list[dict[st
             "component_key": "llm.provider.catalog",
             "display_name": "LLM Provider Catalog",
             "component_type": "provider",
-            "authority": "Nova scrubbed OpenClaw-derived catalog",
+            "authority": "Actanara scrubbed OpenClaw-derived catalog",
             "status": "active",
             "version": REGISTRY_VERSION,
             "capabilities": ["provider-presets", "secret-redaction", "custom-provider"],

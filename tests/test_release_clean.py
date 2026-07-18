@@ -17,10 +17,10 @@ def _pre_scan_runtime_source_manifest() -> dict[str, object]:
     digest = "0" * 64
     return {
         "schemaVersion": 2,
-        "product": "open-nova",
+        "product": "actanara",
         "sourceLocator": {
             "kind": "login-home-relative",
-            "pathComponents": ["Desktop", "DEV", "open-nova"],
+            "pathComponents": ["Desktop", "DEV", "actanara"],
         },
         "deployedSourceLocator": {
             "kind": "runtime-relative",
@@ -160,7 +160,7 @@ class ReleaseCleanTests(unittest.TestCase):
             "generated-secret.py": "api_key = secrets.token_urlsafe(48)\n",
             "adjacent.py": 'status = "secret:"\nidentifier = "abcdefghijklmnopqrstuvwx"\n',
             "refs.json": '{"secretRef": "llm-provider-api-key", "apiKeyEnv": "NOVA_RAG_CLOUD_API_KEY"}\n',
-            "placeholder.yaml": "secretRef:\n  open-nova-keychain-reference\n",
+            "placeholder.yaml": "secretRef:\n  actanara-keychain-reference\n",
             "encoded-placeholder.json": '{"endpoint": "https://example.invalid/admin?token=%5Bredacted%5D&mode=ops"}\n',
             "comment.yaml": "# rotate secret:\n  abcdefghijklmnopqrstuvwx\n",
         }
@@ -224,7 +224,7 @@ class ReleaseCleanTests(unittest.TestCase):
         self.assertIn("possible-raw-secret", kinds)
 
     def test_runtime_source_manifest_privacy_schema_is_fail_closed(self):
-        private_marker = "/Users/private-operator/Desktop/open-nova"
+        private_marker = "/Users/private-operator/Desktop/actanara"
         fixtures = {
             "legacy-absolute": {
                 "schemaVersion": 1,
@@ -266,7 +266,7 @@ class ReleaseCleanTests(unittest.TestCase):
                     "available": True,
                     "commit": "0" * 40,
                     "branch": "main",
-                    "remote": "file:///Users/private-operator/open-nova",
+                    "remote": "file:///Users/private-operator/actanara",
                     "dirty": False,
                 },
             },
@@ -298,7 +298,7 @@ class ReleaseCleanTests(unittest.TestCase):
         for name, manifest in fixtures.items():
             with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
-                (root / ".open-nova-runtime-source.json").write_text(
+                (root / ".actanara-runtime-source.json").write_text(
                     json.dumps(manifest) + "\n",
                     encoding="utf-8",
                 )
@@ -310,7 +310,7 @@ class ReleaseCleanTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / ".open-nova-runtime-source.json").write_text(
+            (root / ".actanara-runtime-source.json").write_text(
                 json.dumps(_pre_scan_runtime_source_manifest())
                 + "\n",
                 encoding="utf-8",

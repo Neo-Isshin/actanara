@@ -10,7 +10,7 @@ from typing import Any
 
 
 _FULL_COMMIT_RE = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
-_RUNTIME_SOURCE_MANIFEST = ".open-nova-runtime-source.json"
+_RUNTIME_SOURCE_MANIFEST = ".actanara-runtime-source.json"
 _MAX_MANIFEST_PARENT_DEPTH = 8
 _MAX_RUNTIME_SOURCE_MANIFEST_BYTES = 1024 * 1024
 _MAX_PROJECT_METADATA_BYTES = 256 * 1024
@@ -22,7 +22,7 @@ def _manifest_commit(payload: Any) -> str | None:
     if (
         type(payload.get("schemaVersion")) is not int
         or payload.get("schemaVersion") != 2
-        or payload.get("product") != "open-nova"
+        or payload.get("product") != "actanara"
     ):
         return None
     git = payload.get("git")
@@ -34,7 +34,7 @@ def _manifest_commit(payload: Any) -> str | None:
     return commit
 
 
-def _is_open_nova_project_root(root: Path) -> bool:
+def _is_actanara_project_root(root: Path) -> bool:
     metadata = root / "pyproject.toml"
     try:
         details = metadata.lstat()
@@ -46,7 +46,7 @@ def _is_open_nova_project_root(root: Path) -> bool:
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
         return False
     project = payload.get("project")
-    return isinstance(project, dict) and project.get("name") == "open-nova"
+    return isinstance(project, dict) and project.get("name") == "actanara"
 
 
 def _project_root_for_loaded_file(loaded_file: Path) -> Path | None:
@@ -56,7 +56,7 @@ def _project_root_for_loaded_file(loaded_file: Path) -> Path | None:
         metadata = parent / "pyproject.toml"
         if not metadata.exists() and not metadata.is_symlink():
             continue
-        if not _is_open_nova_project_root(parent):
+        if not _is_actanara_project_root(parent):
             return None
         try:
             relative = loaded_file.relative_to(parent)

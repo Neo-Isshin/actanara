@@ -312,7 +312,7 @@ def compact_memory_results(result: dict[str, Any], *, max_results: int = 5) -> s
         return render_cli(
             "Memory search",
             fields=(("Status", "Unavailable"), ("Reason", _friendly_memory_reason(result.get("reason")))),
-            next_steps=("open-nova doctor --rag",),
+            next_steps=("actanara doctor --rag",),
         ).rstrip()
     rows = result.get("results") if isinstance(result.get("results"), list) else []
     if not rows:

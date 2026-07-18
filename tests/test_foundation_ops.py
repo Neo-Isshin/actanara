@@ -806,7 +806,7 @@ class FoundationOpsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(root / "NovaDiary")}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(root / "Actanara")}),
                 patch.object(foundation_ops.config, "DIARY_OUTPUT_DIR", root / "Diary"),
                 patch.object(foundation_ops, "get_foundation_daily_qa", side_effect=[before, after]),
                 patch(
@@ -846,7 +846,7 @@ class FoundationOpsTests(unittest.TestCase):
         after = {"status": "ready", "businessDate": "2026-06-05", "repairCommands": []}
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             parent_id = create_pipeline_run(
                 paths,
                 business_date="2026-06-05",
@@ -861,7 +861,7 @@ class FoundationOpsTests(unittest.TestCase):
                 error_summary="timeout",
             )
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch.object(foundation_ops.config, "DIARY_OUTPUT_DIR", root / "Diary"),
                 patch.object(foundation_ops, "get_foundation_daily_qa", side_effect=[before, after]),
                 patch(
@@ -885,7 +885,7 @@ class FoundationOpsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(root / "NovaDiary")}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(root / "Actanara")}),
                 patch.object(foundation_ops.config, "DIARY_OUTPUT_DIR", root / "Diary"),
                 patch.object(
                     foundation_ops,
@@ -923,7 +923,7 @@ class FoundationOpsTests(unittest.TestCase):
                 encoding="utf-8",
             )
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary").home,
+                initialize_home(root / "Actanara").home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -962,7 +962,7 @@ nova_task:
                 source_path=day / "技术进展-260605.md",
             )
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 summary = foundation_ops.get_foundation_daily_pipeline_summary(
                     business_date=date(2026, 6, 5),
                     limit=20,
@@ -997,7 +997,7 @@ nova_task:
                 encoding="utf-8",
             )
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary").home,
+                initialize_home(root / "Actanara").home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -1018,7 +1018,7 @@ nova_task:
             materialize_diary_markdown_day(paths, date(2026, 6, 20), source_run_id=blank_materialization)
             finish_ingestion_run(paths, blank_materialization, status="completed")
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 with patch(
                     "data_foundation.pipeline.latest_pipeline_failure",
                     return_value={
@@ -1057,7 +1057,7 @@ nova_task:
                 encoding="utf-8",
             )
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary").home,
+                initialize_home(root / "Actanara").home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -1071,7 +1071,7 @@ nova_task:
             materialize_diary_markdown_day(paths, date(2026, 6, 21), source_run_id=blank_materialization)
             finish_ingestion_run(paths, blank_materialization, status="completed")
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}), patch(
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}), patch(
                 "data_foundation.pipeline.latest_pipeline_failure",
                 return_value=None,
             ):

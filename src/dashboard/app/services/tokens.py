@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Token statistics service for Open Nova external-tool usage streams."""
+"""Token statistics service for Actanara external-tool usage streams."""
 import json
 import os
 from pathlib import Path

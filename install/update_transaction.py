@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Crash-recoverable state journal for guarded Open Nova updates.
+"""Crash-recoverable state journal for guarded Actanara updates.
 
 This helper intentionally handles only update-owned pointers, small runtime control
 files, evidence-only database snapshots, and managed launchd jobs.  It never reads
@@ -51,7 +51,7 @@ MIGRATION_POLICY = "rollback-compatible-additive-only"
 PRE_COMMIT_WRITER_CONTRACT = "prior-reader-compatible-v1"
 MIGRATION_CLASSES = {"rollback-compatible-additive", "breaking"}
 SAFE_MIGRATION_VERSION_RE = re.compile(r"^[0-9]{4}_[a-z0-9_]+$")
-ARTIFACT_MARKER_NAME = ".open-nova-update-owner"
+ARTIFACT_MARKER_NAME = ".actanara-update-owner"
 REPAIR_CONFIGURATION_PENDING_NAME = ".repair-configuration-pending"
 SAFE_ARTIFACT_NONCE_RE = re.compile(r"^[0-9a-f]{16}$")
 FORBIDDEN_PAYLOAD_NAMES = {
@@ -105,7 +105,7 @@ RUNTIME_SOURCE_FINAL_FIELDS = {
     "payload",
     "cleanScan",
 }
-DEPENDENCY_MARKER_NAME = ".open-nova-dependencies.json"
+DEPENDENCY_MARKER_NAME = ".actanara-dependencies.json"
 DEPENDENCY_MARKER_MAX_BYTES = 16 * 1024 * 1024
 DEPENDENCY_MARKER_FIELDS = {
     "schemaVersion",
@@ -129,7 +129,7 @@ DEPENDENCY_MARKER_ENVIRONMENT_FIELDS = {
 }
 DEPENDENCY_MARKER_DIRECT_FIELDS = {"profile", "requirements"}
 DEPENDENCY_MARKER_DISTRIBUTION_FIELDS = {"name", "version", "hashes"}
-DEPENDENCY_FINGERPRINT_ALGORITHM = "open-nova-runtime-dependencies-v1"
+DEPENDENCY_FINGERPRINT_ALGORITHM = "actanara-runtime-dependencies-v1"
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 DEPENDENCY_SAFE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
 DEPENDENCY_VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.!+_-]{0,127}$")
@@ -214,12 +214,12 @@ def _now() -> str:
 
 
 def _maybe_test_fail(phase: str) -> None:
-    if os.environ.get("NOVA_INSTALL_TEST_MODE") != "1":
+    if os.environ.get("ACTANARA_INSTALL_TEST_MODE") != "1":
         return
-    requested_kill = os.environ.get("NOVA_INSTALL_TEST_KILL_PHASE", "")
+    requested_kill = os.environ.get("ACTANARA_INSTALL_TEST_KILL_PHASE", "")
     if requested_kill == phase:
         os.kill(os.getpid(), signal.SIGKILL)
-    requested = os.environ.get("NOVA_INSTALL_TEST_FAIL_PHASE", "")
+    requested = os.environ.get("ACTANARA_INSTALL_TEST_FAIL_PHASE", "")
     if requested == phase:
         raise TransactionError(f"synthetic update helper failure at phase {phase}")
 
@@ -807,7 +807,7 @@ def _validate_dependency_marker_payload(value: Any) -> dict[str, Any]:
     if (
         type(marker["schemaVersion"]) is not int
         or marker["schemaVersion"] != 1
-        or marker["product"] != "open-nova"
+        or marker["product"] != "actanara"
         or marker["fingerprintAlgorithm"] != DEPENDENCY_FINGERPRINT_ALGORITHM
     ):
         raise TransactionError("staged venv dependency marker version/product is unsupported")
@@ -1170,7 +1170,7 @@ def _runtime_database_path(runtime: Path) -> Path:
         if not path.is_absolute():
             raise TransactionError("Runtime database path is not absolute")
     else:
-        path = runtime / "data" / "nova_data.sqlite3"
+        path = runtime / "data" / "actanara_data.sqlite3"
     try:
         runtime_root = runtime.resolve(strict=True)
         database_parent = path.parent.resolve(strict=True)
@@ -1295,7 +1295,7 @@ def _validate_source_manifest_privacy(manifest: dict[str, Any], *, candidate_nam
         raise TransactionError("staged source manifest has an unsupported privacy schema")
     if set(manifest) != RUNTIME_SOURCE_FINAL_FIELDS:
         raise TransactionError("staged source manifest has an invalid exact schema")
-    if manifest.get("product") != "open-nova" or manifest.get("deploymentMode") != "release-symlink":
+    if manifest.get("product") != "actanara" or manifest.get("deploymentMode") != "release-symlink":
         raise TransactionError("staged source manifest has invalid release semantics")
     try:
         datetime.fromisoformat(manifest.get("copiedAt"))
@@ -1400,7 +1400,7 @@ def _validate_source_payload(pointer: dict[str, Any]) -> None:
     candidate = Path(str(pointer.get("candidateTarget") or ""))
     if candidate.is_symlink() or not candidate.is_dir():
         raise TransactionError("staged source candidate is not a regular directory")
-    manifest_path = candidate / ".open-nova-runtime-source.json"
+    manifest_path = candidate / ".actanara-runtime-source.json"
     if manifest_path.is_symlink():
         raise TransactionError("staged source manifest must not be a symlink")
     try:
@@ -1889,8 +1889,8 @@ def _safe_settings_inventory(
     summary["dashboardPort"] = int(port) if isinstance(port, int) else None
     summary["dashboardHealthPath"] = str(dashboard.get("healthPath") or "/health")
     for kind, key, default in (
-        ("dashboard", "serviceLabel", "com.open-nova.dashboard"),
-        ("watchdog", "watchdogLabel", "com.open-nova.dashboard.watchdog"),
+        ("dashboard", "serviceLabel", "com.actanara.dashboard"),
+        ("watchdog", "watchdogLabel", "com.actanara.dashboard.watchdog"),
     ):
         label = str(dashboard.get(key) or default).strip()
         if label:
@@ -1917,7 +1917,7 @@ def _safe_settings_inventory(
                     path if str(path) not in {"", "."} else home / "Library" / "LaunchAgents" / f"{label}.plist",
                 ))
     else:
-        label = "com.open-nova.rag-server"
+        label = "com.actanara.rag-server"
         labels.append(("rag", label, home / "Library" / "LaunchAgents" / f"{label}.plist"))
 
     schedule = settings.get("schedule") if isinstance(settings.get("schedule"), dict) else {}
@@ -1936,7 +1936,7 @@ def _safe_settings_inventory(
                     path if str(path) not in {"", "."} else home / "Library" / "LaunchAgents" / f"{label}.plist",
                 ))
     else:
-        base = str(timer.get("label") or "open-nova.daily").strip() or "open-nova.daily"
+        base = str(timer.get("label") or "actanara.daily").strip() or "actanara.daily"
         for kind, suffix in (
             ("scheduler-pipeline", "pipeline"),
             ("scheduler-aggregation", "dashboard-aggregation"),
@@ -2008,9 +2008,9 @@ def _plist_targets_runtime(path: Path, runtime: Path, label: str) -> bool:
         return False
     environment = payload.get("EnvironmentVariables")
     if isinstance(environment, dict):
-        nova_home = environment.get("NOVA_HOME")
-        if isinstance(nova_home, str) and nova_home.strip():
-            candidate = Path(nova_home).expanduser()
+        actanara_home = environment.get("ACTANARA_HOME")
+        if isinstance(actanara_home, str) and actanara_home.strip():
+            candidate = Path(actanara_home).expanduser()
             return candidate.is_absolute() and candidate.resolve(strict=False) == runtime.resolve(strict=False)
     return _legacy_watchdog_targets_runtime(payload, runtime)
 
@@ -2035,7 +2035,7 @@ def _legacy_repair_plist_targets_runtime(path: Path, runtime: Path, label: str) 
 
 
 def _legacy_watchdog_targets_runtime(payload: dict[str, Any], runtime: Path) -> bool:
-    """Recognize only the exact pre-v1 watchdog shape that omitted NOVA_HOME."""
+    """Recognize only the exact pre-v1 watchdog shape that omitted ACTANARA_HOME."""
     arguments = payload.get("ProgramArguments")
     if not isinstance(arguments, list) or len(arguments) != 8 or not all(
         isinstance(item, str) for item in arguments
@@ -2298,7 +2298,7 @@ def _normalize_direct_arguments(
         if (
             len(normalized) != 7
             or normalized[2:4] != ["run", "--project-root"]
-            or normalized[5] != "--nova-home"
+            or normalized[5] != "--actanara-home"
         ):
             raise TransactionError("managed RAG service has an invalid ProgramArguments shape")
         for index, field in ((0, "RAG Python"), (1, "RAG script"), (4, "RAG project root")):
@@ -2363,27 +2363,27 @@ def _normalize_service_plist_payload(
         environment = {}
     else:
         environment = dict(environment)
-    if environment.get("NOVA_HOME") is None:
+    if environment.get("ACTANARA_HOME") is None:
         if kind != "watchdog":
             raise TransactionError(f"managed service lost Runtime provenance: {service['label']}")
-        environment["NOVA_HOME"] = str(roots["runtime"])
-    environment["NOVA_HOME"] = _canonical_runtime_path(
-        environment.get("NOVA_HOME"), field="Runtime provenance", roots=roots
+        environment["ACTANARA_HOME"] = str(roots["runtime"])
+    environment["ACTANARA_HOME"] = _canonical_runtime_path(
+        environment.get("ACTANARA_HOME"), field="Runtime provenance", roots=roots
     )
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
 
     for key, field in (
-        ("NOVA_DASHBOARD_PROJECT_ROOT", "dashboard environment project root"),
-        ("NOVA_DASHBOARD_PYTHON", "dashboard environment Python"),
+        ("ACTANARA_DASHBOARD_PROJECT_ROOT", "dashboard environment project root"),
+        ("ACTANARA_DASHBOARD_PYTHON", "dashboard environment Python"),
     ):
         if key in environment:
             environment[key] = _rebind_service_path(
                 environment[key], field=field, roots=roots, counts=counts
             )
     if kind == "dashboard":
-        if environment.get("NOVA_DASHBOARD_PROJECT_ROOT") != str(roots["sourceStable"]):
+        if environment.get("ACTANARA_DASHBOARD_PROJECT_ROOT") != str(roots["sourceStable"]):
             raise TransactionError("managed dashboard environment is missing the stable source binding")
-        if environment.get("NOVA_DASHBOARD_PYTHON") != str(roots["venvStable"] / "bin" / "python"):
+        if environment.get("ACTANARA_DASHBOARD_PYTHON") != str(roots["venvStable"] / "bin" / "python"):
             raise TransactionError("managed dashboard environment is missing the stable venv binding")
 
     if kind == "watchdog" and "PYTHONPATH" in environment:
@@ -2664,20 +2664,20 @@ def _launch_state(launchctl: str, domain: str, label: str) -> tuple[bool, str]:
 
 
 def _health_timeout_seconds() -> float:
-    if os.environ.get("NOVA_INSTALL_TEST_MODE") != "1":
+    if os.environ.get("ACTANARA_INSTALL_TEST_MODE") != "1":
         return SERVICE_HEALTH_TIMEOUT_SECONDS
     try:
-        configured = float(os.environ.get("NOVA_INSTALL_TEST_HEALTH_TIMEOUT_SECONDS", "1.0"))
+        configured = float(os.environ.get("ACTANARA_INSTALL_TEST_HEALTH_TIMEOUT_SECONDS", "1.0"))
     except ValueError:
         configured = 1.0
     return max(0.1, min(configured, SERVICE_HEALTH_TIMEOUT_SECONDS))
 
 
 def _service_state_timeout_seconds() -> float:
-    if os.environ.get("NOVA_INSTALL_TEST_MODE") != "1":
+    if os.environ.get("ACTANARA_INSTALL_TEST_MODE") != "1":
         return SERVICE_STATE_TIMEOUT_SECONDS
     try:
-        configured = float(os.environ.get("NOVA_INSTALL_TEST_SERVICE_STATE_TIMEOUT_SECONDS", "1.0"))
+        configured = float(os.environ.get("ACTANARA_INSTALL_TEST_SERVICE_STATE_TIMEOUT_SECONDS", "1.0"))
     except ValueError:
         configured = 1.0
     return max(0.1, min(configured, SERVICE_STATE_TIMEOUT_SECONDS))
@@ -2708,7 +2708,7 @@ def _candidate_full_source_commit(state: dict[str, Any]) -> str | None:
     candidate = Path(str(pointer.get("candidateTarget") or ""))
     if not candidate.is_absolute():
         return None
-    manifest_path = candidate / ".open-nova-runtime-source.json"
+    manifest_path = candidate / ".actanara-runtime-source.json"
     try:
         raw = manifest_path.read_bytes()
         manifest = json.loads(raw)
@@ -3489,11 +3489,11 @@ def _is_descendant_of_owner(owner_pid: int, expected_identity: object) -> bool:
 
 
 def _candidate_child_term_timeout_seconds() -> float:
-    if os.environ.get("NOVA_INSTALL_TEST_MODE") != "1":
+    if os.environ.get("ACTANARA_INSTALL_TEST_MODE") != "1":
         return CANDIDATE_CHILD_TERM_TIMEOUT_SECONDS
     try:
         configured = float(
-            os.environ.get("NOVA_INSTALL_TEST_CHILD_TERM_TIMEOUT_SECONDS", "0.5")
+            os.environ.get("ACTANARA_INSTALL_TEST_CHILD_TERM_TIMEOUT_SECONDS", "0.5")
         )
     except ValueError:
         configured = 0.5
@@ -4152,22 +4152,22 @@ def begin(args: argparse.Namespace) -> int:
                         if isinstance(plist_payload, dict)
                         else None
                     )
-                    nova_home = environment.get("NOVA_HOME") if isinstance(environment, dict) else None
-                    if isinstance(nova_home, str) and nova_home:
-                        alias = Path(nova_home)
+                    actanara_home = environment.get("ACTANARA_HOME") if isinstance(environment, dict) else None
+                    if isinstance(actanara_home, str) and actanara_home:
+                        alias = Path(actanara_home)
                         if (
                             not alias.is_absolute()
-                            or os.path.normpath(nova_home) != nova_home
+                            or os.path.normpath(actanara_home) != actanara_home
                             or alias.resolve(strict=False) != runtime
                         ):
                             raise TransactionError(
                                 f"managed service plist has an unsafe Runtime alias: {label}"
                             )
                         aliases = state["runtimeAliases"]
-                        if nova_home not in aliases:
+                        if actanara_home not in aliases:
                             if len(aliases) >= 4:
                                 raise TransactionError("managed service Runtime alias inventory is too large")
-                            aliases.append(nova_home)
+                            aliases.append(actanara_home)
                 _snapshot_path(state_path, state, "managed-plist", plist_path)
                 loaded, launch_state = _launch_state(launchctl, domain, label)
                 if loaded and not plist_path.is_file():
@@ -4391,7 +4391,7 @@ def record_candidate(args: argparse.Namespace) -> int:
     )
     pointer["candidateTarget"] = str(candidate)
     if args.kind == "source":
-        manifest = candidate / ".open-nova-runtime-source.json"
+        manifest = candidate / ".actanara-runtime-source.json"
         pyproject = candidate / "pyproject.toml"
         if (
             manifest.is_symlink()
@@ -4502,7 +4502,7 @@ def verify_migration_compatibility(args: argparse.Namespace) -> int:
     )
     _validate_source_payload(pointer)
     try:
-        manifest = json.loads((candidate / ".open-nova-runtime-source.json").read_text(encoding="utf-8"))
+        manifest = json.loads((candidate / ".actanara-runtime-source.json").read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise TransactionError("candidate source manifest is unreadable") from exc
     compatibility = _candidate_migration_contract(candidate, manifest)
@@ -4814,7 +4814,7 @@ def verify(args: argparse.Namespace) -> int:
     candidate_source = Path(state["source"]["candidateTarget"])
     if not source.is_symlink() or source.resolve(strict=False) != candidate_source.resolve(strict=False):
         raise TransactionError("active source pointer does not match the staged candidate")
-    if not (source / ".open-nova-runtime-source.json").is_file():
+    if not (source / ".actanara-runtime-source.json").is_file():
         raise TransactionError("active source manifest is missing after promotion")
     _verify_recorded_candidate_artifacts(state)
     _verify_live_migration_ledger(state)

@@ -21,7 +21,7 @@ class DiaryGeneratorLanguageProfile:
 
 def current_language_profile(environ: dict[str, str] | None = None) -> DiaryGeneratorLanguageProfile:
     env = environ if environ is not None else os.environ
-    profile = str(env.get("NOVA_PIPELINE_LANGUAGE_PROFILE") or "zh").strip()
+    profile = str(env.get("ACTANARA_PIPELINE_LANGUAGE_PROFILE") or "zh").strip()
     if profile in {"zh-CN", "zh_CN"}:
         profile = "zh"
     elif profile in {"en-US", "en_US"}:
@@ -31,11 +31,11 @@ def current_language_profile(environ: dict[str, str] | None = None) -> DiaryGene
     return DiaryGeneratorLanguageProfile(
         pipeline_language_profile=profile,
         diary_schema_version=str(
-            env.get("NOVA_DIARY_SCHEMA_VERSION") or ("diary-v1-en" if profile == "en" else "diary-v1-zh")
+            env.get("ACTANARA_DIARY_SCHEMA_VERSION") or ("diary-v1-en" if profile == "en" else "diary-v1-zh")
         ),
         prompt_payload_profile=str(
-            env.get("NOVA_PROMPT_PAYLOAD_PROFILE") or ("en-US" if profile == "en" else "zh-CN")
+            env.get("ACTANARA_PROMPT_PAYLOAD_PROFILE") or ("en-US" if profile == "en" else "zh-CN")
         ),
-        display_locale=str(env.get("NOVA_DISPLAY_LOCALE") or ("en-US" if profile == "en" else "zh-CN")),
+        display_locale=str(env.get("ACTANARA_DISPLAY_LOCALE") or ("en-US" if profile == "en" else "zh-CN")),
         rag_language_profile=str(env.get("NOVA_RAG_LANGUAGE_PROFILE") or ("en" if profile == "en" else "zh")),
     )

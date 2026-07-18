@@ -172,7 +172,7 @@ def resolve_rag_settings(paths: RuntimePaths | None = None, settings: dict | Non
             source.get("foundationDbPath")
             or indexing.get("foundationDbPath")
             or v2.get("foundationDbPath"),
-            getattr(selected, "db_path", selected.home / "data" / "nova_data.sqlite3"),
+            getattr(selected, "db_path", selected.home / "data" / "actanara_data.sqlite3"),
         )
     )
     task_board_path = _absolute_path(

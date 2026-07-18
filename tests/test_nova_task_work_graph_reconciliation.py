@@ -50,7 +50,7 @@ nova_task:
 ```"""
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             write_settings({"general": {"timezone": "America/Los_Angeles"}}, paths)
             before_boundary = datetime(2026, 7, 1, 2, 0, tzinfo=ZoneInfo("America/Los_Angeles"))
 
@@ -64,7 +64,7 @@ nova_task:
 
     def test_noise_filtered_inbox_excludes_status_updates_and_volatile_fields(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             node = create_task_node(paths, node_id="NT-ROOT", title="Root", actor="operator")
             create_task_candidate(
                 paths,
@@ -77,7 +77,7 @@ nova_task:
             create_task_candidate(
                 paths,
                 candidate_type="parent_task",
-                proposed_title="open-nova",
+                proposed_title="actanara",
                 reason="Project candidate",
                 evidence=["project line"],
                 metadata={"candidateKind": "project_anchor"},
@@ -87,7 +87,7 @@ nova_task:
 
         self.assertEqual(len(inbox), 1)
         self.assertEqual(inbox[0]["candidateType"], "parent_task")
-        self.assertEqual(inbox[0]["proposedTitle"], "open-nova")
+        self.assertEqual(inbox[0]["proposedTitle"], "actanara")
         self.assertNotIn("status", inbox[0])
         self.assertNotIn("createdAt", inbox[0])
 
@@ -114,8 +114,8 @@ nova_task:
 """
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
-            root = create_task_node(paths, node_id="NT-ROOT", title="open-nova", node_type="track", actor="operator")
+            paths = initialize_home(Path(tmp) / "Actanara")
+            root = create_task_node(paths, node_id="NT-ROOT", title="actanara", node_type="track", actor="operator")
             workstream = create_task_node(
                 paths,
                 node_id="NT-WORK",
@@ -129,7 +129,7 @@ nova_task:
             create_task_candidate(
                 paths,
                 candidate_type="parent_task",
-                proposed_title="open-nova system",
+                proposed_title="actanara system",
                 reason="Existing pending item",
                 evidence=["candidate source"],
             )
@@ -182,7 +182,7 @@ nova_task:
         chosen_level: 2
         layer: project_graph
         parent_level: 1
-        why_not_higher: "Existing open-nova root owns this subsystem."
+        why_not_higher: "Existing actanara root owns this subsystem."
         why_not_lower: "Durable subsystem, not a single deliverable."
         matched_existing_node_id: ""
         create_new_node: true
@@ -190,8 +190,8 @@ nova_task:
 ```"""
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
-            create_task_node(paths, node_id="NT-ROOT", title="open-nova", node_type="track", actor="operator")
+            paths = initialize_home(Path(tmp) / "Actanara")
+            create_task_node(paths, node_id="NT-ROOT", title="actanara", node_type="track", actor="operator")
 
             result = run_work_graph_reconciliation(
                 paths,
@@ -234,7 +234,7 @@ nova_task:
             self.assertIn("not persistent authority", prompt)
             self.assertIn("If the only real parent is higher than the work's chosen level", prompt)
             self.assertIn("create every missing intermediate parent in order", prompt)
-            self.assertIn("nova-diary embedding_server", prompt)
+            self.assertIn("actanara embedding_server", prompt)
             self.assertIn("Mattermost DM", prompt)
             self.assertNotIn("nova-rag-subsystem", prompt)
             self.assertNotIn("agent-orchestration-l1", prompt)
@@ -273,7 +273,7 @@ nova_task:
     - proposed_parent_task_id: "NT-RAG"
       suggested_node_type: deliverable
       proposed_level: 3
-      proposed_title: "nova-diary embedding_server 架构与多 provider 全通"
+      proposed_title: "actanara embedding_server 架构与多 provider 全通"
       reason: "Embedding server/provider/vector-dimension evidence belongs under nova-RAG."
       confidence: high
       level_decision:
@@ -288,8 +288,8 @@ nova_task:
 ```"""
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
-            root = create_task_node(paths, node_id="NT-OPEN", title="open-nova", node_type="track", actor="operator")
+            paths = initialize_home(Path(tmp) / "Actanara")
+            root = create_task_node(paths, node_id="NT-OPEN", title="actanara", node_type="track", actor="operator")
             create_task_node(
                 paths,
                 node_id="NT-RAG",
@@ -303,7 +303,7 @@ nova_task:
                 paths,
                 business_date=date(2026, 6, 30),
                 technical_report=(
-                    "nova-diary embedding_server 架构与多 provider 全通；"
+                    "actanara embedding_server 架构与多 provider 全通；"
                     "多 Agent 协作 / agent-orchestration 覆盖 session_send、Mattermost DM、共享工作区规范与 Lune 验证。"
                 ),
             )
@@ -315,7 +315,7 @@ nova_task:
                 business_date=date(2026, 6, 30),
                 apply=True,
                 technical_report=(
-                    "nova-diary embedding_server 架构与多 provider 全通；"
+                    "actanara embedding_server 架构与多 provider 全通；"
                     "多 Agent 协作 / agent-orchestration 覆盖 session_send、Mattermost DM、共享工作区规范与 Lune 验证。"
                 ),
                 sender=fake_sender,
@@ -326,7 +326,7 @@ nova_task:
                     """
                     SELECT node_type, parent_node_id, metadata_json
                     FROM nova_task_nodes
-                    WHERE title = 'nova-diary embedding_server 架构与多 provider 全通'
+                    WHERE title = 'actanara embedding_server 架构与多 provider 全通'
                     """
                 ).fetchone()
                 l1_candidate = connection.execute(
@@ -386,8 +386,8 @@ nova_task:
 ```"""
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
-            root = create_task_node(paths, node_id="NT-OPEN", title="open-nova", node_type="track", actor="operator")
+            paths = initialize_home(Path(tmp) / "Actanara")
+            root = create_task_node(paths, node_id="NT-OPEN", title="actanara", node_type="track", actor="operator")
             rag = create_task_node(
                 paths,
                 node_id="NT-RAG",
@@ -399,7 +399,7 @@ nova_task:
             diary = create_task_node(
                 paths,
                 node_id="NT-DIARY",
-                title="jsonl-diary / nova-diary 日记系统",
+                title="jsonl-diary / actanara 日记系统",
                 node_type="workstream",
                 parent_node_id=root.node_id,
                 actor="operator",
@@ -407,7 +407,7 @@ nova_task:
             create_task_node(
                 paths,
                 node_id="NT-EMBED",
-                title="Nova-Diary embedding_server 多 provider 收敛",
+                title="Actanara embedding_server 多 provider 收敛",
                 node_type="task",
                 parent_node_id=diary.node_id,
                 actor="operator",
@@ -461,7 +461,7 @@ nova_task:
 ```"""
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             create_task_node(paths, node_id="NT-ROOT-A", title="Project A", node_type="track", actor="operator")
             create_task_node(paths, node_id="NT-ROOT-B", title="Project B", node_type="track", actor="operator")
 
@@ -499,8 +499,8 @@ nova_task:
 ```"""
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
-            root = create_task_node(paths, node_id="NT-OPEN", title="open-nova", node_type="track", actor="operator")
+            paths = initialize_home(Path(tmp) / "Actanara")
+            root = create_task_node(paths, node_id="NT-OPEN", title="actanara", node_type="track", actor="operator")
             rag = create_task_node(
                 paths,
                 node_id="NT-RAG",
@@ -574,8 +574,8 @@ nova_task:
 ```"""
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
-            root = create_task_node(paths, node_id="NT-OPEN", title="open-nova", node_type="track", actor="operator")
+            paths = initialize_home(Path(tmp) / "Actanara")
+            root = create_task_node(paths, node_id="NT-OPEN", title="actanara", node_type="track", actor="operator")
             rag = create_task_node(
                 paths,
                 node_id="NT-RAG",
@@ -628,8 +628,8 @@ nova_task:
 ```"""
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
-            create_task_node(paths, node_id="NT-ROOT", title="open-nova", node_type="track", actor="operator")
+            paths = initialize_home(Path(tmp) / "Actanara")
+            create_task_node(paths, node_id="NT-ROOT", title="actanara", node_type="track", actor="operator")
 
             result = run_work_graph_reconciliation(
                 paths,
@@ -692,8 +692,8 @@ nova_task:
 ```"""
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
-            create_task_node(paths, node_id="NT-ROOT", title="nova-diary-v2", node_type="track", actor="operator")
+            paths = initialize_home(Path(tmp) / "Actanara")
+            create_task_node(paths, node_id="NT-ROOT", title="actanara", node_type="track", actor="operator")
 
             result = run_work_graph_reconciliation(
                 paths,
@@ -767,7 +767,7 @@ nova_task:
 ```"""
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
 
             result = run_work_graph_reconciliation(
                 paths,
@@ -838,11 +838,11 @@ nova_task:
 ```"""
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             create_task_node(
                 paths,
                 node_id="NT-ROOT",
-                title="nova-diary-v2",
+                title="actanara",
                 node_type="track",
                 status=TASK_NODE_STATUS_PLANNED,
                 actor="operator",
@@ -914,11 +914,11 @@ nova_task:
 ```"""
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             create_task_node(
                 paths,
                 node_id="NT-ROOT",
-                title="nova-diary-v2",
+                title="actanara",
                 node_type="track",
                 status=TASK_NODE_STATUS_PLANNED,
                 actor="operator",
@@ -978,8 +978,8 @@ nova_task:
 ```"""
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
-            create_task_node(paths, node_id="NT-L1", title="open-nova", node_type="track", actor="operator")
+            paths = initialize_home(Path(tmp) / "Actanara")
+            create_task_node(paths, node_id="NT-L1", title="actanara", node_type="track", actor="operator")
             create_task_node(
                 paths,
                 node_id="NT-L2",
@@ -1041,8 +1041,8 @@ nova_task:
 ```"""
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
-            create_task_node(paths, node_id="NT-ROOT", title="open-nova", node_type="track", actor="operator")
+            paths = initialize_home(Path(tmp) / "Actanara")
+            create_task_node(paths, node_id="NT-ROOT", title="actanara", node_type="track", actor="operator")
 
             first = run_work_graph_reconciliation(
                 paths,
@@ -1070,12 +1070,12 @@ nova_task:
 
     def test_candidate_actions_attach_reject_defer_merge_and_supersede_existing_pending_candidates(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
-            create_task_node(paths, node_id="NT-ROOT", title="open-nova", node_type="track", actor="operator")
+            paths = initialize_home(Path(tmp) / "Actanara")
+            create_task_node(paths, node_id="NT-ROOT", title="actanara", node_type="track", actor="operator")
             attached = create_task_candidate(
                 paths,
                 candidate_type="parent_task",
-                proposed_title="open-nova duplicate",
+                proposed_title="actanara duplicate",
                 reason="Duplicate project root",
                 evidence=["candidate attach"],
             )
@@ -1124,7 +1124,7 @@ nova_task:
     - candidate_id: "{attached.candidate_id}"
       action: attach_existing
       target_node_id: "NT-ROOT"
-      reason: "Already represented by open-nova root."
+      reason: "Already represented by actanara root."
       confidence: high
       evidence: ["candidate:{attached.candidate_id}"]
     - candidate_id: "{rejected.candidate_id}"
@@ -1214,7 +1214,7 @@ nova_task:
 ```"""
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             create_task_node(
                 paths,
                 node_id="NT-OBS",
@@ -1302,12 +1302,12 @@ nova_task:
 
     def test_run_reconciliation_reports_candidate_action_counts(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
-            create_task_node(paths, node_id="NT-ROOT", title="open-nova", node_type="track", actor="operator")
+            paths = initialize_home(Path(tmp) / "Actanara")
+            create_task_node(paths, node_id="NT-ROOT", title="actanara", node_type="track", actor="operator")
             candidate = create_task_candidate(
                 paths,
                 candidate_type="parent_task",
-                proposed_title="open-nova duplicate",
+                proposed_title="actanara duplicate",
                 reason="Duplicate project root",
                 evidence=["candidate attach"],
             )
@@ -1320,7 +1320,7 @@ nova_task:
     - candidate_id: "{candidate.candidate_id}"
       action: attach_existing
       target_node_id: "NT-ROOT"
-      reason: "Already represented by open-nova."
+      reason: "Already represented by actanara."
       confidence: high
       evidence: ["candidate:{candidate.candidate_id}"]
 ```"""
@@ -1363,8 +1363,8 @@ nova_task:
 ```"""
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
-            create_task_node(paths, node_id="NT-L1", title="open-nova", node_type="track", actor="operator")
+            paths = initialize_home(Path(tmp) / "Actanara")
+            create_task_node(paths, node_id="NT-L1", title="actanara", node_type="track", actor="operator")
             create_task_node(
                 paths,
                 node_id="NT-L2",
@@ -1417,8 +1417,8 @@ nova_task:
 ```"""
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
-            create_task_node(paths, node_id="NT-ROOT", title="open-nova", node_type="track", actor="operator")
+            paths = initialize_home(Path(tmp) / "Actanara")
+            create_task_node(paths, node_id="NT-ROOT", title="actanara", node_type="track", actor="operator")
 
             result = run_work_graph_reconciliation(
                 paths,
@@ -1468,8 +1468,8 @@ nova_task:
 ```"""
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
-            create_task_node(paths, node_id="NT-ROOT", title="open-nova", node_type="track", actor="operator")
+            paths = initialize_home(Path(tmp) / "Actanara")
+            create_task_node(paths, node_id="NT-ROOT", title="actanara", node_type="track", actor="operator")
 
             result = run_work_graph_reconciliation(
                 paths,
@@ -1496,12 +1496,12 @@ nova_task:
 
     def test_actions_only_apply_skips_new_candidate_ingest(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
-            create_task_node(paths, node_id="NT-ROOT", title="open-nova", node_type="track", actor="operator")
+            paths = initialize_home(Path(tmp) / "Actanara")
+            create_task_node(paths, node_id="NT-ROOT", title="actanara", node_type="track", actor="operator")
             candidate = create_task_candidate(
                 paths,
                 candidate_type="parent_task",
-                proposed_title="open-nova duplicate",
+                proposed_title="actanara duplicate",
                 reason="Duplicate project root",
                 evidence=["candidate attach"],
             )
@@ -1521,7 +1521,7 @@ nova_task:
     - candidate_id: "{candidate.candidate_id}"
       action: attach_existing
       target_node_id: "NT-ROOT"
-      reason: "Already represented by open-nova."
+      reason: "Already represented by actanara."
       confidence: high
       evidence: ["candidate:{candidate.candidate_id}"]
 ```"""
@@ -1543,7 +1543,7 @@ nova_task:
         self.assertEqual(result.candidate_count, 0)
         self.assertEqual(result.auto_confirmed_count, 0)
         self.assertEqual(result.action_count, 1)
-        self.assertEqual([(row["proposed_title"], row["status"]) for row in candidates], [("open-nova duplicate", "confirmed")])
+        self.assertEqual([(row["proposed_title"], row["status"]) for row in candidates], [("actanara duplicate", "confirmed")])
 
 
 if __name__ == "__main__":

@@ -46,7 +46,7 @@ class TaskShadowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "nova_tasks.db"
             _create_legacy_task_db(source)
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
 
             first = import_legacy_task_db(paths, source, business_date=date(2026, 5, 27))
             self.assertEqual((first.project_count, first.task_count, first.update_count), (1, 1, 1))
@@ -80,7 +80,7 @@ class TaskShadowTests(unittest.TestCase):
                     connection.execute(
                         "CREATE TABLE task_updates (id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT, report_date TEXT, progress_delta INTEGER, status TEXT, report_file TEXT)"
                     )
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             result = import_legacy_task_db(paths, source)
             self.assertEqual((result.project_count, result.task_count, result.update_count), (0, 0, 0))
             self.assertTrue(task_shadow_comparison_report(paths, source)["matched"])
@@ -111,7 +111,7 @@ task_updates:
                 "- [ ] **[T-260527-001]** Task event\n- [x] Finished without id\n> Legacy prose references content[]\n",
                 encoding="utf-8",
             )
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
 
             first = materialize_task_report_events(paths, root, business_date=date(2026, 5, 27))
             with connect(paths, read_only=True) as connection:
@@ -170,7 +170,7 @@ task_updates:
 """,
                 encoding="utf-8",
             )
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
 
             result = materialize_task_report_events(paths, root, business_date=date(2026, 5, 27), language_profile="en")
 
@@ -183,7 +183,7 @@ task_updates:
         content = """# Board
 
 ## 🟡 进行中
-### Nova Data Foundation
+### Actanara Data Foundation
 - [ ] **[T-260529-001]** Finish phase 11 ← **@codex**
 - [x] Document phase 10
 
@@ -200,7 +200,7 @@ task_updates:
         with tempfile.TemporaryDirectory() as tmp:
             board = Path(tmp) / "TASK_BOARD.md"
             board.write_text(content, encoding="utf-8")
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             first = materialize_task_board_projection(paths, board, business_date=date(2026, 5, 29))
             snapshot = read_task_board_projection(paths, first.snapshot_key)
             self.assertEqual(first.item_count, 3)

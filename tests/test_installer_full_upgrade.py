@@ -58,7 +58,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
         lock_sha256 = "b" * 64
         fingerprint_payload = {
             "schemaVersion": 1,
-            "algorithm": "open-nova-runtime-dependencies-v1",
+            "algorithm": "actanara-runtime-dependencies-v1",
             "runtimeEnvironment": {
                 key: lock_environment[key]
                 for key in (
@@ -87,8 +87,8 @@ class InstallerFullUpgradeTests(unittest.TestCase):
         ).hexdigest()
         return {
             "schemaVersion": 1,
-            "product": "open-nova",
-            "fingerprintAlgorithm": "open-nova-runtime-dependencies-v1",
+            "product": "actanara",
+            "fingerprintAlgorithm": "actanara-runtime-dependencies-v1",
             "dependencyFingerprint": dependency_fingerprint,
             "lockSha256": lock_sha256,
             "environmentId": environment_id,
@@ -182,28 +182,28 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                         "actor": actor,
                         "phase": phase,
                         "argv": sys.argv[1:],
-                        "novaHome": os.environ.get("NOVA_HOME"),
-                        "locationFile": os.environ.get("NOVA_LOCATION_FILE"),
+                        "actanaraHome": os.environ.get("ACTANARA_HOME"),
+                        "locationFile": os.environ.get("ACTANARA_LOCATION_FILE"),
                         "home": os.environ.get("HOME"),
                         "tmpDir": os.environ.get("TMPDIR"),
                         "xdgConfigHome": os.environ.get("XDG_CONFIG_HOME"),
                         "pipConfigFile": os.environ.get("PIP_CONFIG_FILE"),
                         "pipCacheDir": os.environ.get("PIP_CACHE_DIR"),
                         "pythonNoUserSite": os.environ.get("PYTHONNOUSERSITE"),
-                        "secretBackend": os.environ.get("OPEN_NOVA_SECRET_BACKEND"),
+                        "secretBackend": os.environ.get("ACTANARA_SECRET_BACKEND"),
                         "syntheticSentinelPresent": (
-                            "OPEN_NOVA_SYNTHETIC_SECRET_SENTINEL" in os.environ
+                            "ACTANARA_SYNTHETIC_SECRET_SENTINEL" in os.environ
                         ),
                     }}) + "\\n")
 
 
             def maybe_fault(phase):
-                if fixture_value("NOVA_FULL_UPGRADE_FAULT_PHASE") != phase:
+                if fixture_value("ACTANARA_FULL_UPGRADE_FAULT_PHASE") != phase:
                     return
-                marker = fixture_value("NOVA_FULL_UPGRADE_FAULT_MARKER")
+                marker = fixture_value("ACTANARA_FULL_UPGRADE_FAULT_MARKER")
                 if marker:
                     Path(marker).write_text(phase + "\\n", encoding="utf-8")
-                kind = fixture_value("NOVA_FULL_UPGRADE_FAULT_KIND")
+                kind = fixture_value("ACTANARA_FULL_UPGRADE_FAULT_KIND")
                 if kind == "return":
                     raise SystemExit(86)
                 if kind == "term":
@@ -215,9 +215,9 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                     time.sleep(0.05)
                     raise SystemExit(137)
                 if kind == "orphan-kill":
-                    pid_path = Path(fixture_value("NOVA_FULL_UPGRADE_ORPHAN_PID"))
-                    late_path = Path(fixture_value("NOVA_FULL_UPGRADE_LATE_MARKER"))
-                    owner_pid_path = Path(fixture_value("NOVA_FULL_UPGRADE_OWNER_PID"))
+                    pid_path = Path(fixture_value("ACTANARA_FULL_UPGRADE_ORPHAN_PID"))
+                    late_path = Path(fixture_value("ACTANARA_FULL_UPGRADE_LATE_MARKER"))
+                    owner_pid_path = Path(fixture_value("ACTANARA_FULL_UPGRADE_OWNER_PID"))
                     pid_path.write_text(str(os.getpid()) + "\\n", encoding="utf-8")
                     os.kill(int(owner_pid_path.read_text(encoding="utf-8").strip()), signal.SIGKILL)
                     for descriptor in (0, 1, 2):
@@ -245,10 +245,10 @@ class InstallerFullUpgradeTests(unittest.TestCase):
             if args[:3] == ["-m", "data_foundation.cli", "doctor"]:
                 record("candidate", "doctor")
                 migration_database = fixture_value(
-                    "NOVA_FULL_UPGRADE_DOCTOR_ADDITIVE_DATABASE", ""
+                    "ACTANARA_FULL_UPGRADE_DOCTOR_ADDITIVE_DATABASE", ""
                 )
                 migration_version = fixture_value(
-                    "NOVA_FULL_UPGRADE_DOCTOR_ADDITIVE_VERSION", ""
+                    "ACTANARA_FULL_UPGRADE_DOCTOR_ADDITIVE_VERSION", ""
                 )
                 if bool(migration_database) != bool(migration_version):
                     raise SystemExit("candidate doctor additive fixture is incomplete")
@@ -315,28 +315,28 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                         "actor": actor,
                         "phase": phase,
                         "argv": sys.argv[1:],
-                        "novaHome": os.environ.get("NOVA_HOME"),
-                        "locationFile": os.environ.get("NOVA_LOCATION_FILE"),
+                        "actanaraHome": os.environ.get("ACTANARA_HOME"),
+                        "locationFile": os.environ.get("ACTANARA_LOCATION_FILE"),
                         "home": os.environ.get("HOME"),
                         "tmpDir": os.environ.get("TMPDIR"),
                         "xdgConfigHome": os.environ.get("XDG_CONFIG_HOME"),
                         "pipConfigFile": os.environ.get("PIP_CONFIG_FILE"),
                         "pipCacheDir": os.environ.get("PIP_CACHE_DIR"),
                         "pythonNoUserSite": os.environ.get("PYTHONNOUSERSITE"),
-                        "secretBackend": os.environ.get("OPEN_NOVA_SECRET_BACKEND"),
+                        "secretBackend": os.environ.get("ACTANARA_SECRET_BACKEND"),
                         "syntheticSentinelPresent": (
-                            "OPEN_NOVA_SYNTHETIC_SECRET_SENTINEL" in os.environ
+                            "ACTANARA_SYNTHETIC_SECRET_SENTINEL" in os.environ
                         ),
                     }}) + "\\n")
 
 
             def maybe_fault(phase):
-                if fixture_value("NOVA_FULL_UPGRADE_FAULT_PHASE") != phase:
+                if fixture_value("ACTANARA_FULL_UPGRADE_FAULT_PHASE") != phase:
                     return
-                marker = fixture_value("NOVA_FULL_UPGRADE_FAULT_MARKER")
+                marker = fixture_value("ACTANARA_FULL_UPGRADE_FAULT_MARKER")
                 if marker:
                     Path(marker).write_text(phase + "\\n", encoding="utf-8")
-                kind = fixture_value("NOVA_FULL_UPGRADE_FAULT_KIND")
+                kind = fixture_value("ACTANARA_FULL_UPGRADE_FAULT_KIND")
                 if kind == "return":
                     raise SystemExit(85)
                 if kind == "term":
@@ -348,9 +348,9 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                     time.sleep(0.05)
                     raise SystemExit(137)
                 if kind == "orphan-kill":
-                    pid_path = Path(fixture_value("NOVA_FULL_UPGRADE_ORPHAN_PID"))
-                    late_path = Path(fixture_value("NOVA_FULL_UPGRADE_LATE_MARKER"))
-                    owner_pid_path = Path(fixture_value("NOVA_FULL_UPGRADE_OWNER_PID"))
+                    pid_path = Path(fixture_value("ACTANARA_FULL_UPGRADE_ORPHAN_PID"))
+                    late_path = Path(fixture_value("ACTANARA_FULL_UPGRADE_LATE_MARKER"))
+                    owner_pid_path = Path(fixture_value("ACTANARA_FULL_UPGRADE_OWNER_PID"))
                     pid_path.write_text(str(os.getpid()) + "\\n", encoding="utf-8")
                     os.kill(int(owner_pid_path.read_text(encoding="utf-8").strip()), signal.SIGKILL)
                     for descriptor in (0, 1, 2):
@@ -409,7 +409,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                         marker_status = "unavailable"
                     else:
                         active_venv = pointer.resolve()
-                        active_marker = active_venv / ".open-nova-dependencies.json"
+                        active_marker = active_venv / ".actanara-dependencies.json"
                         marker_status = "trusted" if active_marker.exists() else "missing"
                     print_json(dict(
                         schemaVersion=1,
@@ -487,7 +487,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                     if not venv:
                         raise SystemExit(67)
                     record("candidate", "dependency-marker-write")
-                    marker_path = Path(venv) / ".open-nova-dependencies.json"
+                    marker_path = Path(venv) / ".actanara-dependencies.json"
                     marker_path.write_text(
                         json.dumps(
                             DEPENDENCY_MARKER,
@@ -507,7 +507,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                     if not venv:
                         raise SystemExit(68)
                     record("candidate", "dependency-marker-verify")
-                    marker_path = Path(venv) / ".open-nova-dependencies.json"
+                    marker_path = Path(venv) / ".actanara-dependencies.json"
                     try:
                         payload = json.loads(marker_path.read_text(encoding="utf-8"))
                     except (OSError, json.JSONDecodeError):
@@ -549,9 +549,9 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                 import sys
                 from pathlib import Path
 
-                prefix = os.environ["NOVA_TEST_LABEL_PREFIX"]
-                state_dir = Path(os.environ["NOVA_TEST_LAUNCHCTL_STATE"])
-                calls_path = Path(os.environ["NOVA_TEST_LAUNCHCTL_CALLS"])
+                prefix = os.environ["ACTANARA_TEST_LABEL_PREFIX"]
+                state_dir = Path(os.environ["ACTANARA_TEST_LAUNCHCTL_STATE"])
+                calls_path = Path(os.environ["ACTANARA_TEST_LAUNCHCTL_CALLS"])
                 args = sys.argv[1:]
                 calls_path.parent.mkdir(parents=True, exist_ok=True)
                 with calls_path.open("a", encoding="utf-8") as handle:
@@ -585,8 +585,8 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                 if command == "bootout":
                     state_file.unlink(missing_ok=True)
                 elif command == "bootstrap":
-                    fail_label = os.environ.get("NOVA_TEST_BOOTSTRAP_FAIL_ONCE_LABEL", "")
-                    fail_marker_text = os.environ.get("NOVA_TEST_BOOTSTRAP_FAIL_ONCE_MARKER", "")
+                    fail_label = os.environ.get("ACTANARA_TEST_BOOTSTRAP_FAIL_ONCE_LABEL", "")
+                    fail_marker_text = os.environ.get("ACTANARA_TEST_BOOTSTRAP_FAIL_ONCE_MARKER", "")
                     fail_marker = Path(fail_marker_text) if fail_marker_text else None
                     if label == fail_label and fail_marker is not None and not fail_marker.exists():
                         fail_marker.write_text(label + "\\n", encoding="utf-8")
@@ -609,7 +609,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
         source = runtime / "app" / "releases" / "old-release"
         python = runtime / ".venv" / "bin" / "python"
         environment = {
-            "NOVA_HOME": str(runtime),
+            "ACTANARA_HOME": str(runtime),
             "PYTHONDONTWRITEBYTECODE": "1",
         }
         if label.endswith(".dashboard.watchdog"):
@@ -638,7 +638,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                     "run",
                     "--project-root",
                     str(source),
-                    "--nova-home",
+                    "--actanara-home",
                     str(runtime),
                 ],
                 "EnvironmentVariables": environment,
@@ -662,8 +662,8 @@ class InstallerFullUpgradeTests(unittest.TestCase):
         else:
             environment.update(
                 {
-                    "NOVA_DASHBOARD_PROJECT_ROOT": str(source),
-                    "NOVA_DASHBOARD_PYTHON": str(python),
+                    "ACTANARA_DASHBOARD_PROJECT_ROOT": str(source),
+                    "ACTANARA_DASHBOARD_PYTHON": str(python),
                     "PYTHONPATH": f"{source}:{source / 'src'}:{source / 'src' / 'dashboard'}",
                 }
             )
@@ -687,7 +687,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
         legacy_settings_only: bool = False,
     ) -> dict[str, object]:
         home = root / "Home"
-        runtime = home / ".open-nova"
+        runtime = home / ".actanara"
         app = runtime / "app"
         old_source = app / "releases" / "old-release"
         old_venv = runtime / ".venv"
@@ -707,10 +707,10 @@ class InstallerFullUpgradeTests(unittest.TestCase):
 
         (app / "source").symlink_to("releases/old-release")
         (old_source / "pyproject.toml").write_text(
-            '[project]\nname = "open-nova-old-fixture"\nversion = "0"\n',
+            '[project]\nname = "actanara-old-fixture"\nversion = "0"\n',
             encoding="utf-8",
         )
-        (old_source / ".open-nova-runtime-source.json").write_text(
+        (old_source / ".actanara-runtime-source.json").write_text(
             '{"fixture":"old-source"}\n',
             encoding="utf-8",
         )
@@ -722,7 +722,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
         old_python.write_text("#!/bin/sh\n# old-venv-fixture\nexit 0\n", encoding="utf-8")
         old_python.chmod(0o755)
 
-        prefix = "com.open-nova.session-d-full-upgrade-" + uuid.uuid4().hex[:12]
+        prefix = "com.actanara.session-d-full-upgrade-" + uuid.uuid4().hex[:12]
         labels = {
             "dashboard": f"{prefix}.dashboard",
             "watchdog": f"{prefix}.dashboard.watchdog",
@@ -785,7 +785,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
         location = root / "config" / "location.json"
         location.write_text(json.dumps({"runtime": str(runtime)}, sort_keys=True) + "\n", encoding="utf-8")
 
-        database = runtime / "data" / "nova_data.sqlite3"
+        database = runtime / "data" / "actanara_data.sqlite3"
         with closing(sqlite3.connect(database)) as connection:
             self.assertEqual(connection.execute("PRAGMA journal_mode = WAL").fetchone(), ("wal",))
             connection.execute("CREATE TABLE evidence (id INTEGER PRIMARY KEY, value TEXT NOT NULL)")
@@ -821,32 +821,32 @@ class InstallerFullUpgradeTests(unittest.TestCase):
         protected_bytes = {path: path.read_bytes() for path in protected_paths}
         env = os.environ.copy()
         for key in (
-            "NOVA_INSTALL_TEST_FAIL_PHASE",
-            "NOVA_INSTALL_TEST_HOOK",
-            "NOVA_FULL_UPGRADE_FAULT_PHASE",
-            "NOVA_FULL_UPGRADE_FAULT_KIND",
-            "NOVA_FULL_UPGRADE_FAULT_MARKER",
-            "NOVA_FULL_UPGRADE_DOCTOR_ADDITIVE_DATABASE",
-            "NOVA_FULL_UPGRADE_DOCTOR_ADDITIVE_VERSION",
-            "NOVA_INSTALL_LLM_API_KEY_VALUE",
-            "OPEN_NOVA_SYNTHETIC_SECRET_SENTINEL",
+            "ACTANARA_INSTALL_TEST_FAIL_PHASE",
+            "ACTANARA_INSTALL_TEST_HOOK",
+            "ACTANARA_FULL_UPGRADE_FAULT_PHASE",
+            "ACTANARA_FULL_UPGRADE_FAULT_KIND",
+            "ACTANARA_FULL_UPGRADE_FAULT_MARKER",
+            "ACTANARA_FULL_UPGRADE_DOCTOR_ADDITIVE_DATABASE",
+            "ACTANARA_FULL_UPGRADE_DOCTOR_ADDITIVE_VERSION",
+            "ACTANARA_INSTALL_LLM_API_KEY_VALUE",
+            "ACTANARA_SYNTHETIC_SECRET_SENTINEL",
         ):
             env.pop(key, None)
         env.update(
             {
                 "HOME": str(home),
-                "NOVA_HOME": str(runtime),
-                "NOVA_LOCATION_FILE": str(location),
-                "OPEN_NOVA_SECRET_BACKEND": "memory",
-                "NOVA_INSTALL_PLATFORM": "Darwin",
-                "NOVA_INSTALL_LAUNCHCTL": str(fake_launchctl),
-                "NOVA_TEST_LAUNCHCTL_CALLS": str(calls),
-                "NOVA_TEST_LAUNCHCTL_STATE": str(state_dir),
-                "NOVA_TEST_LABEL_PREFIX": prefix,
-                "NOVA_INSTALL_TEST_MODE": "1",
-                "NOVA_INSTALL_TEST_HEALTH_TIMEOUT_SECONDS": "0.2",
-                "NOVA_INSTALL_WIZARD": "0",
-                "OPEN_NOVA_SYNTHETIC_SECRET_SENTINEL": "synthetic-test-only-not-a-secret",
+                "ACTANARA_HOME": str(runtime),
+                "ACTANARA_LOCATION_FILE": str(location),
+                "ACTANARA_SECRET_BACKEND": "memory",
+                "ACTANARA_INSTALL_PLATFORM": "Darwin",
+                "ACTANARA_INSTALL_LAUNCHCTL": str(fake_launchctl),
+                "ACTANARA_TEST_LAUNCHCTL_CALLS": str(calls),
+                "ACTANARA_TEST_LAUNCHCTL_STATE": str(state_dir),
+                "ACTANARA_TEST_LABEL_PREFIX": prefix,
+                "ACTANARA_INSTALL_TEST_MODE": "1",
+                "ACTANARA_INSTALL_TEST_HEALTH_TIMEOUT_SECONDS": "0.2",
+                "ACTANARA_INSTALL_WIZARD": "0",
+                "ACTANARA_SYNTHETIC_SECRET_SENTINEL": "synthetic-test-only-not-a-secret",
                 "PYTHONDONTWRITEBYTECODE": "1",
             }
         )
@@ -901,7 +901,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
         fault_payload = {
             key: value
             for key, value in (env_overrides or {}).items()
-            if key.startswith("NOVA_FULL_UPGRADE_")
+            if key.startswith("ACTANARA_FULL_UPGRADE_")
         }
         if fault_payload:
             fault_config.write_text(
@@ -955,7 +955,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
         return path.read_text(encoding="utf-8").splitlines() if path.exists() else []
 
     def _service_state(self, fixture: dict[str, object]) -> dict[str, str]:
-        prefix = str(fixture["env"]["NOVA_TEST_LABEL_PREFIX"])
+        prefix = str(fixture["env"]["ACTANARA_TEST_LABEL_PREFIX"])
         return {
             path.name: path.read_text(encoding="utf-8").strip()
             for path in Path(fixture["state_dir"]).iterdir()
@@ -1004,7 +1004,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
             before = plistlib.loads(fixture["protected_bytes"][path])
             after = plistlib.loads(path.read_bytes())
             self.assertEqual(after["Label"], before["Label"])
-            self.assertEqual(after["EnvironmentVariables"]["NOVA_HOME"], str(runtime))
+            self.assertEqual(after["EnvironmentVariables"]["ACTANARA_HOME"], str(runtime))
             self.assertEqual(after["EnvironmentVariables"]["PYTHONDONTWRITEBYTECODE"], "1")
             serialized = json.dumps(after, sort_keys=True)
             self.assertIn(stable_source, serialized)
@@ -1063,12 +1063,12 @@ class InstallerFullUpgradeTests(unittest.TestCase):
         self.assertTrue(source.is_symlink())
         self.assertNotEqual(source.resolve(), Path(fixture["old_source"]).resolve())
         self.assertEqual(os.readlink(source), f"releases/{source.resolve().name}")
-        self.assertTrue((source / ".open-nova-runtime-source.json").is_file())
+        self.assertTrue((source / ".actanara-runtime-source.json").is_file())
         self.assertTrue(venv.is_symlink())
         self.assertEqual(os.readlink(venv), f"app/venvs/{venv.resolve().name}")
         self.assertEqual(source.resolve().name, venv.resolve().name)
         self.assertTrue((venv / "bin" / "python").is_file())
-        dependency_marker_path = venv / ".open-nova-dependencies.json"
+        dependency_marker_path = venv / ".actanara-dependencies.json"
         self.assertTrue(dependency_marker_path.is_file())
         self.assertFalse(dependency_marker_path.is_symlink())
         self.assertEqual(dependency_marker_path.stat().st_mode & 0o777, 0o444)
@@ -1146,9 +1146,9 @@ class InstallerFullUpgradeTests(unittest.TestCase):
         isolated_records = [record for record in records if record["phase"] in isolated_phases]
         self.assertEqual({record["phase"] for record in isolated_records}, isolated_phases)
         for record in isolated_records:
-            self.assertTrue(record["novaHome"], record)
+            self.assertTrue(record["actanaraHome"], record)
             self.assertTrue(record["locationFile"], record)
-            validation_runtime = Path(record["novaHome"]).resolve(strict=False)
+            validation_runtime = Path(record["actanaraHome"]).resolve(strict=False)
             validation_location = Path(record["locationFile"]).resolve(strict=False)
             self.assertNotEqual(validation_runtime, live_runtime, record)
             self.assertEqual(validation_runtime.name, "candidate-runtime", record)
@@ -1185,12 +1185,12 @@ class InstallerFullUpgradeTests(unittest.TestCase):
 
         doctor_records = [record for record in records if record["phase"] == "doctor"]
         self.assertTrue(doctor_records)
-        live_location = Path(str(fixture["env"]["NOVA_LOCATION_FILE"])).resolve(strict=False)
+        live_location = Path(str(fixture["env"]["ACTANARA_LOCATION_FILE"])).resolve(strict=False)
         committed_doctor_sandbox = Path(validation["path"]).resolve(strict=False)
         committed_doctor_seen = False
         for record in doctor_records:
             self.assertEqual(
-                Path(record["novaHome"]).resolve(strict=False),
+                Path(record["actanaraHome"]).resolve(strict=False),
                 live_runtime,
                 record,
             )
@@ -1259,8 +1259,8 @@ class InstallerFullUpgradeTests(unittest.TestCase):
     ) -> None:
         output = result.stdout + result.stderr
         self.assertNotEqual(result.returncode, 0, output)
-        self.assertNotIn("Open Nova 已更新完成", output)
-        self.assertNotIn("Open Nova is up to date", output)
+        self.assertNotIn("Actanara 已更新完成", output)
+        self.assertNotIn("Actanara is up to date", output)
         journals = self._journal_paths(fixture)
         self.assertEqual(len(journals), 1, journals)
         journal_path = journals[0]
@@ -1346,7 +1346,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
             env = fixture["env"]
             domain = f"gui/{os.getuid()}"
             probe = subprocess.run(
-                [fake, "print", f"{domain}/com.open-nova.dashboard"],
+                [fake, "print", f"{domain}/com.actanara.dashboard"],
                 env=env,
                 text=True,
                 capture_output=True,
@@ -1354,9 +1354,9 @@ class InstallerFullUpgradeTests(unittest.TestCase):
             )
             self.assertEqual(probe.returncode, 113)
             for command in (
-                [fake, "bootout", f"{domain}/com.open-nova.dashboard"],
+                [fake, "bootout", f"{domain}/com.actanara.dashboard"],
                 [fake, "bootstrap", domain, str(Path(fixture["home"]) / "production.plist")],
-                [fake, "kickstart", "-k", f"{domain}/com.open-nova.dashboard"],
+                [fake, "kickstart", "-k", f"{domain}/com.actanara.dashboard"],
             ):
                 with self.subTest(command=command[1]):
                     result = subprocess.run(
@@ -1375,9 +1375,9 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                 with self.subTest(phase=phase, kind=kind), tempfile.TemporaryDirectory() as tmp:
                     fixture = self._fixture(Path(tmp))
                     overrides = {
-                        "NOVA_FULL_UPGRADE_FAULT_PHASE": phase,
-                        "NOVA_FULL_UPGRADE_FAULT_KIND": kind,
-                        "NOVA_FULL_UPGRADE_FAULT_MARKER": str(fixture["marker"]),
+                        "ACTANARA_FULL_UPGRADE_FAULT_PHASE": phase,
+                        "ACTANARA_FULL_UPGRADE_FAULT_KIND": kind,
+                        "ACTANARA_FULL_UPGRADE_FAULT_MARKER": str(fixture["marker"]),
                     }
                     result = self._run_update(fixture, env_overrides=overrides)
                     self.assertEqual(Path(fixture["marker"]).read_text(encoding="utf-8").strip(), phase)
@@ -1406,13 +1406,13 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                 result = self._run_update(
                     fixture,
                     env_overrides={
-                        "NOVA_FULL_UPGRADE_FAULT_PHASE": phase,
-                        "NOVA_FULL_UPGRADE_FAULT_KIND": "orphan-kill",
-                        "NOVA_FULL_UPGRADE_FAULT_MARKER": str(fixture["marker"]),
-                        "NOVA_FULL_UPGRADE_ORPHAN_PID": str(pid_path),
-                        "NOVA_FULL_UPGRADE_OWNER_PID": str(owner_pid_path),
-                        "NOVA_FULL_UPGRADE_LATE_MARKER": str(late_path),
-                        "NOVA_INSTALL_TEST_HOOK": str(owner_hook),
+                        "ACTANARA_FULL_UPGRADE_FAULT_PHASE": phase,
+                        "ACTANARA_FULL_UPGRADE_FAULT_KIND": "orphan-kill",
+                        "ACTANARA_FULL_UPGRADE_FAULT_MARKER": str(fixture["marker"]),
+                        "ACTANARA_FULL_UPGRADE_ORPHAN_PID": str(pid_path),
+                        "ACTANARA_FULL_UPGRADE_OWNER_PID": str(owner_pid_path),
+                        "ACTANARA_FULL_UPGRADE_LATE_MARKER": str(late_path),
+                        "ACTANARA_INSTALL_TEST_HOOK": str(owner_hook),
                     },
                 )
                 self.assertEqual(result.returncode, -signal.SIGKILL, result.stdout + result.stderr)
@@ -1481,10 +1481,10 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                 with self.subTest(phase=phase, kind=kind), tempfile.TemporaryDirectory() as tmp:
                     fixture = self._fixture(Path(tmp))
                     if kind == "return":
-                        overrides = {"NOVA_INSTALL_TEST_FAIL_PHASE": phase}
+                        overrides = {"ACTANARA_INSTALL_TEST_FAIL_PHASE": phase}
                     else:
                         hook = self._write_outer_hook(fixture, phase=phase, kind=kind)
-                        overrides = {"NOVA_INSTALL_TEST_HOOK": str(hook)}
+                        overrides = {"ACTANARA_INSTALL_TEST_HOOK": str(hook)}
                     result = self._run_update(fixture, env_overrides=overrides)
                     if kind != "return":
                         self.assertEqual(
@@ -1513,9 +1513,9 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                 result = self._run_update(
                     fixture,
                     env_overrides={
-                        "NOVA_FULL_UPGRADE_FAULT_PHASE": "doctor",
-                        "NOVA_FULL_UPGRADE_FAULT_KIND": kind,
-                        "NOVA_FULL_UPGRADE_FAULT_MARKER": str(fixture["marker"]),
+                        "ACTANARA_FULL_UPGRADE_FAULT_PHASE": "doctor",
+                        "ACTANARA_FULL_UPGRADE_FAULT_KIND": kind,
+                        "ACTANARA_FULL_UPGRADE_FAULT_MARKER": str(fixture["marker"]),
                     },
                 )
                 self.assertEqual(
@@ -1557,7 +1557,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
             fixture = self._fixture(Path(tmp))
             root = Path(fixture["root"])
             runtime = Path(fixture["runtime"])
-            database = runtime / "data" / "nova_data.sqlite3"
+            database = runtime / "data" / "actanara_data.sqlite3"
             old_source = Path(fixture["old_source"])
 
             # The rollback reader is the actual prior-source implementation, not
@@ -1611,16 +1611,16 @@ class InstallerFullUpgradeTests(unittest.TestCase):
             result = self._run_update(
                 fixture,
                 env_overrides={
-                    "NOVA_FULL_UPGRADE_DOCTOR_ADDITIVE_DATABASE": str(database),
-                    "NOVA_FULL_UPGRADE_DOCTOR_ADDITIVE_VERSION": migration_version,
-                    "NOVA_INSTALL_TEST_FAIL_PHASE": "candidate-doctor-passed",
+                    "ACTANARA_FULL_UPGRADE_DOCTOR_ADDITIVE_DATABASE": str(database),
+                    "ACTANARA_FULL_UPGRADE_DOCTOR_ADDITIVE_VERSION": migration_version,
+                    "ACTANARA_INSTALL_TEST_FAIL_PHASE": "candidate-doctor-passed",
                 },
             )
 
             output = result.stdout + result.stderr
             self.assertNotEqual(result.returncode, 0, output)
-            self.assertNotIn("Open Nova 已更新完成", output)
-            self.assertNotIn("Open Nova is up to date", output)
+            self.assertNotIn("Actanara 已更新完成", output)
+            self.assertNotIn("Actanara is up to date", output)
             journals = self._journal_paths(fixture)
             self.assertEqual(len(journals), 1, journals)
             state = json.loads(journals[0].read_text(encoding="utf-8"))
@@ -1682,10 +1682,10 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                 import data_foundation.db as db
                 from data_foundation.paths import runtime_paths_for_home
 
-                prior_root = Path(os.environ["NOVA_PRIOR_SOURCE_ROOT"]).resolve()
+                prior_root = Path(os.environ["ACTANARA_PRIOR_SOURCE_ROOT"]).resolve()
                 module_path = Path(db.__file__).resolve()
                 module_path.relative_to(prior_root)
-                paths = runtime_paths_for_home(Path(os.environ["NOVA_HOME"]))
+                paths = runtime_paths_for_home(Path(os.environ["ACTANARA_HOME"]))
                 with db.connect(paths, read_only=True) as connection:
                     before = [row[0] for row in connection.execute(
                         "SELECT value FROM evidence ORDER BY id"
@@ -1714,7 +1714,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
             prior_env.update(
                 {
                     "PYTHONPATH": str(old_source / "src"),
-                    "NOVA_PRIOR_SOURCE_ROOT": str(old_source / "src"),
+                    "ACTANARA_PRIOR_SOURCE_ROOT": str(old_source / "src"),
                     "PYTHONDONTWRITEBYTECODE": "1",
                 }
             )
@@ -1753,7 +1753,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
             result = self._run_update(
                 fixture,
                 env_overrides={
-                    "NOVA_INSTALL_TEST_KILL_PHASE": "candidate-command-released",
+                    "ACTANARA_INSTALL_TEST_KILL_PHASE": "candidate-command-released",
                 },
             )
             self._assert_failure_then_recovery(
@@ -1778,7 +1778,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                 shutil.copytree(ROOT / name, old_source / name, dirs_exist_ok=True, symlinks=True)
             for name in ("config.py", "LICENSE", "MANIFEST.in", "pyproject.toml"):
                 shutil.copy2(ROOT / name, old_source / name)
-            egg_info = old_source / "src" / "open_nova.egg-info"
+            egg_info = old_source / "src" / "actanara.egg-info"
             egg_info.mkdir(exist_ok=True)
             marker = egg_info / "SESSION_D_ACTIVE_SOURCE_MARKER"
             marker.write_text("must-survive\n", encoding="utf-8")
@@ -1852,8 +1852,8 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                     result = self._run_update(
                         fixture,
                         env_overrides={
-                            "NOVA_TEST_BOOTSTRAP_FAIL_ONCE_LABEL": fixture["labels"][failed_kind],
-                            "NOVA_TEST_BOOTSTRAP_FAIL_ONCE_MARKER": str(fail_marker),
+                            "ACTANARA_TEST_BOOTSTRAP_FAIL_ONCE_LABEL": fixture["labels"][failed_kind],
+                            "ACTANARA_TEST_BOOTSTRAP_FAIL_ONCE_MARKER": str(fail_marker),
                         },
                     )
                     self.assertTrue(fail_marker.is_file())

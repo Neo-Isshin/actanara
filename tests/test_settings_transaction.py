@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "src" / "dashboard"))
-os.environ["OPEN_NOVA_SECRET_BACKEND"] = "memory"
+os.environ["ACTANARA_SECRET_BACKEND"] = "memory"
 
 from data_foundation.paths import initialize_home, runtime_paths_for_home
 from data_foundation.secret_store import read_secret
@@ -36,7 +36,7 @@ class SyntheticSettingsCrash(BaseException):
 
 class SettingsTransactionTests(unittest.TestCase):
     def _runtime(self, root: Path):
-        paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+        paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
         ensure_settings(paths)
         return paths
 
@@ -50,7 +50,7 @@ class SettingsTransactionTests(unittest.TestCase):
         path = paths.state_dir / "settings-transactions" / transaction_id / "journal.json"
         return json.loads(path.read_text(encoding="utf-8"))
 
-    def test_runtime_file_transaction_uses_explicit_runtime_not_active_nova_home(self):
+    def test_runtime_file_transaction_uses_explicit_runtime_not_active_actanara_home(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             active_paths = self._runtime(root / "active")
@@ -59,8 +59,8 @@ class SettingsTransactionTests(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "OPEN_NOVA_SECRET_BACKEND": "runtime-file",
-                    "NOVA_HOME": str(active_paths.home),
+                    "ACTANARA_SECRET_BACKEND": "runtime-file",
+                    "ACTANARA_HOME": str(active_paths.home),
                 },
             ):
                 saved = write_operator_settings_bundle(
@@ -115,7 +115,7 @@ class SettingsTransactionTests(unittest.TestCase):
         value_after = "SYNTHETIC_NEW_VALUE"
         with tempfile.TemporaryDirectory() as tmp:
             paths = self._runtime(Path(tmp))
-            with patch.dict(os.environ, {"OPEN_NOVA_SECRET_BACKEND": "memory"}):
+            with patch.dict(os.environ, {"ACTANARA_SECRET_BACKEND": "memory"}):
                 write_llm_provider(
                     {
                         "mode": "preset",
@@ -169,7 +169,7 @@ class SettingsTransactionTests(unittest.TestCase):
         value_after = "SYNTHETIC_COMMITTED_VALUE"
         with tempfile.TemporaryDirectory() as tmp:
             paths = self._runtime(Path(tmp))
-            with patch.dict(os.environ, {"OPEN_NOVA_SECRET_BACKEND": "memory"}):
+            with patch.dict(os.environ, {"ACTANARA_SECRET_BACKEND": "memory"}):
                 write_llm_provider(
                     {
                         "mode": "preset",
@@ -362,8 +362,8 @@ from data_foundation.paths import runtime_paths_for_home
 from data_foundation.settings import write_operator_settings_bundle
 from data_foundation import settings_transaction
 
-paths = runtime_paths_for_home(Path(os.environ["NOVA_HOME"]))
-phase_to_kill = os.environ["OPEN_NOVA_TEST_SETTINGS_KILL_PHASE"]
+paths = runtime_paths_for_home(Path(os.environ["ACTANARA_HOME"]))
+phase_to_kill = os.environ["ACTANARA_TEST_SETTINGS_KILL_PHASE"]
 def checkpoint(phase, transaction_id):
     if phase == phase_to_kill:
         os.kill(os.getpid(), 9)
@@ -372,7 +372,7 @@ with patch.object(settings_transaction, "settings_transaction_checkpoint", side_
         {
             "settings": {
                 "schedule": {"dailyPipelineTime": "05:50"},
-                "paths": {"runtime": {"database": os.environ["OPEN_NOVA_TEST_DATABASE"]}},
+                "paths": {"runtime": {"database": os.environ["ACTANARA_TEST_DATABASE"]}},
             }
         },
         paths,
@@ -381,10 +381,10 @@ with patch.object(settings_transaction, "settings_transaction_checkpoint", side_
                 env = dict(os.environ)
                 env.update(
                     {
-                        "NOVA_HOME": str(paths.home),
-                        "OPEN_NOVA_SECRET_BACKEND": "memory",
-                        "OPEN_NOVA_TEST_SETTINGS_KILL_PHASE": crash_phase,
-                        "OPEN_NOVA_TEST_DATABASE": str(root / "sigkill" / "nova.sqlite3"),
+                        "ACTANARA_HOME": str(paths.home),
+                        "ACTANARA_SECRET_BACKEND": "memory",
+                        "ACTANARA_TEST_SETTINGS_KILL_PHASE": crash_phase,
+                        "ACTANARA_TEST_DATABASE": str(root / "sigkill" / "nova.sqlite3"),
                         "PYTHONPATH": os.pathsep.join((str(ROOT / "src"), str(ROOT))),
                     }
                 )
@@ -415,7 +415,7 @@ from data_foundation.paths import runtime_paths_for_home
 from data_foundation.settings import write_operator_settings_bundle
 from data_foundation import settings_transaction
 
-paths = runtime_paths_for_home(Path(os.environ["NOVA_HOME"]))
+paths = runtime_paths_for_home(Path(os.environ["ACTANARA_HOME"]))
 def checkpoint(phase, transaction_id):
     if phase == "after-finalize":
         os.kill(os.getpid(), 9)
@@ -428,8 +428,8 @@ with patch.object(settings_transaction, "settings_transaction_checkpoint", side_
             env = dict(os.environ)
             env.update(
                 {
-                    "NOVA_HOME": str(paths.home),
-                    "OPEN_NOVA_SECRET_BACKEND": "memory",
+                    "ACTANARA_HOME": str(paths.home),
+                    "ACTANARA_SECRET_BACKEND": "memory",
                     "PYTHONPATH": os.pathsep.join((str(ROOT / "src"), str(ROOT))),
                 }
             )
@@ -687,7 +687,7 @@ with patch.object(settings_transaction, "settings_transaction_checkpoint", side_
 
         with tempfile.TemporaryDirectory() as tmp:
             paths = self._runtime(Path(tmp))
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 success = asyncio.run(
                     settings_router.api_update_settings(
                         {"schedule": {"dailyPipelineTime": "09:10"}}

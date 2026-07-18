@@ -27,7 +27,7 @@ class PublicSourceBoundaryTests(unittest.TestCase):
             "tests/run_keychain_live_matrix.py",
             "tests/test_keychain_live_harness.py",
             "tests/test_phase6_release_gates.py",
-            "tests/test_open_nova_system_dry_run_smoke.py",
+            "tests/test_actanara_system_dry_run_smoke.py",
             "tests/test_foundation_source_switching.py",
             "tests/fixtures/onboarding/product-v2-one-liner-dry-run-schema.json",
         ):
@@ -63,14 +63,14 @@ class PublicSourceBoundaryTests(unittest.TestCase):
         self.assertEqual(
             actual,
             {
-                "advanced/cli/nova_diary.py",
-                "advanced/cli/open_nova.py",
+                "advanced/cli/actanara_diary.py",
+                "advanced/cli/actanara.py",
                 "advanced/dashboard/dashboard_launch_agent.py",
                 "advanced/dashboard/rag_server_launch_agent.py",
                 "advanced/dashboard/run_dashboard_server.sh",
                 "advanced/pipeline/run_daily_pipeline.py",
                 "advanced/pipeline/run_dashboard_foundation_refresh.py",
-                "advanced/pipeline/run_nova_settings_status.py",
+                "advanced/pipeline/run_actanara_settings_status.py",
                 "advanced/pipeline/run_nova_task_work_graph_reconciliation.py",
             },
         )

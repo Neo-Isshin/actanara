@@ -64,10 +64,10 @@ def _parser(pass_name: str) -> argparse.ArgumentParser:
 def main(pass_name: str, argv: list[str] | None = None) -> int:
     args = _parser(pass_name).parse_args(sys.argv[1:] if argv is None else argv)
     env = {
-        "NOVA_PIPELINE_LANGUAGE_PROFILE": "en",
-        "NOVA_DIARY_SCHEMA_VERSION": "diary-v1-en",
-        "NOVA_PROMPT_PAYLOAD_PROFILE": "en-US",
-        "NOVA_DISPLAY_LOCALE": "en-US",
+        "ACTANARA_PIPELINE_LANGUAGE_PROFILE": "en",
+        "ACTANARA_DIARY_SCHEMA_VERSION": "diary-v1-en",
+        "ACTANARA_PROMPT_PAYLOAD_PROFILE": "en-US",
+        "ACTANARA_DISPLAY_LOCALE": "en-US",
         "NOVA_RAG_LANGUAGE_PROFILE": "en",
     }
     env.update(os.environ)

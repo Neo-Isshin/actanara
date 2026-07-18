@@ -137,7 +137,7 @@ class DashboardNovaTaskReviewTests(unittest.TestCase):
 
     def test_review_service_exposes_candidate_and_anchor_display_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             create_task_candidate(
                 paths,
                 candidate_type="parent_task",
@@ -179,7 +179,7 @@ class DashboardNovaTaskReviewTests(unittest.TestCase):
 
     def test_review_service_rejects_non_l1_candidate_decisions(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             candidate = create_task_candidate(
                 paths,
                 candidate_type="subtask",
@@ -194,7 +194,7 @@ class DashboardNovaTaskReviewTests(unittest.TestCase):
 
     def test_review_service_exposes_recent_direct_writes(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             create_task_node(paths, node_id="NT-ROOT", title="Root", node_type="track", actor="operator")
             create_task_node(
                 paths,

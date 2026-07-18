@@ -35,7 +35,7 @@ class ReleaseTestHarnessTests(unittest.TestCase):
     def test_release_runner_isolates_runtime_clock_secret_store_and_launchctl(self):
         runner = (ROOT / "tests" / "run_isolated_release_suite.py").read_text(encoding="utf-8")
 
-        self.assertIn('TemporaryDirectory(prefix="open-nova-release-venv-")', runner)
+        self.assertIn('TemporaryDirectory(prefix="actanara-release-venv-")', runner)
         self.assertIn('build_source = root / "source"', runner)
         for filename in (
             "pyproject.toml",
@@ -53,12 +53,12 @@ class ReleaseTestHarnessTests(unittest.TestCase):
         self.assertIn('"PIP_CONFIG_FILE": os.devnull', runner)
         self.assertIn('"PYTHONNOUSERSITE": "1"', runner)
         self.assertIn('for name in INHERITED_RUNTIME_ENV', runner)
-        self.assertIn('TemporaryDirectory(prefix="open-nova-release-runtime-")', runner)
-        self.assertIn('"NOVA_HOME": str(nova_home)', runner)
-        self.assertIn('"NOVA_LOCATION_FILE": str(location_file)', runner)
-        self.assertIn('"OPEN_NOVA_SECRET_BACKEND": "memory"', runner)
-        self.assertIn('"OPEN_NOVA_RUN_REAL_LAUNCHD_TESTS": "0"', runner)
-        self.assertIn('"NOVA_INSTALL_LAUNCHCTL": str(fake_bin / "launchctl")', runner)
+        self.assertIn('TemporaryDirectory(prefix="actanara-release-runtime-")', runner)
+        self.assertIn('"ACTANARA_HOME": str(actanara_home)', runner)
+        self.assertIn('"ACTANARA_LOCATION_FILE": str(location_file)', runner)
+        self.assertIn('"ACTANARA_SECRET_BACKEND": "memory"', runner)
+        self.assertIn('"ACTANARA_RUN_REAL_LAUNCHD_TESTS": "0"', runner)
+        self.assertIn('"ACTANARA_INSTALL_LAUNCHCTL": str(fake_bin / "launchctl")', runner)
         self.assertIn('"TARGET_TIMEZONE"', runner)
         self.assertIn('patch.object(nova_time, "business_now"', runner)
         self.assertIn('patch.object(dashboard_tz, "hkt_now"', runner)

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable public changes to Open Nova are documented here.
+All notable public changes to Actanara are documented here.
 
 ## Unreleased
 
@@ -33,14 +33,14 @@ All notable public changes to Open Nova are documented here.
 - Preserve Settings-selected RAG profiles and marker-selected operational
   profiles across updates, including compatibility with v1.0.1 update flags.
 - Treat the active source manifest as the Runtime product-version authority;
-  stale `open_nova-*.dist-info` in a reused venv is not refreshed in place.
+  stale `actanara-*.dist-info` in a reused venv is not refreshed in place.
 - Publish the real Dashboard static demo and refreshed bilingual product and
   operations documentation.
 
 ### Fixed
 
 - Keep Dashboard transport connectivity separate from source-health status,
-  restore canonical Open Nova titles, and harden session and token discovery.
+  restore canonical Actanara titles, and harden session and token discovery.
 
 ### Security and release integrity
 
@@ -84,7 +84,7 @@ managed background services executing an older concrete source directory.
 
 ### Added
 
-- Initial public source release of the Open Nova local AI operations runtime.
+- Initial public source release of the Actanara local AI operations runtime.
 - Guided macOS installation, local Runtime management, guarded updates, and
   operational diagnostics.
 - Foundation, Dashboard, Nova-Task, and optional nova-RAG product surfaces.
@@ -101,6 +101,6 @@ managed background services executing an older concrete source directory.
 - Runtime secrets remain in the Runtime-local private secret store and are
   excluded from source and release artifacts.
 
-[1.0.2]: https://github.com/Neo-Isshin/open-nova/releases/tag/v1.0.2
-[1.0.1]: https://github.com/Neo-Isshin/open-nova/releases/tag/v1.0.1
-[1.0.0]: https://github.com/Neo-Isshin/open-nova/releases/tag/v1.0.0
+[1.0.2]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.0.2
+[1.0.1]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.0.1
+[1.0.0]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.0.0

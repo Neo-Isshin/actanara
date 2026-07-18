@@ -60,12 +60,12 @@ class ProjectionRefreshTests(unittest.TestCase):
             root = Path(tmp)
             diary_root = root / "ConfiguredDiary"
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=root / "LegacyDiary").home,
+                initialize_home(root / "Actanara", legacy_diary_root=root / "LegacyDiary").home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=root / "LegacyDiary",
             )
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 selected = dashboard_foundation._dashboard_write_paths()
 
         self.assertEqual(selected.diary_dir.resolve(), diary_root.resolve())
@@ -98,7 +98,7 @@ class ProjectionRefreshTests(unittest.TestCase):
                 "# learning\n\n## Old learning\nretained learning\n",
                 encoding="utf-8",
             )
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
             migrate(paths)
             stale_run = begin_ingestion_run(
                 paths,
@@ -166,7 +166,7 @@ No activity today.
             (day / "technical-260620.md").write_text("# technical\n", encoding="utf-8")
             (day / "learning-260620.md").write_text("# learning\n", encoding="utf-8")
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -216,7 +216,7 @@ No activity today.
             (day / "learning-260620.md").write_text("# English learning\n", encoding="utf-8")
             (day / "日记-260621.md").write_text("# Chinese diary\n", encoding="utf-8")
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -244,7 +244,7 @@ No activity today.
             (day / "技术进展-260620.md").write_text("# existing technical\n", encoding="utf-8")
             (day / "智慧沉淀-260620.md").write_text("# existing learning\n", encoding="utf-8")
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -267,7 +267,7 @@ No activity today.
     def test_daily_completeness_marks_blank_day_nova_task_not_required(self):
         for nova_task_enabled in (True, False):
             with self.subTest(nova_task_enabled=nova_task_enabled), tempfile.TemporaryDirectory() as tmp:
-                paths = initialize_home(Path(tmp) / "NovaDiary")
+                paths = initialize_home(Path(tmp) / "Actanara")
                 write_settings(
                     {
                         "features": {"novaTask": nova_task_enabled, "rag": False},
@@ -304,7 +304,7 @@ No activity today.
             (day_dir / "技术进展-260620.md").write_text("# technical\n", encoding="utf-8")
             (day_dir / "智慧沉淀-260620.md").write_text("# learning\n", encoding="utf-8")
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -404,7 +404,7 @@ No activity today.
     def test_daily_completeness_accepts_applied_nova_task_work_graph_without_events(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary")
+            paths = initialize_home(root / "Actanara")
             migrate(paths)
             day = date(2026, 6, 20)
             recon_dir = paths.state_dir / "nova-task" / "work-graph"
@@ -439,7 +439,7 @@ No activity today.
     def test_daily_completeness_rejects_stale_nova_task_export(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary")
+            paths = initialize_home(root / "Actanara")
             migrate(paths)
             day = date(2026, 6, 20)
             with connect(paths) as connection:
@@ -498,7 +498,7 @@ No activity today.
             day.mkdir(parents=True)
             (day / "日记-260620.md").write_text("# Narrative only\n", encoding="utf-8")
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -527,7 +527,7 @@ No activity today.
             technical.write_text("# technical\n", encoding="utf-8")
             learning.write_text("# learning\n", encoding="utf-8")
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -559,7 +559,7 @@ No activity today.
             day.mkdir(parents=True)
             (day / "日记-260619-no-activity.md").write_text("# No activity\n", encoding="utf-8")
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -588,7 +588,7 @@ No activity today.
             (day / "技术进展-260620.md").write_text("# Chinese technical\n", encoding="utf-8")
             (day / "智慧沉淀-260620.md").write_text("# Chinese learning\n", encoding="utf-8")
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -631,7 +631,7 @@ No activity today.
 """,
                 encoding="utf-8",
             )
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
             result = run_pipeline_daily_materialization(
                 paths,
                 date(2026, 5, 19),
@@ -681,7 +681,7 @@ No activity today.
 
     def test_completed_summary_targets_skip_existing_summaries(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             migrate(paths)
             write_period_projection(
                 paths,
@@ -729,7 +729,7 @@ No activity today.
             month_dir = diary_root / "diary-2026" / "diary-2026-05"
             month_dir.mkdir(parents=True, exist_ok=True)
             (month_dir / "summary-2026-W19-周报.md").write_text("# existing week\n", encoding="utf-8")
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
             periods = [
                 {"kind": "week", "start": "2026-05-04", "end": "2026-05-10", "label": "2026-W19"},
                 {"kind": "month", "start": "2026-05-01", "end": "2026-05-31", "label": "2026-05"},
@@ -755,7 +755,7 @@ No activity today.
 
     def test_history_backfill_reuses_ready_periods_and_records_progress(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             migrate(paths)
             source_run_id = begin_ingestion_run(paths, trigger_type="test", business_date=date(2026, 4, 30), status="completed")
             write_period_projection(
@@ -820,7 +820,7 @@ No activity today.
             (day / "日记-260401.md").write_text("# 2026年04月01日 日记\n", encoding="utf-8")
             (day / "技术进展-260401.md").write_text("# technical\n", encoding="utf-8")
             (day / "智慧沉淀-260401.md").write_text("# learning\n", encoding="utf-8")
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
             periods = [{"kind": "week", "start": "2026-04-01", "end": "2026-04-02", "label": "2026-W14"}]
             plan = plan_history_backfill(
                 date(2026, 4, 1),
@@ -852,7 +852,7 @@ No activity today.
 
     def test_history_backfill_day_periods_do_not_create_period_projections_or_summaries(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             migrate(paths)
             periods = [{"kind": "day", "start": "2026-04-01", "end": "2026-04-01", "label": "diary-04-01"}]
             plan = plan_history_backfill(
@@ -888,7 +888,7 @@ No activity today.
 
     def test_history_backfill_requires_pipeline_ready_llm_provider_when_llm_calls_are_planned(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             periods = [{"kind": "week", "start": "2026-04-01", "end": "2026-04-01", "label": "2026-W14"}]
 
             with self.assertRaisesRegex(ValueError, "LLM provider is not ready"):
@@ -902,9 +902,9 @@ No activity today.
 
     def test_history_backfill_rejects_memory_secret_when_llm_calls_are_planned(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             periods = [{"kind": "week", "start": "2026-04-01", "end": "2026-04-01", "label": "2026-W14"}]
-            with patch.dict(os.environ, {"OPEN_NOVA_SECRET_BACKEND": "memory"}):
+            with patch.dict(os.environ, {"ACTANARA_SECRET_BACKEND": "memory"}):
                 write_llm_provider(
                     {
                         "provider": "openai-compatible",
@@ -926,7 +926,7 @@ No activity today.
 
     def test_history_backfill_allows_blank_day_materialization_without_llm_readiness(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             periods = [{"kind": "day", "start": "2026-04-01", "end": "2026-04-01", "label": "2026-04-01"}]
 
             with patch(
@@ -954,7 +954,7 @@ No activity today.
 
     def test_dashboard_history_backfill_request_requires_llm_readiness(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             periods = [{"kind": "week", "start": "2026-04-01", "end": "2026-04-01", "label": "2026-W14"}]
             with (
                 patch.object(dashboard_foundation, "_dashboard_write_paths", return_value=paths),
@@ -974,13 +974,13 @@ No activity today.
 
     def test_dashboard_provider_save_is_visible_to_history_backfill_queue(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             periods = [{"kind": "day", "start": "2026-04-01", "end": "2026-04-01", "label": "2026-04-01"}]
             with patch.dict(
                 os.environ,
                 {
-                    "NOVA_HOME": str(paths.home),
-                    "OPEN_NOVA_DASHBOARD_LLM_KEY": "secret",
+                    "ACTANARA_HOME": str(paths.home),
+                    "ACTANARA_DASHBOARD_LLM_KEY": "secret",
                 },
             ):
                 dashboard_settings.update_llm_provider(
@@ -988,7 +988,7 @@ No activity today.
                         "provider": "openai-compatible",
                         "endpoint": "https://llm.local",
                         "model": "m1",
-                        "apiKeyEnv": "OPEN_NOVA_DASHBOARD_LLM_KEY",
+                        "apiKeyEnv": "ACTANARA_DASHBOARD_LLM_KEY",
                     }
                 )
                 run_id = dashboard_foundation.queue_history_backfill_request(
@@ -1012,7 +1012,7 @@ No activity today.
             (day / "技术进展-260401.md").write_text("# technical\n", encoding="utf-8")
             (day / "智慧沉淀-260401.md").write_text("# learning\n", encoding="utf-8")
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -1043,7 +1043,7 @@ No activity today.
             (day / "技术进展-260401.md").write_text("# technical\n", encoding="utf-8")
             (day / "智慧沉淀-260401.md").write_text("# learning\n", encoding="utf-8")
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -1086,7 +1086,7 @@ No activity today.
             (day / "技术进展-260401.md").write_text("# technical\n", encoding="utf-8")
             (day / "智慧沉淀-260401.md").write_text("# learning\n", encoding="utf-8")
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -1123,7 +1123,7 @@ No activity today.
     def test_history_backfill_reuses_existing_foundation_inputs_for_missing_daily_reports(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             periods = [{"kind": "week", "start": "2026-04-01", "end": "2026-04-01", "label": "2026-W14"}]
             run_id = queue_history_backfill(
                 paths,
@@ -1162,7 +1162,7 @@ No activity today.
             day.mkdir(parents=True)
             (day / "日记-260401.md").write_text("# Narrative only\n", encoding="utf-8")
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -1192,7 +1192,7 @@ No activity today.
 
     def test_history_backfill_queue_allows_only_one_active_run(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             periods = [{"kind": "week", "start": "2026-04-01", "end": "2026-04-02", "label": "2026-W14"}]
 
             first_id = queue_history_backfill(paths, date(2026, 4, 1), date(2026, 4, 2), periods=periods)
@@ -1204,7 +1204,7 @@ No activity today.
 
     def test_history_backfill_active_check_reconciles_orphaned_daily_worker(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             migrate(paths)
             orphan_id = begin_ingestion_run(
                 paths,
@@ -1244,7 +1244,7 @@ No activity today.
 
     def test_recent_history_jobs_reconcile_orphaned_daily_worker(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             migrate(paths)
             run_id = begin_ingestion_run(
                 paths,
@@ -1274,7 +1274,7 @@ No activity today.
 
     def test_history_backfill_active_check_reconciles_stale_queued_run(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             migrate(paths)
             stale_id = begin_ingestion_run(
                 paths,
@@ -1311,7 +1311,7 @@ No activity today.
 
     def test_history_backfill_cancel_queued_run_unblocks_new_run(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             periods = [{"kind": "week", "start": "2026-04-01", "end": "2026-04-02", "label": "2026-W14"}]
             run_id = queue_history_backfill(paths, date(2026, 4, 1), date(2026, 4, 2), periods=periods)
 
@@ -1324,7 +1324,7 @@ No activity today.
 
     def test_history_backfill_cancelled_queued_run_is_not_revived_by_late_background_callback(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             periods = [{"kind": "week", "start": "2026-04-01", "end": "2026-04-02", "label": "2026-W14"}]
             run_id = queue_history_backfill(paths, date(2026, 4, 1), date(2026, 4, 2), periods=periods)
             cancel_history_backfill(paths, run_id)
@@ -1344,7 +1344,7 @@ No activity today.
 
     def test_history_backfill_running_cancel_stops_after_current_daily_step(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             periods = [{"kind": "week", "start": "2026-04-01", "end": "2026-04-03", "label": "2026-W14"}]
             run_id = queue_history_backfill(paths, date(2026, 4, 1), date(2026, 4, 3), periods=periods)
             called = []
@@ -1373,7 +1373,7 @@ No activity today.
 
     def test_history_daily_nova_task_action_runs_materializer_and_propagates_failure(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
 
             for materialized, expected_success in ((True, True), (False, False)):
                 with self.subTest(materialized=materialized):
@@ -1391,7 +1391,7 @@ No activity today.
 
     def test_history_daily_combined_materialization_and_nova_task_actions_run_both(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
 
             with (
                 patch("data_foundation.pipeline.materialize_pipeline_foundation_outputs", return_value=True) as foundation,
@@ -1418,7 +1418,7 @@ No activity today.
             (day / "日记-260430.md").write_text("# 2026年04月30日 日记\n", encoding="utf-8")
             (day / "技术进展-260430.md").write_text("# technical\n", encoding="utf-8")
             (day / "智慧沉淀-260430.md").write_text("# learning\n", encoding="utf-8")
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
             due_id = queue_history_backfill(
                 paths,
                 date(2026, 4, 30),
@@ -1442,7 +1442,7 @@ No activity today.
 
     def test_scheduled_history_backfill_naive_time_uses_runtime_timezone(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings({"general": {"timezone": "America/Los_Angeles"}}, paths)
             run_id = queue_history_backfill(
                 paths,
@@ -1460,7 +1460,7 @@ No activity today.
 
     def test_history_backfill_retry_failed_periods_queues_only_failures(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             run_id = queue_history_backfill(
                 paths,
                 date(2026, 4, 1),
@@ -1497,7 +1497,7 @@ No activity today.
 
     def test_history_backfill_retry_preserves_overwrite_daily_confirmation(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             run_id = queue_history_backfill(
                 paths,
                 date(2026, 4, 1),
@@ -1524,7 +1524,7 @@ No activity today.
 
     def test_history_backfill_daily_failure_retry_is_snapshot_frozen_to_failed_day(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             periods = [{"kind": "week", "start": "2026-04-01", "end": "2026-04-02", "label": "2026-W14"}]
             run_id = queue_history_backfill(paths, date(2026, 4, 1), date(2026, 4, 2), periods=periods)
 
@@ -1565,7 +1565,7 @@ No activity today.
 
     def test_history_backfill_refreshes_ai_assets_snapshot_when_daily_pipeline_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             periods = [{"kind": "week", "start": "2026-04-01", "end": "2026-04-01", "label": "2026-W14"}]
             run_id = queue_history_backfill(paths, date(2026, 4, 1), date(2026, 4, 1), periods=periods)
 
@@ -1596,7 +1596,7 @@ No activity today.
 
     def test_history_backfill_snapshot_only_failure_is_failed_and_retries_only_snapshot(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             run_id = queue_history_backfill(
                 paths,
                 date(2026, 4, 1),
@@ -1651,7 +1651,7 @@ No activity today.
 
     def test_history_backfill_zero_commits_with_daily_and_snapshot_failures_is_failed(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             periods = [{"kind": "day", "start": "2026-04-01", "end": "2026-04-01", "label": "2026-04-01"}]
             run_id = queue_history_backfill(paths, date(2026, 4, 1), date(2026, 4, 1), periods=periods)
 
@@ -1680,7 +1680,7 @@ No activity today.
 
     def test_history_backfill_cancel_during_claimed_final_period_wins_terminal_race(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             periods = [{"kind": "week", "start": "2026-04-01", "end": "2026-04-01", "label": "2026-W14"}]
             run_id = queue_history_backfill(paths, date(2026, 4, 1), date(2026, 4, 1), periods=periods)
             entered = threading.Event()
@@ -1732,7 +1732,7 @@ No activity today.
     def test_history_backfill_snapshot_and_period_orphans_unblock_queue(self):
         for stage_kind in ("snapshot", "period"):
             with self.subTest(stage_kind=stage_kind), tempfile.TemporaryDirectory() as tmp:
-                paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+                paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
                 periods = [{"kind": "week", "start": "2026-04-01", "end": "2026-04-01", "label": "2026-W14"}]
                 run_id = queue_history_backfill(paths, date(2026, 4, 1), date(2026, 4, 1), periods=periods)
                 run = projection_refresh_status(paths, run_id)
@@ -1766,7 +1766,7 @@ No activity today.
 
     def test_history_backfill_legacy_failed_ledger_retry_is_read_only_compatible(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             migrate(paths)
             period = {"kind": "week", "start": "2026-04-01", "end": "2026-04-02", "label": "2026-W14"}
             source_id = begin_ingestion_run(
@@ -1822,7 +1822,7 @@ Generated before asset projection failed.
                 encoding="utf-8",
             )
             paths = update_runtime_manifest_paths(
-                initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home,
+                initialize_home(root / "Actanara", legacy_diary_root=diary_root).home,
                 generated_diary_root=diary_root,
                 legacy_diary_root=diary_root,
             )
@@ -1914,7 +1914,7 @@ Generated before asset projection failed.
 """,
                 encoding="utf-8",
             )
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
             result = run_pipeline_daily_materialization(
                 paths,
                 date(2026, 5, 24),
@@ -1946,7 +1946,7 @@ Generated before asset projection failed.
             day = diary_root / "diary-2026-05-24"
             day.mkdir(parents=True)
             (day / "日记-260524.md").write_text("# 2026年05月24日 日记\n", encoding="utf-8")
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
 
             def flaky_period_builder(selected_start, days):
                 if selected_start == date(2026, 4, 1):
@@ -1972,7 +1972,7 @@ Generated before asset projection failed.
             day = diary_root / "diary-2026-05-24"
             day.mkdir(parents=True)
             (day / "日记-260524.md").write_text("# 2026年05月24日 日记\n", encoding="utf-8")
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
 
             with patch("data_foundation.refresh.completed_period_summary_targets", side_effect=RuntimeError("target lookup failed")):
                 result = run_pipeline_daily_materialization(
@@ -1989,7 +1989,7 @@ Generated before asset projection failed.
 
     def test_queued_projection_refresh_materializes_both_models_and_completes(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             end = date(2026, 5, 19)
             start = date(2026, 5, 13)
             run_id = queue_projection_refresh(paths, end, period_start=start)
@@ -2012,7 +2012,7 @@ Generated before asset projection failed.
 
     def test_recent_refresh_jobs_exposes_period_scope_and_failure_reason(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             end = date(2026, 5, 19)
             start = date(2026, 5, 13)
             run_id = queue_projection_refresh(paths, end, period_start=start)
@@ -2048,7 +2048,7 @@ Generated before asset projection failed.
 """,
                 encoding="utf-8",
             )
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
             end = date(2026, 5, 19)
             start = date(2026, 5, 19)
             run_id = queue_period_summary_refresh(paths, end, period_start=start)
@@ -2064,7 +2064,7 @@ Generated before asset projection failed.
 
     def test_period_summary_refresh_reuses_ready_asset_and_page_projections(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             migrate(paths)
             start = end = date(2026, 5, 19)
             source_run_id = begin_ingestion_run(paths, trigger_type="test", business_date=end, status="completed")
@@ -2113,7 +2113,7 @@ Generated before asset projection failed.
 """,
                 encoding="utf-8",
             )
-            paths = update_runtime_manifest_paths(initialize_home(root / "NovaDiary", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
+            paths = update_runtime_manifest_paths(initialize_home(root / "Actanara", legacy_diary_root=diary_root).home, generated_diary_root=diary_root, legacy_diary_root=diary_root)
             migrate(paths)
             start = end = date(2026, 5, 19)
             source_run_id = begin_ingestion_run(paths, trigger_type="test", business_date=end, status="completed")
@@ -2140,8 +2140,8 @@ Generated before asset projection failed.
     def test_dashboard_refresh_initializes_default_runtime_with_diary_root(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            home = root / "NovaDiary"
-            with patch.dict(os.environ, {"NOVA_HOME": str(home)}):
+            home = root / "Actanara"
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(home)}):
                 run_id = dashboard_foundation.queue_period_summary(date(2026, 5, 19), period_start=date(2026, 5, 19))
             self.assertGreater(run_id, 0)
             self.assertTrue((home / "config" / "runtime.json").exists())
@@ -2150,7 +2150,7 @@ Generated before asset projection failed.
     def test_dashboard_refresh_job_list_reports_latest_and_failed(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             ok_id = queue_projection_refresh(paths, date(2026, 5, 19))
             run_projection_refresh(paths, ok_id, ai_assets_builder=lambda: {"tools": []})
             failed_id = queue_projection_refresh(paths, date(2026, 5, 20), period_start=date(2026, 5, 20))
@@ -2163,7 +2163,7 @@ Generated before asset projection failed.
                     ai_assets_builder=lambda: {"tools": []},
                     period_builder=lambda selected_start, days: (_ for _ in ()).throw(RuntimeError("planned failure")),
                 )
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 result = dashboard_foundation.list_refresh_jobs(limit=10)
             self.assertEqual(result["latest"]["id"], failed_id)
             self.assertEqual(result["latestFailed"]["id"], failed_id)
@@ -2171,7 +2171,7 @@ Generated before asset projection failed.
 
     def test_readiness_reports_materialized_non_rag_models_as_enableable(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             end = date(2026, 5, 19)
             start = date(2026, 5, 13)
             run_id = queue_projection_refresh(paths, end, period_start=start)
@@ -2193,7 +2193,7 @@ Generated before asset projection failed.
                 run_id,
                 builder=lambda: {"InProgress": 1, "Completed": 0},
             )
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 readiness = dashboard_foundation.get_reader_readiness(period_start=start, period_days=7)
             self.assertEqual(readiness["configuredSources"]["aiAssets"], "foundation")
             self.assertEqual(readiness["configuredSources"]["periodAssets"], "foundation")
@@ -2218,7 +2218,7 @@ Generated before asset projection failed.
 
     def test_readiness_blocks_diary_tasks_enablement_when_task_snapshot_is_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             end = date(2026, 5, 19)
             start = date(2026, 5, 13)
             run_id = queue_projection_refresh(paths, end, period_start=start)
@@ -2235,7 +2235,7 @@ Generated before asset projection failed.
                 },
             )
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 readiness = dashboard_foundation.get_reader_readiness(period_start=start, period_days=7)
 
             self.assertFalse(readiness["canEnable"]["diaryTasksSourceFoundation"])
@@ -2244,7 +2244,7 @@ Generated before asset projection failed.
 
     def test_readiness_blocks_period_enablement_when_memory_projection_is_old(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             end = date(2026, 5, 19)
             start = date(2026, 5, 13)
             run_id = queue_projection_refresh(paths, end, period_start=start)
@@ -2256,14 +2256,14 @@ Generated before asset projection failed.
                 ai_assets_builder=lambda: {"tools": []},
                 period_builder=lambda selected_start, days: {"models": []},
             )
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 readiness = dashboard_foundation.get_reader_readiness(period_start=start, period_days=7)
             self.assertFalse(readiness["canEnable"]["reportReadSourceFoundation"])
             self.assertEqual(readiness["periodAssets"]["status"], "memory_fields_missing")
 
     def test_readiness_blocks_period_enablement_when_page_projection_is_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             migrate(paths)
             start = date(2026, 5, 13)
             end = date(2026, 5, 19)
@@ -2278,7 +2278,7 @@ Generated before asset projection failed.
                 },
                 source_run_id=None,
             )
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 readiness = dashboard_foundation.get_reader_readiness(period_start=start, period_days=7)
             self.assertTrue(readiness["periodAssets"]["ready"])
             self.assertEqual(readiness["periodPage"]["status"], "missing")
@@ -2286,7 +2286,7 @@ Generated before asset projection failed.
 
     def test_readiness_reports_period_summary_without_blocking_report_reader(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             migrate(paths)
             start = date(2026, 5, 13)
             end = date(2026, 5, 19)
@@ -2317,7 +2317,7 @@ Generated before asset projection failed.
                 source_run_id=None,
                 projection_type=DIARY_PERIOD_SUMMARY_PROJECTION,
             )
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 readiness = dashboard_foundation.get_reader_readiness(period_start=start, period_days=7)
             self.assertTrue(readiness["canEnable"]["reportReadSourceFoundation"])
             self.assertTrue(readiness["periodSummary"]["ready"])

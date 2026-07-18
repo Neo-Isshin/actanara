@@ -1,4 +1,4 @@
-"""Small, stable helpers for Open Nova's human-readable CLI output."""
+"""Small, stable helpers for Actanara's human-readable CLI output."""
 
 from __future__ import annotations
 
@@ -87,7 +87,7 @@ def render_cli(
 ) -> str:
     """Render the shared title -> summary -> list -> next-step layout."""
 
-    lines = [f"Open Nova · {str(title).strip()}"]
+    lines = [f"Actanara · {str(title).strip()}"]
     visible_fields = [(str(label), _display(value)) for label, value in fields if value is not None]
     if visible_fields:
         width = max(len(label) for label, _value in visible_fields)
@@ -110,7 +110,7 @@ def render_cli(
     return "\n".join(lines) + "\n"
 
 
-def friendly_name(value: object, *, fallback: str = "Open Nova") -> str:
+def friendly_name(value: object, *, fallback: str = "Actanara") -> str:
     """Turn a stable machine name into a readable fallback label."""
 
     text = str(value or "").strip()

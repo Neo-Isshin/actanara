@@ -30,7 +30,7 @@ def _older_managed_content(tool: str) -> str:
         raise AssertionError("generated skill is missing its managed marker")
     previous_version = max(0, SKILL_TEMPLATE_VERSION - 1)
     replacement = (
-        f"<!-- open-nova-managed-skill id=open-nova-rag template-version={previous_version} "
+        f"<!-- actanara-managed-skill id=actanara-rag template-version={previous_version} "
         f"template-sha256={registration._MANAGED_DIGEST_PLACEHOLDER} -->"
     )
     canonical = current[: marker.start()] + replacement + current[marker.end() :]
@@ -42,7 +42,7 @@ class ExternalRagSkillRegistrationTests(unittest.TestCase):
     def test_dry_run_uses_configured_skill_root_without_writing(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             codex_skills = root / "codex-skills"
             write_settings({"externalTools": {"codex": {"skillsRoot": str(codex_skills)}}}, paths)
 
@@ -57,42 +57,42 @@ class ExternalRagSkillRegistrationTests(unittest.TestCase):
 
     def test_apply_requires_confirmation(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
-            with patch.dict("os.environ", {"NOVA_HOME": str(paths.home)}, clear=False):
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
+            with patch.dict("os.environ", {"ACTANARA_HOME": str(paths.home)}, clear=False):
                 with self.assertRaises(ValueError):
                     queue_rag_skill_registration({"tools": ["codex"], "dryRun": False, "confirmationText": "wrong"})
 
     def test_apply_installs_read_only_skill_and_records_job(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             codex_skills = root / "codex-skills"
             write_settings({"externalTools": {"codex": {"skillsRoot": str(codex_skills)}}}, paths)
 
-            with patch.dict("os.environ", {"NOVA_HOME": str(paths.home)}, clear=False):
+            with patch.dict("os.environ", {"ACTANARA_HOME": str(paths.home)}, clear=False):
                 result = queue_rag_skill_registration(
                     {"tools": ["codex"], "dryRun": False, "confirmationText": CONFIRMATION_TEXT}
                 )
 
-            skill = codex_skills / "open-nova-rag" / "SKILL.md"
+            skill = codex_skills / "actanara-rag" / "SKILL.md"
             self.assertEqual(result["status"], "completed")
             self.assertTrue(skill.exists())
             text = skill.read_text(encoding="utf-8")
-            self.assertIn("name: open-nova-rag", text)
-            self.assertIn("open-nova-managed-skill", text)
+            self.assertIn("name: actanara-rag", text)
+            self.assertIn("actanara-managed-skill", text)
             self.assertIn(f"template-version={SKILL_TEMPLATE_VERSION}", text)
             self.assertTrue(registration._managed_marker(text)["verified"])
             self.assertIn("auxiliary memory system", text)
             self.assertIn("current conversation, user-provided material, and local authoritative files", text)
             self.assertIn("host Agent Runtime's built-in or connected memory/history retrieval", text)
             self.assertIn("nova-RAG only when the preceding sources", text)
-            self.assertIn("Do not call nova-RAG merely because a question concerns Open Nova", text)
+            self.assertIn("Do not call nova-RAG merely because a question concerns Actanara", text)
             self.assertIn("If the user explicitly asks you to query nova-RAG", text)
             self.assertNotIn("Codex", text)
             self.assertIn("Recommended workflow", text)
             self.assertIn("If nova-RAG is needed", text)
-            self.assertIn('open-nova search "<query>" --top-k 8 --json', text)
-            self.assertIn("open-nova rag search-memory", text)
+            self.assertIn('actanara search "<query>" --top-k 8 --json', text)
+            self.assertIn("actanara rag search-memory", text)
             self.assertIn("GET /api/rag/external/contract", text)
             self.assertIn("POST /api/rag/external/search", text)
             self.assertIn("Never call mutation endpoints", text)
@@ -142,9 +142,9 @@ class ExternalRagSkillRegistrationTests(unittest.TestCase):
     def test_customized_existing_skill_is_preserved_and_reports_upgrade(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             codex_skills = root / "codex-skills"
-            existing = codex_skills / "open-nova-rag" / "SKILL.md"
+            existing = codex_skills / "actanara-rag" / "SKILL.md"
             existing.parent.mkdir(parents=True)
             existing.write_text("existing\n", encoding="utf-8")
             write_settings({"externalTools": {"codex": {"skillsRoot": str(codex_skills)}}}, paths)
@@ -158,7 +158,7 @@ class ExternalRagSkillRegistrationTests(unittest.TestCase):
             self.assertIn("customized", plan["warnings"][0])
             self.assertIn("upgrade is available", plan["warnings"][0])
 
-            with patch.dict("os.environ", {"NOVA_HOME": str(paths.home)}, clear=False):
+            with patch.dict("os.environ", {"ACTANARA_HOME": str(paths.home)}, clear=False):
                 result = queue_rag_skill_registration(
                     {"tools": ["codex"], "dryRun": False, "confirmationText": CONFIRMATION_TEXT}
                 )
@@ -169,9 +169,9 @@ class ExternalRagSkillRegistrationTests(unittest.TestCase):
     def test_unmodified_older_managed_skill_is_backed_up_and_upgraded(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             codex_skills = root / "codex-skills"
-            existing = codex_skills / "open-nova-rag" / "SKILL.md"
+            existing = codex_skills / "actanara-rag" / "SKILL.md"
             existing.parent.mkdir(parents=True)
             old_content = _older_managed_content("codex")
             existing.write_text(old_content, encoding="utf-8")
@@ -183,7 +183,7 @@ class ExternalRagSkillRegistrationTests(unittest.TestCase):
             self.assertEqual(plan["operations"][0]["installedTemplateVersion"], 0)
             self.assertEqual(len(plan["willWrite"]), 1)
 
-            with patch.dict("os.environ", {"NOVA_HOME": str(paths.home)}, clear=False):
+            with patch.dict("os.environ", {"ACTANARA_HOME": str(paths.home)}, clear=False):
                 result = queue_rag_skill_registration(
                     {"tools": ["codex"], "dryRun": False, "confirmationText": CONFIRMATION_TEXT}
                 )
@@ -200,15 +200,15 @@ class ExternalRagSkillRegistrationTests(unittest.TestCase):
     def test_modified_managed_skill_is_preserved(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             codex_skills = root / "codex-skills"
-            existing = codex_skills / "open-nova-rag" / "SKILL.md"
+            existing = codex_skills / "actanara-rag" / "SKILL.md"
             existing.parent.mkdir(parents=True)
             customized = registration._skill_content("codex") + "\n# My local instructions\n"
             existing.write_text(customized, encoding="utf-8")
             write_settings({"externalTools": {"codex": {"skillsRoot": str(codex_skills)}}}, paths)
 
-            with patch.dict("os.environ", {"NOVA_HOME": str(paths.home)}, clear=False):
+            with patch.dict("os.environ", {"ACTANARA_HOME": str(paths.home)}, clear=False):
                 result = queue_rag_skill_registration(
                     {"tools": ["codex"], "dryRun": False, "confirmationText": CONFIRMATION_TEXT}
                 )
@@ -220,9 +220,9 @@ class ExternalRagSkillRegistrationTests(unittest.TestCase):
     def test_stale_upgrade_plan_reclassifies_a_new_customization_before_write(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             codex_skills = root / "codex-skills"
-            existing = codex_skills / "open-nova-rag" / "SKILL.md"
+            existing = codex_skills / "actanara-rag" / "SKILL.md"
             existing.parent.mkdir(parents=True)
             existing.write_text(_older_managed_content("codex"), encoding="utf-8")
             write_settings({"externalTools": {"codex": {"skillsRoot": str(codex_skills)}}}, paths)
@@ -241,15 +241,15 @@ class ExternalRagSkillRegistrationTests(unittest.TestCase):
     def test_current_managed_skill_is_idempotent(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             codex_skills = root / "codex-skills"
-            existing = codex_skills / "open-nova-rag" / "SKILL.md"
+            existing = codex_skills / "actanara-rag" / "SKILL.md"
             existing.parent.mkdir(parents=True)
             expected = registration._skill_content("codex")
             existing.write_text(expected, encoding="utf-8")
             write_settings({"externalTools": {"codex": {"skillsRoot": str(codex_skills)}}}, paths)
 
-            with patch.dict("os.environ", {"NOVA_HOME": str(paths.home)}, clear=False):
+            with patch.dict("os.environ", {"ACTANARA_HOME": str(paths.home)}, clear=False):
                 result = queue_rag_skill_registration(
                     {"tools": ["codex"], "dryRun": False, "confirmationText": CONFIRMATION_TEXT}
                 )
@@ -261,14 +261,14 @@ class ExternalRagSkillRegistrationTests(unittest.TestCase):
     def test_overwrite_backs_up_existing_skill(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             codex_skills = root / "codex-skills"
-            existing = codex_skills / "open-nova-rag" / "SKILL.md"
+            existing = codex_skills / "actanara-rag" / "SKILL.md"
             existing.parent.mkdir(parents=True)
             existing.write_text("existing\n", encoding="utf-8")
             write_settings({"externalTools": {"codex": {"skillsRoot": str(codex_skills)}}}, paths)
 
-            with patch.dict("os.environ", {"NOVA_HOME": str(paths.home)}, clear=False):
+            with patch.dict("os.environ", {"ACTANARA_HOME": str(paths.home)}, clear=False):
                 result = queue_rag_skill_registration(
                     {
                         "tools": ["codex"],
@@ -286,13 +286,13 @@ class ExternalRagSkillRegistrationTests(unittest.TestCase):
 
     def test_rejects_non_catalog_registration_target(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             with self.assertRaises(ValueError):
                 plan_rag_skill_registration({"tools": ["codex"], "targets": {"codex": "configPath"}}, paths=paths)
 
     def test_job_listing_ignores_records_without_ids(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             jobs = paths.state_dir / "rag" / "external-skill-registration-jobs.jsonl"
             jobs.parent.mkdir(parents=True)
             jobs.write_text(
@@ -315,7 +315,7 @@ class ExternalRagSkillRegistrationTests(unittest.TestCase):
 
     def test_job_listing_returns_empty_when_jobs_path_is_not_readable_file(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             jobs = paths.state_dir / "rag" / "external-skill-registration-jobs.jsonl"
             jobs.mkdir(parents=True)
 

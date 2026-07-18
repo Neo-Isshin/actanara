@@ -16,7 +16,7 @@ from .business_day_audit import business_day_hardcode_inventory
 ROOT = Path(__file__).resolve().parents[2]
 MAX_TEXT_BYTES = 2 * 1024 * 1024
 DENY_PATH_RE = re.compile(
-    r"(^|/)(\.env|settings\.json|runtime\.json|nova_data\.sqlite3|nova_tasks\.db|.*\.(db|sqlite|sqlite3|log|pem|key))$"
+    r"(^|/)(\.env|settings\.json|runtime\.json|actanara_data\.sqlite3|nova_tasks\.db|.*\.(db|sqlite|sqlite3|log|pem|key))$"
     r"|(^|/)(logs?|cache|snapshots|state|runtime|backups?|__pycache__|test-results)(/|$)",
     re.IGNORECASE,
 )
@@ -301,7 +301,7 @@ def _secret_finding(path: Path, rel: str) -> dict[str, Any] | None:
 
 
 def _runtime_source_manifest_privacy_finding(path: Path, rel: str) -> dict[str, Any] | None:
-    if path.name != ".open-nova-runtime-source.json":
+    if path.name != ".actanara-runtime-source.json":
         return None
     try:
         manifest = json.loads(path.read_text(encoding="utf-8"))
@@ -324,7 +324,7 @@ def _runtime_source_manifest_privacy_finding(path: Path, rel: str) -> dict[str, 
             "kind": "invalid-source-manifest-shape",
             "severity": "blocker",
         }
-    if manifest.get("product") != "open-nova" or manifest.get("deploymentMode") != "release-symlink":
+    if manifest.get("product") != "actanara" or manifest.get("deploymentMode") != "release-symlink":
         return {"path": rel, "kind": "invalid-source-manifest-semantics", "severity": "blocker"}
     locator = manifest.get("sourceLocator")
     if not isinstance(locator, dict):

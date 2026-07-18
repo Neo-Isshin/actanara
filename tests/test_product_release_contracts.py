@@ -20,7 +20,7 @@ from data_foundation.settings import read_settings
 class ProductReleaseContractTests(unittest.TestCase):
     def test_checked_in_foundation_defaults_are_foundation_only(self):
         watched = (
-            "NOVA_DATA_FOUNDATION_ENABLED",
+            "ACTANARA_DATA_FOUNDATION_ENABLED",
             "DASHBOARD_READ_SOURCE",
             "REPORT_READ_SOURCE",
             "DIARY_METRICS_SOURCE",
@@ -32,7 +32,7 @@ class ProductReleaseContractTests(unittest.TestCase):
         try:
             with patch.dict(config.os.environ, {}, clear=True):
                 reloaded = importlib.reload(config)
-                self.assertTrue(reloaded.NOVA_DATA_FOUNDATION_ENABLED)
+                self.assertTrue(reloaded.ACTANARA_DATA_FOUNDATION_ENABLED)
                 self.assertEqual(reloaded.DASHBOARD_READ_SOURCE, "foundation")
                 self.assertEqual(reloaded.REPORT_READ_SOURCE, "foundation")
                 self.assertEqual(reloaded.DIARY_METRICS_SOURCE, "foundation")
@@ -62,7 +62,7 @@ class ProductReleaseContractTests(unittest.TestCase):
                 result = run_daily_pipeline(
                     date(2026, 5, 19),
                     paths=initialize_home(
-                        Path(tmp) / "NovaDiary",
+                        Path(tmp) / "Actanara",
                         legacy_diary_root=Path(tmp) / "Diary",
                     ),
                     steps=[PipelineStep("narrative", narrative, ("{date}",))],
@@ -80,7 +80,7 @@ class ProductReleaseContractTests(unittest.TestCase):
 
     def test_dashboard_readiness_reports_foundation_sources_and_rag_v2_boundary(self):
         with tempfile.TemporaryDirectory() as tmp:
-            with patch.dict(config.os.environ, {"NOVA_HOME": str(Path(tmp) / "NovaDiary")}):
+            with patch.dict(config.os.environ, {"ACTANARA_HOME": str(Path(tmp) / "Actanara")}):
                 readiness = dashboard_foundation.get_reader_readiness()
 
         self.assertEqual(
@@ -108,13 +108,13 @@ class ProductReleaseContractTests(unittest.TestCase):
     def test_current_diary_root_does_not_imply_legacy_root(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary")
-            with patch.dict(config.os.environ, {"NOVA_HOME": str(paths.home)}):
+            paths = initialize_home(root / "Actanara")
+            with patch.dict(config.os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 settings = read_settings(paths)
 
         self.assertEqual(
             paths.diary_dir.resolve(),
-            (root / "NovaDiary" / "artifacts" / "diary").resolve(),
+            (root / "Actanara" / "artifacts" / "diary").resolve(),
         )
         self.assertIsNone(paths.legacy_diary_root)
         self.assertEqual(settings["paths"]["diary"]["generatedDiary"], str(paths.diary_dir))
@@ -122,8 +122,8 @@ class ProductReleaseContractTests(unittest.TestCase):
 
     def test_default_nova_rag_is_v2_and_retired_sources_are_excluded(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
-            with patch.dict(config.os.environ, {"NOVA_HOME": str(paths.home)}):
+            paths = initialize_home(Path(tmp) / "Actanara")
+            with patch.dict(config.os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 settings = resolve_rag_settings()
 
         self.assertEqual(settings.mode, "v2")
@@ -131,7 +131,7 @@ class ProductReleaseContractTests(unittest.TestCase):
 
     def test_report_task_stats_use_nova_task_v2_sqlite_authority(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             migrate(paths)
             create_task_node(paths, node_id="NT-READY", title="Ready", actor="test")
             create_task_node(
@@ -141,7 +141,7 @@ class ProductReleaseContractTests(unittest.TestCase):
                 status="completed",
                 actor="test",
             )
-            with patch.dict(config.os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(config.os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 stats = dashboard_diary._task_stats_snapshot(source="foundation")
 
         self.assertEqual(stats["source"], "foundation")

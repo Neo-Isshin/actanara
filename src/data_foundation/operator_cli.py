@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Open Nova command line interface."""
+"""Actanara command line interface."""
 
 from __future__ import annotations
 
@@ -63,14 +63,14 @@ from data_foundation.onboarding_plan import (
     onboarding_subsystem_plan,
 )
 from data_foundation.onboarding_status import (
-    dump_nova_onboarding_status_json,
-    format_nova_onboarding_status,
-    nova_onboarding_status,
+    dump_actanara_onboarding_status_json,
+    format_actanara_onboarding_status,
+    actanara_onboarding_status,
 )
 from data_foundation.settings_status import (
-    dump_nova_settings_status_json,
-    format_nova_settings_status,
-    nova_settings_status,
+    dump_actanara_settings_status_json,
+    format_actanara_settings_status,
+    actanara_settings_status,
 )
 from data_foundation.settings import (
     OPERATOR_SETTINGS_WRITE_ALLOWED_TOP_LEVEL,
@@ -95,13 +95,13 @@ from agentic_rag.rag_settings import resolve_rag_settings
 from agentic_rag.rag_v2_sync import plan_v2_production_sync, sync_v2_production_index
 
 
-RAG_REBUILD_CONFIRMATION = "REBUILD AND PROMOTE OPEN NOVA RAG"
-RAG_UPDATE_CONFIRMATION = "UPDATE AND PROMOTE OPEN NOVA RAG"
-DIARY_METRICS_APPROVAL_CONFIRMATION = "APPROVE OPEN NOVA DIARY METRICS MISMATCH"
-DEFAULT_UPDATE_SOURCE_URL = "https://github.com/Neo-Isshin/open-nova.git"
+RAG_REBUILD_CONFIRMATION = "REBUILD AND PROMOTE ACTANARA RAG"
+RAG_UPDATE_CONFIRMATION = "UPDATE AND PROMOTE ACTANARA RAG"
+DIARY_METRICS_APPROVAL_CONFIRMATION = "APPROVE ACTANARA DIARY METRICS MISMATCH"
+DEFAULT_UPDATE_SOURCE_URL = "https://github.com/Neo-Isshin/actanara.git"
 UPDATE_FULL_COMMIT_RE = re.compile(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})\Z")
 LATEST_STABLE_RELEASE_POLICY = "resolve latest stable Release and pin the resolved commit"
-UPDATE_RESULT_PREFIX = "OPEN_NOVA_UPDATE_RESULT_JSON="
+UPDATE_RESULT_PREFIX = "ACTANARA_UPDATE_RESULT_JSON="
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -124,14 +124,14 @@ def _command_help(parser: argparse.ArgumentParser):
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="open-nova",
-        description="Create diaries, search your memory, and manage your local Open Nova setup.",
+        prog="actanara",
+        description="Create diaries, search your memory, and manage your local Actanara setup.",
         epilog=_product_help_groups(),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     subcommands = parser.add_subparsers(dest="command", title="Commands", metavar="COMMAND")
 
-    doctor = subcommands.add_parser("doctor", help="Check whether Open Nova is ready.")
+    doctor = subcommands.add_parser("doctor", help="Check whether Actanara is ready.")
     _add_doctor_args(doctor)
     doctor.set_defaults(handler=_settings_status)
 
@@ -180,7 +180,7 @@ def _parser() -> argparse.ArgumentParser:
     _add_onboarding_apply_args(onboard_apply)
     onboard_apply.set_defaults(handler=_onboarding_apply_blocked)
 
-    config = subcommands.add_parser("config", help="Show or change Open Nova settings.")
+    config = subcommands.add_parser("config", help="Show or change Actanara settings.")
     config_subcommands = config.add_subparsers(dest="config_command")
     config.set_defaults(handler=_config_show)
     config_show = config_subcommands.add_parser("show", help="Show current settings.")
@@ -206,7 +206,7 @@ def _parser() -> argparse.ArgumentParser:
         "update",
         help="Check for an update or install it.",
         description=(
-            "Check or install an Open Nova update. By default, Open Nova uses "
+            "Check or install an Actanara update. By default, Actanara uses "
             "the latest stable release."
         ),
     )
@@ -248,7 +248,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     update.set_defaults(handler=_update_run)
 
-    search = subcommands.add_parser("search", help="Search your Open Nova memory.")
+    search = subcommands.add_parser("search", help="Search your Actanara memory.")
     _add_rag_search_args(search)
     search.set_defaults(handler=_search_memory)
 
@@ -271,7 +271,7 @@ def _parser() -> argparse.ArgumentParser:
     rag_update.add_argument("--confirm", dest="confirmation_text", help=f'Exact confirmation phrase: "{RAG_UPDATE_CONFIRMATION}"')
     rag_update.set_defaults(handler=_rag_update)
 
-    settings = subcommands.add_parser("settings", help="Check Open Nova settings.")
+    settings = subcommands.add_parser("settings", help="Check Actanara settings.")
     settings_subcommands = settings.add_subparsers(dest="settings_command")
     settings.set_defaults(handler=_command_help(settings))
     status = settings_subcommands.add_parser("status", help="Show settings status.")
@@ -293,13 +293,13 @@ def _parser() -> argparse.ArgumentParser:
     onboarding_plan.set_defaults(handler=_onboarding_plan)
     onboarding_one_liner = onboarding_subcommands.add_parser(
         "runtime-dry-run",
-        help="Preview how Open Nova will prepare its data folder.",
+        help="Preview how Actanara will prepare its data folder.",
     )
     _add_onboarding_args(onboarding_one_liner)
     onboarding_one_liner.set_defaults(handler=_onboarding_one_liner_dry_run)
     onboarding_one_liner_apply = onboarding_subcommands.add_parser(
         "runtime-apply",
-        help="Prepare Open Nova; automatic daily runs remain optional.",
+        help="Prepare Actanara; automatic daily runs remain optional.",
     )
     _add_onboarding_args(onboarding_one_liner_apply)
     onboarding_one_liner_apply.add_argument(
@@ -314,7 +314,7 @@ def _parser() -> argparse.ArgumentParser:
     onboarding_one_liner_apply.add_argument(
         "--select-active-runtime",
         action="store_true",
-        help="Use this data folder as the active Open Nova installation.",
+        help="Use this data folder as the active Actanara installation.",
     )
     onboarding_one_liner_apply.add_argument(
         "--with-scheduler",
@@ -328,7 +328,7 @@ def _parser() -> argparse.ArgumentParser:
     onboarding_one_liner_apply.add_argument(
         "--use-default-runtime",
         action="store_true",
-        help="Use ~/.open-nova when --runtime is omitted.",
+        help="Use ~/.actanara when --runtime is omitted.",
     )
     onboarding_one_liner_apply.add_argument(
         "--language",
@@ -433,7 +433,7 @@ def _parser() -> argparse.ArgumentParser:
     scheduler_reconcile.add_argument("--auto-limit-days", type=int, default=3, help="Maximum missing days to auto catch up.")
     scheduler_reconcile.set_defaults(handler=_scheduler_reconcile)
 
-    foundation = subcommands.add_parser("foundation", help="Maintain Open Nova's local data.")
+    foundation = subcommands.add_parser("foundation", help="Maintain Actanara's local data.")
     foundation_subcommands = foundation.add_subparsers(dest="foundation_command")
     foundation.set_defaults(handler=_command_help(foundation))
     sqlite_rebuild = foundation_subcommands.add_parser(
@@ -481,56 +481,56 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _product_command_guide() -> str:
-    return """Open Nova
+    return """Actanara
 
 Turn your daily activity into a useful diary.
 
 Usage:
-  open-nova <command> [options]
+  actanara <command> [options]
 
 Start here:
-  open-nova doctor                         Check whether Open Nova is ready
-  open-nova onboard status                 Finish first-time setup
-  open-nova dashboard restart              Restart Dashboard
+  actanara doctor                         Check whether Actanara is ready
+  actanara onboard status                 Finish first-time setup
+  actanara dashboard restart              Restart Dashboard
 
 Create and find:
-  open-nova pipeline [YYMMDD|YYYY-MM-DD]   Create a diary
-  open-nova search "query"                 Search your memory
-  open-nova task                           Show task totals
+  actanara pipeline [YYMMDD|YYYY-MM-DD]   Create a diary
+  actanara search "query"                 Search your memory
+  actanara task                           Show task totals
 
 AI model:
-  open-nova model show                     Show the current model
-  open-nova model list                     List available model services
-  open-nova model set --provider P --model M
-  open-nova model key --value-stdin        Save the model API key
+  actanara model show                     Show the current model
+  actanara model list                     List available model services
+  actanara model set --provider P --model M
+  actanara model key --value-stdin        Save the model API key
 
 Settings and updates:
-  open-nova config show                    Show current settings
-  open-nova config keys                    Show settings you can change
-  open-nova update                         Check the update plan
-  open-nova update --apply                 Install the update
+  actanara config show                    Show current settings
+  actanara config keys                    Show settings you can change
+  actanara update                         Check the update plan
+  actanara update --apply                 Install the update
 
 Memory maintenance:
-  open-nova rag-update                     Refresh memory
-  open-nova rag-rebuild                    Rebuild memory
+  actanara rag-update                     Refresh memory
+  actanara rag-rebuild                    Rebuild memory
 
-Run `open-nova <command> --help` for command-specific options.
+Run `actanara <command> --help` for command-specific options.
 """
 
 
 def _product_help_groups() -> str:
     return """Common tasks:
-  Get ready      open-nova doctor | open-nova onboard status
-  Create diary   open-nova pipeline [YYMMDD|YYYY-MM-DD]
-  Search memory  open-nova search "query"
-  Choose model   open-nova model show | open-nova model set
-  Update         open-nova update
+  Get ready      actanara doctor | actanara onboard status
+  Create diary   actanara pipeline [YYMMDD|YYYY-MM-DD]
+  Search memory  actanara search "query"
+  Choose model   actanara model show | actanara model set
+  Update         actanara update
 
-Run `open-nova <command> --help` for details."""
+Run `actanara <command> --help` for details."""
 
 
 def _add_status_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--runtime", help="Use a specific Open Nova data folder.")
+    parser.add_argument("--runtime", help="Use a specific Actanara data folder.")
     parser.add_argument("--legacy-diary-root", help="Use an existing diary folder with --runtime.")
     parser.add_argument("--json", action="store_true", help="Print JSON for scripts and automation.")
 
@@ -602,12 +602,12 @@ def _add_onboarding_apply_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--select-active-runtime",
         action="store_true",
-        help="Use the prepared folder as the active Open Nova installation.",
+        help="Use the prepared folder as the active Actanara installation.",
     )
     parser.add_argument(
         "--use-default-runtime",
         action="store_true",
-        help="Use ~/.open-nova when --runtime is omitted.",
+        help="Use ~/.actanara when --runtime is omitted.",
     )
     parser.add_argument(
         "--language",
@@ -631,8 +631,8 @@ def _add_rag_search_args(parser: argparse.ArgumentParser) -> None:
 
 def _settings_status(args: argparse.Namespace) -> int:
     paths = _paths_from_args(args)
-    payload = nova_settings_status(paths, doctor_profile=getattr(args, "doctor_profile", None) or "all")
-    output = dump_nova_settings_status_json(payload) if args.json else format_nova_settings_status(payload)
+    payload = actanara_settings_status(paths, doctor_profile=getattr(args, "doctor_profile", None) or "all")
+    output = dump_actanara_settings_status_json(payload) if args.json else format_actanara_settings_status(payload)
     sys.stdout.write(output)
     if not output.endswith("\n"):
         sys.stdout.write("\n")
@@ -654,7 +654,7 @@ def _model_show(args: argparse.Namespace) -> int:
                     ("Connection", provider.get("api") or "Not set"),
                     ("URL", provider.get("endpoint")),
                 ),
-                next_steps=(() if provider.get("hasApiKey") else ("open-nova model key --value-stdin",)),
+                next_steps=(() if provider.get("hasApiKey") else ("actanara model key --value-stdin",)),
             )
         )
     return 0
@@ -693,7 +693,7 @@ def _model_list(args: argparse.Namespace) -> int:
                     ("Current", f"{current.get('provider') or 'Not set'} / {current.get('model') or 'Not set'}"),
                 ),
                 sections=(("Model services", entries),),
-                next_steps=("open-nova model set --provider SERVICE --model MODEL",),
+                next_steps=("actanara model set --provider SERVICE --model MODEL",),
             )
         )
     return 0
@@ -716,7 +716,7 @@ def _model_set(args: argparse.Namespace) -> int:
         if value is not None
     }
     if not update:
-        sys.stderr.write("Error: choose at least one model setting to change.\nTry: open-nova model set --help\n")
+        sys.stderr.write("Error: choose at least one model setting to change.\nTry: actanara model set --help\n")
         return 2
     try:
         provider = write_llm_provider(update, _paths_from_args(args))
@@ -734,7 +734,7 @@ def _model_set(args: argparse.Namespace) -> int:
                     ("Service", provider.get("provider") or "Not set"),
                     ("Model", provider.get("model") or "Not set"),
                 ),
-                next_steps=("open-nova model test",),
+                next_steps=("actanara model test",),
             )
         )
     return 0
@@ -750,7 +750,7 @@ def _model_test(args: argparse.Namespace) -> int:
                 "AI model check",
                 fields=(("Status", "Ready" if result.get("ok") else "Failed"),),
                 sections=(("Details", (_friendly_model_error(result.get("error")),)),) if result.get("error") else (),
-                next_steps=(() if result.get("ok") else ("open-nova model show",)),
+                next_steps=(() if result.get("ok") else ("actanara model show",)),
             )
         )
     return 0 if result.get("ok") else 1
@@ -769,7 +769,7 @@ def _friendly_model_error(value: object) -> str:
 
 def _secrets_set_llm_api_key(args: argparse.Namespace) -> int:
     if not args.value_stdin:
-        sys.stderr.write("Error: the API key must be read from standard input.\nTry: open-nova model key --value-stdin\n")
+        sys.stderr.write("Error: the API key must be read from standard input.\nTry: actanara model key --value-stdin\n")
         return 2
     value = sys.stdin.read().strip()
     if not value:
@@ -804,7 +804,7 @@ def _secrets_set_llm_api_key(args: argparse.Namespace) -> int:
             render_cli(
                 "AI model key",
                 fields=(("Status", "Saved"), ("Data folder", paths.home)),
-                next_steps=("open-nova model test",),
+                next_steps=("actanara model test",),
             )
         )
     return 0
@@ -825,7 +825,7 @@ def _config_show(args: argparse.Namespace) -> int:
                     ("Settings file", payload.get("settingsPath", "—")),
                     ("Features", ", ".join(enabled) if enabled else "Standard"),
                 ),
-                next_steps=("open-nova config keys",),
+                next_steps=("actanara config keys",),
             )
         )
     return 0
@@ -836,7 +836,7 @@ def _config_get(args: argparse.Namespace) -> int:
     try:
         value = _get_dot_path(payload, args.path)
     except KeyError:
-        sys.stderr.write(f"Error: setting not found: {args.path}\nTry: open-nova config keys\n")
+        sys.stderr.write(f"Error: setting not found: {args.path}\nTry: actanara config keys\n")
         return 1
     if args.json:
         sys.stdout.write(json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
@@ -854,8 +854,8 @@ def _config_keys(args: argparse.Namespace) -> int:
         "writableGroups": sorted(OPERATOR_SETTINGS_WRITE_ALLOWED_TOP_LEVEL),
         "protectedGroups": sorted(OPERATOR_SETTINGS_WRITE_PROTECTED_TOP_LEVEL),
         "dedicatedCommands": {
-            "llmProvider": "open-nova model ...",
-            "rag": "open-nova rag-update / open-nova rag-rebuild / Dashboard RAG controls",
+            "llmProvider": "actanara model ...",
+            "rag": "actanara rag-update / actanara rag-rebuild / Dashboard RAG controls",
         },
         "authorityGroups": groups,
     }
@@ -869,9 +869,9 @@ def _config_keys(args: argparse.Namespace) -> int:
                 fields=(("Settings file", payload.get("settingsPath", "—")),),
                 sections=(("Available groups", writable),),
                 next_steps=(
-                    "open-nova config get general.timezone",
-                    "open-nova config set general.timezone Asia/Hong_Kong",
-                    "Use `open-nova model` for AI model settings",
+                    "actanara config get general.timezone",
+                    "actanara config set general.timezone Asia/Hong_Kong",
+                    "Use `actanara model` for AI model settings",
                 ),
             )
         )
@@ -904,7 +904,7 @@ def _update_run(args: argparse.Namespace) -> int:
         paths = _paths_from_args(args) or load_paths()
         command = _update_bootstrap_command(args, paths.home)
     except (FileNotFoundError, ValueError) as exc:
-        sys.stderr.write(f"Error: {_friendly_update_start_error(exc)}\nTry: open-nova update --help\n")
+        sys.stderr.write(f"Error: {_friendly_update_start_error(exc)}\nTry: actanara update --help\n")
         return 2
     should_execute = bool(args.apply or args.dry_run)
     source_selection = _update_source_selection(args)
@@ -956,7 +956,7 @@ def _update_run(args: argparse.Namespace) -> int:
                         ("Data folder", paths.home),
                         ("Source", source),
                     ),
-                    next_steps=("open-nova update --dry-run", "open-nova update --apply"),
+                    next_steps=("actanara update --dry-run", "actanara update --apply"),
                 )
             )
         return 0
@@ -1035,9 +1035,9 @@ def _friendly_update_start_error(error: Exception) -> str:
     if "full 40- or 64-character hexadecimal commit ID" in message:
         return "the version ID must contain exactly 40 or 64 hexadecimal characters"
     if "installer bootstrap not found under --source-root" in message:
-        return "the selected local copy cannot update Open Nova"
+        return "the selected local copy cannot update Actanara"
     if "installer bootstrap is unavailable" in message:
-        return "Open Nova's update files are missing; reinstall Open Nova or choose a local copy"
+        return "Actanara's update files are missing; reinstall Actanara or choose a local copy"
     return f"update cannot start: {message}"
 
 
@@ -1201,20 +1201,20 @@ def _write_update_human_result(payload: dict, returncode: int) -> None:
             render_cli(
                 "Update complete",
                 fields=(("Status", "Ready"),),
-                sections=(("Result", ("Open Nova is up to date.",)),),
-                next_steps=("open-nova doctor",),
+                sections=(("Result", ("Actanara is up to date.",)),),
+                next_steps=("actanara doctor",),
             )
         )
         return
     details = ["The update did not finish."]
     if payload.get("stateCertain") is False:
-        details.append("Open Nova could not confirm that recovery finished.")
+        details.append("Actanara could not confirm that recovery finished.")
     target.write(
         render_cli(
             "Update failed",
             fields=(("Status", "Failed"),),
             sections=(("What happened", details),),
-            next_steps=("open-nova doctor --installer", "Review the update log above, then try again"),
+            next_steps=("actanara doctor --installer", "Review the update log above, then try again"),
         )
     )
 
@@ -1232,8 +1232,8 @@ def _update_bootstrap_path(args: argparse.Namespace, runtime_home: Path) -> Path
     if runtime_bootstrap.is_file():
         return runtime_bootstrap
     raise FileNotFoundError(
-        "installer bootstrap is unavailable in both the Open Nova package checkout and active Runtime app/source; "
-        "reinstall Open Nova or provide --source-root PATH"
+        "installer bootstrap is unavailable in both the Actanara package checkout and active Runtime app/source; "
+        "reinstall Actanara or provide --source-root PATH"
     )
 
 
@@ -1400,11 +1400,11 @@ def _task_counts(args: argparse.Namespace) -> int:
 def _onboarding_doctor(args: argparse.Namespace) -> int:
     paths = _paths_from_args(args)
     try:
-        payload = nova_onboarding_status(paths, selected_profiles=args.profiles)
+        payload = actanara_onboarding_status(paths, selected_profiles=args.profiles)
     except ValueError as exc:
         sys.stderr.write(f"Error: {exc}\n")
         return 2
-    output = dump_nova_onboarding_status_json(payload) if args.json else format_nova_onboarding_status(payload)
+    output = dump_actanara_onboarding_status_json(payload) if args.json else format_actanara_onboarding_status(payload)
     sys.stdout.write(output)
     if not output.endswith("\n"):
         sys.stdout.write("\n")
@@ -1688,7 +1688,7 @@ def _pipeline_run(args: argparse.Namespace) -> int:
     next_steps = ()
     if result.failed_step:
         result_sections = (("What happened", (f"Stopped while working on {_friendly_diary_step(result.failed_step)}.",)),)
-        next_steps = ("open-nova doctor --pipeline",)
+        next_steps = ("actanara doctor --pipeline",)
     sys.stdout.write(
         render_cli(
             "Daily diary",
@@ -1775,7 +1775,7 @@ def _daily_diary_complete_for_cli(paths, target_date: str) -> bool:
 
 def _dashboard_restart(args: argparse.Namespace) -> int:
     defaults = dashboard_launch_defaults()
-    label = getattr(args, "label", None) or str(defaults.get("label") or "com.open-nova.dashboard")
+    label = getattr(args, "label", None) or str(defaults.get("label") or "com.actanara.dashboard")
     code = restart_dashboard_service(label)
     if code == 0:
         sys.stdout.write(
@@ -1793,7 +1793,7 @@ def _rag_rebuild(args: argparse.Namespace) -> int:
         args,
         action="rag-rebuild",
         confirmation=RAG_REBUILD_CONFIRMATION,
-        requested_by="open-nova-cli-rag-rebuild",
+        requested_by="actanara-cli-rag-rebuild",
     )
 
 
@@ -1802,7 +1802,7 @@ def _rag_update(args: argparse.Namespace) -> int:
         args,
         action="rag-update",
         confirmation=RAG_UPDATE_CONFIRMATION,
-        requested_by="open-nova-cli-rag-update",
+        requested_by="actanara-cli-rag-update",
     )
 
 
@@ -1833,7 +1833,7 @@ def _rag_sync_command(
                 render_cli(
                     title,
                     fields=(("Status", "Ready to start"),),
-                    next_steps=(f'open-nova {action} --confirm "{confirmation}"',),
+                    next_steps=(f'actanara {action} --confirm "{confirmation}"',),
                 )
             )
         return 0
@@ -1850,7 +1850,7 @@ def _rag_sync_command(
             render_cli(
                 title,
                 fields=(("Status", status_label(result.get("status"))),),
-                next_steps=(() if result.get("status") == "promoted" else ("open-nova doctor --rag",)),
+                next_steps=(() if result.get("status") == "promoted" else ("actanara doctor --rag",)),
             )
         )
     return 0 if result.get("status") == "promoted" else 1
@@ -1939,7 +1939,7 @@ def _foundation_rebuild_sqlite_cache(args: argparse.Namespace) -> int:
         sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
     else:
         next_steps = (
-            (f'open-nova foundation rebuild-sqlite-cache --confirm "{SQLITE_CACHE_REBUILD_CONFIRMATION}"',)
+            (f'actanara foundation rebuild-sqlite-cache --confirm "{SQLITE_CACHE_REBUILD_CONFIRMATION}"',)
             if payload.get("dryRun")
             else ()
         )
@@ -2010,7 +2010,7 @@ def _foundation_approve_diary_metrics(args: argparse.Namespace) -> int:
     else:
         next_steps = (
             (
-                "open-nova foundation approve-diary-metrics "
+                "actanara foundation approve-diary-metrics "
                 f"{payload.get('businessDate')} --confirm \"{DIARY_METRICS_APPROVAL_CONFIRMATION}\""
             ,)
             if payload.get("dryRun")

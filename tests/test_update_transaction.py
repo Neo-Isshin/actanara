@@ -83,7 +83,7 @@ class UpdateTransactionTests(unittest.TestCase):
         lock_sha256 = "a" * 64
         fingerprint_payload = {
             "schemaVersion": 1,
-            "algorithm": "open-nova-runtime-dependencies-v1",
+            "algorithm": "actanara-runtime-dependencies-v1",
             "runtimeEnvironment": {
                 "implementation": environment["implementation"],
                 "pythonMajorMinor": environment["pythonMajorMinor"],
@@ -109,8 +109,8 @@ class UpdateTransactionTests(unittest.TestCase):
         ).hexdigest()
         return {
             "schemaVersion": 1,
-            "product": "open-nova",
-            "fingerprintAlgorithm": "open-nova-runtime-dependencies-v1",
+            "product": "actanara",
+            "fingerprintAlgorithm": "actanara-runtime-dependencies-v1",
             "dependencyFingerprint": fingerprint,
             "lockSha256": lock_sha256,
             "environmentId": environment_id,
@@ -128,7 +128,7 @@ class UpdateTransactionTests(unittest.TestCase):
         raw: bytes | None = None,
         mode: int = 0o444,
     ) -> Path:
-        marker = venv / ".open-nova-dependencies.json"
+        marker = venv / ".actanara-dependencies.json"
         marker.unlink(missing_ok=True)
         if raw is None:
             raw = (
@@ -238,7 +238,7 @@ class UpdateTransactionTests(unittest.TestCase):
             aggregate.update(b"\n")
         manifest = {
             "schemaVersion": 2,
-            "product": "open-nova",
+            "product": "actanara",
             "sourceLocator": {
                 "kind": "login-home-relative",
                 "pathComponents": ["fixture", "candidate-source"],
@@ -274,14 +274,14 @@ class UpdateTransactionTests(unittest.TestCase):
             },
         }
         manifest["databaseCompatibility"] = compatibility
-        (source / ".open-nova-runtime-source.json").write_text(
+        (source / ".actanara-runtime-source.json").write_text(
             json.dumps(manifest, sort_keys=True) + "\n",
             encoding="utf-8",
         )
 
     def _fixture(self, root: Path) -> dict[str, Path]:
         home = root / "Home"
-        runtime = home / ".open-nova"
+        runtime = home / ".actanara"
         old_source = runtime / "app" / "releases" / "old"
         candidate_source = root / "candidate-source-template"
         candidate_venv = root / "candidate-venv-template"
@@ -299,7 +299,7 @@ class UpdateTransactionTests(unittest.TestCase):
             path.mkdir(parents=True, exist_ok=True)
         (runtime / "app" / "source").symlink_to("releases/old")
         (old_source / "pyproject.toml").write_text('[project]\nname="old"\nversion="0"\n', encoding="utf-8")
-        (old_source / ".open-nova-runtime-source.json").write_text('{"release":"old"}\n', encoding="utf-8")
+        (old_source / ".actanara-runtime-source.json").write_text('{"release":"old"}\n', encoding="utf-8")
         self._write_prior_migrations(
             old_source,
             [(self.BASE_MIGRATION_VERSION, self.BASE_MIGRATION_BODY)],
@@ -322,7 +322,7 @@ class UpdateTransactionTests(unittest.TestCase):
         self._write_dependency_marker(candidate_venv)
         (runtime / "config" / "settings.json").write_text('{"dashboard":{"port":42173}}\n', encoding="utf-8")
         (runtime / "config" / "runtime.json").write_text('{"runtime":"old"}\n', encoding="utf-8")
-        database = runtime / "data" / "nova_data.sqlite3"
+        database = runtime / "data" / "actanara_data.sqlite3"
         with closing(sqlite3.connect(database)) as connection:
             self.assertEqual(connection.execute("PRAGMA journal_mode = WAL").fetchone(), ("wal",))
             connection.execute("PRAGMA wal_autocheckpoint = 0")
@@ -339,7 +339,7 @@ class UpdateTransactionTests(unittest.TestCase):
             )
             connection.commit()
             connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        (runtime / "bin" / "open-nova").write_text("old-cli\n", encoding="utf-8")
+        (runtime / "bin" / "actanara").write_text("old-cli\n", encoding="utf-8")
         return {
             "home": home,
             "runtime": runtime,
@@ -348,8 +348,8 @@ class UpdateTransactionTests(unittest.TestCase):
             "settings": runtime / "config" / "settings.json",
             "database": database,
             "location": root / "location.json",
-            "user_cli": home / ".local" / "bin" / "open-nova",
-            "desktop": home / "Desktop" / "Open Nova",
+            "user_cli": home / ".local" / "bin" / "actanara",
+            "desktop": home / "Desktop" / "Actanara",
             "profile": home / ".zprofile",
         }
 
@@ -479,9 +479,9 @@ class UpdateTransactionTests(unittest.TestCase):
                 ),
             ],
             "EnvironmentVariables": {
-                "NOVA_DASHBOARD_PROJECT_ROOT": str(source_root),
-                "NOVA_DASHBOARD_PYTHON": str(python),
-                "NOVA_HOME": str(runtime),
+                "ACTANARA_DASHBOARD_PROJECT_ROOT": str(source_root),
+                "ACTANARA_DASHBOARD_PYTHON": str(python),
+                "ACTANARA_HOME": str(runtime),
                 "PYTHONDONTWRITEBYTECODE": "1",
                 "PYTHONPATH": f"{source_root}:{source_root / 'src'}:{source_root / 'src' / 'dashboard'}",
             },
@@ -573,7 +573,7 @@ class UpdateTransactionTests(unittest.TestCase):
     ) -> Path:
         settings_sha256 = hashlib.sha256(fixture["settings"].read_bytes()).hexdigest()
         active_venv_target = (fixture["runtime"] / ".venv").resolve()
-        active_marker = active_venv_target / ".open-nova-dependencies.json"
+        active_marker = active_venv_target / ".actanara-dependencies.json"
         marker_status = "trusted" if active_marker.exists() or active_marker.is_symlink() else "missing"
         marker_args: list[str] = []
         if marker_status == "trusted" and active_marker.is_file() and not active_marker.is_symlink():
@@ -728,7 +728,7 @@ class UpdateTransactionTests(unittest.TestCase):
             "--location",
             str(fixture["location"]),
             "--cli-shim",
-            str(fixture["runtime"] / "bin" / "open-nova"),
+            str(fixture["runtime"] / "bin" / "actanara"),
             "--user-cli-shim",
             str(fixture["user_cli"]),
             "--desktop-link",
@@ -806,7 +806,7 @@ class UpdateTransactionTests(unittest.TestCase):
             fixture = self._fixture(Path(tmp))
             settings_sha256 = hashlib.sha256(fixture["settings"].read_bytes()).hexdigest()
             active_venv = (fixture["runtime"] / ".venv").resolve()
-            marker = active_venv / ".open-nova-dependencies.json"
+            marker = active_venv / ".actanara-dependencies.json"
             marker_sha256 = hashlib.sha256(marker.read_bytes()).hexdigest()
             fixture["settings"].write_text(
                 '{"dashboard":{"port":42173},"features":{"rag":true}}\n',
@@ -1062,8 +1062,8 @@ print -r -- "$reserved"
                     str(journal),
                     check=False,
                     env={
-                        "NOVA_INSTALL_TEST_MODE": "1",
-                        "NOVA_INSTALL_TEST_KILL_PHASE": phase,
+                        "ACTANARA_INSTALL_TEST_MODE": "1",
+                        "ACTANARA_INSTALL_TEST_KILL_PHASE": phase,
                     },
                 )
 
@@ -1098,8 +1098,8 @@ print -r -- "$reserved"
                     "source-temp",
                     check=False,
                     env={
-                        "NOVA_INSTALL_TEST_MODE": "1",
-                        "NOVA_INSTALL_TEST_KILL_PHASE": phase,
+                        "ACTANARA_INSTALL_TEST_MODE": "1",
+                        "ACTANARA_INSTALL_TEST_KILL_PHASE": phase,
                     },
                 )
 
@@ -1148,8 +1148,8 @@ print -r -- "$reserved"
                 "source-temp",
                 check=False,
                 env={
-                    "NOVA_INSTALL_TEST_MODE": "1",
-                    "NOVA_INSTALL_TEST_KILL_PHASE": (
+                    "ACTANARA_INSTALL_TEST_MODE": "1",
+                    "ACTANARA_INSTALL_TEST_KILL_PHASE": (
                         "candidate-artifact-staging-created-source-temp"
                     ),
                 },
@@ -1158,7 +1158,7 @@ print -r -- "$reserved"
             self.assertEqual(result.returncode, -signal.SIGKILL, result.stdout + result.stderr)
             unmarked = list(journal.parent.glob(".reserve-source-temp-*"))
             self.assertEqual(len(unmarked), 1)
-            self.assertFalse((unmarked[0] / ".open-nova-update-owner").exists())
+            self.assertFalse((unmarked[0] / ".actanara-update-owner").exists())
 
             self._run("rollback", "--state", str(journal))
 
@@ -1193,8 +1193,8 @@ print -r -- "$reserved"
                     str(journal),
                     check=False,
                     env={
-                        "NOVA_INSTALL_TEST_MODE": "1",
-                        "NOVA_INSTALL_TEST_KILL_PHASE": phase,
+                        "ACTANARA_INSTALL_TEST_MODE": "1",
+                        "ACTANARA_INSTALL_TEST_KILL_PHASE": phase,
                     },
                 )
 
@@ -1728,7 +1728,7 @@ print -r -- "$reserved"
             root = Path(tmp)
             fixture = self._fixture(root)
             server, server_thread, port = self._start_health_server()
-            label = "com.open-nova.dashboard"
+            label = "com.actanara.dashboard"
             fixture["settings"].write_text(
                 json.dumps(
                     {
@@ -2006,7 +2006,7 @@ print -r -- "$reserved"
                     "--location",
                     str(fixture["location"]),
                     "--cli-shim",
-                    str(fixture["runtime"] / "bin" / "open-nova"),
+                    str(fixture["runtime"] / "bin" / "actanara"),
                     "--user-cli-shim",
                     str(fixture["user_cli"]),
                     "--desktop-link",
@@ -2105,7 +2105,7 @@ print -r -- "$reserved"
                     "--location",
                     str(fixture["location"]),
                     "--cli-shim",
-                    str(fixture["runtime"] / "bin" / "open-nova"),
+                    str(fixture["runtime"] / "bin" / "actanara"),
                     "--user-cli-shim",
                     str(fixture["user_cli"]),
                     "--desktop-link",
@@ -2141,7 +2141,7 @@ print -r -- "$reserved"
             fixture = self._fixture(root)
             launch_agents = fixture["home"] / "Library" / "LaunchAgents"
             launch_agents.mkdir(parents=True)
-            label = "com.open-nova.session-d-prestop.watchdog"
+            label = "com.actanara.session-d-prestop.watchdog"
             with (launch_agents / f"{label}.plist").open("wb") as handle:
                 plistlib.dump(
                     {
@@ -2160,10 +2160,10 @@ print -r -- "$reserved"
                             "--url",
                             "http://127.0.0.1:42173/health",
                             "--label",
-                            "com.open-nova.dashboard",
+                            "com.actanara.dashboard",
                             "--restart",
                         ],
-                        "EnvironmentVariables": {"NOVA_HOME": str(fixture["runtime"])},
+                        "EnvironmentVariables": {"ACTANARA_HOME": str(fixture["runtime"])},
                     },
                     handle,
                 )
@@ -2218,7 +2218,7 @@ print -r -- "$reserved"
             )
             launch_agents = fixture["home"] / "Library" / "LaunchAgents"
             launch_agents.mkdir(parents=True)
-            label = "com.open-nova.dashboard"
+            label = "com.actanara.dashboard"
             self._write_runtime_plist(
                 launch_agents / f"{label}.plist",
                 label=label,
@@ -2272,8 +2272,8 @@ print -r -- "$reserved"
                     "--state",
                     str(journal),
                     env={
-                        "NOVA_INSTALL_TEST_MODE": "1",
-                        "NOVA_INSTALL_TEST_SERVICE_STATE_TIMEOUT_SECONDS": "0.8",
+                        "ACTANARA_INSTALL_TEST_MODE": "1",
+                        "ACTANARA_INSTALL_TEST_SERVICE_STATE_TIMEOUT_SECONDS": "0.8",
                     },
                 )
             finally:
@@ -2309,9 +2309,9 @@ print -r -- "$reserved"
                 )
                 env = {
                     **os.environ,
-                    "NOVA_INSTALL_TEST_MODE": "1",
-                    "NOVA_INSTALL_TEST_KILL_PHASE": kill_phase,
-                    "NOVA_INSTALL_TEST_CHILD_TERM_TIMEOUT_SECONDS": "0.2",
+                    "ACTANARA_INSTALL_TEST_MODE": "1",
+                    "ACTANARA_INSTALL_TEST_KILL_PHASE": kill_phase,
+                    "ACTANARA_INSTALL_TEST_CHILD_TERM_TIMEOUT_SECONDS": "0.2",
                     "PYTHONDONTWRITEBYTECODE": "1",
                 }
                 helper = subprocess.Popen(
@@ -2349,8 +2349,8 @@ print -r -- "$reserved"
                         "--state",
                         str(journal),
                         env={
-                            "NOVA_INSTALL_TEST_MODE": "1",
-                            "NOVA_INSTALL_TEST_CHILD_TERM_TIMEOUT_SECONDS": "0.2",
+                            "ACTANARA_INSTALL_TEST_MODE": "1",
+                            "ACTANARA_INSTALL_TEST_CHILD_TERM_TIMEOUT_SECONDS": "0.2",
                         },
                     )
                     if child_pid_path.is_file():
@@ -2455,8 +2455,8 @@ print -r -- "$reserved"
                 "-c",
                 parent_program,
                 env={
-                    "NOVA_INSTALL_TEST_MODE": "1",
-                    "NOVA_INSTALL_TEST_CHILD_TERM_TIMEOUT_SECONDS": "0.2",
+                    "ACTANARA_INSTALL_TEST_MODE": "1",
+                    "ACTANARA_INSTALL_TEST_CHILD_TERM_TIMEOUT_SECONDS": "0.2",
                 },
             )
 
@@ -2474,7 +2474,7 @@ print -r -- "$reserved"
             fixture = self._fixture(root)
             state_dir = root / "launchctl-state"
             state_dir.mkdir()
-            production_label = "com.open-nova.dashboard"
+            production_label = "com.actanara.dashboard"
             (state_dir / production_label).write_text("running\n", encoding="utf-8")
             calls_path = root / "launchctl-calls.log"
             fake_launchctl = root / "launchctl"
@@ -2525,13 +2525,13 @@ print -r -- "$reserved"
                 (fixture["runtime"] / "app" / ".update-transaction.lock").exists()
             )
 
-    def test_begin_accepts_exact_legacy_watchdog_without_nova_home(self):
+    def test_begin_accepts_exact_legacy_watchdog_without_actanara_home(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             fixture = self._fixture(root)
             launch_agents = fixture["home"] / "Library" / "LaunchAgents"
             launch_agents.mkdir(parents=True)
-            label = "com.open-nova.dashboard.watchdog"
+            label = "com.actanara.dashboard.watchdog"
             with (launch_agents / f"{label}.plist").open("wb") as handle:
                 plistlib.dump(
                     {
@@ -2550,7 +2550,7 @@ print -r -- "$reserved"
                             "--url",
                             "http://127.0.0.1:3036/health",
                             "--label",
-                            "com.open-nova.dashboard",
+                            "com.actanara.dashboard",
                             "--restart",
                         ],
                         "RunAtLoad": True,
@@ -2588,7 +2588,7 @@ print -r -- "$reserved"
                 "--location",
                 str(fixture["location"]),
                 "--cli-shim",
-                str(fixture["runtime"] / "bin" / "open-nova"),
+                str(fixture["runtime"] / "bin" / "actanara"),
                 "--user-cli-shim",
                 str(fixture["user_cli"]),
                 "--desktop-link",
@@ -2598,7 +2598,7 @@ print -r -- "$reserved"
             )
             self._run("normalize-service-plists", "--state", str(journal))
             normalized = plistlib.loads((launch_agents / f"{label}.plist").read_bytes())
-            self.assertEqual(normalized["EnvironmentVariables"]["NOVA_HOME"], str(fixture["runtime"].resolve()))
+            self.assertEqual(normalized["EnvironmentVariables"]["ACTANARA_HOME"], str(fixture["runtime"].resolve()))
             self.assertEqual(normalized["EnvironmentVariables"]["PYTHONDONTWRITEBYTECODE"], "1")
             self._run("rollback", "--state", str(journal))
             self.assertEqual((launch_agents / f"{label}.plist").read_bytes(), original)
@@ -2609,7 +2609,7 @@ print -r -- "$reserved"
             fixture = self._fixture(root)
             launch_agents = fixture["home"] / "Library" / "LaunchAgents"
             launch_agents.mkdir(parents=True)
-            label = "com.open-nova.binding-two-generations-old"
+            label = "com.actanara.binding-two-generations-old"
             plist_path = launch_agents / f"{label}.plist"
             stale_source = fixture["runtime"] / "app" / "releases" / "two-generations-old"
             stale_venv = fixture["runtime"] / "app" / "venvs" / "two-generations-old"
@@ -2664,7 +2664,7 @@ print -r -- "$reserved"
             fixture = self._fixture(root)
             launch_agents = fixture["home"] / "Library" / "LaunchAgents"
             launch_agents.mkdir(parents=True)
-            label = "com.open-nova.binding-already-stable"
+            label = "com.actanara.binding-already-stable"
             plist_path = launch_agents / f"{label}.plist"
             self._write_dashboard_binding_plist(
                 plist_path,
@@ -2672,7 +2672,7 @@ print -r -- "$reserved"
                 runtime=fixture["runtime"],
                 source_root=fixture["runtime"] / "app" / "source",
                 venv_root=fixture["runtime"] / ".venv",
-                extra_payload={"StandardOutPath": "/tmp/open-nova-releases-archive.log"},
+                extra_payload={"StandardOutPath": "/tmp/actanara-releases-archive.log"},
             )
             original = plist_path.read_bytes()
             journal, _calls = self._begin_unloaded_darwin(fixture, root)
@@ -2707,7 +2707,7 @@ print -r -- "$reserved"
                 fixture = self._fixture(root)
                 launch_agents = fixture["home"] / "Library" / "LaunchAgents"
                 launch_agents.mkdir(parents=True)
-                label = f"com.open-nova.binding-{case}"
+                label = f"com.actanara.binding-{case}"
                 plist_path = launch_agents / f"{label}.plist"
                 stable_source = fixture["runtime"] / "app" / "source"
                 source_root = stable_source
@@ -2772,7 +2772,7 @@ print -r -- "$reserved"
             fixture = self._fixture(root)
             launch_agents = fixture["home"] / "Library" / "LaunchAgents"
             launch_agents.mkdir(parents=True)
-            label = "com.open-nova.binding-rollback"
+            label = "com.actanara.binding-rollback"
             plist_path = launch_agents / f"{label}.plist"
             self._write_dashboard_binding_plist(
                 plist_path,
@@ -2803,7 +2803,7 @@ print -r -- "$reserved"
             launch_agents = fixture["home"] / "Library" / "LaunchAgents"
             launch_agents.mkdir(parents=True)
             payloads = {
-                "com.open-nova.binding-watchdog": {
+                "com.actanara.binding-watchdog": {
                     "ProgramArguments": [
                         str(stale_venv / "bin" / "python"),
                         str(stale_source / "advanced" / "dashboard" / "dashboard_launch_agent.py"),
@@ -2811,38 +2811,38 @@ print -r -- "$reserved"
                         "--url",
                         "http://127.0.0.1:42173/health",
                         "--label",
-                        "com.open-nova.dashboard",
+                        "com.actanara.dashboard",
                         "--restart",
                     ],
-                    "EnvironmentVariables": {"NOVA_HOME": str(runtime)},
+                    "EnvironmentVariables": {"ACTANARA_HOME": str(runtime)},
                 },
-                "com.open-nova.binding-rag": {
+                "com.actanara.binding-rag": {
                     "ProgramArguments": [
                         str(stale_venv / "bin" / "python"),
                         str(stale_source / "advanced" / "dashboard" / "rag_server_launch_agent.py"),
                         "run",
                         "--project-root",
                         str(stale_source),
-                        "--nova-home",
+                        "--actanara-home",
                         str(runtime),
                     ],
                     "EnvironmentVariables": {
-                        "NOVA_HOME": str(runtime),
+                        "ACTANARA_HOME": str(runtime),
                         "PYTHONPATH": f"{stale_source}:{stale_source / 'src'}",
                     },
                 },
-                "com.open-nova.binding-pipeline": {
+                "com.actanara.binding-pipeline": {
                     "ProgramArguments": [
                         str(stale_venv / "bin" / "python"),
                         str(stale_source / "advanced" / "pipeline" / "run_daily_pipeline.py"),
                     ],
                     "WorkingDirectory": str(stale_source),
                     "EnvironmentVariables": {
-                        "NOVA_HOME": str(runtime),
+                        "ACTANARA_HOME": str(runtime),
                         "PYTHONPATH": f"{stale_source}:{stale_source / 'src'}:{stale_source / 'src' / 'dashboard'}",
                     },
                 },
-                "com.open-nova.binding-dashboard-aggregation": {
+                "com.actanara.binding-dashboard-aggregation": {
                     "ProgramArguments": [
                         str(stale_venv / "bin" / "python"),
                         str(
@@ -2854,7 +2854,7 @@ print -r -- "$reserved"
                     ],
                     "WorkingDirectory": str(stale_source),
                     "EnvironmentVariables": {
-                        "NOVA_HOME": str(runtime),
+                        "ACTANARA_HOME": str(runtime),
                         "PYTHONPATH": f"{stale_source}:{stale_source / 'src'}:{stale_source / 'src' / 'dashboard'}",
                     },
                 },
@@ -2904,16 +2904,16 @@ print -r -- "$reserved"
             concrete_venv = runtime / "app" / "venvs" / "old"
             logs = runtime / "state" / "logs"
             labels = {
-                "dashboard": "com.open-nova.dashboard",
-                "watchdog": "com.open-nova.dashboard.watchdog",
-                "rag": "com.open-nova.rag-server",
+                "dashboard": "com.actanara.dashboard",
+                "watchdog": "com.actanara.dashboard.watchdog",
+                "rag": "com.actanara.rag-server",
             }
             canonical = {
                 "dashboard": dashboard_launcher.build_service_plist(
                     label=labels["dashboard"],
                     python=stable_python,
                     project_root=stable_source,
-                    nova_home=runtime,
+                    actanara_home=runtime,
                     host="127.0.0.1",
                     port=42173,
                     foundation=True,
@@ -2929,14 +2929,14 @@ print -r -- "$reserved"
                     / "dashboard_launch_agent.py",
                     url="http://127.0.0.1:42173/health",
                     interval=60,
-                    nova_home=runtime,
+                    actanara_home=runtime,
                     logs_dir=logs,
                 ),
                 "rag": rag_launcher.build_service_plist(
                     label=labels["rag"],
                     python=stable_python,
                     project_root=stable_source,
-                    nova_home=runtime,
+                    actanara_home=runtime,
                     script=stable_source
                     / "advanced"
                     / "dashboard"
@@ -2954,7 +2954,7 @@ print -r -- "$reserved"
                 concrete_source_text,
             )
             dashboard_environment = legacy["dashboard"]["EnvironmentVariables"]
-            dashboard_environment["NOVA_DASHBOARD_PROJECT_ROOT"] = concrete_source_text
+            dashboard_environment["ACTANARA_DASHBOARD_PROJECT_ROOT"] = concrete_source_text
             dashboard_environment["PYTHONPATH"] = (
                 f"{concrete_source}:{concrete_source / 'src'}:"
                 f"{concrete_source / 'src' / 'dashboard'}"
@@ -3019,19 +3019,19 @@ print -r -- "$reserved"
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp).resolve()
             fixture = self._fixture(root)
-            manifest_path = fixture["candidate_source"] / ".open-nova-runtime-source.json"
+            manifest_path = fixture["candidate_source"] / ".actanara-runtime-source.json"
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             manifest["git"] = {
                 "available": True,
                 "commit": "a" * 12,
                 "branch": "main",
-                "remote": "https://github.com/Neo-Isshin/open-nova.git",
+                "remote": "https://github.com/Neo-Isshin/actanara.git",
                 "dirty": False,
             }
             manifest_path.write_text(json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8")
             launch_agents = fixture["home"] / "Library" / "LaunchAgents"
             launch_agents.mkdir(parents=True)
-            label = "com.open-nova.binding-short-commit"
+            label = "com.actanara.binding-short-commit"
             self._write_runtime_plist(
                 launch_agents / f"{label}.plist",
                 label=label,
@@ -3052,18 +3052,18 @@ print -r -- "$reserved"
             fixture = self._fixture(root)
             candidate_commit = "a" * 40
             prior_commit = "b" * 40
-            manifest_path = fixture["candidate_source"] / ".open-nova-runtime-source.json"
+            manifest_path = fixture["candidate_source"] / ".actanara-runtime-source.json"
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             manifest["git"] = {
                 "available": True,
                 "commit": candidate_commit,
                 "branch": "main",
-                "remote": "https://github.com/Neo-Isshin/open-nova.git",
+                "remote": "https://github.com/Neo-Isshin/actanara.git",
                 "dirty": False,
             }
             manifest_path.write_text(json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8")
             server, server_thread, port = self._start_health_server(source_commit=prior_commit)
-            label = "com.open-nova.dashboard"
+            label = "com.actanara.dashboard"
             fixture["settings"].write_text(
                 json.dumps(
                     {
@@ -3109,8 +3109,8 @@ print -r -- "$reserved"
                     str(journal),
                     check=False,
                     env={
-                        "NOVA_INSTALL_TEST_MODE": "1",
-                        "NOVA_INSTALL_TEST_HEALTH_TIMEOUT_SECONDS": "0.2",
+                        "ACTANARA_INSTALL_TEST_MODE": "1",
+                        "ACTANARA_INSTALL_TEST_HEALTH_TIMEOUT_SECONDS": "0.2",
                     },
                 )
 
@@ -3130,7 +3130,7 @@ print -r -- "$reserved"
             fixture = self._fixture(root)
             launch_agents = fixture["home"] / "Library" / "LaunchAgents"
             launch_agents.mkdir(parents=True)
-            label = "com.open-nova.dashboard"
+            label = "com.actanara.dashboard"
             self._write_runtime_plist(
                 launch_agents / f"{label}.plist",
                 label=label,
@@ -3189,10 +3189,10 @@ print -r -- "$reserved"
             fixture = self._fixture(root)
             launch_agents = fixture["home"] / "Library" / "LaunchAgents"
             launch_agents.mkdir(parents=True)
-            expected_label = "com.open-nova.dashboard"
+            expected_label = "com.actanara.dashboard"
             self._write_runtime_plist(
                 launch_agents / f"{expected_label}.plist",
-                label="com.open-nova.unrelated",
+                label="com.actanara.unrelated",
                 runtime=fixture["runtime"],
             )
             state_dir = root / "launchctl-state"
@@ -3261,7 +3261,7 @@ print -r -- "$reserved"
                                 / "dashboard_launch_agent.py"
                             ),
                         ],
-                        "EnvironmentVariables": {"NOVA_HOME": str(fixture["runtime"])},
+                        "EnvironmentVariables": {"ACTANARA_HOME": str(fixture["runtime"])},
                     },
                     handle,
                 )
@@ -3296,8 +3296,8 @@ print -r -- "$reserved"
                 "0",
                 check=False,
                 env={
-                    "NOVA_INSTALL_TEST_MODE": "1",
-                    "NOVA_INSTALL_TEST_HEALTH_TIMEOUT_SECONDS": "0.2",
+                    "ACTANARA_INSTALL_TEST_MODE": "1",
+                    "ACTANARA_INSTALL_TEST_HEALTH_TIMEOUT_SECONDS": "0.2",
                 },
             )
 
@@ -3338,7 +3338,7 @@ print -r -- "$reserved"
                         fixture["settings"].write_text("{legacy-settings\n", encoding="utf-8")
                     launch_agents = fixture["home"] / "Library" / "LaunchAgents"
                     launch_agents.mkdir(parents=True)
-                    label = "com.open-nova.dashboard"
+                    label = "com.actanara.dashboard"
                     self._write_runtime_plist(
                         launch_agents / f"{label}.plist",
                         label=label,
@@ -3411,7 +3411,7 @@ print -r -- "$reserved"
             fixture = self._fixture(root)
             launch_agents = fixture["home"] / "Library" / "LaunchAgents"
             launch_agents.mkdir(parents=True)
-            label = "com.open-nova.pipeline"
+            label = "com.actanara.pipeline"
             plist_path = launch_agents / f"{label}.plist"
             with plist_path.open("wb") as handle:
                 plistlib.dump(
@@ -3429,7 +3429,7 @@ print -r -- "$reserved"
                             ),
                         ],
                         "EnvironmentVariables": {
-                            "NOVA_HOME": str(fixture["runtime"]),
+                            "ACTANARA_HOME": str(fixture["runtime"]),
                         },
                     },
                     handle,
@@ -3469,13 +3469,13 @@ print -r -- "$reserved"
                 (fixture["runtime"] / "app" / ".update-transaction.lock").exists()
             )
 
-    def test_repair_accepts_legacy_runtime_bound_plist_without_nova_home(self):
+    def test_repair_accepts_legacy_runtime_bound_plist_without_actanara_home(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             fixture = self._fixture(root)
             launch_agents = fixture["home"] / "Library" / "LaunchAgents"
             launch_agents.mkdir(parents=True)
-            label = "open-nova.daily.pipeline"
+            label = "actanara.daily.pipeline"
             plist_path = launch_agents / f"{label}.plist"
             with plist_path.open("wb") as handle:
                 plistlib.dump(
@@ -3528,7 +3528,7 @@ print -r -- "$reserved"
             service = next(item for item in state["services"] if item["label"] == label)
             self.assertEqual(state["status"], "committed")
             self.assertFalse(service["loaded"])
-            self.assertNotIn("NOVA_HOME", plistlib.loads(plist_path.read_bytes()).get("EnvironmentVariables", {}))
+            self.assertNotIn("ACTANARA_HOME", plistlib.loads(plist_path.read_bytes()).get("EnvironmentVariables", {}))
             self._run("complete-repair", "--state", str(journal))
 
     def test_verify_allows_legitimate_sqlite_writer_after_capture(self):
@@ -3609,8 +3609,8 @@ print -r -- "$reserved"
             fixture["desktop"].symlink_to(target_a)
             journal = self._begin(fixture, owner_pid=os.getpid())
             self._prepare_and_promote(fixture, journal)
-            original_mode = fixture["runtime"].joinpath("bin", "open-nova").stat().st_mode & 0o777
-            fixture["runtime"].joinpath("bin", "open-nova").chmod(0o700)
+            original_mode = fixture["runtime"].joinpath("bin", "actanara").stat().st_mode & 0o777
+            fixture["runtime"].joinpath("bin", "actanara").chmod(0o700)
             fixture["desktop"].unlink()
             fixture["desktop"].symlink_to(target_b)
             self._run("restore-services", "--state", str(journal))
@@ -3619,7 +3619,7 @@ print -r -- "$reserved"
 
             self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
             self.assertIn("protected update state changed unexpectedly", result.stderr)
-            fixture["runtime"].joinpath("bin", "open-nova").chmod(original_mode)
+            fixture["runtime"].joinpath("bin", "actanara").chmod(original_mode)
             fixture["desktop"].unlink()
             fixture["desktop"].symlink_to(target_a)
             self._run("rollback", "--state", str(journal))
@@ -3629,7 +3629,7 @@ print -r -- "$reserved"
             root = Path(tmp)
             fixture = self._fixture(root)
             server, server_thread, port = self._start_health_server()
-            label = "com.open-nova.dashboard"
+            label = "com.actanara.dashboard"
             fixture["settings"].write_text(
                 json.dumps(
                     {
@@ -3722,15 +3722,15 @@ print -r -- "$reserved"
             )
             launch_agents = fixture["home"] / "Library" / "LaunchAgents"
             launch_agents.mkdir(parents=True)
-            dashboard_plist = launch_agents / "com.open-nova.dashboard.plist"
+            dashboard_plist = launch_agents / "com.actanara.dashboard.plist"
             self._write_runtime_plist(
                 dashboard_plist,
-                label="com.open-nova.dashboard",
+                label="com.actanara.dashboard",
                 runtime=fixture["runtime"],
             )
             service_state = root / "launchctl-state"
             service_state.mkdir()
-            (service_state / "com.open-nova.dashboard").write_text("running\n", encoding="utf-8")
+            (service_state / "com.actanara.dashboard").write_text("running\n", encoding="utf-8")
             fake_launchctl = root / "launchctl"
             fake_launchctl.write_text(
                 f"#!{sys.executable}\n"
@@ -3776,8 +3776,8 @@ print -r -- "$reserved"
                 str(journal),
                 check=False,
                 env={
-                    "NOVA_INSTALL_TEST_MODE": "1",
-                    "NOVA_INSTALL_TEST_HEALTH_TIMEOUT_SECONDS": "0.2",
+                    "ACTANARA_INSTALL_TEST_MODE": "1",
+                    "ACTANARA_INSTALL_TEST_HEALTH_TIMEOUT_SECONDS": "0.2",
                 },
             )
 
@@ -3874,7 +3874,7 @@ print -r -- "$reserved"
                 "--location",
                 str(fixture["location"]),
                 "--cli-shim",
-                str(fixture["runtime"] / "bin" / "open-nova"),
+                str(fixture["runtime"] / "bin" / "actanara"),
                 "--user-cli-shim",
                 str(fixture["user_cli"]),
                 "--desktop-link",
@@ -3890,8 +3890,8 @@ print -r -- "$reserved"
                 str(journal),
                 check=False,
                 env={
-                    "NOVA_INSTALL_TEST_MODE": "1",
-                    "NOVA_INSTALL_TEST_FAIL_PHASE": "source-pointer-promoted",
+                    "ACTANARA_INSTALL_TEST_MODE": "1",
+                    "ACTANARA_INSTALL_TEST_FAIL_PHASE": "source-pointer-promoted",
                 },
             )
             self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
@@ -3922,7 +3922,7 @@ print -r -- "$reserved"
             source_identity, venv_identity = self._make_legacy_pointers_concrete(fixture)
             launch_agents = fixture["home"] / "Library" / "LaunchAgents"
             launch_agents.mkdir(parents=True)
-            label = "com.open-nova.dashboard.watchdog"
+            label = "com.actanara.dashboard.watchdog"
             plist_path = launch_agents / f"{label}.plist"
             with plist_path.open("wb") as handle:
                 plistlib.dump(
@@ -3942,11 +3942,11 @@ print -r -- "$reserved"
                             "--url",
                             "http://127.0.0.1:42173/health",
                             "--label",
-                            "com.open-nova.dashboard",
+                            "com.actanara.dashboard",
                             "--restart",
                         ],
                         "EnvironmentVariables": {
-                            "NOVA_HOME": str(fixture["runtime"]),
+                            "ACTANARA_HOME": str(fixture["runtime"]),
                         },
                         "RunAtLoad": True,
                     },
@@ -4110,8 +4110,8 @@ print -r -- "$reserved"
                 str(journal),
                 check=False,
                 env={
-                    "NOVA_INSTALL_TEST_MODE": "1",
-                    "NOVA_INSTALL_TEST_FAIL_PHASE": "source-promotion-armed",
+                    "ACTANARA_INSTALL_TEST_MODE": "1",
+                    "ACTANARA_INSTALL_TEST_FAIL_PHASE": "source-promotion-armed",
                 },
             )
 
@@ -4196,7 +4196,7 @@ print -r -- "$reserved"
                     "--location",
                     str(fixture["location"]),
                     "--cli-shim",
-                    str(fixture["runtime"] / "bin" / "open-nova"),
+                    str(fixture["runtime"] / "bin" / "actanara"),
                     "--user-cli-shim",
                     str(fixture["user_cli"]),
                     "--desktop-link",
@@ -4211,8 +4211,8 @@ print -r -- "$reserved"
                     str(journal),
                     check=False,
                     env={
-                        "NOVA_INSTALL_TEST_MODE": "1",
-                        "NOVA_INSTALL_TEST_KILL_PHASE": kill_phase,
+                        "ACTANARA_INSTALL_TEST_MODE": "1",
+                        "ACTANARA_INSTALL_TEST_KILL_PHASE": kill_phase,
                     },
                 )
 
@@ -4255,8 +4255,8 @@ print -r -- "$reserved"
                 str(journal),
                 check=False,
                 env={
-                    "NOVA_INSTALL_TEST_MODE": "1",
-                    "NOVA_INSTALL_TEST_KILL_PHASE": "commit-journaled-before-lock-release",
+                    "ACTANARA_INSTALL_TEST_MODE": "1",
+                    "ACTANARA_INSTALL_TEST_KILL_PHASE": "commit-journaled-before-lock-release",
                 },
             )
 
@@ -4295,8 +4295,8 @@ print -r -- "$reserved"
                 str(journal),
                 check=False,
                 env={
-                    "NOVA_INSTALL_TEST_MODE": "1",
-                    "NOVA_INSTALL_TEST_KILL_PHASE": (
+                    "ACTANARA_INSTALL_TEST_MODE": "1",
+                    "ACTANARA_INSTALL_TEST_KILL_PHASE": (
                         "rollback-journaled-before-lock-release"
                     ),
                 },
@@ -4332,7 +4332,7 @@ print -r -- "$reserved"
                 str(fixture["candidate_venv"]),
             )
 
-            marker = fixture["candidate_venv"] / ".open-nova-dependencies.json"
+            marker = fixture["candidate_venv"] / ".actanara-dependencies.json"
             state = json.loads(journal.read_text(encoding="utf-8"))
             self.assertEqual(
                 state["venv"]["dependencyMarkerSha256"],
@@ -4347,7 +4347,7 @@ print -r -- "$reserved"
         with tempfile.TemporaryDirectory() as tmp:
             fixture = self._fixture(Path(tmp))
             journal = self._begin(fixture, owner_pid=os.getpid())
-            marker = fixture["candidate_venv"] / ".open-nova-dependencies.json"
+            marker = fixture["candidate_venv"] / ".actanara-dependencies.json"
             marker.unlink()
 
             result = self._run(
@@ -4367,7 +4367,7 @@ print -r -- "$reserved"
             self.assertEqual(state["status"], "prepared")
             self.assertNotIn("dependencyMarkerSha256", state["venv"])
             self.assertTrue(
-                (fixture["candidate_venv"] / ".open-nova-update-owner").is_file()
+                (fixture["candidate_venv"] / ".actanara-update-owner").is_file()
             )
             self.assertFalse(state["serviceStopInitiated"])
             self._run("rollback", "--state", str(journal))
@@ -4377,7 +4377,7 @@ print -r -- "$reserved"
             root = Path(tmp)
             fixture = self._fixture(root)
             journal = self._begin(fixture, owner_pid=os.getpid())
-            marker = fixture["candidate_venv"] / ".open-nova-dependencies.json"
+            marker = fixture["candidate_venv"] / ".actanara-dependencies.json"
             marker.unlink()
             external = root / "operator-marker.json"
             external.write_text("operator-owned\n", encoding="utf-8")
@@ -4409,7 +4409,7 @@ print -r -- "$reserved"
         with tempfile.TemporaryDirectory() as tmp:
             fixture = self._fixture(Path(tmp))
             journal = self._begin(fixture, owner_pid=os.getpid())
-            marker = fixture["candidate_venv"] / ".open-nova-dependencies.json"
+            marker = fixture["candidate_venv"] / ".actanara-dependencies.json"
             marker.chmod(0o644)
 
             result = self._run(
@@ -4509,7 +4509,7 @@ print -r -- "$reserved"
                     if gate == "commit":
                         self._run("verify", "--state", str(journal))
 
-                marker = fixture["candidate_venv"] / ".open-nova-dependencies.json"
+                marker = fixture["candidate_venv"] / ".actanara-dependencies.json"
                 original = marker.read_bytes()
                 self._write_dependency_marker(
                     fixture["candidate_venv"],
@@ -4555,7 +4555,7 @@ print -r -- "$reserved"
             state = json.loads(journal.read_text(encoding="utf-8"))
             self.assertEqual(state["status"], "stopped")
             binding = state["venv"]["activeReuseBinding"]
-            active_marker = fixture["runtime"] / ".venv" / ".open-nova-dependencies.json"
+            active_marker = fixture["runtime"] / ".venv" / ".actanara-dependencies.json"
             self.assertEqual(
                 binding["dependencyMarkerSha256"],
                 hashlib.sha256(active_marker.read_bytes()).hexdigest(),
@@ -4591,7 +4591,7 @@ print -r -- "$reserved"
             )
             self._run("verify-migration-compatibility", "--state", str(journal))
             active_venv = fixture["runtime"] / ".venv"
-            marker = active_venv / ".open-nova-dependencies.json"
+            marker = active_venv / ".actanara-dependencies.json"
             original = marker.read_bytes()
             self._write_dependency_marker(active_venv, raw=original + b" ")
 
@@ -4633,10 +4633,10 @@ print -r -- "$reserved"
             shutil.copytree(original_generation, raced_generation)
             self.assertEqual(
                 hashlib.sha256(
-                    (original_generation / ".open-nova-dependencies.json").read_bytes()
+                    (original_generation / ".actanara-dependencies.json").read_bytes()
                 ).hexdigest(),
                 hashlib.sha256(
-                    (raced_generation / ".open-nova-dependencies.json").read_bytes()
+                    (raced_generation / ".actanara-dependencies.json").read_bytes()
                 ).hexdigest(),
             )
             active_pointer.unlink()
@@ -4676,7 +4676,7 @@ print -r -- "$reserved"
             fixture = self._fixture(Path(tmp))
             journal = self._begin(fixture, owner_pid=os.getpid())
             self._record_and_verify_source_candidate(fixture, journal)
-            marker = fixture["runtime"] / ".venv" / ".open-nova-dependencies.json"
+            marker = fixture["runtime"] / ".venv" / ".actanara-dependencies.json"
             original = marker.read_bytes()
             self._write_dependency_marker(fixture["runtime"] / ".venv", raw=original + b" ")
 
@@ -4694,7 +4694,7 @@ print -r -- "$reserved"
         with tempfile.TemporaryDirectory() as tmp:
             fixture = self._fixture(Path(tmp))
             active_venv = fixture["runtime"] / ".venv"
-            marker = active_venv / ".open-nova-dependencies.json"
+            marker = active_venv / ".actanara-dependencies.json"
             marker.unlink()
             journal = self._begin(fixture, owner_pid=os.getpid())
             self._record_and_verify_source_candidate(fixture, journal)
@@ -4741,7 +4741,7 @@ print -r -- "$reserved"
                 "--location",
                 str(fixture["location"]),
                 "--cli-shim",
-                str(fixture["runtime"] / "bin" / "open-nova"),
+                str(fixture["runtime"] / "bin" / "actanara"),
                 "--user-cli-shim",
                 str(fixture["user_cli"]),
                 "--desktop-link",
@@ -4759,10 +4759,10 @@ print -r -- "$reserved"
     def test_private_v1_candidate_manifest_is_rejected_before_service_stop(self):
         with tempfile.TemporaryDirectory() as tmp:
             fixture = self._fixture(Path(tmp))
-            manifest_path = fixture["candidate_source"] / ".open-nova-runtime-source.json"
+            manifest_path = fixture["candidate_source"] / ".actanara-runtime-source.json"
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             manifest["schemaVersion"] = 1
-            manifest["sourceRoot"] = "/Users/private-operator/Desktop/open-nova"
+            manifest["sourceRoot"] = "/Users/private-operator/Desktop/actanara"
             manifest.pop("sourceLocator", None)
             manifest_path.write_text(json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -4800,7 +4800,7 @@ print -r -- "$reserved"
             self._run("rollback", "--state", str(journal))
 
     def test_v2_candidate_manifest_rejects_unknown_private_field_and_release_mismatch(self):
-        private_marker = "/Users/private-operator/Desktop/open-nova"
+        private_marker = "/Users/private-operator/Desktop/actanara"
         for mutation, expected in (
             ({"debugPath": private_marker}, "exact schema"),
             (
@@ -4828,7 +4828,7 @@ print -r -- "$reserved"
         ):
             with self.subTest(expected=expected), tempfile.TemporaryDirectory() as tmp:
                 fixture = self._fixture(Path(tmp))
-                manifest_path = fixture["candidate_source"] / ".open-nova-runtime-source.json"
+                manifest_path = fixture["candidate_source"] / ".actanara-runtime-source.json"
                 manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
                 manifest.update(mutation)
                 manifest_path.write_text(json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8")
@@ -4881,7 +4881,7 @@ print -r -- "$reserved"
     def test_duplicate_payload_inventory_path_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             fixture = self._fixture(Path(tmp))
-            manifest_path = fixture["candidate_source"] / ".open-nova-runtime-source.json"
+            manifest_path = fixture["candidate_source"] / ".actanara-runtime-source.json"
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             manifest["payload"]["files"].append(dict(manifest["payload"]["files"][0]))
             manifest["payload"]["fileCount"] += 1

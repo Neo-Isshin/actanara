@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BOOTSTRAP = ROOT / "install" / "bootstrap.sh"
-DEFAULT_SOURCE_URL = "https://github.com/Neo-Isshin/open-nova.git"
+DEFAULT_SOURCE_URL = "https://github.com/Neo-Isshin/actanara.git"
 COMMIT = "b" * 40
 OTHER_COMMIT = "c" * 40
 
@@ -36,7 +36,7 @@ class UpdateBootstrapSafetyTests(unittest.TestCase):
         self.fake_installer.write_text(
             """#!/usr/bin/env zsh
 set -eu
-print -r -- "$*" >> "$NOVA_TEST_INSTALL_LOG"
+print -r -- "$*" >> "$ACTANARA_TEST_INSTALL_LOG"
 """,
             encoding="utf-8",
         )
@@ -44,27 +44,27 @@ print -r -- "$*" >> "$NOVA_TEST_INSTALL_LOG"
         self.fake_git.write_text(
             """#!/usr/bin/env zsh
 set -eu
-print -r -- "$*" >> "$NOVA_TEST_GIT_LOG"
+print -r -- "$*" >> "$ACTANARA_TEST_GIT_LOG"
 if [[ "${1:-}" == "clone" ]]; then
   target="${@: -1}"
   mkdir -p "$target/.git" "$target/install"
-  cp "$NOVA_TEST_INSTALLER" "$target/install/install.sh"
+  cp "$ACTANARA_TEST_INSTALLER" "$target/install/install.sh"
   chmod +x "$target/install/install.sh"
   exit 0
 fi
 if [[ "${1:-}" == "-C" && "${3:-}" == "remote" && "${4:-}" == "get-url" ]]; then
-  print -r -- "${NOVA_TEST_SOURCE_URL}"
+  print -r -- "${ACTANARA_TEST_SOURCE_URL}"
   exit 0
 fi
 if [[ "${1:-}" == "-C" && "${3:-}" == "rev-parse" ]]; then
-  if [[ "${NOVA_TEST_REV_PARSE_FAIL:-0}" == "1" ]]; then
+  if [[ "${ACTANARA_TEST_REV_PARSE_FAIL:-0}" == "1" ]]; then
     exit 1
   fi
-  print -r -- "${NOVA_TEST_REV_PARSE_COMMIT:-${NOVA_TEST_COMMIT}}"
+  print -r -- "${ACTANARA_TEST_REV_PARSE_COMMIT:-${ACTANARA_TEST_COMMIT}}"
   exit 0
 fi
 if [[ "${1:-}" == "ls-remote" ]]; then
-  print -r -- "${NOVA_TEST_COMMIT}\trefs/heads/main"
+  print -r -- "${ACTANARA_TEST_COMMIT}\trefs/heads/main"
   exit 0
 fi
 exit 0
@@ -76,26 +76,26 @@ exit 0
     def _environment(self, **overrides: str) -> dict[str, str]:
         env = os.environ.copy()
         for name in (
-            "NOVA_HOME",
-            "NOVA_INSTALL_RUNTIME",
-            "NOVA_INSTALL_SOURCE_ROOT",
-            "NOVA_INSTALL_SOURCE_URL",
-            "NOVA_INSTALL_REF",
-            "NOVA_INSTALL_CACHE_ROOT",
-            "NOVA_INSTALL_GIT",
-            "NOVA_INSTALL_PLUTIL",
+            "ACTANARA_HOME",
+            "ACTANARA_INSTALL_RUNTIME",
+            "ACTANARA_INSTALL_SOURCE_ROOT",
+            "ACTANARA_INSTALL_SOURCE_URL",
+            "ACTANARA_INSTALL_REF",
+            "ACTANARA_INSTALL_CACHE_ROOT",
+            "ACTANARA_INSTALL_GIT",
+            "ACTANARA_INSTALL_PLUTIL",
         ):
             env.pop(name, None)
         env.update(
             {
                 "HOME": str(self.home),
-                "NOVA_LOCATION_FILE": str(self.location),
-                "NOVA_TEST_GIT_LOG": str(self.git_log),
-                "NOVA_TEST_INSTALL_LOG": str(self.install_log),
-                "NOVA_TEST_INSTALLER": str(self.fake_installer),
-                "NOVA_TEST_SOURCE_URL": DEFAULT_SOURCE_URL,
-                "NOVA_INSTALL_VERBOSE": "1",
-                "NOVA_TEST_COMMIT": COMMIT,
+                "ACTANARA_LOCATION_FILE": str(self.location),
+                "ACTANARA_TEST_GIT_LOG": str(self.git_log),
+                "ACTANARA_TEST_INSTALL_LOG": str(self.install_log),
+                "ACTANARA_TEST_INSTALLER": str(self.fake_installer),
+                "ACTANARA_TEST_SOURCE_URL": DEFAULT_SOURCE_URL,
+                "ACTANARA_INSTALL_VERBOSE": "1",
+                "ACTANARA_TEST_COMMIT": COMMIT,
             }
         )
         env.update(overrides)
@@ -176,14 +176,14 @@ exit 0
             encoding="utf-8",
         )
         (config / "runtime.json").write_text(
-            '{"runtime":"open-nova"}\n',
+            '{"runtime":"actanara"}\n',
             encoding="utf-8",
         )
-        (release / ".open-nova-runtime-source.json").write_text(
+        (release / ".actanara-runtime-source.json").write_text(
             json.dumps(
                 {
                     "schemaVersion": 2,
-                    "product": "open-nova",
+                    "product": "actanara",
                     "deploymentMode": "release-symlink",
                 },
                 sort_keys=True,
@@ -209,7 +209,7 @@ exit 0
 
         truncated = script[:-3]
         result = subprocess.run(
-            ["zsh", "-c", truncated, "open-nova-truncated-bootstrap"],
+            ["zsh", "-c", truncated, "actanara-truncated-bootstrap"],
             cwd=self.root,
             env=self._environment(),
             text=True,
@@ -246,8 +246,8 @@ exit 0
 
     def test_default_origin_main_must_resolve_to_a_full_commit(self) -> None:
         cases = (
-            {"NOVA_TEST_REV_PARSE_FAIL": "1"},
-            {"NOVA_TEST_REV_PARSE_COMMIT": "main"},
+            {"ACTANARA_TEST_REV_PARSE_FAIL": "1"},
+            {"ACTANARA_TEST_REV_PARSE_COMMIT": "main"},
         )
         for index, overrides in enumerate(cases):
             with self.subTest(index=index):
@@ -283,8 +283,8 @@ exit 0
     def test_hosted_stdin_bootstrap_never_adopts_the_current_checkout(self) -> None:
         script = BOOTSTRAP.read_text(encoding="utf-8")
         env = self._environment(
-            NOVA_INSTALL_CACHE_ROOT=str(self.cache),
-            NOVA_INSTALL_GIT=str(self.fake_git),
+            ACTANARA_INSTALL_CACHE_ROOT=str(self.cache),
+            ACTANARA_INSTALL_GIT=str(self.fake_git),
         )
 
         result = subprocess.run(
@@ -292,7 +292,7 @@ exit 0
                 "zsh",
                 "-c",
                 script,
-                "open-nova-hosted-bootstrap",
+                "actanara-hosted-bootstrap",
                 "--",
                 "--runtime",
                 str(self.root / "runtime"),
@@ -327,8 +327,8 @@ exit 0
 
     def test_official_url_forms_without_ref_follow_main(self) -> None:
         source_urls = (
-            "https://github.com/Neo-Isshin/open-nova",
-            "https://github.com/Neo-Isshin/open-nova/",
+            "https://github.com/Neo-Isshin/actanara",
+            "https://github.com/Neo-Isshin/actanara/",
             DEFAULT_SOURCE_URL,
         )
         for index, source_url in enumerate(source_urls):
@@ -348,7 +348,7 @@ exit 0
 
     def test_custom_remote_without_commit_and_symbolic_remote_ref_fail_closed(self) -> None:
         cases = (
-            ("https://example.invalid/open-nova.git", None, "custom source URL"),
+            ("https://example.invalid/actanara.git", None, "custom source URL"),
             (DEFAULT_SOURCE_URL, "main", "full 40- or 64-character commit ID"),
             (DEFAULT_SOURCE_URL, "v1.2.3", "full 40- or 64-character commit ID"),
         )
@@ -363,8 +363,8 @@ exit 0
                 self.assertFalse(cache.exists())
 
     def test_custom_remote_with_full_commit_is_detached_and_never_uses_head(self) -> None:
-        source_url = "https://example.invalid/open-nova.git"
-        env = self._environment(NOVA_TEST_SOURCE_URL=source_url)
+        source_url = "https://example.invalid/actanara.git"
+        env = self._environment(ACTANARA_TEST_SOURCE_URL=source_url)
         result = self._run(*self._remote_arguments(source_url=source_url, ref=COMMIT), env=env)
         git_log = self.git_log.read_text(encoding="utf-8")
 
@@ -384,7 +384,7 @@ exit 0
         result = self._run(
             *self._remote_arguments(),
             env=self._environment(
-                NOVA_TEST_SOURCE_URL="https://github.com/Neo-Isshin/open-nova"
+                ACTANARA_TEST_SOURCE_URL="https://github.com/Neo-Isshin/actanara"
             ),
         )
 
@@ -408,8 +408,8 @@ exit 0
         result = self._run(
             *self._remote_arguments(ref=COMMIT),
             env=self._environment(
-                NOVA_TEST_SOURCE_URL="https://github.com/other/open-nova.git",
-                NOVA_INSTALL_VERBOSE="1",
+                ACTANARA_TEST_SOURCE_URL="https://github.com/other/actanara.git",
+                ACTANARA_INSTALL_VERBOSE="1",
             ),
         )
 
@@ -419,7 +419,7 @@ exit 0
         self.assertFalse(self.install_log.exists())
 
     def test_implicit_default_cache_mismatch_uses_isolated_official_cache(self) -> None:
-        legacy_source = self.home / ".cache" / "open-nova" / "installer" / "source"
+        legacy_source = self.home / ".cache" / "actanara" / "installer" / "source"
         (legacy_source / ".git").mkdir(parents=True)
         sentinel = legacy_source / "legacy-cache.txt"
         sentinel.write_text("keep legacy cache\n", encoding="utf-8")
@@ -430,7 +430,7 @@ exit 0
         result = self._run(
             *arguments,
             env=self._environment(
-                NOVA_TEST_SOURCE_URL="https://legacy.invalid/open-nova.git"
+                ACTANARA_TEST_SOURCE_URL="https://legacy.invalid/actanara.git"
             ),
         )
 
@@ -440,7 +440,7 @@ exit 0
         isolated_source = (
             self.home
             / ".cache"
-            / "open-nova"
+            / "actanara"
             / "installer"
             / "official-main"
             / "source"
@@ -450,13 +450,13 @@ exit 0
 
     def test_full_sha256_commit_is_accepted(self) -> None:
         commit = "d" * 64
-        source_url = "https://example.invalid/open-nova.git"
+        source_url = "https://example.invalid/actanara.git"
         result = self._run(
             *self._remote_arguments(source_url=source_url, ref=commit),
             env=self._environment(
-                NOVA_TEST_SOURCE_URL=source_url,
-                NOVA_TEST_COMMIT=commit,
-                NOVA_TEST_REV_PARSE_COMMIT=commit,
+                ACTANARA_TEST_SOURCE_URL=source_url,
+                ACTANARA_TEST_COMMIT=commit,
+                ACTANARA_TEST_REV_PARSE_COMMIT=commit,
             ),
         )
 
@@ -488,8 +488,8 @@ exit 0
         self.assertFalse(self.git_log.exists())
         self.assertFalse(self.cache.exists())
 
-    def test_oneliner_auto_updates_target_nova_home_default_and_pointer_runtimes(self) -> None:
-        for index, name in enumerate(("target", "nova-home", "default", "pointer")):
+    def test_oneliner_auto_updates_target_actanara_home_default_and_pointer_runtimes(self) -> None:
+        for index, name in enumerate(("target", "actanara-home", "default", "pointer")):
             with self.subTest(name=name):
                 case_home = self.root / f"Home-{index}"
                 case_home.mkdir()
@@ -497,16 +497,16 @@ exit 0
                 case_runtime = self.root / f"existing-{name}-{index}"
                 env_values = {
                     "HOME": str(case_home),
-                    "NOVA_LOCATION_FILE": str(case_location),
-                    "NOVA_INSTALL_PLUTIL": "/no/such/plutil",
+                    "ACTANARA_LOCATION_FILE": str(case_location),
+                    "ACTANARA_INSTALL_PLUTIL": "/no/such/plutil",
                 }
-                if name == "nova-home":
-                    env_values["NOVA_HOME"] = str(case_runtime)
+                if name == "actanara-home":
+                    env_values["ACTANARA_HOME"] = str(case_runtime)
                 elif name == "default":
-                    case_runtime = case_home / ".open-nova"
+                    case_runtime = case_home / ".actanara"
                 elif name == "pointer":
                     case_location.write_text(
-                        json.dumps({"novaHome": str(case_runtime)}),
+                        json.dumps({"actanaraHome": str(case_runtime)}),
                         encoding="utf-8",
                     )
                 self._write_updateable_runtime(case_runtime)
@@ -614,7 +614,7 @@ exit 0
                 arguments.extend(suffix)
                 result = self._run(
                     *arguments,
-                    env=self._environment(NOVA_INSTALL_VERBOSE="0"),
+                    env=self._environment(ACTANARA_INSTALL_VERBOSE="0"),
                 )
 
                 self.assertEqual(result.returncode, 2, self._output(result))
@@ -645,7 +645,7 @@ exit 0
         self.assertIn(f"checkout --detach {COMMIT}", git_log)
 
     def test_partial_runtime_tty_prompt_accepts_default_and_decline_is_noop(self) -> None:
-        prompt = "当前 Open Nova 不能直接升级，是否进行覆盖安装？现有数据与设置不会丢失，只会重建运行环境与依赖。 [Y/n]"
+        prompt = "当前 Actanara 不能直接升级，是否进行覆盖安装？现有数据与设置不会丢失，只会重建运行环境与依赖。 [Y/n]"
         for index, (response, accepted) in enumerate((("\n", True), ("n\n", False))):
             with self.subTest(response=response):
                 runtime = self.root / f"runtime-{index}"
@@ -669,14 +669,14 @@ exit 0
                     self.assertEqual(installer_args.count("--yes"), 1)
                     self.assertTrue(cache.exists())
                 else:
-                    self.assertIn("已取消 Open Nova 恢复", self._output(result))
+                    self.assertIn("已取消 Actanara 恢复", self._output(result))
                     self.assertFalse(cache.exists())
                     self.assertFalse(self.install_log.exists())
 
     def test_foreign_runtime_manifest_still_fails_before_clone(self) -> None:
         runtime = self.root / "runtime"
         self._write_updateable_runtime(runtime)
-        manifest = runtime / "app" / "source" / ".open-nova-runtime-source.json"
+        manifest = runtime / "app" / "source" / ".actanara-runtime-source.json"
         manifest.write_text(
             '{"product":"other","deploymentMode":"release-symlink"}\n',
             encoding="utf-8",
@@ -713,7 +713,7 @@ exit 0
     def test_symlinked_location_pointer_fails_before_clone(self) -> None:
         actual = self.root / "actual-location.json"
         actual.write_text(
-            json.dumps({"novaHome": str(self.root / "runtime")}),
+            json.dumps({"actanaraHome": str(self.root / "runtime")}),
             encoding="utf-8",
         )
         location = self.root / "linked-location.json"
@@ -724,7 +724,7 @@ exit 0
 
         result = self._run(
             *arguments,
-            env=self._environment(NOVA_LOCATION_FILE=str(location)),
+            env=self._environment(ACTANARA_LOCATION_FILE=str(location)),
         )
 
         self.assertEqual(result.returncode, 2, self._output(result))
@@ -732,7 +732,7 @@ exit 0
         self.assertFalse(self.install_log.exists())
 
     def test_malformed_or_unsafe_location_pointer_fails_before_clone(self) -> None:
-        cases = ("not-json", json.dumps({"novaHome": "relative/runtime"}))
+        cases = ("not-json", json.dumps({"actanaraHome": "relative/runtime"}))
         for index, payload in enumerate(cases):
             with self.subTest(index=index):
                 location = self.root / f"unsafe-location-{index}.json"
@@ -745,30 +745,30 @@ exit 0
                 result = self._run(
                     *arguments,
                     env=self._environment(
-                        NOVA_LOCATION_FILE=str(location),
-                        NOVA_INSTALL_PLUTIL="/no/such/plutil",
+                        ACTANARA_LOCATION_FILE=str(location),
+                        ACTANARA_INSTALL_PLUTIL="/no/such/plutil",
                     ),
                 )
                 self.assertEqual(result.returncode, 2, self._output(result))
-                self.assertIn("Open Nova", self._output(result))
+                self.assertIn("Actanara", self._output(result))
                 self.assertFalse(cache.exists())
 
-    def test_existing_open_nova_launch_agent_fails_before_clone(self) -> None:
-        launch_agent = self.home / "Library" / "LaunchAgents" / "com.open-nova.dashboard.plist"
+    def test_existing_actanara_launch_agent_fails_before_clone(self) -> None:
+        launch_agent = self.home / "Library" / "LaunchAgents" / "com.actanara.dashboard.plist"
         launch_agent.parent.mkdir(parents=True)
         launch_agent.write_text("plist\n", encoding="utf-8")
 
         result = self._run(*self._remote_arguments(ref=COMMIT))
 
         self.assertEqual(result.returncode, 2, self._output(result))
-        self.assertIn("Open Nova", self._output(result))
+        self.assertIn("Actanara", self._output(result))
         self.assertFalse(self.cache.exists())
         self.assertFalse(self.git_log.exists())
 
     def test_explicit_upgrade_is_converted_to_legacy_repair(self) -> None:
         runtime = self.root / "runtime"
         self._write_marker(runtime)
-        launch_agent = self.home / "Library" / "LaunchAgents" / "com.open-nova.dashboard.plist"
+        launch_agent = self.home / "Library" / "LaunchAgents" / "com.actanara.dashboard.plist"
         launch_agent.parent.mkdir(parents=True)
         launch_agent.write_text("plist\n", encoding="utf-8")
         arguments = self._remote_arguments(ref=COMMIT)
@@ -789,8 +789,8 @@ exit 0
 
     def test_apply_rejects_non_commit_or_nonmatching_object_without_head_fallback(self) -> None:
         cases = (
-            {"NOVA_TEST_REV_PARSE_FAIL": "1"},
-            {"NOVA_TEST_REV_PARSE_COMMIT": OTHER_COMMIT},
+            {"ACTANARA_TEST_REV_PARSE_FAIL": "1"},
+            {"ACTANARA_TEST_REV_PARSE_COMMIT": OTHER_COMMIT},
         )
         for index, overrides in enumerate(cases):
             with self.subTest(index=index):

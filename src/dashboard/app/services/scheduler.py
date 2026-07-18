@@ -43,8 +43,8 @@ logger = logging.getLogger("dashboard.scheduler")
 _task: asyncio.Task | None = None
 _stop_event: asyncio.Event | None = None
 MAX_BACKFILL_DAYS = 366
-SCHEDULER_INSTALL_CONFIRMATION = "INSTALL OPEN NOVA SCHEDULER"
-SCHEDULER_UNINSTALL_CONFIRMATION = "UNINSTALL OPEN NOVA SCHEDULER"
+SCHEDULER_INSTALL_CONFIRMATION = "INSTALL ACTANARA SCHEDULER"
+SCHEDULER_UNINSTALL_CONFIRMATION = "UNINSTALL ACTANARA SCHEDULER"
 
 
 def start_scheduler_loop() -> None:
@@ -148,7 +148,7 @@ def install_system_timer(payload: dict | None = None) -> dict:
             "mode": "system",
             "systemTimer": {
                 "provider": "launchd",
-                "label": timer.get("label", "open-nova.daily"),
+                "label": timer.get("label", "actanara.daily"),
                 "registered": True,
                 "registrationManagedBy": "dashboard-handoff",
                 "registeredAt": now.isoformat(),
@@ -201,7 +201,7 @@ def uninstall_system_timer(payload: dict | None = None) -> dict:
             "mode": "agent" if target_mode == "agent" else "system",
             "systemTimer": {
                 "provider": timer.get("provider", "launchd"),
-                "label": timer.get("label", "open-nova.daily"),
+                "label": timer.get("label", "actanara.daily"),
                 "registered": False,
                 "registrationManagedBy": "dashboard-handoff",
                 "unregisteredAt": now.isoformat(),
@@ -910,7 +910,7 @@ def _write_system_timer_audit(
             "schedule": {
                 "systemTimer": {
                     "provider": timer.get("provider", "launchd"),
-                    "label": timer.get("label", "open-nova.daily"),
+                    "label": timer.get("label", "actanara.daily"),
                     "registered": registered,
                     "registrationManagedBy": "dashboard",
                     "jobs": jobs if registered else [],

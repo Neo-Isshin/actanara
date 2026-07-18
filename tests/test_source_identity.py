@@ -19,15 +19,15 @@ class LoadedSourceIdentityTests(unittest.TestCase):
         module.parent.mkdir(parents=True)
         module.write_text("# fixture\n", encoding="utf-8")
         (release / "pyproject.toml").write_text(
-            '[project]\nname = "open-nova"\nversion = "9.9.9"\n',
+            '[project]\nname = "actanara"\nversion = "9.9.9"\n',
             encoding="utf-8",
         )
-        manifest = release / ".open-nova-runtime-source.json"
+        manifest = release / ".actanara-runtime-source.json"
         manifest.write_text(
             json.dumps(
                 {
                     "schemaVersion": 2,
-                    "product": "open-nova",
+                    "product": "actanara",
                     "git": {"available": True, "commit": commit},
                 }
             )
@@ -105,14 +105,14 @@ class LoadedSourceIdentityTests(unittest.TestCase):
             outer = Path(tmp) / "outer"
             (outer / "pyproject.toml").parent.mkdir(parents=True)
             (outer / "pyproject.toml").write_text(
-                '[project]\nname = "open-nova"\nversion = "9.9.9"\n',
+                '[project]\nname = "actanara"\nversion = "9.9.9"\n',
                 encoding="utf-8",
             )
-            (outer / ".open-nova-runtime-source.json").write_text(
+            (outer / ".actanara-runtime-source.json").write_text(
                 json.dumps(
                     {
                         "schemaVersion": 2,
-                        "product": "open-nova",
+                        "product": "actanara",
                         "git": {"available": True, "commit": "a" * 40},
                     }
                 ),
@@ -129,12 +129,12 @@ class LoadedSourceIdentityTests(unittest.TestCase):
             )
             self.assertIsNone(loaded_source_commit(foreign_module))
 
-            nested = outer / "vendor" / "nested-open-nova"
+            nested = outer / "vendor" / "nested-actanara"
             nested_module = nested / "src" / "package" / "module.py"
             nested_module.parent.mkdir(parents=True)
             nested_module.write_text("# nested\n", encoding="utf-8")
             (nested / "pyproject.toml").write_text(
-                '[project]\nname = "open-nova"\nversion = "9.9.9"\n',
+                '[project]\nname = "actanara"\nversion = "9.9.9"\n',
                 encoding="utf-8",
             )
             self.assertIsNone(loaded_source_commit(nested_module))
@@ -147,14 +147,14 @@ class LoadedSourceIdentityTests(unittest.TestCase):
             module.parent.mkdir(parents=True)
             module.write_text("# staging fixture\n", encoding="utf-8")
             (candidate / "pyproject.toml").write_text(
-                '[project]\nname = "open-nova"\nversion = "9.9.9"\n',
+                '[project]\nname = "actanara"\nversion = "9.9.9"\n',
                 encoding="utf-8",
             )
-            (candidate / ".open-nova-runtime-source.json").write_text(
+            (candidate / ".actanara-runtime-source.json").write_text(
                 json.dumps(
                     {
                         "schemaVersion": 2,
-                        "product": "open-nova",
+                        "product": "actanara",
                         "git": {"available": True, "commit": commit},
                     }
                 ),

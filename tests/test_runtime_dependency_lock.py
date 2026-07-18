@@ -98,7 +98,7 @@ class RuntimeDependencyLockTests(unittest.TestCase):
             json.dumps(self.lock, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         )
         self.assertEqual(self.lock["schemaVersion"], 1)
-        self.assertEqual(self.lock["product"], "open-nova")
+        self.assertEqual(self.lock["product"], "actanara")
         self.assertEqual(
             self.lock["artifactPolicy"],
             {

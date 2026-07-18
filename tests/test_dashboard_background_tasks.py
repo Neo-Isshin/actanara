@@ -52,9 +52,9 @@ class DashboardBackgroundTasksTests(unittest.TestCase):
                 "jobs": [
                     {
                         "kind": "daily-pipeline",
-                        "label": "open-nova.daily.pipeline",
+                        "label": "actanara.daily.pipeline",
                         "time": "04:00",
-                        "plistPath": "/tmp/open-nova.daily.pipeline.plist",
+                        "plistPath": "/tmp/actanara.daily.pipeline.plist",
                     }
                 ],
             },
@@ -404,7 +404,7 @@ class DashboardBackgroundTasksTests(unittest.TestCase):
             patch.object(background_tasks.foundation, "list_refresh_jobs", return_value=refresh_payload),
             patch.object(background_tasks.foundation_ops, "list_foundation_repair_runs", return_value=repair_payload),
             patch.object(background_tasks.rag_index_jobs, "list_candidate_refresh_jobs", return_value=[{"id": "rag-1", "type": "rag-profile-migration", "status": "running", "progress": 7, "providerId": "local", "sourceSets": ["diary-markdown-sections"]}]),
-            patch.object(background_tasks.scheduler, "scheduler_status", return_value={"systemTimer": {"registered": True, "jobs": [{"kind": "daily-pipeline", "label": "open-nova.daily.pipeline", "time": "04:00"}]}}),
+            patch.object(background_tasks.scheduler, "scheduler_status", return_value={"systemTimer": {"registered": True, "jobs": [{"kind": "daily-pipeline", "label": "actanara.daily.pipeline", "time": "04:00"}]}}),
             patch.object(background_tasks.external_rag_skill_registration, "list_rag_skill_registration_jobs", return_value=[{"id": "skill-1", "status": "running", "operations": [{"tool": "codex"}]}]),
             patch.object(background_tasks, "resolve_rag_settings", return_value=object()),
             patch.object(background_tasks, "read_server_process_state", return_value={"status": "running", "statePath": "/tmp/rag.json"}),
@@ -421,7 +421,7 @@ class DashboardBackgroundTasksTests(unittest.TestCase):
         self.assertIn("usage cache sources=2, cached=1", refresh_task["subtitle"])
         self.assertEqual(repair_task["title"], "Daily QA repair: retry-daily-pipeline")
         self.assertEqual(repair_task["subtitle"], "business date 2026-06-05")
-        self.assertEqual(scheduler_task["title"], "LaunchAgent: open-nova.daily.pipeline")
+        self.assertEqual(scheduler_task["title"], "LaunchAgent: actanara.daily.pipeline")
         self.assertEqual(scheduler_task["subtitle"], "daily-pipeline at 04:00")
         self.assertIn("RAG profile migration", rag_titles)
         self.assertIn("RAG external agent skill registration", rag_titles)

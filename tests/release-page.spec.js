@@ -11,9 +11,9 @@ const dashboardDemoUrl = pathToFileURL(path.join(dashboardDemoRoot, "index.html"
 test("release page renders core content", async ({ page }) => {
   await page.goto(releasePageUrl);
 
-  await expect(page).toHaveTitle("Open Nova - Local AI Operations Runtime");
-  await expect(page.getByRole("heading", { name: "Open Nova", level: 1 })).toBeVisible();
-  const productImage = page.getByRole("img", { name: "Open Nova dashboard product mockup" });
+  await expect(page).toHaveTitle("Actanara - Local AI Operations Runtime");
+  await expect(page.getByRole("heading", { name: "Actanara", level: 1 })).toBeVisible();
+  const productImage = page.getByRole("img", { name: "Actanara dashboard product mockup" });
   await expect(productImage).toBeVisible();
   const imageState = await productImage.evaluate(image => ({
     complete: image.complete,
@@ -54,7 +54,7 @@ test("release page navigation and CTA hrefs match product sections", async ({ pa
   const hero = page.locator(".hero");
   const footerCta = page.locator(".cta");
   const fragmentContracts = [
-    [nav.getByRole("link", { name: "Open Nova home", exact: true }), "#top"],
+    [nav.getByRole("link", { name: "Actanara home", exact: true }), "#top"],
     [nav.getByRole("link", { name: "功能", exact: true, includeHidden: true }), "#features"],
     [nav.getByRole("link", { name: "架构", exact: true, includeHidden: true }), "#architecture"],
     [nav.getByRole("link", { name: "安装", exact: true, includeHidden: true }), "#install"],
@@ -109,27 +109,27 @@ test("release page external links match the approved destinations", async ({ pag
 
   await expect(page.getByRole("link", { name: "View Repository", exact: true })).toHaveAttribute(
     "href",
-    "https://github.com/Neo-Isshin/open-nova",
+    "https://github.com/Neo-Isshin/actanara",
   );
   await expect(page.getByRole("link", { name: "阅读 README", exact: true })).toHaveAttribute(
     "href",
-    "https://github.com/Neo-Isshin/open-nova/blob/main/README.md",
+    "https://github.com/Neo-Isshin/actanara/blob/main/README.md",
   );
   await expect(page.getByRole("link", { name: "GPL-3.0-or-later", exact: true })).toHaveAttribute(
     "href",
-    "https://github.com/Neo-Isshin/open-nova/blob/main/LICENSE",
+    "https://github.com/Neo-Isshin/actanara/blob/main/LICENSE",
   );
 });
 
 test("release page copy CTA writes the exact visible hosted install command", async ({ page }) => {
   await page.goto(releasePageUrl);
   await page.evaluate(() => {
-    window.__openNovaCopiedText = null;
+    window.__actanaraCopiedText = null;
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: {
         writeText: async value => {
-          window.__openNovaCopiedText = value;
+          window.__actanaraCopiedText = value;
         },
       },
     });
@@ -139,19 +139,19 @@ test("release page copy CTA writes the exact visible hosted install command", as
   await page.getByRole("button", { name: "复制安装命令", exact: true }).click();
 
   await expect(page.getByRole("status")).toHaveText("安装命令已复制。");
-  expect(await page.evaluate(() => window.__openNovaCopiedText)).toBe(command);
+  expect(await page.evaluate(() => window.__actanaraCopiedText)).toBe(command);
   expect(command).toBe(
-    "curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/open-nova/main/install/bootstrap.sh | zsh",
+    "curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/actanara/main/install/bootstrap.sh | zsh",
   );
 });
 
 test("release page copy CTA uses and cleans fallback when Clipboard API is absent", async ({ page }) => {
   await page.goto(releasePageUrl);
   await page.evaluate(() => {
-    window.__openNovaFallbackText = null;
+    window.__actanaraFallbackText = null;
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
     document.execCommand = command => {
-      window.__openNovaFallbackText = document.querySelector("textarea")?.value || null;
+      window.__actanaraFallbackText = document.querySelector("textarea")?.value || null;
       return command === "copy";
     };
   });
@@ -160,20 +160,20 @@ test("release page copy CTA uses and cleans fallback when Clipboard API is absen
   await page.getByRole("button", { name: "复制安装命令", exact: true }).click();
 
   await expect(page.getByRole("status")).toHaveText("安装命令已复制。");
-  expect(await page.evaluate(() => window.__openNovaFallbackText)).toBe(command);
+  expect(await page.evaluate(() => window.__actanaraFallbackText)).toBe(command);
   await expect(page.locator("textarea")).toHaveCount(0);
 });
 
 test("release page copy CTA falls back after Clipboard API rejection", async ({ page }) => {
   await page.goto(releasePageUrl);
   await page.evaluate(() => {
-    window.__openNovaFallbackCalls = 0;
+    window.__actanaraFallbackCalls = 0;
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText: async () => { throw new Error("permission denied"); } },
     });
     document.execCommand = () => {
-      window.__openNovaFallbackCalls += 1;
+      window.__actanaraFallbackCalls += 1;
       return true;
     };
   });
@@ -181,7 +181,7 @@ test("release page copy CTA falls back after Clipboard API rejection", async ({ 
   await page.getByRole("button", { name: "复制安装命令", exact: true }).click();
 
   await expect(page.getByRole("status")).toHaveText("安装命令已复制。");
-  expect(await page.evaluate(() => window.__openNovaFallbackCalls)).toBe(1);
+  expect(await page.evaluate(() => window.__actanaraFallbackCalls)).toBe(1);
   await expect(page.locator("textarea")).toHaveCount(0);
 });
 
@@ -209,10 +209,10 @@ test("static dashboard demo exposes the curated real Dashboard pages", async ({ 
   test.slow();
   await page.goto(dashboardDemoUrl);
 
-  await expect(page).toHaveTitle("Open Nova");
+  await expect(page).toHaveTitle("Actanara");
   for (const profile of ["en", "zh"]) {
     await page.evaluate(value => window.applyStaticDashboardText(value), profile);
-    await expect(page).toHaveTitle("Open Nova");
+    await expect(page).toHaveTitle("Actanara");
   }
   await expect(page.locator("#page-overview")).toBeVisible();
   await expect(page.locator("#page-overview .page-title")).toHaveText("当日实时总览");
@@ -247,13 +247,13 @@ test("static dashboard demo exposes the curated real Dashboard pages", async ({ 
 
   await expect(page.locator('a[href="tasks.html"]').first()).toHaveAttribute("href", "tasks.html");
   await page.goto(new URL("tasks.html", dashboardDemoUrl).href);
-  await expect(page).toHaveTitle("Open Nova — Nova Task");
+  await expect(page).toHaveTitle("Actanara — Nova Task");
   for (const profile of ["en", "zh"]) {
     await page.evaluate(value => {
       taskLanguageProfile = value;
       applyTaskText();
     }, profile);
-    await expect(page).toHaveTitle("Open Nova — Nova Task");
+    await expect(page).toHaveTitle("Actanara — Nova Task");
   }
   await expect(page.getByRole("heading", { name: "任务看板", exact: true })).toBeVisible();
 });
@@ -264,7 +264,7 @@ test("static dashboard demo aggregates both SSE transports without conflating so
   await expect(status).toHaveText("🟢 已连接");
 
   await page.evaluate(() => {
-    OPEN_NOVA_SSE_STREAM_STATES.clear();
+    ACTANARA_SSE_STREAM_STATES.clear();
     updateSseStreamState("tokens", { transport: "connecting", retrySeconds: 0, sourceWarnings: [] });
     updateSseStreamState("tasks", { transport: "connecting", retrySeconds: 0, sourceWarnings: [] });
     updateSseStreamState("tokens", { transport: "connected" });

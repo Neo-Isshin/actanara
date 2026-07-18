@@ -42,7 +42,7 @@ from data_foundation.paths import initialize_home
 class NovaTaskAuthorityTests(unittest.TestCase):
     def test_authoritative_task_graph_supports_parent_child_nodes_and_audit(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             parent = create_task_node(paths, title="Nova-Task v2 system rebuild", node_type="track", actor="operator")
             child = create_task_node(
                 paths,
@@ -65,7 +65,7 @@ class NovaTaskAuthorityTests(unittest.TestCase):
 
     def test_update_task_node_changes_authority_and_audits(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             parent = create_task_node(paths, node_id="NT-PARENT", title="Parent", actor="operator")
             child = create_task_node(paths, node_id="NT-CHILD", title="Child", actor="operator")
 
@@ -96,7 +96,7 @@ class NovaTaskAuthorityTests(unittest.TestCase):
 
     def test_human_node_under_agent_branch_claims_only_ancestor_path(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             root = create_task_node(
                 paths,
                 node_id="NT-AGENT-ROOT",
@@ -165,7 +165,7 @@ class NovaTaskAuthorityTests(unittest.TestCase):
 
     def test_candidate_creation_is_idempotent_and_not_authoritative_until_confirmed(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             first = create_task_candidate(
                 paths,
                 candidate_type="parent_task",
@@ -197,10 +197,10 @@ class NovaTaskAuthorityTests(unittest.TestCase):
     def test_workspace_project_anchor_reconciliation_creates_level_one_review_candidate_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            project = root / "open-nova"
+            project = root / "actanara"
             project.mkdir()
-            (project / "pyproject.toml").write_text('[project]\nname = "open-nova"\n', encoding="utf-8")
-            paths = initialize_home(root / "NovaDiary")
+            (project / "pyproject.toml").write_text('[project]\nname = "actanara"\n', encoding="utf-8")
+            paths = initialize_home(root / "Actanara")
 
             first = reconcile_workspace_project_anchors(paths, observed_paths=[project / "src" / "app.py"])
             second = reconcile_workspace_project_anchors(paths, observed_paths=[project / "src" / "app.py"])
@@ -215,7 +215,7 @@ class NovaTaskAuthorityTests(unittest.TestCase):
         self.assertEqual(first.candidate_count, 1)
         self.assertEqual(second.candidate_count, 0)
         self.assertEqual(node_count, 0)
-        self.assertEqual((candidate["candidate_type"], candidate["proposed_title"], candidate["confidence"]), ("parent_task", "open-nova", "high"))
+        self.assertEqual((candidate["candidate_type"], candidate["proposed_title"], candidate["confidence"]), ("parent_task", "actanara", "high"))
         self.assertEqual(metadata["candidateKind"], "project_anchor")
         self.assertEqual(metadata["suggestedNodeType"], "track")
         self.assertEqual(metadata["level"], 1)
@@ -227,7 +227,7 @@ class NovaTaskAuthorityTests(unittest.TestCase):
             project = root / "NovaAgent"
             project.mkdir()
             (project / "pyproject.toml").write_text('[project]\nname = "NovaAgent"\n', encoding="utf-8")
-            paths = initialize_home(root / "NovaDiary")
+            paths = initialize_home(root / "Actanara")
             planned = create_task_node(
                 paths,
                 node_id="NT-PLANNED-L1",
@@ -268,7 +268,7 @@ class NovaTaskAuthorityTests(unittest.TestCase):
             project = root / "TokenClock"
             project.mkdir()
             (project / "package.json").write_text('{"name":"TokenClock"}', encoding="utf-8")
-            paths = initialize_home(root / "NovaDiary")
+            paths = initialize_home(root / "Actanara")
             create_task_node(
                 paths,
                 node_id="NT-TOKENCLOCK",
@@ -298,14 +298,14 @@ class NovaTaskAuthorityTests(unittest.TestCase):
     def test_workspace_project_anchor_title_aliases_match_existing_l1(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            project = root / "open-nova"
+            project = root / "actanara"
             project.mkdir()
-            (project / "pyproject.toml").write_text('[project]\nname = "open-nova系统"\n', encoding="utf-8")
-            paths = initialize_home(root / "NovaDiary")
+            (project / "pyproject.toml").write_text('[project]\nname = "actanara系统"\n', encoding="utf-8")
+            paths = initialize_home(root / "Actanara")
             create_task_node(
                 paths,
-                node_id="NT-OPEN-NOVA",
-                title="Open Nova",
+                node_id="NT-ACTANARA",
+                title="Actanara",
                 node_type="track",
                 status="planned",
                 actor="planning-import",
@@ -319,7 +319,7 @@ class NovaTaskAuthorityTests(unittest.TestCase):
 
             with connect(paths, read_only=True) as connection:
                 row = connection.execute(
-                    "SELECT metadata_json FROM nova_task_nodes WHERE node_id = 'NT-OPEN-NOVA'"
+                    "SELECT metadata_json FROM nova_task_nodes WHERE node_id = 'NT-ACTANARA'"
                 ).fetchone()
                 candidate_count = connection.execute("SELECT COUNT(*) FROM nova_task_candidates").fetchone()[0]
 
@@ -327,7 +327,7 @@ class NovaTaskAuthorityTests(unittest.TestCase):
         self.assertEqual(result.candidate_count, 0)
         self.assertEqual(candidate_count, 0)
         self.assertEqual(metadata["workspace"]["rootPath"], str(project))
-        self.assertEqual(metadata["workspace"]["displayName"], "open-nova系统")
+        self.assertEqual(metadata["workspace"]["displayName"], "actanara系统")
 
     def test_low_confidence_workspace_anchor_does_not_create_l1_candidate(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -335,7 +335,7 @@ class NovaTaskAuthorityTests(unittest.TestCase):
             loose = root / "notes" / "scratch.py"
             loose.parent.mkdir(parents=True)
             loose.write_text("print('not a project marker')\n", encoding="utf-8")
-            paths = initialize_home(root / "NovaDiary")
+            paths = initialize_home(root / "Actanara")
 
             result = reconcile_workspace_project_anchors(paths, observed_paths=[loose])
 
@@ -353,7 +353,7 @@ class NovaTaskAuthorityTests(unittest.TestCase):
             project = root / "TokenClock"
             project.mkdir()
             (project / "package.json").write_text('{"name":"TokenClock"}', encoding="utf-8")
-            paths = initialize_home(root / "NovaDiary")
+            paths = initialize_home(root / "Actanara")
             reconcile_workspace_project_anchors(paths, observed_paths=[project / "Sources" / "Clock.swift"])
             with connect(paths, read_only=True) as connection:
                 candidate_id = connection.execute("SELECT candidate_id FROM nova_task_candidates").fetchone()["candidate_id"]
@@ -380,17 +380,17 @@ class NovaTaskAuthorityTests(unittest.TestCase):
     def test_confirming_workspace_project_anchor_attaches_to_existing_l1_without_duplicate(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            project = root / "open-nova"
+            project = root / "actanara"
             project.mkdir()
-            (project / "pyproject.toml").write_text('[project]\nname = "open-nova"\n', encoding="utf-8")
-            paths = initialize_home(root / "NovaDiary")
+            (project / "pyproject.toml").write_text('[project]\nname = "actanara"\n', encoding="utf-8")
+            paths = initialize_home(root / "Actanara")
             reconcile_workspace_project_anchors(paths, observed_paths=[project / "src" / "app.py"])
             with connect(paths, read_only=True) as connection:
                 candidate_id = connection.execute("SELECT candidate_id FROM nova_task_candidates").fetchone()["candidate_id"]
             existing = create_task_node(
                 paths,
                 node_id="NT-EXISTING-L1",
-                title="Open Nova",
+                title="Actanara",
                 node_type="track",
                 status="planned",
                 actor="planning-import",
@@ -423,7 +423,7 @@ class NovaTaskAuthorityTests(unittest.TestCase):
 
     def test_confirming_planning_overlay_l1_stays_planned(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             candidate = create_task_candidate(
                 paths,
                 candidate_type="parent_task",
@@ -455,7 +455,7 @@ class NovaTaskAuthorityTests(unittest.TestCase):
 
     def test_confirming_candidate_creates_task_node_decision_and_audit(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             parent = create_task_node(paths, title="Task system", node_type="track", actor="operator")
             candidate = create_task_candidate(
                 paths,
@@ -497,7 +497,7 @@ class NovaTaskAuthorityTests(unittest.TestCase):
 
     def test_all_migrations_include_nova_task_authority_schema(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             migrate(paths)
             with connect(paths, read_only=True) as connection:
                 tables = {
@@ -513,7 +513,7 @@ class NovaTaskAuthorityTests(unittest.TestCase):
 
     def test_status_vocabulary_migration_allows_paused_pending_review_and_superseded(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             node = create_task_node(paths, node_id="NT-PAUSED", title="Paused work", actor="operator")
             update_task_node(paths, node_id=node.node_id, actor="operator", status="paused")
             candidate = create_task_candidate(
@@ -543,7 +543,7 @@ class NovaTaskAuthorityTests(unittest.TestCase):
 
     def test_task_board_render_is_deterministic_sqlite_projection(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             parent = create_task_node(
                 paths,
                 node_id="NT-PHASE26",
@@ -592,7 +592,7 @@ class NovaTaskAuthorityTests(unittest.TestCase):
 
     def test_export_writes_projection_and_does_not_read_task_board_as_authority(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             board = paths.task_board_path
             board.parent.mkdir(parents=True, exist_ok=True)
             board.write_text("- [x] **[NT-FAKE]** Manual board edit\n", encoding="utf-8")
@@ -620,7 +620,7 @@ class NovaTaskAuthorityTests(unittest.TestCase):
 
     def test_compact_task_graph_context_uses_sqlite_active_nodes(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             parent = create_task_node(paths, node_id="NT-ACTIVE", title="Active task", actor="operator")
             create_task_node(
                 paths,
@@ -678,7 +678,7 @@ nova_task:
 ```
 """
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             create_task_node(paths, node_id="NT-ACTIVE", title="Active task", actor="operator")
 
             first = ingest_nova_task_evidence(
@@ -734,7 +734,7 @@ nova_task:
 ```
 """
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             root = create_task_node(paths, node_id="NT-ROOT", title="Root", actor="operator")
             child = create_task_node(paths, node_id="NT-CHILD", title="Child", parent_node_id=root.node_id, actor="operator")
             create_task_node(paths, node_id="NT-STEP", title="Step", parent_node_id=child.node_id, actor="operator")
@@ -784,7 +784,7 @@ nova_task:
 ```
 """
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             root = create_task_node(paths, node_id="NT-ROOT", title="Root", actor="operator")
             child = create_task_node(paths, node_id="NT-CHILD", title="Child", parent_node_id=root.node_id, actor="operator")
             create_task_node(paths, node_id="NT-STEP", title="Step", parent_node_id=child.node_id, actor="operator")
@@ -825,7 +825,7 @@ nova_task:
 ```
 """
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             create_task_node(paths, node_id="NT-ROOT", title="Root", actor="operator")
 
             result = ingest_nova_task_evidence(
@@ -859,7 +859,7 @@ nova_task:
 ```
 """
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             root = create_task_node(paths, node_id="NT-ROOT", title="Root", actor="operator")
             create_task_node(paths, node_id="NT-STEP", title="Step", parent_node_id=root.node_id, actor="operator")
 
@@ -910,7 +910,7 @@ nova_task:
 ```
 """
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             root = create_task_node(paths, node_id="NT-ROOT", title="Project", node_type="track", actor="operator")
             workstream = create_task_node(
                 paths,
@@ -943,7 +943,7 @@ nova_task:
 
     def test_evidence_ingest_tolerates_missing_or_malformed_blocks(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
 
             missing = ingest_nova_task_evidence(
                 paths,
@@ -988,7 +988,7 @@ nova_task:
 ```
 """
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
 
             result = ingest_nova_task_evidence(
                 paths,
@@ -1016,7 +1016,7 @@ nova_task:
 
     def test_candidate_listing_reject_and_defer_write_decisions_and_audit(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             first = create_task_candidate(
                 paths,
                 candidate_type="parent_task",
@@ -1067,7 +1067,7 @@ nova_task:
 
     def test_candidate_merge_and_supersede_write_referenced_decisions(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             node = create_task_node(paths, node_id="NT-TARGET", title="Existing target", actor="operator")
             merged_candidate = create_task_candidate(
                 paths,

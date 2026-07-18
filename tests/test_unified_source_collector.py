@@ -58,10 +58,10 @@ class UnifiedSourceCollectorTests(unittest.TestCase):
             _write_codex_rollout_fixture(fixture)
             legacy = root / "LegacyDiary"
             current = root / "GeneratedDiary"
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=legacy)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=legacy)
             paths = update_runtime_manifest_paths(paths.home, generated_diary_root=current, legacy_diary_root=legacy)
             write_settings({"externalTools": {"codex": {"sessionsRoot": str(root / ".codex" / "sessions")}}}, paths)
-            with patch.dict("os.environ", {"NOVA_HOME": str(paths.home), "TARGET_TIMEZONE": "Asia/Hong_Kong"}, clear=False), patch.object(
+            with patch.dict("os.environ", {"ACTANARA_HOME": str(paths.home), "TARGET_TIMEZONE": "Asia/Hong_Kong"}, clear=False), patch.object(
                 collector, "load_paths", return_value=paths
             ):
                 captured = collector.collect_engine("codex", collector.SOURCES["codex"], "2026-05-22")
@@ -78,13 +78,13 @@ class UnifiedSourceCollectorTests(unittest.TestCase):
             _write_codex_rollout_fixture(configured_sessions / "rollout-2026-05-21T22-18-49-fixture.jsonl")
             legacy = root / "LegacyDiary"
             current = root / "GeneratedDiary"
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=legacy)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=legacy)
             paths = update_runtime_manifest_paths(paths.home, generated_diary_root=current, legacy_diary_root=legacy)
             write_settings({"externalTools": {"codex": {"sessionsRoot": str(configured_sessions.parent.parent.parent)}}}, paths)
 
             with patch.dict(
                 "os.environ",
-                {"NOVA_HOME": str(paths.home), "TARGET_TIMEZONE": "Asia/Hong_Kong"},
+                {"ACTANARA_HOME": str(paths.home), "TARGET_TIMEZONE": "Asia/Hong_Kong"},
                 clear=False,
             ):
                 captured = collector.collect_engine("codex", collector.SOURCES["codex"], "2026-05-22")
@@ -222,7 +222,7 @@ def _write_codex_rollout_fixture(path: Path) -> None:
             "type": "session_meta",
             "payload": {
                 "id": "codex-session",
-                "cwd": "/workspace/example/open-nova",
+                "cwd": "/workspace/example/actanara",
                 "base_instructions": {"text": "base_instructions should not enter narrative"},
             },
         },

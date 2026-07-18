@@ -1,6 +1,6 @@
 """Guarded RAG v2 candidate promotion.
 
-Promotion prepares an active v2 snapshot under ``$NOVA_HOME/reserved/rag/v2``.
+Promotion prepares an active v2 snapshot under ``$ACTANARA_HOME/reserved/rag/v2``.
 It does not switch ``rag.mode``, mutate the legacy index, rebuild candidates, or
 start/stop the embedding server.
 """

@@ -45,7 +45,7 @@ def _lock_payload() -> dict:
     ]
     return {
         "schemaVersion": 1,
-        "product": "open-nova",
+        "product": "actanara",
         "artifactPolicy": {
             "hashAlgorithm": "sha256",
             "hashesRequired": True,
@@ -117,7 +117,7 @@ def _write_pyproject(
         "\n".join(
             (
                 "[project]",
-                'name = "open-nova"',
+                'name = "actanara"',
                 f'version = "{product_version}"',
                 "dependencies = []",
                 "",
@@ -942,8 +942,8 @@ class DependencyContractSelectionTests(unittest.TestCase):
             root = Path(temporary)
             lock, pyproject = _write_fixture(root)
             raw = lock.read_text(encoding="utf-8").replace(
-                '"product": "open-nova",',
-                '"product": "open-nova",\n  "product": "open-nova",',
+                '"product": "actanara",',
+                '"product": "actanara",\n  "product": "actanara",',
                 1,
             )
             lock.write_text(raw, encoding="utf-8")
@@ -1069,7 +1069,7 @@ class DependencyMarkerAndRuntimeTests(unittest.TestCase):
                 "distributions": [
                     {"name": "alpha", "version": "1.5"},
                     {"name": "shared", "version": "4.0"},
-                    {"name": "open-nova", "version": "1.0.1"},
+                    {"name": "actanara", "version": "1.0.1"},
                     {"name": "unrelated", "version": "99"},
                 ]
             }

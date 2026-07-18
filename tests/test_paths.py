@@ -17,11 +17,11 @@ class RuntimePathsTests(unittest.TestCase):
             root = Path(tmp)
             selected = root / "bootstrap-home"
             bootstrap = root / "location.json"
-            bootstrap.write_text(json.dumps({"novaHome": str(selected)}), encoding="utf-8")
+            bootstrap.write_text(json.dumps({"actanaraHome": str(selected)}), encoding="utf-8")
             env_home = root / "environment-home"
             with patch.dict(
                 os.environ,
-                {"NOVA_HOME": str(env_home), "NOVA_LOCATION_FILE": str(bootstrap)},
+                {"ACTANARA_HOME": str(env_home), "ACTANARA_LOCATION_FILE": str(bootstrap)},
                 clear=False,
             ):
                 self.assertEqual(load_paths().home, env_home)
@@ -30,8 +30,8 @@ class RuntimePathsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bootstrap = root / "location.json"
-            home = root / "NovaDiary"
-            with patch.dict(os.environ, {"NOVA_LOCATION_FILE": str(bootstrap)}, clear=False):
+            home = root / "Actanara"
+            with patch.dict(os.environ, {"ACTANARA_LOCATION_FILE": str(bootstrap)}, clear=False):
                 paths = initialize_home(home, legacy_diary_root=root / "Diary")
                 self.assertTrue(paths.config_dir.joinpath("runtime.json").exists())
                 self.assertTrue(paths.config_dir.joinpath("projects-registry.json").exists())
@@ -40,11 +40,11 @@ class RuntimePathsTests(unittest.TestCase):
                 self.assertFalse((home / "reserved" / "rag").exists())
                 selected = select_home(home)
                 self.assertEqual(selected.home, home)
-                self.assertEqual(json.loads(bootstrap.read_text())["novaHome"], str(home))
+                self.assertEqual(json.loads(bootstrap.read_text())["actanaraHome"], str(home))
 
     def test_initialized_home_does_not_create_legacy_diary_root_by_default(self):
         with tempfile.TemporaryDirectory() as tmp:
-            home = Path(tmp) / "NovaDiary"
+            home = Path(tmp) / "Actanara"
 
             paths = initialize_home(home)
             manifest = json.loads((paths.config_dir / "runtime.json").read_text(encoding="utf-8"))
@@ -72,7 +72,7 @@ class RuntimePathsTests(unittest.TestCase):
                 '{"hints": {"codex": ["legacy"]}}\n', encoding="utf-8"
             )
             (legacy / "summary-weekly-2026-05-19.md").write_text("weekly\n", encoding="utf-8")
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=legacy)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=legacy)
             first = import_legacy_assets(paths)
             second = import_legacy_assets(paths)
             self.assertEqual(first.copied, 3)

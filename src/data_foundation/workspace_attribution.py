@@ -62,9 +62,7 @@ INFRASTRUCTURE_WORKSPACE_NAMES = {
 
 _ABSOLUTE_PATH_RE = re.compile(r"(?<![\w.])/(?:[^\s\"'`<>|\\]+)")
 
-LEGACY_PROJECT_NAME_ALIASES = {
-    "nova-diary-v2": "open-nova",
-}
+LEGACY_PROJECT_NAME_ALIASES: dict[str, str] = {}
 
 WORKSPACE_ATTRIBUTION_RULE_SCHEMA_VERSION = 1
 

@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from diary_generator import narrative_pass
 
 
-RUN_SLOW_TESTS = os.getenv("OPEN_NOVA_RUN_SLOW_TESTS") == "1"
+RUN_SLOW_TESTS = os.getenv("ACTANARA_RUN_SLOW_TESTS") == "1"
 
 
 def _entry(hour: int, index: int) -> dict:
@@ -57,7 +57,7 @@ class NarrativeGatePlanningTests(unittest.TestCase):
         self.assertIn("codex - 23:00-24:00", calls)
         self.assertIn("codex - 全天连续整合", calls)
 
-    @unittest.skipUnless(RUN_SLOW_TESTS, "slow pathological gate guard; set OPEN_NOVA_RUN_SLOW_TESTS=1")
+    @unittest.skipUnless(RUN_SLOW_TESTS, "slow pathological gate guard; set ACTANARA_RUN_SLOW_TESTS=1")
     def test_entry_gate_split_has_chunk_guard_for_pathological_token_counter(self):
         entries = [_entry(9, index) for index in range(10)]
         with (
@@ -70,7 +70,7 @@ class NarrativeGatePlanningTests(unittest.TestCase):
         self.assertEqual(sum(len(chunk) for chunk in chunks), len(entries))
         self.assertEqual(len(chunks[-1]), 8)
 
-    @unittest.skipUnless(RUN_SLOW_TESTS, "slow pathological gate guard; set OPEN_NOVA_RUN_SLOW_TESTS=1")
+    @unittest.skipUnless(RUN_SLOW_TESTS, "slow pathological gate guard; set ACTANARA_RUN_SLOW_TESTS=1")
     def test_final_precompress_split_has_chunk_guard_for_pathological_token_counter(self):
         text = "\n".join(f"line {index}" for index in range(10))
         with (

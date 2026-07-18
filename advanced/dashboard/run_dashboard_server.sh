@@ -3,12 +3,12 @@ set -eu
 
 SCRIPT_DIR="${0:A:h}"
 SOURCE_ROOT="${SCRIPT_DIR:h:h}"
-RESOLVER_PYTHON="${OPEN_NOVA_DASHBOARD_RESOLVER_PYTHON:-python3}"
+RESOLVER_PYTHON="${ACTANARA_DASHBOARD_RESOLVER_PYTHON:-python3}"
 
-export NOVA_HOME="${NOVA_HOME:-${HOME}/.open-nova}"
+export ACTANARA_HOME="${ACTANARA_HOME:-${HOME}/.actanara}"
 export PATH="/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 export PYTHONPATH="${SOURCE_ROOT}:${SOURCE_ROOT}/src"
-export OPEN_NOVA_DASHBOARD_SOURCE_ROOT="${SOURCE_ROOT}"
+export ACTANARA_DASHBOARD_SOURCE_ROOT="${SOURCE_ROOT}"
 
 eval "$("${RESOLVER_PYTHON}" - <<'PY'
 import shlex
@@ -28,7 +28,7 @@ except Exception:
     import os
     from pathlib import Path
 
-    source = Path(os.environ["OPEN_NOVA_DASHBOARD_SOURCE_ROOT"])
+    source = Path(os.environ["ACTANARA_DASHBOARD_SOURCE_ROOT"])
     values = {
         "PROJECT_ROOT": str(source),
         "PYTHON_BIN": "python3",

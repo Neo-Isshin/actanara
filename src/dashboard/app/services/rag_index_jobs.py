@@ -22,7 +22,7 @@ from data_foundation.settings import write_settings
 
 
 RAG_PROFILE_MIGRATION_CONFIRMATION = "MIGRATE RAG PROFILE"
-RAG_PROFILE_INITIALIZATION_CONFIRMATION = "INITIALIZE OPEN NOVA RAG"
+RAG_PROFILE_INITIALIZATION_CONFIRMATION = "INITIALIZE ACTANARA RAG"
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 LOCAL_RAG_DEPENDENCY_TIMEOUT_SECONDS = 1800
 
@@ -371,7 +371,7 @@ def _ensure_local_rag_dependencies(job_id: str) -> None:
         _append_record({"id": job_id, "dependencyStatus": "ready", "progress": 35})
         return
     if not (PROJECT_ROOT / "pyproject.toml").is_file():
-        raise RuntimeError(f"Open Nova runtime source is missing pyproject.toml: {PROJECT_ROOT}")
+        raise RuntimeError(f"Actanara runtime source is missing pyproject.toml: {PROJECT_ROOT}")
     log_path = load_paths().state_dir / "logs" / "rag-local-dependency-install.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     timeout = max(60, int(os.getenv("NOVA_RAG_DEPENDENCY_INSTALL_TIMEOUT_SECONDS", LOCAL_RAG_DEPENDENCY_TIMEOUT_SECONDS)))

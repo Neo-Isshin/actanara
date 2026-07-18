@@ -31,7 +31,7 @@ from data_foundation.snapshots import (
 
 class DashboardSnapshotTests(unittest.TestCase):
     def _home(self, root: Path):
-        paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "legacy")
+        paths = initialize_home(root / "Actanara", legacy_diary_root=root / "legacy")
         migrate(paths)
         run_id = begin_ingestion_run(paths, trigger_type="fixture", business_date=date(2026, 5, 19))
         return paths, run_id
@@ -63,7 +63,7 @@ class DashboardSnapshotTests(unittest.TestCase):
             expected = {
                 "tools": [{"name": "Codex", "allTimeTokens": 42}],
                 "models": [{"name": "gpt-test", "tokens": 42}],
-                "workspaceUsage": [{"name": "open-nova", "tool": "Codex", "emoji": "🤖", "tokens": 42}],
+                "workspaceUsage": [{"name": "actanara", "tool": "Codex", "emoji": "🤖", "tokens": 42}],
                 "agents": [{"displayName": "🤖 Codex", "model": "gpt-test"}],
                 "agentCount": 1,
                 "trend30d": [{"date": "2026-06-05", "slots": {"上午": 42}}],
@@ -101,9 +101,9 @@ class DashboardSnapshotTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             paths, _run_id = self._home(root)
-            project = root / "open-nova"
-            project.mkdir()
-            (project / "pyproject.toml").write_text('[project]\nname = "open-nova"\n', encoding="utf-8")
+            project = root / "project" / "actanara"
+            project.mkdir(parents=True)
+            (project / "pyproject.toml").write_text('[project]\nname = "actanara"\n', encoding="utf-8")
             with connect(paths) as connection:
                 connection.execute(
                     """
@@ -133,7 +133,7 @@ class DashboardSnapshotTests(unittest.TestCase):
 
                 rows = _foundation_workspace_usage_from_events(connection)
 
-            self.assertEqual([row["name"] for row in rows], ["open-nova"])
+            self.assertEqual([row["name"] for row in rows], ["actanara"])
             self.assertEqual(rows[0]["emoji"], "🤖")
 
     def test_non_rag_snapshot_rollup_fallback_filters_container_buckets(self):
@@ -156,7 +156,7 @@ class DashboardSnapshotTests(unittest.TestCase):
                     """,
                     (run_id,),
                 )
-                for bucket in ("project:open-nova", "home", "SSD", "unattributed"):
+                for bucket in ("project:actanara", "home", "SSD", "unattributed"):
                     connection.execute(
                         """
                         INSERT INTO daily_project_usage(
@@ -169,7 +169,7 @@ class DashboardSnapshotTests(unittest.TestCase):
 
             payload = _foundation_ai_assets_non_rag_payload(paths)
 
-            self.assertEqual([row["name"] for row in payload["workspaceUsage"]], ["open-nova"])
+            self.assertEqual([row["name"] for row in payload["workspaceUsage"]], ["actanara"])
             self.assertEqual(payload["workspaceUsage"][0]["emoji"], "🤖")
 
     def test_foundation_ai_assets_counts_only_non_blank_non_cron_days(self):
@@ -245,7 +245,7 @@ class DashboardSnapshotTests(unittest.TestCase):
             write_settings({"runtimeSources": {"dashboardReadSource": "foundation"}}, paths)
             ai_assets._cache = {"data": None, "ts": 0}
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch.object(ai_assets, "get_ai_assets", side_effect=AssertionError("live non-RAG assembly called")),
                 patch.object(ai_assets, "_get_rag_stats", side_effect=AssertionError("live RAG status called")),
                 patch.object(ai_assets, "_rag_storage_category", side_effect=AssertionError("live RAG storage scan called")),
@@ -265,7 +265,7 @@ class DashboardSnapshotTests(unittest.TestCase):
             write_settings({"runtimeSources": {"dashboardReadSource": "foundation"}}, paths)
             ai_assets._cache = {"data": None, "ts": 0}
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch.object(ai_assets, "get_ai_assets", side_effect=AssertionError("legacy assembly called")),
                 patch.object(ai_assets, "_get_rag_stats", side_effect=AssertionError("live RAG scan called")),
                 patch.object(ai_assets, "_rag_storage_category", side_effect=AssertionError("live RAG storage scan called")),
@@ -328,7 +328,7 @@ class DashboardSnapshotTests(unittest.TestCase):
                 }
             }, paths)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 first = ai_assets.get_ai_assets_incremental(include_rag=False)
                 with patch.object(ai_assets, "_parse_codex_usage_file", side_effect=AssertionError("unchanged source reparsed")):
                     second = ai_assets.get_ai_assets_incremental(include_rag=False)

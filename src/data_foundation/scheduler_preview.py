@@ -86,12 +86,12 @@ def preview_system_timer(
         "jobs": job_previews,
         "installPlan": [
             "Write LaunchAgent plist files under ~/Library/LaunchAgents.",
-            "Back up any replaced plist into $NOVA_HOME/state/backups/launchd.",
+            "Back up any replaced plist into $ACTANARA_HOME/state/backups/launchd.",
             "Run launchctl bootstrap for the current GUI user.",
         ],
         "rollbackPlan": [
             "Run launchctl bootout for each registered label.",
-            "Move installed plist files into $NOVA_HOME/state/backups/launchd.",
+            "Move installed plist files into $ACTANARA_HOME/state/backups/launchd.",
             "Mark schedule.systemTimer.registered=false in settings.json.",
         ],
     }
@@ -374,7 +374,7 @@ def _launchd_definition(plist: dict[str, Any]) -> dict[str, Any]:
         "program": str(arguments[0]) if arguments else "",
         "arguments": [str(item) for item in arguments],
         "workingDirectory": str(plist.get("WorkingDirectory") or ""),
-        "novaHome": str(environment.get("NOVA_HOME") or ""),
+        "actanaraHome": str(environment.get("ACTANARA_HOME") or ""),
         "pythonPath": str(environment.get("PYTHONPATH") or ""),
     }
 
@@ -434,7 +434,7 @@ def _parse_launchctl_definition(output: str) -> dict[str, Any]:
                 continue
             key, value = line.split("=>", 1)
             parsed_environment[key.strip()] = _unquote_launchctl_value(value.strip())
-        definition["novaHome"] = parsed_environment.get("NOVA_HOME", "")
+        definition["actanaraHome"] = parsed_environment.get("ACTANARA_HOME", "")
         definition["pythonPath"] = parsed_environment.get("PYTHONPATH", "")
     return definition
 
@@ -471,7 +471,7 @@ def _definition_mismatches(
         ("program", "program"),
         ("arguments", "arguments"),
         ("workingDirectory", "working-directory"),
-        ("novaHome", "nova-home"),
+        ("actanaraHome", "actanara-home"),
         ("pythonPath", "pythonpath"),
     )
     for field, issue_name in fields:
@@ -487,7 +487,7 @@ def _missing_target_issues(definition: dict[str, Any]) -> list[str]:
     candidates: list[tuple[str, str]] = [
         ("program", str(definition.get("program") or "")),
         ("working-directory", str(definition.get("workingDirectory") or "")),
-        ("nova-home", str(definition.get("novaHome") or "")),
+        ("actanara-home", str(definition.get("actanaraHome") or "")),
     ]
     arguments = definition.get("arguments") if isinstance(definition.get("arguments"), list) else []
     if len(arguments) > 1:
@@ -525,14 +525,14 @@ def _parse_time(value: str | None, fallback: str) -> tuple[int, int, str]:
 
 def _launchd_jobs(schedule: dict[str, Any], timer: dict[str, Any], paths: RuntimePaths | None = None) -> list[dict[str, Any]]:
     runtime_paths = paths or load_paths()
-    base_label = str(timer.get("label") or "open-nova.daily").strip() or "open-nova.daily"
+    base_label = str(timer.get("label") or "actanara.daily").strip() or "actanara.daily"
     workspace = runtime_paths.home / "app" / "source"
     py = str(runtime_paths.home / ".venv" / "bin" / "python")
     env = {
         "PATH": MANAGED_LAUNCHD_PATH,
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONPATH": f"{workspace}:{workspace / 'src'}:{workspace / 'src' / 'dashboard'}",
-        "NOVA_HOME": str(runtime_paths.home),
+        "ACTANARA_HOME": str(runtime_paths.home),
     }
     pipeline_hour, pipeline_minute, pipeline_time = _parse_time(schedule.get("dailyPipelineTime"), "04:00")
     aggregation_hour, aggregation_minute, aggregation_time = _parse_time(schedule.get("dashboardAggregationTime"), "04:30")
@@ -591,7 +591,7 @@ def _systemd_timer_preview(schedule: dict[str, Any], timer: dict[str, Any]) -> d
         ],
         "rollbackPlan": [
             "Run systemctl --user disable --now for each timer.",
-            "Move generated unit files into $NOVA_HOME/state/backups/systemd.",
+            "Move generated unit files into $ACTANARA_HOME/state/backups/systemd.",
             "Mark schedule.systemTimer.registered=false in settings.json.",
         ],
         "note": "Read-only preview only; Dashboard registration is not implemented for Linux in this batch.",
@@ -620,7 +620,7 @@ def _cron_timer_preview(schedule: dict[str, Any], timer: dict[str, Any]) -> dict
             "Mark schedule.systemTimer.registered=true only after explicit operator confirmation.",
         ],
         "rollbackPlan": [
-            "Remove only managed Open Nova cron entries.",
+            "Remove only managed Actanara cron entries.",
             "Restore previous crontab from backup if needed.",
             "Mark schedule.systemTimer.registered=false in settings.json.",
         ],
@@ -629,7 +629,7 @@ def _cron_timer_preview(schedule: dict[str, Any], timer: dict[str, Any]) -> dict
 
 
 def _linux_timer_jobs(schedule: dict[str, Any], timer: dict[str, Any]) -> list[dict[str, Any]]:
-    base_label = str(timer.get("label") or "open-nova.daily").strip() or "open-nova.daily"
+    base_label = str(timer.get("label") or "actanara.daily").strip() or "actanara.daily"
     py = sys.executable
     workspace = str(config.WORKSPACE_DIR)
     pipeline_hour, pipeline_minute, pipeline_time = _parse_time(schedule.get("dailyPipelineTime"), "04:00")
@@ -686,7 +686,7 @@ def _managed_launchd_plist_preview(job: dict[str, Any], *, launch_agent_home: Pa
         "schemaVersion": 1,
         "readOnly": True,
         "dryRunOnly": True,
-        "managedBy": "open-nova-onboarding",
+        "managedBy": "actanara-onboarding",
         "provider": "launchd-user",
         "label": label,
         "plistPath": str(plist_path),

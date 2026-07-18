@@ -12,7 +12,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
-os.environ["OPEN_NOVA_SECRET_BACKEND"] = "memory"
+os.environ["ACTANARA_SECRET_BACKEND"] = "memory"
 
 from data_foundation.paths import initialize_home
 from data_foundation.scheduler_preview import preview_system_timer
@@ -40,7 +40,7 @@ def _launchctl_output(job: dict) -> str:
             "}",
             f"working directory = {plist['WorkingDirectory']}",
             "environment = {",
-            f"  NOVA_HOME => {environment['NOVA_HOME']}",
+            f"  ACTANARA_HOME => {environment['ACTANARA_HOME']}",
             f"  PYTHONPATH => {environment['PYTHONPATH']}",
             "}",
             "state = not running",
@@ -50,7 +50,7 @@ def _launchctl_output(job: dict) -> str:
 
 class SchedulerDoctorTests(unittest.TestCase):
     def _runtime(self, root: Path, *, mode: str = "system", enabled: bool = True, registered: bool = True):
-        paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+        paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
         release = paths.home / "app" / "releases" / "fixture-release"
         venv = paths.home / "app" / "venvs" / "fixture-venv"
         (release / "src" / "dashboard").mkdir(parents=True)
@@ -75,7 +75,7 @@ class SchedulerDoctorTests(unittest.TestCase):
                     "mode": mode,
                     "systemTimer": {
                         "provider": "launchd",
-                        "label": "open-nova.test-scheduler",
+                        "label": "actanara.test-scheduler",
                         "registered": registered,
                     },
                 },
@@ -144,7 +144,7 @@ class SchedulerDoctorTests(unittest.TestCase):
                         "}",
                         f"working directory = {deleted_root}",
                         "environment = {",
-                        f"  NOVA_HOME => {deleted_root / 'NovaDiary'}",
+                        f"  ACTANARA_HOME => {deleted_root / 'Actanara'}",
                         f"  PYTHONPATH => {deleted_root}:{deleted_root / 'src'}:{deleted_root / 'src' / 'dashboard'}",
                         "}",
                     ]
@@ -160,7 +160,7 @@ class SchedulerDoctorTests(unittest.TestCase):
             issues = set(job["runtimeStatus"]["issueCodes"])
             self.assertIn("program-mismatch", issues)
             self.assertIn("working-directory-mismatch", issues)
-            self.assertIn("nova-home-mismatch", issues)
+            self.assertIn("actanara-home-mismatch", issues)
             self.assertIn("pythonpath-mismatch", issues)
             self.assertIn("program-target-missing", issues)
             self.assertNotIn(str(deleted_root), json.dumps(job["runtimeStatus"], sort_keys=True))
@@ -184,7 +184,7 @@ class SchedulerDoctorTests(unittest.TestCase):
                         "}",
                         f"working directory = {deleted_root}",
                         "environment = {",
-                        f"  NOVA_HOME => {deleted_root / 'home'}",
+                        f"  ACTANARA_HOME => {deleted_root / 'home'}",
                         f"  PYTHONPATH => {deleted_root / 'src'}",
                         "}",
                     ]
@@ -193,7 +193,7 @@ class SchedulerDoctorTests(unittest.TestCase):
 
             raw_preview = self._launchd_preview(paths, fake_home, runner)
             with patch.object(settings_status, "preview_system_timer", return_value=raw_preview):
-                payload = settings_status.nova_settings_status(paths, doctor_profile="scheduler")
+                payload = settings_status.actanara_settings_status(paths, doctor_profile="scheduler")
 
         registration = payload["schedulerRegistration"]
         checks = {check["id"]: check for check in payload["checks"]}
@@ -224,7 +224,7 @@ class SchedulerDoctorTests(unittest.TestCase):
 
             raw_preview = self._launchd_preview(paths, fake_home, runner)
             with patch.object(settings_status, "preview_system_timer", return_value=raw_preview):
-                payload = settings_status.nova_settings_status(paths, doctor_profile="scheduler")
+                payload = settings_status.actanara_settings_status(paths, doctor_profile="scheduler")
 
         registration = payload["schedulerRegistration"]
         checks = {check["id"]: check for check in payload["checks"]}
@@ -253,7 +253,7 @@ class SchedulerDoctorTests(unittest.TestCase):
 
             raw_preview = self._launchd_preview(paths, fake_home, runner)
             with patch.object(settings_status, "preview_system_timer", return_value=raw_preview):
-                payload = settings_status.nova_settings_status(paths, doctor_profile="scheduler")
+                payload = settings_status.actanara_settings_status(paths, doctor_profile="scheduler")
 
         registration = payload["schedulerRegistration"]
         checks = {check["id"]: check for check in payload["checks"]}
@@ -286,7 +286,7 @@ class SchedulerDoctorTests(unittest.TestCase):
     def test_unimplemented_provider_is_clear_and_agent_mode_remains_expected_absent(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {
                     "schedule": {
@@ -300,7 +300,7 @@ class SchedulerDoctorTests(unittest.TestCase):
             with patch("data_foundation.scheduler_preview.platform.system", return_value="Darwin"):
                 raw_preview = preview_system_timer(paths, probe_runtime=True)
             with patch.object(settings_status, "preview_system_timer", return_value=raw_preview):
-                payload = settings_status.nova_settings_status(paths, doctor_profile="scheduler")
+                payload = settings_status.actanara_settings_status(paths, doctor_profile="scheduler")
 
         registration = payload["schedulerRegistration"]
         checks = {check["id"]: check for check in payload["checks"]}

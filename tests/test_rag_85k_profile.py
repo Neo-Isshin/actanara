@@ -24,9 +24,9 @@ class RagCandidate85kProfileTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, self.assertRaisesRegex(ValueError, "exactly 85000 real chunks"):
             run_candidate_85k_profile(Path(tmp), chunk_count=100)
 
-    @unittest.skipUnless(os.getenv("OPEN_NOVA_RUN_SLOW_TESTS") == "1", "slow candidate profile not requested")
+    @unittest.skipUnless(os.getenv("ACTANARA_RUN_SLOW_TESTS") == "1", "slow candidate profile not requested")
     def test_real_candidate_85k_index_load_search_quality_and_resources(self):
-        with tempfile.TemporaryDirectory(prefix="open-nova-rag-85k-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="actanara-rag-85k-") as tmp:
             report = run_candidate_85k_profile(Path(tmp))
 
         print("RAG_CANDIDATE_85K " + json.dumps(report, sort_keys=True), flush=True)

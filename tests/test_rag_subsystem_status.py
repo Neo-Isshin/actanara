@@ -62,7 +62,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_default_rag_settings_are_chinese_first_v2_namespace(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             settings = resolve_rag_settings(paths)
             self.assertTrue(settings.enabled)
             self.assertEqual(settings.mode, "v2")
@@ -86,7 +86,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_rag_latency_budget_is_configurable_with_a_safe_upper_bound(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             configured = resolve_rag_settings(
                 paths,
                 settings={"rag": {"retrieval": {"latencyBudgetSeconds": 90, "maxConcurrentSearches": 3}}},
@@ -105,7 +105,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_rag_server_enabled_respects_server_and_feature_gate(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
 
             write_settings({"rag": {"enabled": True, "mode": "v2", "server": {"enabled": False}}}, paths)
             settings = resolve_rag_settings(paths)
@@ -125,7 +125,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             diary = root / "Diary"
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=diary)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=diary)
             write_settings(
                 {
                     "rag": {
@@ -152,7 +152,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
             current = root / "GeneratedDiary"
             custom_db = root / "runtime" / "foundation.sqlite3"
             custom_board = root / "runtime" / "tasks" / "TASK_BOARD.md"
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=legacy)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=legacy)
             paths = update_runtime_manifest_paths(
                 paths.home,
                 generated_diary_root=current,
@@ -180,7 +180,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
             )
             custom_board.parent.mkdir(parents=True, exist_ok=True)
             custom_board.write_text(
-                "# TASK BOARD\n\n## Active\n### Open Nova\n- [ ] runtime task board path should be indexed ← **@codex**\n",
+                "# TASK BOARD\n\n## Active\n### Actanara\n- [ ] runtime task board path should be indexed ← **@codex**\n",
                 encoding="utf-8",
             )
             migrate(paths)
@@ -298,7 +298,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_english_profile_uses_english_default_dimension_when_model_not_set(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"rag": {"languageProfile": "en", "embedding": {"model": None, "dimension": None}}}, paths)
             settings = resolve_rag_settings(paths)
             self.assertEqual(settings.language_profile, "en")
@@ -318,7 +318,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_rag_known_model_dimension_defaults_from_catalog(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"rag": {"languageProfile": "en", "embedding": {"model": "BAAI/bge-large-en-v1.5", "dimension": None}}}, paths)
 
             settings = resolve_rag_settings(paths)
@@ -329,7 +329,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_cloud_provider_id_is_separate_from_local_cloud_mode(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {
                     "rag": {
@@ -352,7 +352,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_rag_status_exposes_unified_local_cloud_provider_schema(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {
                     "rag": {
@@ -365,7 +365,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
                             "apiKeyEnv": "EXAMPLE_RAG_KEY",
                             "secretRef": {
                                 "backend": "process-env",
-                                "service": "open-nova",
+                                "service": "actanara",
                                 "account": "EXAMPLE_RAG_KEY",
                             },
                             "batchSize": 8,
@@ -422,7 +422,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_rag_status_cloud_api_key_configured_requires_readable_secret_or_env(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {
                     "rag": {
@@ -433,7 +433,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
                             "apiKeyEnv": "MISSING_RAG_KEY",
                             "secretRef": {
                                 "backend": "process-env",
-                                "service": "open-nova",
+                                "service": "actanara",
                                 "account": "MISSING_RAG_KEY",
                             },
                         }
@@ -454,8 +454,8 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_rag_status_cloud_api_key_configured_from_memory_secret_ref(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
-            secret_ref = {"backend": "memory", "service": "open-nova", "account": f"rag-{paths.home.name}"}
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
+            secret_ref = {"backend": "memory", "service": "actanara", "account": f"rag-{paths.home.name}"}
             store_secret(secret_ref, "configured")
             write_settings(
                 {
@@ -486,8 +486,8 @@ class RagSubsystemStatusTests(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "NOVA_HOME": str(active_paths.home),
-                    "OPEN_NOVA_SECRET_BACKEND": "runtime-file",
+                    "ACTANARA_HOME": str(active_paths.home),
+                    "ACTANARA_SECRET_BACKEND": "runtime-file",
                 },
                 clear=False,
             ):
@@ -516,7 +516,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_unreadable_legacy_rag_keychain_ref_is_attempted_once(self):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(
             os.environ,
-            {"OPEN_NOVA_SECRET_BACKEND": "runtime-file"},
+            {"ACTANARA_SECRET_BACKEND": "runtime-file"},
             clear=False,
         ):
             root = Path(tmp)
@@ -526,7 +526,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
             raw = json.loads(settings_path.read_text(encoding="utf-8"))
             legacy_ref = {
                 "backend": "macos-keychain",
-                "service": "open-nova",
+                "service": "actanara",
                 "account": f"{paths.home}:rag-embedding-api-key-example-cloud",
             }
             raw["rag"]["embedding"].update(
@@ -561,7 +561,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_legacy_cloud_provider_value_is_treated_as_provider_id(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             settings = resolve_rag_settings(
                 paths,
                 settings={
@@ -580,7 +580,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_settings_drive_rag_runtime_even_when_env_is_present(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {
                     "rag": {
@@ -615,7 +615,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_legacy_rag_mode_env_does_not_control_rag_settings(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             with patch.dict(os.environ, {"RAG_MODE": "local"}):
                 settings = resolve_rag_settings(paths)
             self.assertEqual(settings.mode, "v2")
@@ -631,7 +631,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
                 + json.dumps({"id": "b", "embedding": [0.3, 0.4]}) + "\n",
                 encoding="utf-8",
             )
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=legacy)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=legacy)
             write_settings({"rag": {"mode": "legacy"}}, paths)
             settings = resolve_rag_settings(paths)
             status = read_rag_status(settings=settings, inspect_legacy_sample=True, include_legacy_metadata=True)
@@ -652,7 +652,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
             index = legacy / "__diary_rag" / "index.jsonl"
             index.parent.mkdir(parents=True)
             index.write_text(json.dumps({"id": "legacy", "embedding": [0.1, 0.2]}) + "\n", encoding="utf-8")
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=legacy)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=legacy)
             write_settings({"rag": {"mode": "legacy"}}, paths)
 
             status = read_rag_status(settings=resolve_rag_settings(paths))
@@ -670,13 +670,13 @@ class RagSubsystemStatusTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {"rag": {"enabled": True, "mode": "legacy", "server": {"enabled": True}}},
                 paths,
             )
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False),
                 patch.object(rag_server_lifecycle, "_select_server_python", return_value="/usr/bin/python3"),
                 patch.object(
                     rag_server_lifecycle,
@@ -709,7 +709,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_nonloopback_legacy_setting_is_read_compatible_but_start_and_probe_are_blocked(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             settings = resolve_rag_settings(
                 paths,
                 settings={
@@ -738,7 +738,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_nonloopback_status_blocks_search_without_network_probe(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             settings = resolve_rag_settings(
                 paths,
                 settings={
@@ -761,7 +761,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_rag_server_lifecycle_treats_healthy_endpoint_as_running_when_pid_is_stale(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {"rag": {"enabled": True, "mode": "v2", "server": {"enabled": True}}},
                 paths,
@@ -770,7 +770,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
             state_path.parent.mkdir(parents=True)
             state_path.write_text(json.dumps({"pid": 999999, "startedAt": "2026-06-29T00:00:00+08:00"}), encoding="utf-8")
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False),
                 patch.object(rag_server_lifecycle, "_pid_running", return_value=False),
                 patch.object(
                     rag_server_lifecycle,
@@ -787,7 +787,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
             self.assertEqual(state["status"], "healthy")
 
     def test_rag_server_python_selection_prefers_current_runtime_before_system_python(self):
-        current_python = "/tmp/open-nova-current-python"
+        current_python = "/tmp/actanara-current-python"
         with (
             patch.object(rag_server_lifecycle.sys, "executable", current_python),
             patch.object(rag_server_lifecycle, "_runtime_venv_python", return_value=None),
@@ -803,7 +803,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
 
     def test_rag_server_python_selection_does_not_implicitly_fallback_to_system_python(self):
         with (
-            patch.object(rag_server_lifecycle.sys, "executable", "/tmp/open-nova-current-python"),
+            patch.object(rag_server_lifecycle.sys, "executable", "/tmp/actanara-current-python"),
             patch.object(rag_server_lifecycle, "_runtime_venv_python", return_value=None),
             patch.object(rag_server_lifecycle.Path, "exists", return_value=True),
             patch.object(
@@ -818,13 +818,13 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_rag_server_start_reports_rag_local_install_group_when_runtime_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {"rag": {"enabled": True, "mode": "v2", "server": {"enabled": True}}},
                 paths,
             )
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False),
                 patch.object(rag_server_lifecycle, "read_server_process_state", return_value={"running": False, "status": "stopped", "health": None}),
                 patch.object(rag_server_lifecycle, "_select_server_python", return_value=None),
             ):
@@ -881,7 +881,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_rag_server_lifecycle_stop_only_terminates_recorded_rag_server(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             state_path = paths.state_dir / "rag" / "server-state.json"
             state_path.parent.mkdir(parents=True)
             state_path.write_text(
@@ -895,7 +895,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
                 encoding="utf-8",
             )
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False),
                 patch.object(rag_server_lifecycle, "_pid_running", side_effect=[True, False, False, False]),
                 patch.object(rag_server_lifecycle.os, "kill") as kill,
             ):
@@ -922,7 +922,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_v2_manifest_dimension_mismatch_is_visible(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"rag": {"mode": "v2"}}, paths)
             store = paths.home / "reserved" / "rag" / "v2"
             store.mkdir(parents=True)
@@ -951,7 +951,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_active_v2_profile_mismatch_blocks_search_availability(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             store = paths.home / "reserved" / "rag" / "v2"
             active_index = store / "indexes" / "active" / "index.jsonl"
             active_index.parent.mkdir(parents=True)
@@ -996,7 +996,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_candidate_ready_v2_manifest_is_not_active_search_ready(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             store = paths.home / "reserved" / "rag" / "v2"
             candidate = store / "indexes" / "candidates" / "run-1" / "index.jsonl"
             candidate.parent.mkdir(parents=True)
@@ -1031,7 +1031,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
             root = Path(tmp)
             legacy = root / "LegacyDiary"
             current = root / "GeneratedDiary"
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=legacy)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=legacy)
             paths = update_runtime_manifest_paths(
                 paths.home,
                 generated_diary_root=current,
@@ -1053,7 +1053,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
                             "schemaVersion": 1,
                             "diarySourceRoot": str(legacy),
                             "filteredDialogueRoot": str(legacy / "__diary_daily"),
-                            "lessonsPath": str(root / "NovaDiary" / "artifacts" / "learning" / "lessons.jsonl"),
+                            "lessonsPath": str(root / "Actanara" / "artifacts" / "learning" / "lessons.jsonl"),
                             "taskBoardPath": str(legacy / "TASK_BOARD.md"),
                             "foundationDbPath": str(paths.db_path),
                             "sourceSets": list(DEFAULT_INDEXING_SOURCE_SETS),
@@ -1091,7 +1091,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
             legacy_index = legacy / "__diary_rag" / "index.jsonl"
             legacy_index.parent.mkdir(parents=True)
             legacy_index.write_text(json.dumps({"id": "legacy", "embedding": [1.0, 0.0]}) + "\n", encoding="utf-8")
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=legacy)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=legacy)
             write_settings({"rag": {"mode": "legacy", "embedding": {"dimension": 2}}}, paths)
             settings = resolve_rag_settings(paths)
 
@@ -1151,8 +1151,8 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_rag_config_uses_active_v2_index_only_when_mode_is_v2(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "OpenNova", legacy_diary_root=root / "Diary")
-            store = root / "NovaDiary" / "reserved" / "rag" / "v2"
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
+            store = root / "Actanara" / "reserved" / "rag" / "v2"
             active_index = store / "indexes" / "active" / "index.jsonl"
             active_index.parent.mkdir(parents=True)
             active_index.write_text(json.dumps({"id": "v2", "embedding": [1.0, 0.0]}) + "\n", encoding="utf-8")
@@ -1172,7 +1172,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
                 },
                 paths,
             )
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 _, rag_config = _reload_rag_modules("rag_active_source", "rag_config")
 
             self.assertEqual(rag_config.INDEX_SOURCE, "v2")
@@ -1206,7 +1206,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
         fake_pydantic = types.SimpleNamespace(BaseModel=object, Field=lambda **_kwargs: [])
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "OpenNova", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             store = paths.home / "reserved" / "rag" / "v2"
             first = store / "indexes" / "active" / "run-1" / "index.jsonl"
             second = store / "indexes" / "active" / "run-2" / "index.jsonl"
@@ -1229,7 +1229,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
                 paths,
             )
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch.dict(
                     sys.modules,
                     {
@@ -1277,13 +1277,13 @@ class RagSubsystemStatusTests(unittest.TestCase):
         fake_pydantic = types.SimpleNamespace(BaseModel=object, Field=lambda **_kwargs: [])
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "OpenNova", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             legacy_index = root / "Diary" / "__diary_rag" / "index.jsonl"
             legacy_index.parent.mkdir(parents=True)
             legacy_index.write_text(json.dumps({"id": "legacy", "embedding": [1.0, 0.0]}) + "\n", encoding="utf-8")
             write_settings({"rag": {"mode": "v2", "embedding": {"dimension": 2}}}, paths)
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch.dict(
                     sys.modules,
                     {
@@ -1334,7 +1334,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "OpenNova", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             store = paths.home / "reserved" / "rag" / "v2"
             active = store / "indexes" / "active" / "run-1" / "index.jsonl"
             active.parent.mkdir(parents=True)
@@ -1363,7 +1363,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
                 paths,
             )
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch("agentic_rag.rag_status.urllib.request.urlopen", return_value=FakeResponse()),
             ):
                 status = read_rag_status(settings=resolve_rag_settings(paths), probe_server=True)
@@ -1401,7 +1401,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "OpenNova", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             store = paths.home / "reserved" / "rag" / "v2"
             active = store / "indexes" / "active" / "run-1" / "index.jsonl"
             FakeResponse.index_path = active
@@ -1445,7 +1445,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_legacy_rag_config_shim_has_no_secret_or_directory_side_effect(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "OpenNova", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             index = root / "Diary" / "__diary_rag" / "index.jsonl"
             write_settings(
                 {
@@ -1461,7 +1461,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
                 },
                 paths,
             )
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home), "RAG_MODE": "cloud"}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home), "RAG_MODE": "cloud"}):
                 (rag_config,) = _reload_rag_modules("rag_config")
             self.assertEqual(rag_config.INDEX_FILE, index)
             self.assertEqual(rag_config.MODEL_NAME, "all-MiniLM-L6-v2")
@@ -1980,12 +1980,12 @@ class RagSubsystemStatusTests(unittest.TestCase):
 
     def test_retriever_treats_paths_ids_and_short_uppercase_technical_terms_as_anchors(self):
         ranked = rank_chunks(
-            query="Review src/open_nova/update.py RC-204 SQL rollback",
+            query="Review src/actanara/update.py RC-204 SQL rollback",
             query_embedding=[1.0, 0.0],
             chunks=[
                 {
                     "id": "generic-update",
-                    "text": "Review src open_nova update py issue 204 rollback.",
+                    "text": "Review src actanara update py issue 204 rollback.",
                     "date": "2026-07-11",
                     "layer": "technical",
                     "embedding": [1.0, 0.0],
@@ -2000,7 +2000,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
 
         self.assertGreaterEqual(ranked["quality"]["coverage"], 0.5)
         self.assertEqual(ranked["quality"]["status"], "weak")
-        self.assertIn("src/open_nova/update.py", ranked["quality"]["missingTerms"])
+        self.assertIn("src/actanara/update.py", ranked["quality"]["missingTerms"])
         self.assertIn("rc-204", ranked["quality"]["missingTerms"])
         self.assertIn("sql", ranked["quality"]["missingTerms"])
 
@@ -2154,7 +2154,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_reranker_provider_rejects_unapproved_external_provider(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"rag": {"retrieval": {"reranker": {"enabled": True, "provider": "external"}}}}, paths)
             with self.assertRaises(ValueError):
                 resolve_rag_settings(paths)
@@ -2167,7 +2167,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
             index.parent.mkdir(parents=True)
             index.write_text("legacy\n", encoding="utf-8")
             before = index.stat().st_mtime_ns
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=legacy)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=legacy)
             settings = resolve_rag_settings(paths)
             result = initialize_shadow_build(settings, requested_by="test")
             after = index.stat().st_mtime_ns
@@ -2187,7 +2187,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_candidate_promotion_requires_ready_manifest(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             settings = resolve_rag_settings(paths)
             result = initialize_shadow_build(settings, requested_by="test")
             with self.assertRaises(ValueError):
@@ -2197,7 +2197,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             legacy = root / "Diary"
-            raw_dir = root / "NovaDiary" / "artifacts" / "diary" / "__diary_daily" / "2026-06-05" / "_filtered" / "codex"
+            raw_dir = root / "Actanara" / "artifacts" / "diary" / "__diary_daily" / "2026-06-05" / "_filtered" / "codex"
             raw_dir.mkdir(parents=True)
             (raw_dir / "messages.jsonl").write_text(
                 json.dumps(
@@ -2210,7 +2210,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
-            lessons_path = root / "NovaDiary" / "artifacts" / "learning" / "lessons.jsonl"
+            lessons_path = root / "Actanara" / "artifacts" / "learning" / "lessons.jsonl"
             lessons_path.parent.mkdir(parents=True)
             lessons_path.write_text(
                 json.dumps({"id": "lesson-1", "text": "Always validate candidate indexes before promotion.", "date": "2026-06-05", "agent": "codex"})
@@ -2221,7 +2221,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
             index.parent.mkdir(parents=True)
             index.write_text("legacy\n", encoding="utf-8")
             before = index.stat().st_mtime_ns
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=legacy)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=legacy)
             write_settings(
                 {"rag": {"embedding": {"model": "all-MiniLM-L6-v2", "dimension": 2, "batchSize": 2}}},
                 paths,
@@ -2265,7 +2265,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             legacy = root / "Diary"
-            current_diary = root / "NovaDiary" / "artifacts" / "diary"
+            current_diary = root / "Actanara" / "artifacts" / "diary"
             filtered_dir = current_diary / "__diary_daily" / "2026-06-05" / "_filtered" / "codex"
             filtered_dir.mkdir(parents=True)
             (filtered_dir / "one.jsonl").write_text(
@@ -2280,7 +2280,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
-            lessons_path = root / "NovaDiary" / "artifacts" / "learning" / "lessons.jsonl"
+            lessons_path = root / "Actanara" / "artifacts" / "learning" / "lessons.jsonl"
             lessons_path.parent.mkdir(parents=True)
             lessons_path.write_text(
                 json.dumps({"id": "lesson-1", "text": "Prefer cleaned and structured RAG sources.", "date": "2026-06-05", "agent": "codex"})
@@ -2293,10 +2293,10 @@ class RagSubsystemStatusTests(unittest.TestCase):
                 "# 2026年06月05日 日记\n\n## 今日概要\nRAG coverage redesign。\n",
                 encoding="utf-8",
             )
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=legacy)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=legacy)
             paths.task_board_path.parent.mkdir(parents=True, exist_ok=True)
             paths.task_board_path.write_text(
-                "# TASK BOARD\n\n## Active\n### Open Nova\n- [ ] RAG coverage redesign ← **@codex**\n",
+                "# TASK BOARD\n\n## Active\n### Actanara\n- [ ] RAG coverage redesign ← **@codex**\n",
                 encoding="utf-8",
             )
             migrate(paths)
@@ -2355,7 +2355,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             legacy = root / "Diary"
-            current_diary = root / "NovaDiary" / "artifacts" / "diary"
+            current_diary = root / "Actanara" / "artifacts" / "diary"
             filtered = current_diary / "__diary_daily" / "2026-06-05" / "_filtered" / "codex"
             filtered.mkdir(parents=True)
             (filtered / "one.jsonl").write_text(json.dumps({"content": "cleaned dialogue"}) + "\n", encoding="utf-8")
@@ -2368,7 +2368,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
             missing_index_day = current_diary / "diary-2026-06-06"
             missing_index_day.mkdir(parents=True)
             (missing_index_day / "日记-260606.md").write_text("# 日记\n\n## 今日概要\nRAG coverage missing index。\n", encoding="utf-8")
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=legacy)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=legacy)
             migrate(paths)
             run_id = begin_ingestion_run(paths, trigger_type="test-rag-coverage", business_date=datetime(2026, 6, 6).date())
             with connect(paths) as connection:
@@ -2423,7 +2423,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             legacy = root / "Diary"
-            lessons = root / "NovaDiary" / "artifacts" / "learning" / "lessons.jsonl"
+            lessons = root / "Actanara" / "artifacts" / "learning" / "lessons.jsonl"
             lessons.parent.mkdir(parents=True)
             lessons.write_text(
                 json.dumps({"id": "lesson-1", "text": "Reuse stable embeddings for unchanged memories.", "date": "2026-06-05", "agent": "codex"})
@@ -2436,7 +2436,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
                 json.dumps({"id": "legacy", "text": "Reuse stable embeddings for unchanged memories.", "embedding": [1.0, 0.0]}) + "\n",
                 encoding="utf-8",
             )
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=legacy)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=legacy)
             write_settings({"rag": {"embedding": {"model": "all-MiniLM-L6-v2", "dimension": 2}}}, paths)
             settings = resolve_rag_settings(paths)
             first = build_v2_candidate_index(
@@ -2495,7 +2495,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=old_diary)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=old_diary)
             paths = update_runtime_manifest_paths(paths.home, generated_diary_root=old_diary, legacy_diary_root=old_diary)
             write_settings({"rag": {"embedding": {"model": "all-MiniLM-L6-v2", "dimension": 2}}}, paths)
             settings = resolve_rag_settings(paths)
@@ -2541,7 +2541,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             legacy = root / "Diary"
-            lessons = root / "NovaDiary" / "artifacts" / "learning" / "lessons.jsonl"
+            lessons = root / "Actanara" / "artifacts" / "learning" / "lessons.jsonl"
             lessons.parent.mkdir(parents=True)
             lessons.write_text(
                 json.dumps(
@@ -2555,7 +2555,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=legacy)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=legacy)
             write_settings(
                 {
                     "rag": {
@@ -2588,7 +2588,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             legacy = root / "Diary"
-            lessons = root / "NovaDiary" / "artifacts" / "learning" / "lessons.jsonl"
+            lessons = root / "Actanara" / "artifacts" / "learning" / "lessons.jsonl"
             lessons.parent.mkdir(parents=True)
             lessons.write_text(
                 json.dumps(
@@ -2602,7 +2602,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=legacy)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=legacy)
             write_settings(
                 {
                     "rag": {
@@ -2632,14 +2632,14 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_v2_candidate_only_sync_does_not_prune_current_active(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            lessons = root / "NovaDiary" / "artifacts" / "learning" / "lessons.jsonl"
+            lessons = root / "Actanara" / "artifacts" / "learning" / "lessons.jsonl"
             lessons.parent.mkdir(parents=True)
             lessons.write_text(
                 json.dumps({"id": "lesson-1", "text": "Candidate-only sync should keep current active.", "date": "2026-06-06"})
                 + "\n",
                 encoding="utf-8",
             )
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {
                     "rag": {
@@ -2676,7 +2676,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_v2_production_sync_rejects_concurrent_sync_promote_lock(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {
                     "rag": {
@@ -2709,7 +2709,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_v2_production_sync_plan_uses_backend_contract_without_building(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {
                     "rag": {
@@ -2746,8 +2746,8 @@ class RagSubsystemStatusTests(unittest.TestCase):
                 plan = plan_v2_production_sync(
                     settings,
                     action="rag-update",
-                    requested_by="open-nova-cli-rag-update",
-                    confirmation_text="UPDATE AND PROMOTE OPEN NOVA RAG",
+                    requested_by="actanara-cli-rag-update",
+                    confirmation_text="UPDATE AND PROMOTE ACTANARA RAG",
                 )
 
             self.assertEqual(plan["status"], "plan")
@@ -2758,7 +2758,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
             self.assertEqual(plan["indexing"]["embeddingReuse"], "active-embedding-reuse")
             self.assertEqual(plan["plannedCall"]["embeddingSource"], "server")
             self.assertEqual(plan["singleFlight"]["lockPath"], str(settings.v2_store_path / "locks" / "sync-promote.lock"))
-            self.assertEqual(plan["confirmationTextRequired"], "UPDATE AND PROMOTE OPEN NOVA RAG")
+            self.assertEqual(plan["confirmationTextRequired"], "UPDATE AND PROMOTE ACTANARA RAG")
             self.assertFalse(plan["mutationPolicy"]["candidateBuilt"])
             self.assertTrue(plan["wouldMutateOnConfirm"]["candidateBuilt"])
             self.assertTrue(plan["wouldMutateOnConfirm"]["activeSnapshotPromoted"])
@@ -2769,7 +2769,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_v2_sync_and_plan_refuse_nonloopback_before_lock_or_build(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             settings = resolve_rag_settings(
                 paths,
                 settings={
@@ -2804,7 +2804,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_v2_sync_ready_server_without_internal_token_is_stably_blocked(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {
                     "rag": {
@@ -2836,7 +2836,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
 
     def test_v2_production_sync_plan_reports_server_blocker_without_building(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings(
                 {
                     "rag": {
@@ -2869,7 +2869,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_v2_production_sync_skips_when_nova_rag_is_disabled(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"rag": {"mode": "disabled"}}, paths)
             settings = resolve_rag_settings(paths)
 
@@ -2887,10 +2887,10 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_v2_sync_cli_returns_nonzero_when_sync_is_skipped(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"rag": {"mode": "disabled"}}, paths)
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False),
                 patch("sys.stdout", new=io.StringIO()),
             ):
                 self.assertEqual(rag_v2_sync_main(["--no-promote"]), 1)
@@ -2898,7 +2898,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_v2_production_sync_requires_ready_server_by_default(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {
                     "rag": {
@@ -2933,7 +2933,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_v2_production_sync_retries_transient_server_health_timeout(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {
                     "rag": {
@@ -2980,7 +2980,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_v2_production_sync_uses_server_embedding_when_ready(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {
                     "rag": {
@@ -3027,7 +3027,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
                 captured["url"] = request.full_url
                 captured["timeout"] = timeout
                 captured["payload"] = json.loads(request.data.decode("utf-8"))
-                captured["token"] = request.headers.get("X-open-nova-rag-internal-token")
+                captured["token"] = request.headers.get("X-actanara-rag-internal-token")
                 return FakeResponse()
 
             with (
@@ -3050,7 +3050,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_v2_production_sync_skips_when_server_profile_mismatches_target(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {
                     "rag": {
@@ -3089,13 +3089,13 @@ class RagSubsystemStatusTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             legacy = root / "Diary"
-            lessons = root / "NovaDiary" / "artifacts" / "learning" / "lessons.jsonl"
+            lessons = root / "Actanara" / "artifacts" / "learning" / "lessons.jsonl"
             lessons.parent.mkdir(parents=True)
             lessons.write_text(
                 json.dumps({"id": "lesson-1", "text": "Explicit embedding function is required.", "date": "2026-06-06"}) + "\n",
                 encoding="utf-8",
             )
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=legacy)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=legacy)
             write_settings(
                 {
                     "rag": {
@@ -3113,7 +3113,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
 
     def test_v2_production_sync_blocks_when_server_dependency_is_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             settings = resolve_rag_settings(paths)
             with patch(
                 "agentic_rag.rag_v2_sync.read_server_process_state",
@@ -3130,13 +3130,13 @@ class RagSubsystemStatusTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             legacy = root / "Diary"
-            raw_dir = root / "NovaDiary" / "artifacts" / "diary" / "__diary_daily" / "2026-06-05" / "_filtered" / "codex"
+            raw_dir = root / "Actanara" / "artifacts" / "diary" / "__diary_daily" / "2026-06-05" / "_filtered" / "codex"
             raw_dir.mkdir(parents=True)
             (raw_dir / "messages.jsonl").write_text(
                 json.dumps({"content": "This chunk has enough content for candidate indexing.", "timestamp": "2026-06-05T08:00:00Z"}) + "\n",
                 encoding="utf-8",
             )
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=legacy)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=legacy)
             write_settings({"rag": {"embedding": {"dimension": 2}}}, paths)
             settings = resolve_rag_settings(paths)
             result = build_v2_candidate_index(
@@ -3155,7 +3155,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
     def test_v2_candidate_index_rejects_retired_legacy_daily_source_set(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             settings = resolve_rag_settings(paths)
 
             with self.assertRaisesRegex(ValueError, "retired RAG sourceSets"):
@@ -3170,7 +3170,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             legacy = root / "Diary"
-            day = root / "NovaDiary" / "artifacts" / "diary" / "diary-2026-06-05"
+            day = root / "Actanara" / "artifacts" / "diary" / "diary-2026-06-05"
             day.mkdir(parents=True)
             (day / "日记-260605.md").write_text(
                 """# 2026年06月05日 日记
@@ -3192,7 +3192,7 @@ class RagSubsystemStatusTests(unittest.TestCase):
 date: 2026-06-05
 task_updates:
   - id: T-RAG-8B
-    parent_id: open-nova
+    parent_id: actanara
     title: RAG second tier source expansion
     status: InProgress
     progress_delta: 20
@@ -3204,7 +3204,7 @@ task_updates:
                 """# TASK BOARD
 
 ## 🔵 Active
-### Open Nova
+### Actanara
 - [ ] [T-RAG-8B] RAG second tier source expansion ← **@codex**
 """,
                 encoding="utf-8",
@@ -3213,13 +3213,13 @@ task_updates:
             index.parent.mkdir(parents=True)
             index.write_text("legacy\n", encoding="utf-8")
             before = index.stat().st_mtime_ns
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=legacy)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=legacy)
             paths.task_board_path.parent.mkdir(parents=True, exist_ok=True)
             paths.task_board_path.write_text(
                 """# TASK BOARD
 
 ## 🔵 Active
-### Open Nova
+### Actanara
 - [ ] [T-RAG-8B] RAG second tier source expansion ← **@codex**
 """,
                 encoding="utf-8",
@@ -3279,14 +3279,14 @@ task_updates:
     def test_v2_candidate_index_parses_current_nova_task_projection_board(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             paths.task_board_path.parent.mkdir(parents=True, exist_ok=True)
             paths.task_board_path.write_text(
                 """# TASK_BOARD.md
 > Generated from Nova-Task v2 SQLite authority.
 
 ## Active
-- [ ] **[NT-9699b64f762b]** Open Nova (task - Active)
+- [ ] **[NT-9699b64f762b]** Actanara (task - Active)
   - [ ] **[NT-7a745c01ebe6]** Dashboard network settings (task - Active)
 
 ## Done
@@ -3318,14 +3318,14 @@ task_updates:
         self.assertGreaterEqual(len(task_items), 3)
         child = next(chunk for chunk in task_items if chunk["provenance"]["identifiedTaskId"] == "NT-7a745c01ebe6")
         self.assertIn("Dashboard network settings", child["text"])
-        self.assertEqual(child["project"], "Open Nova")
+        self.assertEqual(child["project"], "Actanara")
         self.assertEqual(child["provenance"]["section"], "Active")
 
     def test_v2_candidate_index_uses_english_technical_filename_for_english_profile(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             legacy = root / "Diary"
-            day = root / "NovaDiary" / "artifacts" / "diary" / "diary-2026-06-05"
+            day = root / "Actanara" / "artifacts" / "diary" / "diary-2026-06-05"
             day.mkdir(parents=True)
             (day / "technical-260605.md").write_text(
                 """# 2026-06-05 Technical Progress Report
@@ -3335,7 +3335,7 @@ task_updates:
 date: 2026-06-05
 task_updates:
   - id: T-EN
-    parent_id: open-nova
+    parent_id: actanara
     title: English technical report
     status: Done
     progress_delta: 100
@@ -3348,14 +3348,14 @@ task_updates:
 date: 2026-06-05
 task_updates:
   - id: T-ZH
-    parent_id: open-nova
+    parent_id: actanara
     title: Chinese technical report
     status: Done
     progress_delta: 100
 """,
                 encoding="utf-8",
             )
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=legacy)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=legacy)
             write_settings({"rag": {"languageProfile": "en"}}, paths)
             settings = resolve_rag_settings(paths)
 
@@ -3388,7 +3388,7 @@ task_updates:
     def test_v2_candidate_index_reads_nova_task_work_graph_events(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "LegacyDiary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "LegacyDiary")
             recon_dir = paths.state_dir / "nova-task" / "work-graph"
             recon_dir.mkdir(parents=True)
             artifact = recon_dir / "2026-06-30-20260630-120000.md"
@@ -3405,13 +3405,13 @@ nova_task:
     - task_id: "NT-OPEN"
       confidence: high
       event_type: progress
-      summary: "open-nova reconciliation improved task classification."
+      summary: "actanara reconciliation improved task classification."
       evidence: ["technical:chronicle"]
   candidate_actions:
     - candidate_id: "NTC-OLD"
       action: attach_existing
       target_node_id: "NT-OPEN"
-      reason: "Old pending candidate is represented by the open-nova root."
+      reason: "Old pending candidate is represented by the actanara root."
       confidence: high
       evidence: ["candidate:NTC-OLD"]
 ```
@@ -3449,7 +3449,7 @@ nova_task:
     def test_v2_candidate_index_skips_unapplied_nova_task_work_graph_events(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "LegacyDiary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "LegacyDiary")
             recon_dir = paths.state_dir / "nova-task" / "work-graph"
             recon_dir.mkdir(parents=True)
             artifact = recon_dir / "2026-06-30-20260630-120000.md"
@@ -3499,7 +3499,7 @@ nova_task:
     def test_v2_candidate_index_reads_legacy_nova_task_reconciliation_events(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "LegacyDiary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "LegacyDiary")
             recon_dir = paths.state_dir / "nova-task" / "candidate-reconciliation"
             recon_dir.mkdir(parents=True)
             artifact = recon_dir / "2026-06-30-20260630-120000.md"
@@ -3552,7 +3552,7 @@ nova_task:
     def test_english_artifacts_materialize_index_and_query_smoke(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "OpenNova", legacy_diary_root=root / "LegacyDiary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "LegacyDiary")
             day = diary_day_dir(paths.diary_dir, datetime(2026, 6, 6).date())
             day.mkdir(parents=True)
             (day / "diary-260606.md").write_text(
@@ -3690,8 +3690,8 @@ nova_task:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             legacy = root / "Diary"
-            (root / "NovaDiary" / "artifacts" / "learning" / "lessons.jsonl").parent.mkdir(parents=True)
-            (root / "NovaDiary" / "artifacts" / "learning" / "lessons.jsonl").write_text(
+            (root / "Actanara" / "artifacts" / "learning" / "lessons.jsonl").parent.mkdir(parents=True)
+            (root / "Actanara" / "artifacts" / "learning" / "lessons.jsonl").write_text(
                 json.dumps(
                     {
                         "id": "promote-lesson",
@@ -3721,7 +3721,7 @@ nova_task:
                 encoding="utf-8",
             )
             before_mtime = index.stat().st_mtime_ns
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=legacy)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=legacy)
             write_settings({"rag": {"mode": "legacy", "embedding": {"model": "all-MiniLM-L6-v2", "dimension": 2}}}, paths)
             settings = resolve_rag_settings(paths)
             build = build_v2_candidate_index(
@@ -3806,14 +3806,14 @@ nova_task:
     def test_guarded_v2_promotion_prunes_old_active_run_and_keeps_current(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            lessons = root / "NovaDiary" / "artifacts" / "learning" / "lessons.jsonl"
+            lessons = root / "Actanara" / "artifacts" / "learning" / "lessons.jsonl"
             lessons.parent.mkdir(parents=True)
             lessons.write_text(
                 json.dumps({"id": "retention-lesson", "text": "Retention keeps only the current active run.", "date": "2026-06-05"})
                 + "\n",
                 encoding="utf-8",
             )
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {
                     "rag": {
@@ -3867,7 +3867,7 @@ nova_task:
     def test_v2_retention_prune_does_not_delete_outside_store_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"rag": {"mode": "v2", "embedding": {"dimension": 2}}}, paths)
             settings = resolve_rag_settings(paths)
             active_dir = settings.v2_store_path / "indexes" / "active" / "current"
@@ -3900,14 +3900,14 @@ nova_task:
     def test_guarded_v2_promotion_rejects_embedding_profile_hash_mismatch(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            lessons = root / "NovaDiary" / "artifacts" / "learning" / "lessons.jsonl"
+            lessons = root / "Actanara" / "artifacts" / "learning" / "lessons.jsonl"
             lessons.parent.mkdir(parents=True)
             lessons.write_text(
                 json.dumps({"id": "profile-mismatch", "text": "Promotion validates embedding profile hashes.", "date": "2026-06-05"})
                 + "\n",
                 encoding="utf-8",
             )
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {
                     "rag": {
@@ -3939,14 +3939,14 @@ nova_task:
     def test_guarded_v2_promotion_rejects_source_profile_hash_mismatch(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            lessons = root / "NovaDiary" / "artifacts" / "learning" / "lessons.jsonl"
+            lessons = root / "Actanara" / "artifacts" / "learning" / "lessons.jsonl"
             lessons.parent.mkdir(parents=True)
             lessons.write_text(
                 json.dumps({"id": "source-mismatch", "text": "Promotion validates source profile hashes.", "date": "2026-06-05"})
                 + "\n",
                 encoding="utf-8",
             )
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {
                     "rag": {
@@ -3979,8 +3979,8 @@ nova_task:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             legacy = root / "Diary"
-            (root / "NovaDiary" / "artifacts" / "learning" / "lessons.jsonl").parent.mkdir(parents=True)
-            (root / "NovaDiary" / "artifacts" / "learning" / "lessons.jsonl").write_text(
+            (root / "Actanara" / "artifacts" / "learning" / "lessons.jsonl").parent.mkdir(parents=True)
+            (root / "Actanara" / "artifacts" / "learning" / "lessons.jsonl").write_text(
                 json.dumps({"id": "bad-confirm", "text": "Bad confirmation fixture.", "date": "2026-06-05"})
                 + "\n",
                 encoding="utf-8",
@@ -4000,7 +4000,7 @@ nova_task:
                 + "\n",
                 encoding="utf-8",
             )
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=legacy)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=legacy)
             write_settings({"rag": {"embedding": {"model": "all-MiniLM-L6-v2", "dimension": 2}}}, paths)
             settings = resolve_rag_settings(paths)
             build = build_v2_candidate_index(
@@ -4038,7 +4038,7 @@ nova_task:
             index = legacy / "__diary_rag" / "index.jsonl"
             index.parent.mkdir(parents=True)
             index.write_text(json.dumps({"id": "legacy", "embedding": [1.0, 0.0]}) + "\n", encoding="utf-8")
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=legacy)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=legacy)
             write_settings({"rag": {"embedding": {"dimension": 2}}}, paths)
             settings = resolve_rag_settings(paths)
             build = build_v2_candidate_index(
@@ -4067,8 +4067,8 @@ nova_task:
                 {"id": "rollback-one", "text": "First promoted active snapshot.", "date": "2026-06-05"},
                 {"id": "rollback-two", "text": "Second promoted active snapshot.", "date": "2026-06-05"},
             ]
-            (root / "NovaDiary" / "artifacts" / "learning" / "lessons.jsonl").parent.mkdir(parents=True)
-            (root / "NovaDiary" / "artifacts" / "learning" / "lessons.jsonl").write_text(
+            (root / "Actanara" / "artifacts" / "learning" / "lessons.jsonl").parent.mkdir(parents=True)
+            (root / "Actanara" / "artifacts" / "learning" / "lessons.jsonl").write_text(
                 "\n".join(json.dumps(item) for item in lessons) + "\n",
                 encoding="utf-8",
             )
@@ -4090,7 +4090,7 @@ nova_task:
                 encoding="utf-8",
             )
             legacy_mtime = index.stat().st_mtime_ns
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=legacy)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=legacy)
             write_settings({"rag": {"embedding": {"model": "all-MiniLM-L6-v2", "dimension": 2}}}, paths)
             settings = resolve_rag_settings(paths)
             first = build_v2_candidate_index(
@@ -4147,7 +4147,7 @@ nova_task:
     def test_guarded_v2_manifest_rollback_rejects_bad_confirmation_and_path_escape(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"rag": {"embedding": {"dimension": 2}}}, paths)
             settings = resolve_rag_settings(paths)
             backups = settings.v2_store_path / "manifest.backups"
@@ -4185,7 +4185,7 @@ nova_task:
     def test_guarded_v2_manifest_rollback_rejects_invalid_active_backup_without_writes(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"rag": {"embedding": {"dimension": 2}}}, paths)
             settings = resolve_rag_settings(paths)
             backups = settings.v2_store_path / "manifest.backups"
@@ -4428,7 +4428,7 @@ nova_task:
                         "id": "task",
                         "sourceSet": "task-board-snapshot",
                         "workType": "task",
-                        "project": "open-nova",
+                        "project": "actanara",
                         "governance": {"lifecycle": "current-state", "authorityRank": 92, "provenanceScore": 1.0},
                         "score": 0.9,
                     }
@@ -4529,14 +4529,14 @@ nova_task:
                 ],
                 "answerSynthesis": {"status": "ready", "summary": "dashboard 网络配置证据。", "bullets": []},
             },
-            "open-nova-batch-c-recoverability": {
+            "actanara-batch-c-recoverability": {
                 "results": [
                     {
-                        "id": "open-nova-batch-c-recoverability",
+                        "id": "actanara-batch-c-recoverability",
                         "sourceSet": "technical-report-task-events",
                         "workType": "task",
                         "textPreview": "Batch C 运维可恢复性 已完成验证。",
-                        "provenance": {"dedupeKey": "open-nova-batch-c-recoverability"},
+                        "provenance": {"dedupeKey": "actanara-batch-c-recoverability"},
                         "governance": {"lifecycle": "task-history"},
                         "score": 0.9,
                     }
@@ -4544,7 +4544,7 @@ nova_task:
                 "citationPack": [
                     {
                         "citationId": "C1",
-                        "resultId": "open-nova-batch-c-recoverability",
+                        "resultId": "actanara-batch-c-recoverability",
                         "excerpt": "Batch C 运维可恢复性。",
                     }
                 ],
@@ -4563,7 +4563,7 @@ nova_task:
                 "2096 端口为什么不可用？": "vps-config-2096-port",
                 "从旧 VPS 到精品 VPS 迁移了什么？": "vps-migration-cross-time",
                 "dashboard 网络 回环地址 tailscale": "dashboard-network-loopback-tailscale",
-                "Batch C 运维可恢复性": "open-nova-batch-c-recoverability",
+                "Batch C 运维可恢复性": "actanara-batch-c-recoverability",
             }
             case_id = query_cases.get(query, case_id)
             return responses.get(
@@ -4617,7 +4617,7 @@ nova_task:
             by_id["dashboard-network-loopback-tailscale"]["quality"]["evidenceTermsMissing"],
             [],
         )
-        self.assertIn("technical-report-task-events", by_id["open-nova-batch-c-recoverability"]["observed"]["sourceSets"])
+        self.assertIn("technical-report-task-events", by_id["actanara-batch-c-recoverability"]["observed"]["sourceSets"])
 
         extended_settings = replace(
             resolve_rag_settings(),

@@ -1,4 +1,4 @@
-"""Open Nova command line entrypoint."""
+"""Actanara command line entrypoint."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ from .external_agent_memory import DEFAULT_SEARCH_TIMEOUT_SECONDS, compact_memor
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="open-nova",
-        description="Search your Open Nova memory.",
+        prog="actanara",
+        description="Search your Actanara memory.",
     )
     subcommands = parser.add_subparsers(dest="command")
 
@@ -21,7 +21,7 @@ def build_parser() -> argparse.ArgumentParser:
     rag.set_defaults(rag_parser=rag)
     search = rag_subcommands.add_parser(
         "search-memory",
-        help="Search your Open Nova memory.",
+        help="Search your Actanara memory.",
     )
     search.add_argument("query", help="Words or question to search for")
     search.add_argument("--top-k", type=int, default=5, help="Maximum number of results, up to 20")

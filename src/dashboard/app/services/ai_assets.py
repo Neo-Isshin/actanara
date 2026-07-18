@@ -156,7 +156,7 @@ def _ai_assets_cache_key(source: str) -> dict[str, Any]:
     runtime_path = paths.config_dir / "runtime.json"
     return {
         "source": source,
-        "novaHome": str(paths.home),
+        "actanaraHome": str(paths.home),
         "database": str(paths.db_path),
         "projectRoot": str(_workspace_dir()),
         "dashboardAppDir": str(_dashboard_app_dir()),
@@ -1171,7 +1171,7 @@ _SENSITIVE_SUFFIXES = {
     ".crt",
     ".cer",
 }
-FILE_WRITE_CONFIRMATION = "SAVE OPEN NOVA FILE"
+FILE_WRITE_CONFIRMATION = "SAVE ACTANARA FILE"
 
 def _allowed_document_roots() -> list[Path]:
     openclaw_home = _external_tool_path("openclaw", "home")
@@ -2830,7 +2830,7 @@ def _get_ai_assets_foundation() -> dict:
                 "refreshRequired": True,
                 "staticSnapshotOnly": True,
                 "runtime": {
-                    "novaHome": str(paths.home),
+                    "actanaraHome": str(paths.home),
                     "database": str(paths.db_path),
                     "databaseExists": paths.db_path.exists(),
                 },

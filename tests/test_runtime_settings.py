@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "src" / "dashboard"))
-os.environ["OPEN_NOVA_SECRET_BACKEND"] = "memory"
+os.environ["ACTANARA_SECRET_BACKEND"] = "memory"
 
 from data_foundation import settings as foundation_settings
 from data_foundation import settings_transaction as foundation_settings_transaction
@@ -38,14 +38,14 @@ from data_foundation.adapters.usage import (
     default_usage_adapters,
 )
 from data_foundation.settings_status import (
-    dump_nova_settings_status_json,
-    format_nova_settings_status,
-    nova_settings_status,
+    dump_actanara_settings_status_json,
+    format_actanara_settings_status,
+    actanara_settings_status,
 )
 from data_foundation.onboarding_status import (
-    dump_nova_onboarding_status_json,
-    format_nova_onboarding_status,
-    nova_onboarding_status,
+    dump_actanara_onboarding_status_json,
+    format_actanara_onboarding_status,
+    actanara_onboarding_status,
 )
 from data_foundation.onboarding_plan import (
     dump_onboarding_one_liner_dry_run_json,
@@ -157,7 +157,7 @@ def _v2_runtime_source_manifest(source_locator: dict[str, object]) -> dict[str, 
     digest = "0" * 64
     return {
         "schemaVersion": 2,
-        "product": "open-nova",
+        "product": "actanara",
         "sourceLocator": source_locator,
         "deployedSourceLocator": {
             "kind": "runtime-relative",
@@ -209,7 +209,7 @@ def _v2_runtime_source_manifest(source_locator: dict[str, object]) -> dict[str, 
 class RuntimeSettingsTests(unittest.TestCase):
     def test_config_does_not_auto_load_workspace_dotenv(self):
         with tempfile.TemporaryDirectory() as tmp:
-            runtime = Path(tmp) / ".open-nova"
+            runtime = Path(tmp) / ".actanara"
             env = {
                 key: value
                 for key, value in os.environ.items()
@@ -219,12 +219,12 @@ class RuntimeSettingsTests(unittest.TestCase):
                     "DIARY_OUTPUT_DIR",
                     "WORKSPACE_DIR",
                     "TMP_WORKSPACE",
-                    "NOVA_DATA_DB_PATH",
-                    "NOVA_DATA_EXPORT_DIR",
-                    "NOVA_LOCATION_FILE",
+                    "ACTANARA_DATA_DB_PATH",
+                    "ACTANARA_DATA_EXPORT_DIR",
+                    "ACTANARA_LOCATION_FILE",
                 }
             }
-            env["NOVA_HOME"] = str(runtime)
+            env["ACTANARA_HOME"] = str(runtime)
             result = subprocess.run(
                 [
                     sys.executable,
@@ -249,7 +249,7 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_config_reads_active_settings_before_legacy_environment(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "OpenNova", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {
                     "general": {
@@ -259,7 +259,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                     "paths": {
                         "diary": {"generatedDiary": str(root / "settings-diary")},
                         "runtime": {
-                            "database": str(root / "settings-data" / "nova_data.sqlite3"),
+                            "database": str(root / "settings-data" / "actanara_data.sqlite3"),
                             "snapshots": str(root / "settings-snapshots"),
                         },
                         "tasks": {"legacyTaskDatabase": str(root / "settings-data" / "nova_tasks.db")},
@@ -276,22 +276,22 @@ class RuntimeSettingsTests(unittest.TestCase):
                 paths,
             )
             location = root / "location.json"
-            location.write_text(json.dumps({"novaHome": str(paths.home)}), encoding="utf-8")
+            location.write_text(json.dumps({"actanaraHome": str(paths.home)}), encoding="utf-8")
             env = {
                 **os.environ,
-                "NOVA_LOCATION_FILE": str(location),
+                "ACTANARA_LOCATION_FILE": str(location),
                 "WORKSPACE_DIR": str(root / "env-workspace"),
                 "DIARY_OUTPUT_DIR": str(root / "env-diary"),
                 "TMP_WORKSPACE": str(root / "env-tmp"),
-                "NOVA_DATA_DB_PATH": str(root / "env-data" / "nova_data.sqlite3"),
-                "NOVA_DATA_EXPORT_DIR": str(root / "env-snapshots"),
+                "ACTANARA_DATA_DB_PATH": str(root / "env-data" / "actanara_data.sqlite3"),
+                "ACTANARA_DATA_EXPORT_DIR": str(root / "env-snapshots"),
                 "TASK_DB_PATH": str(root / "env-data" / "nova_tasks.db"),
                 "DASHBOARD_READ_SOURCE": "legacy",
                 "LLM_HOST": "https://env-llm.local",
                 "LLM_MODEL_NAME": "env-model",
                 "LLM_API_KEY": "env-secret",
             }
-            env.pop("NOVA_HOME", None)
+            env.pop("ACTANARA_HOME", None)
             result = subprocess.run(
                 [
                     sys.executable,
@@ -301,8 +301,8 @@ class RuntimeSettingsTests(unittest.TestCase):
                         "print(config.WORKSPACE_DIR); "
                         "print(config.DIARY_OUTPUT_DIR); "
                         "print(config.TMP_WORKSPACE); "
-                        "print(config.NOVA_DATA_DB_PATH); "
-                        "print(config.NOVA_DATA_EXPORT_DIR); "
+                        "print(config.ACTANARA_DATA_DB_PATH); "
+                        "print(config.ACTANARA_DATA_EXPORT_DIR); "
                         "print(config.TASK_DB_PATH); "
                         "print(config.DASHBOARD_READ_SOURCE); "
                         "print(config.LLM_HOST); "
@@ -324,7 +324,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                 str(root / "settings-workspace"),
                 str(root / "settings-diary"),
                 str(root / "settings-tmp"),
-                str(root / "settings-data" / "nova_data.sqlite3"),
+                str(root / "settings-data" / "actanara_data.sqlite3"),
                 str(root / "settings-snapshots"),
                 str(root / "settings-data" / "nova_tasks.db"),
                 "foundation",
@@ -339,7 +339,7 @@ class RuntimeSettingsTests(unittest.TestCase):
             root = Path(tmp)
             legacy = root / "Diary"
             generated = root / "settings-diary"
-            paths = initialize_home(root / "OpenNova", legacy_diary_root=legacy)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=legacy)
 
             write_operator_settings({"paths": {"diary": {"generatedDiary": str(generated)}}}, paths)
             manifest = json.loads((paths.config_dir / "runtime.json").read_text(encoding="utf-8"))
@@ -352,7 +352,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_first_read_never_persists_env_llm_key_to_settings(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             with patch.dict(os.environ, {"LLM_API_KEY": "env-secret"}):
                 redacted = read_settings(paths)
                 resolved = resolve_llm_provider(paths, redact_secrets=False)
@@ -364,9 +364,9 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertEqual(resolved["apiKey"], "env-secret")
         self.assertEqual(resolved["source"]["apiKey"], "env")
 
-    def test_settings_file_is_created_under_selected_nova_home_and_masks_secret(self):
+    def test_settings_file_is_created_under_selected_actanara_home_and_masks_secret(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_llm_provider({"provider": "openai-compatible", "endpoint": "https://llm.local", "model": "m1", "apiKey": "secret"}, paths)
             redacted = read_settings(paths)
             self.assertEqual(redacted["settingsPath"], str(paths.config_dir / "settings.json"))
@@ -383,7 +383,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_write_llm_provider_resets_secret_like_api_key_env_when_secret_store_is_used(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             raw_path = paths.config_dir / "settings.json"
             read_settings(paths, redact_secrets=False)
             raw = json.loads(raw_path.read_text(encoding="utf-8"))
@@ -408,7 +408,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_runtime_environment_exports_configured_llm_api_key_env(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_llm_provider(
                 {
                     "provider": "openai-compatible",
@@ -427,14 +427,14 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_legacy_plaintext_key_is_scrubbed_when_secret_backend_is_readonly(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             read_settings(paths, redact_secrets=False)
             raw_path = paths.config_dir / "settings.json"
             raw = json.loads(raw_path.read_text(encoding="utf-8"))
             raw["llmProvider"]["apiKey"] = "legacy-secret"
             raw["llmProvider"].pop("secretRef", None)
             raw_path.write_text(json.dumps(raw), encoding="utf-8")
-            with patch.dict(os.environ, {"OPEN_NOVA_SECRET_BACKEND": "process-env"}):
+            with patch.dict(os.environ, {"ACTANARA_SECRET_BACKEND": "process-env"}):
                 settings = read_settings(paths, redact_secrets=False)
             persisted = json.loads(raw_path.read_text(encoding="utf-8"))
 
@@ -465,7 +465,7 @@ class RuntimeSettingsTests(unittest.TestCase):
             patch.dict(os.environ, {"TZ": "UTC"}, clear=False),
             patch("data_foundation.settings.detect_system_timezone_authority", return_value="UTC"),
         ):
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             settings = read_settings(paths)
             self.assertEqual(detect_system_timezone(), "UTC")
             self.assertEqual(settings["general"]["timezone"], "UTC")
@@ -473,7 +473,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_masked_or_empty_llm_key_update_preserves_existing_secret(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_llm_provider(
                 {
                     "mode": "preset",
@@ -491,7 +491,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_llm_provider_readiness_requires_pipeline_readable_key(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_llm_provider(
                 {
                     "mode": "preset",
@@ -517,7 +517,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_llm_provider_readiness_redacts_invalid_api_key_env_label(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             secret_like_env = "sk-test-value-that-should-not-be-printed"
             read_settings(paths, redact_secrets=False)
             raw_path = paths.config_dir / "settings.json"
@@ -544,7 +544,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_nova_task_feature_flag_defaults_on_and_can_be_disabled(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             self.assertTrue(resolve_feature_flags(paths)["novaTask"])
             self.assertTrue(is_nova_task_enabled(paths))
 
@@ -555,7 +555,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_llm_provider_preset_uses_catalog_metadata_and_redacts_secret(self):
         with _persistent_secret_store_for_test(), tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             saved = write_llm_provider(
                 {
                     "mode": "preset",
@@ -591,13 +591,13 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_llm_provider_preset_requires_explicit_provider(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             with self.assertRaisesRegex(ValueError, "endpoint is required"):
                 write_llm_provider({"mode": "preset", "apiKey": MASKED_SECRET}, paths)
 
     def test_llm_provider_preset_defaults_gate_from_context_window(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             saved = write_llm_provider(
                 {
                     "mode": "preset",
@@ -642,7 +642,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_llm_provider_manual_gate_overrides_auto_gate(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             saved = write_llm_provider(
                 {
                     "mode": "preset",
@@ -685,7 +685,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_legacy_pipeline_gate_without_mode_is_preserved_as_manual(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             settings_path = paths.config_dir / "settings.json"
             settings_path.parent.mkdir(parents=True, exist_ok=True)
             settings_path.write_text(
@@ -725,7 +725,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_llm_provider_openclaw_static_preset_uses_catalog_endpoint(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             saved = write_llm_provider(
                 {
                     "mode": "preset",
@@ -751,7 +751,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_llm_provider_kimi_code_uses_anthropic_compatible_endpoint(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             saved = write_llm_provider(
                 {
                     "mode": "preset",
@@ -870,7 +870,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_llm_provider_unsupported_preset_is_not_saved_as_enabled_runtime(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             with self.assertRaises(ValueError):
                 write_llm_provider(
                     {
@@ -884,7 +884,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_llm_provider_custom_preserves_operator_endpoint_and_context(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             saved = write_llm_provider(
                 {
                     "mode": "custom",
@@ -908,7 +908,7 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_llm_provider_explicit_catalog_provider_switches_custom_to_preset(self):
         for provider_field in ("provider", "presetProvider"):
             with self.subTest(provider_field=provider_field), tempfile.TemporaryDirectory() as tmp:
-                paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+                paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
                 custom = write_llm_provider(
                     {
                         "mode": "custom",
@@ -916,7 +916,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                         "endpoint": "http://127.0.0.1:63185/v1",
                         "model": "closeout-smoke",
                         "api": "openai-compatible",
-                        "apiKeyEnv": "OPEN_NOVA_LOCAL_SMOKE_KEY",
+                        "apiKeyEnv": "ACTANARA_LOCAL_SMOKE_KEY",
                     },
                     paths,
                 )
@@ -947,7 +947,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_runtime_source_uses_settings_before_legacy_environment(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings({"runtimeSources": {"dashboardReadSource": "foundation"}}, paths)
             with patch.dict(os.environ, {}, clear=False):
                 os.environ.pop("DASHBOARD_READ_SOURCE", None)
@@ -957,7 +957,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_write_runtime_sources_is_the_dedicated_source_switch_helper(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             saved = write_runtime_sources(
                 {
                     "dashboardReadSource": "foundation",
@@ -980,7 +980,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_default_runtime_sources_are_foundation_and_do_not_persist_env_values(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             with patch.dict(
                 os.environ,
                 {
@@ -997,19 +997,19 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_runtime_source_settings_are_used_without_foundation_enablement_flag(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"runtimeSources": {"diaryMetricsSource": "foundation"}}, paths)
-            with patch.dict(os.environ, {"NOVA_LOCATION_FILE": str(root / "location.json")}, clear=False):
-                os.environ.pop("NOVA_HOME", None)
-                os.environ.pop("NOVA_DATA_FOUNDATION_ENABLED", None)
+            with patch.dict(os.environ, {"ACTANARA_LOCATION_FILE": str(root / "location.json")}, clear=False):
+                os.environ.pop("ACTANARA_HOME", None)
+                os.environ.pop("ACTANARA_DATA_FOUNDATION_ENABLED", None)
                 os.environ.pop("DIARY_METRICS_SOURCE", None)
                 self.assertEqual(resolve_runtime_source("DIARY_METRICS_SOURCE"), "foundation")
-            with patch.dict(os.environ, {"NOVA_DATA_FOUNDATION_ENABLED": "true"}):
+            with patch.dict(os.environ, {"ACTANARA_DATA_FOUNDATION_ENABLED": "true"}):
                 self.assertEqual(resolve_runtime_source("DIARY_METRICS_SOURCE", paths), "foundation")
 
     def test_runtime_environment_overrides_exports_settings_when_env_absent(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings(
                 {
                     "runtimeSources": {"diaryMetricsSource": "foundation"},
@@ -1025,7 +1025,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                 os.environ.pop("LLM_API_KEY", None)
                 overrides = runtime_environment_overrides(paths)
             self.assertEqual(overrides["DIARY_METRICS_SOURCE"], "foundation")
-            self.assertEqual(overrides["NOVA_HOME"], str(paths.home))
+            self.assertEqual(overrides["ACTANARA_HOME"], str(paths.home))
             self.assertEqual(overrides["LLM_HOST"], "https://llm.local")
             self.assertEqual(overrides["LLM_MODEL_NAME"], "m1")
             self.assertEqual(overrides["LLM_API"], "openai-compatible")
@@ -1035,7 +1035,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_llm_provider_resolution_redacts_and_prefers_settings_over_env(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_llm_provider({"mode": "custom", "endpoint": "https://settings.local", "model": "settings-model", "apiKey": "settings-secret"}, paths)
             with patch.dict(os.environ, {"LLM_HOST": "https://env.local", "LLM_MODEL_NAME": "env-model"}):
                 provider = resolve_llm_provider(paths, redact_secrets=True)
@@ -1050,7 +1050,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_llm_provider_does_not_fallback_to_default_model_when_settings_are_blank(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings(
                 {
                     "llmProvider": {
@@ -1075,7 +1075,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_settings_authority_inventory_reports_sources_modes_and_redaction(self):
         with _persistent_secret_store_for_test(), tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings({"runtimeSources": {"dashboardReadSource": "foundation"}}, paths)
             write_llm_provider(
                 {
@@ -1110,7 +1110,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_settings_authority_inventory_treats_rag_env_as_diagnostic_not_override(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             with patch.dict(os.environ, {"NOVA_RAG_MODE": "legacy"}):
                 inventory = settings_authority_inventory(paths)
 
@@ -1125,7 +1125,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_settings_bundle_is_transactional_across_settings_rag_and_llm(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings({"schedule": {"dailyPipelineTime": "03:10"}}, paths)
 
             saved = write_operator_settings_bundle(
@@ -1158,7 +1158,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_settings_bundle_rejects_rag_language_profile_mutation(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings({"rag": {"languageProfile": "zh"}}, paths)
 
             with self.assertRaisesRegex(ValueError, "rag.languageProfile is immutable"):
@@ -1168,7 +1168,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_settings_bundle_rejects_invalid_schedule_time_without_writing(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings({"schedule": {"dailyPipelineTime": "04:00", "dashboardAggregationTime": "04:30"}}, paths)
 
             with self.assertRaises(ValueError):
@@ -1181,7 +1181,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_settings_bundle_rejects_invalid_iana_timezones_without_writing(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings(
                 {"general": {"timezone": "UTC"}, "schedule": {"timezone": "UTC"}},
                 paths,
@@ -1215,7 +1215,7 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_settings_bundle_syncs_runtime_manifest_path_authority(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             db_path = root / "custom" / "data.sqlite3"
             snapshots = root / "custom" / "snapshots"
             reports = root / "custom" / "reports"
@@ -1272,7 +1272,7 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_general_pipeline_dashboard_settings_resolve_with_env_overrides(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {
                     "general": {
@@ -1308,14 +1308,14 @@ class RuntimeSettingsTests(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "NOVA_ENVIRONMENT": "env-beta",
+                    "ACTANARA_ENVIRONMENT": "env-beta",
                     "TARGET_TIMEZONE": "UTC",
-                    "NOVA_PIPELINE_PYTHON": "python-env",
+                    "ACTANARA_PIPELINE_PYTHON": "python-env",
                     "LLM_THINKING_MODE": "on",
-                    "NOVA_PIPELINE_STEP_TIMEOUT_SECONDS": "444",
-                    "NOVA_PIPELINE_TOTAL_WATCHDOG_SECONDS": "555",
-                    "NOVA_DASHBOARD_HOST": "0.0.0.0",
-                    "NOVA_DASHBOARD_PORT": "4545",
+                    "ACTANARA_PIPELINE_STEP_TIMEOUT_SECONDS": "444",
+                    "ACTANARA_PIPELINE_TOTAL_WATCHDOG_SECONDS": "555",
+                    "ACTANARA_DASHBOARD_HOST": "0.0.0.0",
+                    "ACTANARA_DASHBOARD_PORT": "4545",
                 },
             ):
                 general = resolve_general_settings(paths)
@@ -1352,7 +1352,7 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertEqual(resolve_pipeline_language_profile("zh-CN").profile_id, "zh")
         self.assertEqual(resolve_pipeline_language_profile("en-US").profile_id, "en")
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings({"pipeline": {"languageProfile": "en", "englishEnabled": True}}, paths)
 
             pipeline = resolve_pipeline_settings(paths)
@@ -1369,15 +1369,15 @@ class RuntimeSettingsTests(unittest.TestCase):
         prompt = build_agent_schedule_prompt(
             {
                 "schedule": {"timezone": "Asia/Hong_Kong", "dailyPipelineTime": "04:00", "dashboardAggregationTime": "04:30"},
-                "paths": {"runtime": {"novaHome": "/tmp/open-nova"}},
+                "paths": {"runtime": {"actanaraHome": "/tmp/actanara"}},
                 "pipeline": {"languageProfile": "zh"},
             }
         )
 
         self.assertIn("唯一的外部定时触发器", prompt)
         self.assertIn("严禁两套 scheduler 同时运行", prompt)
-        self.assertIn('任务 1 — 每日管线，执行时间 04:00："/tmp/open-nova/bin/open-nova" pipeline', prompt)
-        self.assertIn('"/tmp/open-nova/.venv/bin/python" "/tmp/open-nova/app/source/advanced/pipeline/run_dashboard_foundation_refresh.py"', prompt)
+        self.assertIn('任务 1 — 每日管线，执行时间 04:00："/tmp/actanara/bin/actanara" pipeline', prompt)
+        self.assertIn('"/tmp/actanara/.venv/bin/python" "/tmp/actanara/app/source/advanced/pipeline/run_dashboard_foundation_refresh.py"', prompt)
         self.assertIn("最多重试一次", prompt)
         self.assertNotIn("Phase 25", prompt)
         self.assertNotIn("python advanced/pipeline/run_daily_pipeline.py", prompt)
@@ -1386,15 +1386,15 @@ class RuntimeSettingsTests(unittest.TestCase):
         prompt = build_agent_schedule_prompt(
             {
                 "schedule": {"timezone": "America/Los_Angeles", "dailyPipelineTime": "04:00", "dashboardAggregationTime": "04:30"},
-                "paths": {"runtime": {"novaHome": "/tmp/open-nova-en"}},
+                "paths": {"runtime": {"actanaraHome": "/tmp/actanara-en"}},
                 "pipeline": {"languageProfile": "en", "englishEnabled": True},
             }
         )
 
         self.assertIn("sole external scheduler", prompt)
         self.assertIn("Timezone: America/Los_Angeles", prompt)
-        self.assertIn('Job 1 — daily pipeline at 04:00: "/tmp/open-nova-en/bin/open-nova" pipeline', prompt)
-        self.assertIn('"/tmp/open-nova-en/.venv/bin/python" "/tmp/open-nova-en/app/source/advanced/pipeline/run_dashboard_foundation_refresh.py"', prompt)
+        self.assertIn('Job 1 — daily pipeline at 04:00: "/tmp/actanara-en/bin/actanara" pipeline', prompt)
+        self.assertIn('"/tmp/actanara-en/.venv/bin/python" "/tmp/actanara-en/app/source/advanced/pipeline/run_dashboard_foundation_refresh.py"', prompt)
         self.assertIn("retry at most once", prompt)
         self.assertNotIn("Phase 25", prompt)
         self.assertNotIn("python advanced/pipeline/run_daily_pipeline.py", prompt)
@@ -1402,14 +1402,14 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_settings_authority_inventory_includes_system_subsystems(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             inventory = settings_authority_inventory(paths)
 
         groups = {group["group"]: group for group in inventory["groups"]}
         for group in ("general", "pipeline", "dashboard", "rag", "externalTools"):
             self.assertIn(group, groups)
         general_fields = {field["path"]: field for field in groups["general"]["fields"]}
-        self.assertEqual(general_fields["general.appName"]["effectiveValue"], "Open Nova")
+        self.assertEqual(general_fields["general.appName"]["effectiveValue"], "Actanara")
         pipeline_fields = {field["path"]: field for field in groups["pipeline"]["fields"]}
         self.assertIn("run_daily_pipeline.py", pipeline_fields["pipeline.stableCommand"]["effectiveValue"])
         self.assertEqual(pipeline_fields["pipeline.languageProfile"]["effectiveValue"], "zh")
@@ -1425,7 +1425,7 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_external_tool_paths_resolve_from_settings_and_report_access(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             openclaw_agents = root / "tools" / "openclaw" / "agents"
             openclaw_session = openclaw_agents / "agent-one" / "sessions" / "session.jsonl"
             openclaw_session.parent.mkdir(parents=True)
@@ -1489,7 +1489,7 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_default_usage_adapters_use_configured_external_tool_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {
                     "externalTools": {
@@ -1518,7 +1518,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_llm_provider_resolution_ignores_process_env_when_settings_exist(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_llm_provider(
                 {
                     "provider": "minimax",
@@ -1551,7 +1551,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                     "host": "127.0.0.1",
                     "port": 3036,
                     "publicBaseUrl": "http://127.0.0.1:3036",
-                    "allowedOrigins": ["http://127.0.0.1:3036", "https://nova.example.com"],
+                    "allowedOrigins": ["http://127.0.0.1:3036", "https://actanara.example.com"],
                     "logsDir": "/tmp/logs",
                 },
                 "schedule": {"enabled": True},
@@ -1593,7 +1593,7 @@ class RuntimeSettingsTests(unittest.TestCase):
             {"externalTools": {"claudeCode": {"binaryCandidates": "claude"}}},
             {"paths": {"diary": {"generatedDiary": ""}}},
             {"paths": {"diary": []}},
-            {"paths": {"runtime": {"novaHome": "/tmp/open-nova"}}},
+            {"paths": {"runtime": {"actanaraHome": "/tmp/actanara"}}},
             {"pipeline": {"pythonExecutable": ""}},
             {"pipeline": {"languageProfile": "en"}},
             {"pipeline": {"diarySchemaVersion": "diary-v1-en"}},
@@ -1615,7 +1615,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_pipeline_language_profile_is_installer_only_not_operator_editable(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             internal = write_settings({"pipeline": {"languageProfile": "en", "englishEnabled": True}}, paths)
 
             pipeline = resolve_pipeline_settings(paths)
@@ -1630,7 +1630,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_write_operator_settings_preserves_protected_groups(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_llm_provider(
                 {
                     "mode": "preset",
@@ -1649,7 +1649,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_write_operator_settings_marks_registered_system_timer_stale(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings(
                 {
                     "schedule": {
@@ -1677,7 +1677,7 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_write_operator_settings_syncs_generated_diary_path_to_runtime_manifest(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             target = root / "GeneratedDiary"
 
             updated = write_operator_settings({"paths": {"diary": {"generatedDiary": str(target)}}}, paths)
@@ -1694,7 +1694,7 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_write_operator_settings_preserves_stale_legacy_diary_root_when_generated_is_already_updated(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             target = root / "GeneratedDiary"
             write_settings({"paths": {"diary": {"generatedDiary": str(target)}}}, paths)
 
@@ -1706,10 +1706,10 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertEqual(manifest["generatedDiaryRoot"], str(target))
         self.assertEqual(manifest["legacyDiaryRoot"], str(root / "Diary"))
 
-    def test_nova_settings_status_reports_readonly_doctor_payload(self):
+    def test_actanara_settings_status_reports_readonly_doctor_payload(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             codex_sessions = root / "codex" / "sessions"
             codex_sessions.mkdir(parents=True)
             (codex_sessions / "rollout-test.jsonl").write_text("{}\n", encoding="utf-8")
@@ -1731,14 +1731,14 @@ class RuntimeSettingsTests(unittest.TestCase):
                 paths,
             )
 
-            payload = nova_settings_status(paths)
-            text = format_nova_settings_status(payload)
-            raw_json = dump_nova_settings_status_json(payload)
+            payload = actanara_settings_status(paths)
+            text = format_actanara_settings_status(payload)
+            raw_json = dump_actanara_settings_status_json(payload)
 
         self.assertTrue(payload["readOnly"])
         self.assertEqual(payload["schemaVersion"], 1)
-        self.assertEqual(payload["general"]["appName"], "Open Nova")
-        self.assertEqual(payload["runtime"]["novaHome"], str(paths.home))
+        self.assertEqual(payload["general"]["appName"], "Actanara")
+        self.assertEqual(payload["runtime"]["actanaraHome"], str(paths.home))
         self.assertIn("run_daily_pipeline.py", payload["pipeline"]["stableCommand"])
         self.assertEqual(payload["dashboard"]["healthPath"], "/health")
         self.assertEqual(payload["sources"]["DASHBOARD_READ_SOURCE"], "foundation")
@@ -1763,7 +1763,7 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertIn("core-foundation", {profile["id"] for profile in payload["dependencyProfiles"]["profiles"]})
         self.assertIn("settings-hardcode-audit", {check["id"] for check in payload["checks"]})
         self.assertIn("llm-launchd-secret-visibility", {check["id"] for check in payload["checks"]})
-        self.assertIn("Open Nova · System status", text)
+        self.assertIn("Actanara · System status", text)
         self.assertIn("Data folder", text)
         self.assertIn("Dashboard", text)
         self.assertIn("AI model", text)
@@ -1775,36 +1775,36 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertNotIn("versionAuthority=", text)
         self.assertNotIn("residual=", text)
         self.assertNotIn("settings-hardcode-audit", text)
-        self.assertEqual(json.loads(raw_json)["runtime"]["novaHome"], str(paths.home))
+        self.assertEqual(json.loads(raw_json)["runtime"]["actanaraHome"], str(paths.home))
 
-    def test_nova_settings_status_supports_layered_doctor_profiles(self):
+    def test_actanara_settings_status_supports_layered_doctor_profiles(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             codex_sessions = root / "codex" / "sessions"
             codex_sessions.mkdir(parents=True)
             write_settings({"externalTools": {"codex": {"sessionsRoot": str(codex_sessions)}}}, paths)
 
-            pipeline = nova_settings_status(paths, doctor_profile="pipeline")
-            scheduler = nova_settings_status(paths, doctor_profile="scheduler")
-            rag = nova_settings_status(paths, doctor_profile="rag")
-            pipeline_text = format_nova_settings_status(pipeline)
-            scheduler_text = format_nova_settings_status(scheduler)
-            rag_text = format_nova_settings_status(rag)
+            pipeline = actanara_settings_status(paths, doctor_profile="pipeline")
+            scheduler = actanara_settings_status(paths, doctor_profile="scheduler")
+            rag = actanara_settings_status(paths, doctor_profile="rag")
+            pipeline_text = format_actanara_settings_status(pipeline)
+            scheduler_text = format_actanara_settings_status(scheduler)
+            rag_text = format_actanara_settings_status(rag)
             scheduler_ids = {check["id"] for check in scheduler["checks"]}
             rag_ids = {check["id"] for check in rag["checks"]}
 
         self.assertEqual(pipeline["doctorProfile"], "pipeline")
-        self.assertIn("Open Nova · Daily diary check", pipeline_text)
+        self.assertIn("Actanara · Daily diary check", pipeline_text)
         self.assertTrue(any(check["id"].startswith("llm-") for check in pipeline["checks"]))
         self.assertTrue(any(check["id"].startswith("external-tool:") for check in pipeline["checks"]))
         self.assertNotIn("runtime-home", {check["id"] for check in pipeline["checks"]})
         self.assertEqual(scheduler["doctorProfile"], "scheduler")
-        self.assertNotIn("open-nova model", scheduler_text)
+        self.assertNotIn("actanara model", scheduler_text)
         self.assertTrue(any(item.startswith("launchagent-registration:") for item in scheduler_ids))
         self.assertNotIn("launchagent-registration:rag-server", scheduler_ids)
         self.assertEqual(rag["doctorProfile"], "rag")
-        self.assertNotIn("open-nova model", rag_text)
+        self.assertNotIn("actanara model", rag_text)
         self.assertIn("launchagent-registration:rag-server", rag_ids)
 
     def test_rag_server_settings_reject_new_nonloopback_write_and_doctor_blocks_legacy_value(self):
@@ -1815,12 +1815,12 @@ class RuntimeSettingsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             raw = read_settings(paths, redact_secrets=False)
             raw.setdefault("rag", {}).setdefault("server", {})["host"] = "0.0.0.0"
             (paths.config_dir / "settings.json").write_text(json.dumps(raw), encoding="utf-8")
 
-            payload = nova_settings_status(paths, doctor_profile="rag")
+            payload = actanara_settings_status(paths, doctor_profile="rag")
 
         boundary = payload["resourceProfile"]["rag"]["networkBoundary"]
         check = next(item for item in payload["checks"] if item["id"] == "rag-server-loopback-boundary")
@@ -1829,10 +1829,10 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertEqual(check["status"], "error")
         self.assertIn("Blocked: rag-server-non-loopback", check["message"])
 
-    def test_nova_settings_status_warns_when_llm_key_is_env_only_for_launchd(self):
+    def test_actanara_settings_status_warns_when_llm_key_is_env_only_for_launchd(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {
                     "llmProvider": {
@@ -1845,7 +1845,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                 paths,
             )
             with patch.dict(os.environ, {"CUSTOM_LLM_KEY": "secret"}):
-                payload = nova_settings_status(paths)
+                payload = actanara_settings_status(paths)
 
         visibility = payload["llmProvider"]["secretVisibility"]
         self.assertEqual(visibility["source"], "env")
@@ -1855,11 +1855,11 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertEqual(by_id["llm-launchd-secret-visibility"]["status"], "warn")
         self.assertIn("CUSTOM_LLM_KEY", by_id["llm-launchd-secret-visibility"]["message"])
 
-    def test_nova_settings_status_reports_fresh_runtime_source_manifest(self):
+    def test_actanara_settings_status_reports_fresh_runtime_source_manifest(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            private_remote = "file:///Users/private-operator/open-nova"
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            private_remote = "file:///Users/private-operator/actanara"
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             source_root = root / "source-checkout"
             project_root = root / "runtime-source"
             launch_home = root / "launch-home"
@@ -1867,11 +1867,11 @@ class RuntimeSettingsTests(unittest.TestCase):
             project_root.mkdir()
             launch_agents = launch_home / "Library" / "LaunchAgents"
             launch_agents.mkdir(parents=True)
-            with (launch_agents / "com.open-nova.dashboard.plist").open("wb") as handle:
+            with (launch_agents / "com.actanara.dashboard.plist").open("wb") as handle:
                 plistlib.dump({"ProgramArguments": ["/bin/zsh", "-lc", f"cd {project_root} && python3 -m uvicorn app.main:app"]}, handle)
-            with (launch_agents / "com.open-nova.dashboard.watchdog.plist").open("wb") as handle:
+            with (launch_agents / "com.actanara.dashboard.watchdog.plist").open("wb") as handle:
                 plistlib.dump({"ProgramArguments": ["python3", str(project_root / "advanced" / "dashboard" / "dashboard_launch_agent.py"), "check"]}, handle)
-            (project_root / ".open-nova-runtime-source.json").write_text(
+            (project_root / ".actanara-runtime-source.json").write_text(
                 json.dumps(
                     {
                         "schemaVersion": 1,
@@ -1897,7 +1897,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                 patch("data_foundation.settings_status._git_value", side_effect=fake_git),
                 patch.object(Path, "home", return_value=launch_home),
             ):
-                payload = nova_settings_status(paths)
+                payload = actanara_settings_status(paths)
 
         self.assertEqual(payload["runtimeSource"]["status"], "fresh")
         self.assertFalse(payload["runtimeSource"]["stale"])
@@ -1912,17 +1912,17 @@ class RuntimeSettingsTests(unittest.TestCase):
         by_id = {item["id"]: item for item in payload["checks"]}
         self.assertEqual(by_id["runtime-source-launchagent-alignment"]["status"], "ok")
 
-    def test_nova_settings_status_uses_source_manifest_version_when_dist_info_is_stale(self):
+    def test_actanara_settings_status_uses_source_manifest_version_when_dist_info_is_stale(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             project_root = root / "runtime-source"
             project_root.mkdir()
             manifest = _v2_runtime_source_manifest(
                 {"kind": "unavailable", "issue": "outside-login-home"}
             )
             manifest["pyprojectVersion"] = "1.0.2"
-            (project_root / ".open-nova-runtime-source.json").write_text(
+            (project_root / ".actanara-runtime-source.json").write_text(
                 json.dumps(manifest),
                 encoding="utf-8",
             )
@@ -1932,17 +1932,17 @@ class RuntimeSettingsTests(unittest.TestCase):
                 / "lib"
                 / "python3.12"
                 / "site-packages"
-                / "open_nova-1.0.1.dist-info"
+                / "actanara-1.0.1.dist-info"
             )
             stale_dist_info.mkdir(parents=True)
             (stale_dist_info / "METADATA").write_text(
-                "Metadata-Version: 2.1\nName: open-nova\nVersion: 1.0.1\n",
+                "Metadata-Version: 2.1\nName: actanara\nVersion: 1.0.1\n",
                 encoding="utf-8",
             )
             write_settings({"dashboard": {"projectRoot": str(project_root)}}, paths)
 
-            payload = nova_settings_status(paths)
-            text = format_nova_settings_status(payload)
+            payload = actanara_settings_status(paths)
+            text = format_actanara_settings_status(payload)
 
         runtime_source = payload["runtimeSource"]
         self.assertEqual(runtime_source["productVersionAuthority"], "active-runtime-source-manifest")
@@ -1954,22 +1954,22 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertNotIn("version=1.0.2", text)
         self.assertNotIn("versionAuthority=active-runtime-source-manifest", text)
 
-    def test_nova_settings_status_reads_v2_locator_without_echoing_private_source_path(self):
+    def test_actanara_settings_status_reads_v2_locator_without_echoing_private_source_path(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             login_home = root / "login-home"
-            source_root = login_home / "work" / "open-nova"
+            source_root = login_home / "work" / "actanara"
             project_root = root / "runtime-source"
             source_root.mkdir(parents=True)
             project_root.mkdir()
             manifest = _v2_runtime_source_manifest(
                 {
                     "kind": "login-home-relative",
-                    "pathComponents": ["work", "open-nova"],
+                    "pathComponents": ["work", "actanara"],
                 }
             )
-            (project_root / ".open-nova-runtime-source.json").write_text(
+            (project_root / ".actanara-runtime-source.json").write_text(
                 json.dumps(manifest),
                 encoding="utf-8",
             )
@@ -1988,8 +1988,8 @@ class RuntimeSettingsTests(unittest.TestCase):
                 patch("data_foundation.settings_status._git_value", side_effect=fake_git),
                 patch.object(Path, "home", return_value=login_home),
             ):
-                payload = nova_settings_status(paths)
-                text = format_nova_settings_status(payload)
+                payload = actanara_settings_status(paths)
+                text = format_actanara_settings_status(payload)
 
         runtime_source = payload["runtimeSource"]
         self.assertEqual(runtime_source["status"], "fresh")
@@ -2000,13 +2000,13 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertNotIn(str(source_root), text)
         self.assertNotIn("pathComponents", runtime_source["manifest"]["sourceLocator"])
 
-    def test_nova_settings_status_reports_unknown_for_unavailable_v2_locator(self):
+    def test_actanara_settings_status_reports_unknown_for_unavailable_v2_locator(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             project_root = root / "runtime-source"
             project_root.mkdir()
-            (project_root / ".open-nova-runtime-source.json").write_text(
+            (project_root / ".actanara-runtime-source.json").write_text(
                 json.dumps(
                     _v2_runtime_source_manifest(
                         {"kind": "unavailable", "issue": "outside-login-home"}
@@ -2017,7 +2017,7 @@ class RuntimeSettingsTests(unittest.TestCase):
             write_settings({"dashboard": {"projectRoot": str(project_root)}}, paths)
 
             with patch.object(Path, "home", return_value=root / "login-home"):
-                payload = nova_settings_status(paths)
+                payload = actanara_settings_status(paths)
 
         runtime_source = payload["runtimeSource"]
         self.assertEqual(runtime_source["status"], "present")
@@ -2025,24 +2025,24 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertIsNone(runtime_source["stale"])
         self.assertEqual(runtime_source["sourceLocator"]["issue"], "outside-login-home")
 
-    def test_nova_settings_status_rejects_invalid_v2_without_git_probe_or_private_echo(self):
-        private_marker = "/Users/private-operator/Desktop/open-nova"
+    def test_actanara_settings_status_rejects_invalid_v2_without_git_probe_or_private_echo(self):
+        private_marker = "/Users/private-operator/Desktop/actanara"
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             project_root = root / "runtime-source"
             project_root.mkdir()
             manifest = _v2_runtime_source_manifest(
-                {"kind": "login-home-relative", "pathComponents": ["work", "open-nova"]}
+                {"kind": "login-home-relative", "pathComponents": ["work", "actanara"]}
             )
             manifest["debugPath"] = private_marker
-            (project_root / ".open-nova-runtime-source.json").write_text(
+            (project_root / ".actanara-runtime-source.json").write_text(
                 json.dumps(manifest), encoding="utf-8"
             )
             write_settings({"dashboard": {"projectRoot": str(project_root)}}, paths)
 
             with patch("data_foundation.settings_status._git_value") as git_value:
-                payload = nova_settings_status(paths)
+                payload = actanara_settings_status(paths)
 
         runtime_source = payload["runtimeSource"]
         self.assertEqual(runtime_source["status"], "invalid")
@@ -2051,9 +2051,9 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertNotIn(private_marker, json.dumps(runtime_source))
         git_value.assert_not_called()
 
-    def test_nova_settings_status_rejects_invalid_v2_scalar_types_without_git_probe(self):
+    def test_actanara_settings_status_rejects_invalid_v2_scalar_types_without_git_probe(self):
         mutations = (
-            {"pyprojectVersion": "/Users/private-operator/Desktop/open-nova"},
+            {"pyprojectVersion": "/Users/private-operator/Desktop/actanara"},
             {
                 "git": {
                     "available": True,
@@ -2082,20 +2082,20 @@ class RuntimeSettingsTests(unittest.TestCase):
         for mutation in mutations:
             with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
-                paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+                paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
                 project_root = root / "runtime-source"
                 project_root.mkdir()
                 manifest = _v2_runtime_source_manifest(
-                    {"kind": "login-home-relative", "pathComponents": ["work", "open-nova"]}
+                    {"kind": "login-home-relative", "pathComponents": ["work", "actanara"]}
                 )
                 manifest.update(mutation)
-                (project_root / ".open-nova-runtime-source.json").write_text(
+                (project_root / ".actanara-runtime-source.json").write_text(
                     json.dumps(manifest), encoding="utf-8"
                 )
                 write_settings({"dashboard": {"projectRoot": str(project_root)}}, paths)
 
                 with patch("data_foundation.settings_status._git_value") as git_value:
-                    payload = nova_settings_status(paths)
+                    payload = actanara_settings_status(paths)
 
             self.assertEqual(payload["runtimeSource"]["status"], "invalid")
             self.assertEqual(payload["runtimeSource"]["freshness"], "unknown")
@@ -2103,16 +2103,16 @@ class RuntimeSettingsTests(unittest.TestCase):
             git_value.assert_not_called()
 
     def test_launchagent_alignment_uses_path_boundary_and_redacts_private_content(self):
-        private_marker = "/Users/private-operator/Desktop/open-nova"
+        private_marker = "/Users/private-operator/Desktop/actanara"
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             project_root = root / "runtime-source"
             launch_home = root / "launch-home"
             project_root.mkdir()
             launch_agents = launch_home / "Library" / "LaunchAgents"
             launch_agents.mkdir(parents=True)
-            with (launch_agents / "com.open-nova.dashboard.plist").open("wb") as handle:
+            with (launch_agents / "com.actanara.dashboard.plist").open("wb") as handle:
                 plistlib.dump(
                     {
                         "ProgramArguments": [
@@ -2123,7 +2123,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                         "WorkingDirectory": str(project_root),
                         "EnvironmentVariables": {
                             "UNRELATED_ROOT": str(project_root),
-                            "NOVA_DASHBOARD_PROJECT_ROOT": str(project_root),
+                            "ACTANARA_DASHBOARD_PROJECT_ROOT": str(project_root),
                         },
                     },
                     handle,
@@ -2131,19 +2131,19 @@ class RuntimeSettingsTests(unittest.TestCase):
             write_settings({"dashboard": {"projectRoot": str(project_root)}}, paths)
 
             with patch.object(Path, "home", return_value=launch_home):
-                payload = nova_settings_status(paths)
+                payload = actanara_settings_status(paths)
 
         runtime_source = payload["runtimeSource"]
         by_label = {item["label"]: item for item in runtime_source["launchAgents"]}
-        self.assertFalse(by_label["com.open-nova.dashboard"]["aligned"])
-        self.assertEqual(by_label["com.open-nova.dashboard"]["status"], "mismatch")
+        self.assertFalse(by_label["com.actanara.dashboard"]["aligned"])
+        self.assertEqual(by_label["com.actanara.dashboard"]["status"], "mismatch")
         self.assertNotIn(private_marker, json.dumps(runtime_source))
         self.assertNotIn(str(project_root), json.dumps(runtime_source))
 
-    def test_nova_settings_status_warns_when_launchagent_points_at_stale_source(self):
+    def test_actanara_settings_status_warns_when_launchagent_points_at_stale_source(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             source_root = root / "source-checkout"
             project_root = root / "runtime-source"
             stale_root = root / "old-runtime-source"
@@ -2153,11 +2153,11 @@ class RuntimeSettingsTests(unittest.TestCase):
             stale_root.mkdir()
             launch_agents = launch_home / "Library" / "LaunchAgents"
             launch_agents.mkdir(parents=True)
-            with (launch_agents / "com.open-nova.dashboard.plist").open("wb") as handle:
+            with (launch_agents / "com.actanara.dashboard.plist").open("wb") as handle:
                 plistlib.dump({"ProgramArguments": ["/bin/zsh", "-lc", f"cd {stale_root} && python3 -m uvicorn app.main:app"]}, handle)
-            with (launch_agents / "com.open-nova.dashboard.watchdog.plist").open("wb") as handle:
+            with (launch_agents / "com.actanara.dashboard.watchdog.plist").open("wb") as handle:
                 plistlib.dump({"ProgramArguments": ["python3", str(project_root / "advanced" / "dashboard" / "dashboard_launch_agent.py"), "check"]}, handle)
-            (project_root / ".open-nova-runtime-source.json").write_text(
+            (project_root / ".actanara-runtime-source.json").write_text(
                 json.dumps(
                     {
                         "schemaVersion": 1,
@@ -2183,25 +2183,25 @@ class RuntimeSettingsTests(unittest.TestCase):
                 patch("data_foundation.settings_status._git_value", side_effect=fake_git),
                 patch.object(Path, "home", return_value=launch_home),
             ):
-                payload = nova_settings_status(paths)
+                payload = actanara_settings_status(paths)
 
         self.assertEqual(payload["runtimeSource"]["status"], "fresh")
-        self.assertEqual(payload["runtimeSource"]["launchAgentMismatches"][0]["label"], "com.open-nova.dashboard")
-        self.assertIn("open-nova dashboard restart", payload["runtimeSource"]["postSyncReloadCommand"])
+        self.assertEqual(payload["runtimeSource"]["launchAgentMismatches"][0]["label"], "com.actanara.dashboard")
+        self.assertIn("actanara dashboard restart", payload["runtimeSource"]["postSyncReloadCommand"])
         by_id = {item["id"]: item for item in payload["checks"]}
         self.assertEqual(by_id["runtime-source-launchagent-alignment"]["status"], "warn")
 
-    def test_nova_settings_status_recommends_source_only_sync_for_stale_runtime_source(self):
+    def test_actanara_settings_status_recommends_source_only_sync_for_stale_runtime_source(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             source_root = root / "source-checkout"
             project_root = root / "runtime-source"
             source_root.mkdir()
             (source_root / "install").mkdir()
             (source_root / "install" / "install.sh").write_text("#!/usr/bin/env zsh\n", encoding="utf-8")
             project_root.mkdir()
-            (project_root / ".open-nova-runtime-source.json").write_text(
+            (project_root / ".actanara-runtime-source.json").write_text(
                 json.dumps(
                     {
                         "schemaVersion": 1,
@@ -2224,8 +2224,8 @@ class RuntimeSettingsTests(unittest.TestCase):
                 raise AssertionError(args)
 
             with patch("data_foundation.settings_status._git_value", side_effect=fake_git):
-                payload = nova_settings_status(paths)
-                text = format_nova_settings_status(payload)
+                payload = actanara_settings_status(paths)
+                text = format_actanara_settings_status(payload)
 
         runtime_source = payload["runtimeSource"]
         self.assertEqual(runtime_source["status"], "stale")
@@ -2245,16 +2245,16 @@ class RuntimeSettingsTests(unittest.TestCase):
         by_id = {item["id"]: item for item in payload["checks"]}
         self.assertEqual(by_id["runtime-source-provenance"]["status"], "warn")
 
-    def test_nova_settings_status_warns_when_expected_service_launchagent_is_not_registered(self):
+    def test_actanara_settings_status_warns_when_expected_service_launchagent_is_not_registered(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             project_root = root / "runtime-source"
             project_root.mkdir()
             launch_home = root / "launch-home"
             launch_agents = launch_home / "Library" / "LaunchAgents"
             launch_agents.mkdir(parents=True)
-            with (launch_agents / "com.open-nova.rag-server.plist").open("wb") as handle:
+            with (launch_agents / "com.actanara.rag-server.plist").open("wb") as handle:
                 plistlib.dump({"ProgramArguments": ["python3", str(project_root / "advanced" / "dashboard" / "rag_server_launch_agent.py"), "start"]}, handle)
             write_settings(
                 {
@@ -2273,7 +2273,7 @@ class RuntimeSettingsTests(unittest.TestCase):
             )
 
             with patch.object(Path, "home", return_value=launch_home):
-                payload = nova_settings_status(paths)
+                payload = actanara_settings_status(paths)
 
         services = {item["id"]: item for item in payload["serviceRegistration"]["services"]}
         self.assertEqual(services["dashboard"]["status"], "not-registered")
@@ -2281,16 +2281,16 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertIn("settings registration audit is missing", services["rag-server"]["message"])
         self.assertTrue(services["rag-server"]["plistsPresent"])
         launch_agents_by_label = {item["label"]: item for item in payload["runtimeSource"]["launchAgents"]}
-        self.assertTrue(launch_agents_by_label["com.open-nova.rag-server"]["exists"])
-        self.assertTrue(launch_agents_by_label["com.open-nova.rag-server"]["aligned"])
+        self.assertTrue(launch_agents_by_label["com.actanara.rag-server"]["exists"])
+        self.assertTrue(launch_agents_by_label["com.actanara.rag-server"]["aligned"])
         by_id = {item["id"]: item for item in payload["checks"]}
         self.assertEqual(by_id["launchagent-registration:dashboard"]["status"], "warn")
         self.assertEqual(by_id["launchagent-registration:rag-server"]["status"], "warn")
 
-    def test_nova_settings_status_skips_dashboard_launchagent_check_when_server_opted_out(self):
+    def test_actanara_settings_status_skips_dashboard_launchagent_check_when_server_opted_out(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {
                     "features": {"dashboard": True, "rag": False},
@@ -2300,7 +2300,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                 paths,
             )
 
-            payload = nova_settings_status(paths)
+            payload = actanara_settings_status(paths)
 
         services = {item["id"]: item for item in payload["serviceRegistration"]["services"]}
         self.assertEqual(services["dashboard"]["status"], "not-expected")
@@ -2311,12 +2311,12 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_runtime_source_dirty_checkout_warns_without_marking_runtime_stale(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             source_root = root / "source-checkout"
             project_root = root / "runtime-source"
             source_root.mkdir()
             project_root.mkdir()
-            (project_root / ".open-nova-runtime-source.json").write_text(
+            (project_root / ".actanara-runtime-source.json").write_text(
                 json.dumps(
                     {
                         "schemaVersion": 1,
@@ -2339,7 +2339,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                 raise AssertionError(args)
 
             with patch("data_foundation.settings_status._git_value", side_effect=fake_git):
-                payload = nova_settings_status(paths)
+                payload = actanara_settings_status(paths)
 
         self.assertEqual(payload["runtimeSource"]["status"], "fresh")
         self.assertFalse(payload["runtimeSource"]["stale"])
@@ -2378,9 +2378,9 @@ class RuntimeSettingsTests(unittest.TestCase):
         rag_local_packages = {item.split(">=", 1)[0].split("<", 1)[0] for item in optional["rag-local"]}
         self.assertTrue({"sentence-transformers", "torch", "numpy", "fastapi", "uvicorn", "pydantic"}.issubset(rag_local_packages))
 
-    def test_nova_onboarding_status_aggregates_readonly_new_user_payload(self):
+    def test_actanara_onboarding_status_aggregates_readonly_new_user_payload(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings(
                 {
                     "schedule": {
@@ -2393,18 +2393,18 @@ class RuntimeSettingsTests(unittest.TestCase):
                 paths,
             )
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
-                payload = nova_onboarding_status(paths)
-            text = format_nova_onboarding_status(payload)
-            raw_json = dump_nova_onboarding_status_json(payload)
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
+                payload = actanara_onboarding_status(paths)
+            text = format_actanara_onboarding_status(payload)
+            raw_json = dump_actanara_onboarding_status_json(payload)
 
         self.assertTrue(payload["readOnly"])
         self.assertEqual(payload["schemaVersion"], 2)
         self.assertEqual(payload["profileModel"], "product-v2")
-        self.assertEqual(payload["runtime"]["novaHome"], str(paths.home))
+        self.assertEqual(payload["runtime"]["actanaraHome"], str(paths.home))
         self.assertEqual(payload["scheduler"]["provider"], "cron")
         self.assertFalse(payload["scheduler"]["registrationImplemented"])
-        self.assertEqual(payload["selectedDependencyProfiles"], ["open-nova", "dashboard", "nova-task"])
+        self.assertEqual(payload["selectedDependencyProfiles"], ["actanara", "dashboard", "nova-task"])
         self.assertEqual(
             {profile["id"] for profile in payload["dependencyProfiles"]["profiles"]},
             {"core-foundation", "dashboard"},
@@ -2418,19 +2418,19 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertIn("rag", payload)
         self.assertIn("scheduler-preview", {check["id"] for check in payload["readiness"]["checks"]})
         groups = {item["id"]: item for item in payload["dependencyGroups"]}
-        self.assertTrue(groups["open-nova"]["selected"])
+        self.assertTrue(groups["actanara"]["selected"])
         self.assertTrue(groups["dashboard"]["selected"])
         self.assertFalse(groups["nova-rag"]["selected"])
         self.assertFalse(groups["dev-test"]["selected"])
         self.assertIn("rag-provider", groups["nova-rag"]["providerInputs"])
         requirement_sets = {item["id"]: item for item in payload["requirementSets"]}
         dependency_profiles = {item["id"]: item for item in payload["dependencyProfiles"]["profiles"]}
-        self.assertEqual(requirement_sets["open-nova-core"]["status"], "pending-input")
+        self.assertEqual(requirement_sets["actanara-core"]["status"], "pending-input")
         self.assertEqual(requirement_sets["dashboard"]["status"], dependency_profiles["dashboard"]["status"])
         self.assertEqual(requirement_sets["rag-provider-derived"]["status"], "not-selected")
         self.assertEqual(requirement_sets["nova-task"]["status"], "planned")
         self.assertEqual(requirement_sets["dev-test"]["status"], "not-selected")
-        self.assertIn("llm-provider", requirement_sets["open-nova-core"]["pendingInputs"])
+        self.assertIn("llm-provider", requirement_sets["actanara-core"]["pendingInputs"])
         self.assertNotIn("rag-provider", requirement_sets["rag-provider-derived"]["pendingInputs"])
         packaging_plan = payload["packagingPlan"]
         self.assertTrue(packaging_plan["readOnly"])
@@ -2445,14 +2445,14 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertEqual(packaging_groups["nova-rag-local"]["status"], "not-selected")
         self.assertEqual(packaging_groups["nova-rag-cloud"]["dependencySource"], "provider-derived")
         self.assertEqual(packaging_plan["summary"]["pendingProviderDerivedGroups"], 0)
-        self.assertIn("Open Nova · Setup status", text)
+        self.assertIn("Actanara · Setup status", text)
         self.assertIn("Features", text)
         self.assertIn("Checks", text)
         self.assertNotIn("Requirement sets", text)
         self.assertNotIn("Packaging", text)
         self.assertEqual(json.loads(raw_json)["scheduler"]["provider"], "cron")
 
-    def test_nova_onboarding_status_filters_dependency_checks_by_selected_profiles(self):
+    def test_actanara_onboarding_status_filters_dependency_checks_by_selected_profiles(self):
         real_find_spec = importlib.util.find_spec
 
         def missing_dashboard_dependencies(name: str, *args, **kwargs):
@@ -2461,17 +2461,17 @@ class RuntimeSettingsTests(unittest.TestCase):
             return real_find_spec(name, *args, **kwargs)
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             with patch("data_foundation.dependency_profiles.importlib.util.find_spec", side_effect=missing_dashboard_dependencies):
-                payload = nova_onboarding_status(paths, selected_profiles=["nova-rag"])
+                payload = actanara_onboarding_status(paths, selected_profiles=["nova-rag"])
 
-        self.assertEqual(payload["selectedDependencyProfiles"], ["open-nova", "dashboard", "nova-rag", "nova-task"])
+        self.assertEqual(payload["selectedDependencyProfiles"], ["actanara", "dashboard", "nova-rag", "nova-task"])
         self.assertEqual(
             {profile["id"] for profile in payload["dependencyProfiles"]["profiles"]},
             {"core-foundation", "dashboard"},
         )
         groups = {item["id"]: item for item in payload["dependencyGroups"]}
-        self.assertTrue(groups["open-nova"]["selected"])
+        self.assertTrue(groups["actanara"]["selected"])
         self.assertTrue(groups["nova-rag"]["selected"])
         self.assertTrue(groups["dashboard"]["selected"])
         requirement_sets = {item["id"]: item for item in payload["requirementSets"]}
@@ -2480,9 +2480,9 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertTrue(requirement_sets["rag-provider-derived"]["selected"])
         self.assertIn("rag-provider", {item["id"] for item in payload["requiredInputs"]})
 
-    def test_nova_onboarding_status_derives_ready_inputs_from_candidate_runtime(self):
+    def test_actanara_onboarding_status_derives_ready_inputs_from_candidate_runtime(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_llm_provider(
                 {
                     "provider": "custom",
@@ -2493,20 +2493,20 @@ class RuntimeSettingsTests(unittest.TestCase):
                 paths,
             )
 
-            payload = nova_onboarding_status(paths, selected_profiles=["open-nova"])
+            payload = actanara_onboarding_status(paths, selected_profiles=["actanara"])
 
         inputs = {item["id"]: item for item in payload["requiredInputs"]}
         self.assertEqual(inputs["output-path"]["status"], "ready")
         self.assertEqual(inputs["llm-provider"]["status"], "ready")
         self.assertEqual(inputs["llm-api-key"]["status"], "ready")
         requirement_sets = {item["id"]: item for item in payload["requirementSets"]}
-        self.assertNotIn("output-path", requirement_sets["open-nova-core"]["pendingInputs"])
-        self.assertNotIn("llm-provider", requirement_sets["open-nova-core"]["pendingInputs"])
-        self.assertNotIn("llm-api-key", requirement_sets["open-nova-core"]["pendingInputs"])
+        self.assertNotIn("output-path", requirement_sets["actanara-core"]["pendingInputs"])
+        self.assertNotIn("llm-provider", requirement_sets["actanara-core"]["pendingInputs"])
+        self.assertNotIn("llm-api-key", requirement_sets["actanara-core"]["pendingInputs"])
 
     def test_onboarding_subsystem_plan_is_readonly_and_profile_selectable(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings(
                 {
                     "schedule": {
@@ -2516,7 +2516,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                 paths,
             )
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 payload = onboarding_subsystem_plan(["nova-rag", "nova-task"], paths)
             text = format_onboarding_subsystem_plan(payload)
             raw_json = dump_onboarding_subsystem_plan_json(payload)
@@ -2525,7 +2525,7 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertTrue(payload["planOnly"])
         self.assertEqual(payload["schemaVersion"], 2)
         self.assertEqual(payload["profileModel"], "product-v2")
-        self.assertEqual(payload["selectedProfiles"], ["open-nova", "dashboard", "nova-rag", "nova-task"])
+        self.assertEqual(payload["selectedProfiles"], ["actanara", "dashboard", "nova-rag", "nova-task"])
         profile_ids = {profile["id"] for profile in payload["dependencyProfiles"]["profiles"]}
         self.assertEqual(profile_ids, {"core-foundation", "dashboard"})
         action_ids = {action["id"] for action in payload["actions"]}
@@ -2537,18 +2537,18 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertEqual(payload["scheduler"]["selectionModel"], "derived-from-platform-and-scheduled-run-choice")
         self.assertIn("llm-provider", {item["id"] for item in payload["requiredInputs"]})
         groups = {item["id"]: item for item in payload["dependencyGroups"]}
-        self.assertTrue(groups["open-nova"]["selected"])
+        self.assertTrue(groups["actanara"]["selected"])
         self.assertTrue(groups["nova-rag"]["selected"])
         self.assertTrue(groups["nova-task"]["selected"])
         self.assertTrue(groups["dashboard"]["selected"])
-        self.assertIn("Open Nova · Setup preview", text)
+        self.assertIn("Actanara · Setup preview", text)
         self.assertIn("Features", text)
-        self.assertIn("What Open Nova will do", text)
+        self.assertIn("What Actanara will do", text)
         self.assertIn('"selectedProfiles"', raw_json)
         self.assertNotIn("待确认", text)
         self.assertEqual(groups["nova-rag"]["requirementSets"], ["rag-provider-derived"])
         requirement_sets = {item["id"]: item for item in payload["requirementSets"]}
-        self.assertTrue(requirement_sets["open-nova-core"]["selected"])
+        self.assertTrue(requirement_sets["actanara-core"]["selected"])
         self.assertTrue(requirement_sets["rag-provider-derived"]["selected"])
         self.assertTrue(requirement_sets["nova-task"]["selected"])
         self.assertTrue(requirement_sets["dashboard"]["selected"])
@@ -2568,12 +2568,12 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertEqual(payload["summary"]["requirementSets"], 4)
         self.assertEqual(payload["summary"]["packagingGroups"], 3)
         self.assertEqual(payload["summary"]["pendingRequirementSets"], 2)
-        self.assertIn("Open Nova · Setup preview", text)
+        self.assertIn("Actanara · Setup preview", text)
         self.assertIn("Features", text)
-        self.assertIn("What Open Nova will do", text)
+        self.assertIn("What Actanara will do", text)
         self.assertNotIn("Requirement sets", text)
         self.assertNotIn("Packaging", text)
-        self.assertEqual(json.loads(raw_json)["selectedProfiles"][0], "open-nova")
+        self.assertEqual(json.loads(raw_json)["selectedProfiles"][0], "actanara")
 
     def test_onboarding_subsystem_plan_rejects_legacy_profile_aliases(self):
         with self.assertRaisesRegex(ValueError, "unknown onboarding profile"):
@@ -2582,14 +2582,14 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_onboarding_subsystem_plan_defaults_to_product_profiles(self):
         payload = onboarding_subsystem_plan()
 
-        self.assertEqual(payload["selectedProfiles"], ["open-nova", "dashboard", "nova-task"])
+        self.assertEqual(payload["selectedProfiles"], ["actanara", "dashboard", "nova-task"])
         self.assertIn("llm-provider", {item["id"] for item in payload["requiredInputs"]})
         self.assertNotIn("rag-provider", {item["id"] for item in payload["requiredInputs"]})
         selected_groups = [item["id"] for item in payload["dependencyGroups"] if item["selected"]]
-        self.assertEqual(selected_groups, ["open-nova", "dashboard", "nova-task"])
+        self.assertEqual(selected_groups, ["actanara", "dashboard", "nova-task"])
         self.assertEqual(payload["summary"]["dependencyGroups"], 3)
         selected_requirement_sets = [item["id"] for item in payload["requirementSets"] if item["selected"]]
-        self.assertEqual(selected_requirement_sets, ["open-nova-core", "dashboard", "nova-task"])
+        self.assertEqual(selected_requirement_sets, ["actanara-core", "dashboard", "nova-task"])
         self.assertEqual(payload["summary"]["requirementSets"], 3)
         selected_packaging_groups = [item["id"] for item in payload["packagingPlan"]["groups"] if item["selected"]]
         self.assertEqual(selected_packaging_groups, ["base", "dashboard", "nova-task"])
@@ -2601,7 +2601,7 @@ class RuntimeSettingsTests(unittest.TestCase):
         project = pyproject["project"]
         optional = project["optional-dependencies"]
 
-        self.assertEqual(project["name"], "open-nova")
+        self.assertEqual(project["name"], "actanara")
         project_dependencies = {item.split(">=", 1)[0].split("<", 1)[0] for item in project["dependencies"]}
         self.assertNotIn("python-dotenv", project_dependencies)
         self.assertIn("dashboard", optional)
@@ -2624,7 +2624,7 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertEqual(installer["manifestAuthority"]["installIntentVocabulary"], "packagingPlan.groups[].id")
         self.assertEqual(installer["manifestAuthority"]["pyprojectExtraByInstallIntent"]["nova-rag-local"], "rag-local")
         self.assertEqual(installer["defaultInstallGroups"], ["base", "dashboard", "nova-task"])
-        self.assertEqual(installer["defaultSelectedProfiles"], ["open-nova", "dashboard", "nova-task"])
+        self.assertEqual(installer["defaultSelectedProfiles"], ["actanara", "dashboard", "nova-task"])
         self.assertEqual(installer["ordinaryWizardChoiceGroups"], ["nova-rag"])
         self.assertEqual(installer["fixedWizardGroups"], ["base", "dashboard", "nova-task"])
         self.assertEqual(installer["advancedCliOnlyGroups"], ["dev-test"])
@@ -2641,8 +2641,8 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertIn("realtime-overview", installer["dashboardServer"]["requiredForFeatures"])
         self.assertIn("task-board-ui", installer["dashboardServer"]["requiredForFeatures"])
         self.assertTrue(installer["dashboardServer"]["novaTaskUnaffected"])
-        self.assertEqual(installer["runtime"]["installTarget"], "~/.open-nova")
-        self.assertEqual(installer["runtime"]["activeRuntimePointer"], "~/.config/open-nova/location.json")
+        self.assertEqual(installer["runtime"]["installTarget"], "~/.actanara")
+        self.assertEqual(installer["runtime"]["activeRuntimePointer"], "~/.config/actanara/location.json")
 
     def test_installer_v2_scheduler_defaults_on_macos_and_supports_no_scheduler_opt_out(self):
         default_payload = installer_v2_contract(["dashboard"], platform_system="Darwin")
@@ -2653,7 +2653,7 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertFalse(default_payload["scheduler"]["optOutApplied"])
         self.assertEqual(default_payload["scheduler"]["optOutFlag"], "--no-scheduler")
         self.assertTrue(default_payload["scheduler"]["managedLabelsOnly"])
-        self.assertEqual(default_payload["scheduler"]["managedLabelPrefix"], "open-nova.daily.")
+        self.assertEqual(default_payload["scheduler"]["managedLabelPrefix"], "actanara.daily.")
         self.assertFalse(default_payload["scheduler"]["writesLaunchAgentsInCurrentPhase"])
         self.assertFalse(default_payload["scheduler"]["callsLaunchctlInCurrentPhase"])
         self.assertFalse(opt_out_payload["scheduler"]["defaultEnabled"])
@@ -2693,13 +2693,13 @@ class RuntimeSettingsTests(unittest.TestCase):
 
         self.assertTrue(payload["readOnly"])
         self.assertTrue(payload["dryRunOnly"])
-        self.assertEqual(payload["defaultRuntimeTarget"]["id"], "user-home-dot-open-nova")
-        self.assertTrue(payload["defaultRuntimeTarget"]["path"].endswith(".open-nova"))
+        self.assertEqual(payload["defaultRuntimeTarget"]["id"], "user-home-dot-actanara")
+        self.assertTrue(payload["defaultRuntimeTarget"]["path"].endswith(".actanara"))
         self.assertTrue(payload["defaultRuntimeTarget"]["requiresExplicitUseDefaultRuntimeFlag"])
         self.assertEqual(payload["oneLinerState"], "v1-apply-ready")
-        self.assertIn("Open Nova · Setup preview", text)
+        self.assertIn("Actanara · Setup preview", text)
         self.assertIn("Next step", text)
-        self.assertIn("open-nova onboarding runtime-apply", text)
+        self.assertIn("actanara onboarding runtime-apply", text)
         self.assertNotIn("Command draft", text)
         self.assertIn('"selectedProfiles"', raw_json)
         self.assertNotIn("生成历史数据", text)
@@ -2707,7 +2707,7 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertTrue(payload["applyImplemented"])
         self.assertFalse(payload["installerImplemented"])
         self.assertEqual(payload["profileModel"], "product-v2")
-        self.assertEqual(payload["selectedProfiles"], ["open-nova", "dashboard", "nova-rag", "nova-task"])
+        self.assertEqual(payload["selectedProfiles"], ["actanara", "dashboard", "nova-rag", "nova-task"])
         self.assertTrue(payload["commandDraft"]["copyPasteReady"])
         self.assertFalse(payload["commandDraft"]["executesShell"])
         self.assertIn("runtime-apply", payload["commandDraft"]["argv"])
@@ -2739,7 +2739,7 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertFalse(payload["schedulerPlan"]["applyImplemented"])
         self.assertTrue(payload["schedulerPlan"]["registrationPlanned"])
         self.assertTrue(payload["schedulerPlan"]["dryRunOnly"])
-        self.assertEqual(payload["schedulerPlan"]["confirmationPhrase"], "REGISTER OPEN NOVA SCHEDULER")
+        self.assertEqual(payload["schedulerPlan"]["confirmationPhrase"], "REGISTER ACTANARA SCHEDULER")
         self.assertTrue(payload["schedulerPlan"]["auditRequired"])
         self.assertTrue(payload["schedulerPlan"]["rollbackRequired"])
         self.assertTrue(payload["schedulerPlan"]["managedPlistSerializationReady"])
@@ -2781,7 +2781,7 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertFalse(write_contract["applyImplemented"])
         self.assertFalse(write_contract["writesAllowed"])
         self.assertEqual(write_contract["writePlan"]["allowlistVersion"], "v1-read-only")
-        self.assertEqual(write_contract["writePlan"]["confirmationPhrase"], "APPLY OPEN NOVA ONBOARDING")
+        self.assertEqual(write_contract["writePlan"]["confirmationPhrase"], "APPLY ACTANARA ONBOARDING")
         self.assertFalse(write_contract["writePlan"]["productionPathWritesAllowed"])
         self.assertIn("install-dependencies", write_contract["writePlan"]["deniedOperations"])
         write_operations = {item["id"]: item for item in write_contract["writePlan"]["operations"]}
@@ -2793,7 +2793,7 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertFalse(any(item["writesSecretValues"] for item in write_operations.values()))
         self.assertTrue(write_contract["auditPlan"]["auditRequired"])
         self.assertFalse(write_contract["auditPlan"]["writesAudit"])
-        self.assertEqual(write_contract["auditPlan"]["auditPath"], "$NOVA_HOME/state/onboarding/onboarding-audit.jsonl")
+        self.assertEqual(write_contract["auditPlan"]["auditPath"], "$ACTANARA_HOME/state/onboarding/onboarding-audit.jsonl")
         self.assertTrue(write_contract["auditPlan"]["redactionPolicy"]["redactSecretValues"])
         self.assertTrue(write_contract["rollbackPlan"]["rollbackRequired"])
         self.assertFalse(write_contract["rollbackPlan"]["rollbackImplemented"])
@@ -2821,9 +2821,9 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertTrue(payload["sourcePlan"]["planOnly"])
         self.assertIn("packagingPlan", payload["sourcePlan"])
         self.assertTrue(all(step["executesShell"] is False for step in payload["dryRunSteps"]))
-        self.assertIn("What Open Nova will do", format_onboarding_subsystem_plan(payload["sourcePlan"]))
+        self.assertIn("What Actanara will do", format_onboarding_subsystem_plan(payload["sourcePlan"]))
         self.assertNotIn("packagingGroups=", text)
-        self.assertIn("Open Nova · Setup preview", text)
+        self.assertIn("Actanara · Setup preview", text)
         self.assertFalse(json.loads(raw_json)["executionPolicy"]["allowed"])
 
     def test_onboarding_one_liner_dry_run_matches_schema_fixture_contract(self):
@@ -2874,7 +2874,7 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_onboarding_one_liner_dry_run_reports_rag_disabled_when_not_selected(self):
         payload = onboarding_one_liner_dry_run(["dashboard"])
 
-        self.assertEqual(payload["selectedProfiles"], ["open-nova", "dashboard", "nova-task"])
+        self.assertEqual(payload["selectedProfiles"], ["actanara", "dashboard", "nova-task"])
         self.assertFalse(payload["ragReadiness"]["selected"])
         self.assertEqual(payload["ragReadiness"]["providerMode"], "disabled")
         self.assertEqual(payload["ragReadiness"]["readinessState"], "rag-disabled")
@@ -2884,7 +2884,7 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_onboarding_apply_write_contract_is_readonly_and_profile_aware(self):
         contract = onboarding_apply_write_contract(["nova-task"])
 
-        self.assertEqual(contract["selectedProfiles"], ["open-nova", "dashboard", "nova-task"])
+        self.assertEqual(contract["selectedProfiles"], ["actanara", "dashboard", "nova-task"])
         self.assertTrue(contract["readOnly"])
         self.assertFalse(contract["writesAllowed"])
         self.assertFalse(contract["applyImplemented"])
@@ -2919,7 +2919,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
         accepted_confirmation = onboarding_apply_preflight(
             ["nova-rag"],
-            confirmation_text="APPLY OPEN NOVA ONBOARDING",
+            confirmation_text="APPLY ACTANARA ONBOARDING",
         )
         self.assertTrue(accepted_confirmation["confirmationProvided"])
         self.assertTrue(accepted_confirmation["confirmationAccepted"])
@@ -2937,7 +2937,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_onboarding_apply_preflight_reads_llm_from_candidate_runtime(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_llm_provider(
                 {
                     "provider": "custom",
@@ -2949,8 +2949,8 @@ class RuntimeSettingsTests(unittest.TestCase):
             )
 
             payload = onboarding_apply_preflight(
-                ["open-nova"],
-                confirmation_text="APPLY OPEN NOVA ONBOARDING",
+                ["actanara"],
+                confirmation_text="APPLY ACTANARA ONBOARDING",
                 paths=paths,
             )
 
@@ -2963,7 +2963,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_onboarding_apply_sandbox_rejects_bad_confirmation_without_writes(self):
         with tempfile.TemporaryDirectory() as tmp:
-            runtime = Path(tmp) / "NovaDiary"
+            runtime = Path(tmp) / "Actanara"
             paths = runtime_paths_for_home(runtime, legacy_diary_root=Path(tmp) / "Diary")
 
             payload = onboarding_apply_sandbox(["nova-task"], paths, confirmation_text="yes")
@@ -2976,13 +2976,13 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_onboarding_apply_sandbox_writes_only_under_explicit_runtime(self):
         with tempfile.TemporaryDirectory() as tmp:
-            runtime = Path(tmp) / "NovaDiary"
+            runtime = Path(tmp) / "Actanara"
             paths = runtime_paths_for_home(runtime, legacy_diary_root=Path(tmp) / "Diary")
 
             payload = onboarding_apply_sandbox(
                 ["nova-task"],
                 paths,
-                confirmation_text="APPLY OPEN NOVA ONBOARDING",
+                confirmation_text="APPLY ACTANARA ONBOARDING",
             )
 
             settings_path = runtime / "config" / "settings.json"
@@ -2999,7 +2999,7 @@ class RuntimeSettingsTests(unittest.TestCase):
             self.assertFalse(payload["safetyPolicy"]["callsLaunchctl"])
             self.assertFalse(payload["safetyPolicy"]["installsDependencies"])
             settings = json.loads(settings_path.read_text(encoding="utf-8"))
-            self.assertEqual(settings["paths"]["runtime"]["novaHome"], str(runtime))
+            self.assertEqual(settings["paths"]["runtime"]["actanaraHome"], str(runtime))
             audit = json.loads(audit_path.read_text(encoding="utf-8").strip().splitlines()[-1])
             self.assertEqual(audit["phase"], "onboarding-apply-sandbox")
             self.assertIn("write-runtime-settings", audit["operations"])
@@ -3009,7 +3009,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_onboarding_apply_runtime_bootstrap_rejects_bad_confirmation_without_writes(self):
         with tempfile.TemporaryDirectory() as tmp:
-            runtime = Path(tmp) / "NovaDiary"
+            runtime = Path(tmp) / "Actanara"
             paths = runtime_paths_for_home(runtime, legacy_diary_root=Path(tmp) / "Diary")
 
             payload = onboarding_apply_runtime_bootstrap(["nova-task"], paths, confirmation_text="yes")
@@ -3022,13 +3022,13 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_onboarding_apply_runtime_bootstrap_writes_runtime_settings_audit_and_rollback(self):
         with tempfile.TemporaryDirectory() as tmp:
-            runtime = Path(tmp) / "NovaDiary"
+            runtime = Path(tmp) / "Actanara"
             paths = runtime_paths_for_home(runtime, legacy_diary_root=Path(tmp) / "Diary")
 
             payload = onboarding_apply_runtime_bootstrap(
                 ["nova-task"],
                 paths,
-                confirmation_text="APPLY OPEN NOVA ONBOARDING",
+                confirmation_text="APPLY ACTANARA ONBOARDING",
             )
 
             settings_path = runtime / "config" / "settings.json"
@@ -3048,7 +3048,7 @@ class RuntimeSettingsTests(unittest.TestCase):
             self.assertFalse(payload["safetyPolicy"]["writesLaunchdPlist"])
             self.assertFalse(payload["safetyPolicy"]["callsLaunchctl"])
             settings = json.loads(settings_path.read_text(encoding="utf-8"))
-            self.assertEqual(settings["paths"]["runtime"]["novaHome"], str(runtime))
+            self.assertEqual(settings["paths"]["runtime"]["actanaraHome"], str(runtime))
             audit = json.loads(audit_path.read_text(encoding="utf-8").strip().splitlines()[-1])
             self.assertEqual(audit["phase"], "onboarding-runtime-bootstrap")
             self.assertIn("write-runtime-settings", audit["operations"])
@@ -3058,13 +3058,13 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_onboarding_runtime_bootstrap_can_materialize_english_language_contract(self):
         with tempfile.TemporaryDirectory() as tmp:
-            runtime = Path(tmp) / "NovaDiary"
+            runtime = Path(tmp) / "Actanara"
             paths = runtime_paths_for_home(runtime, legacy_diary_root=Path(tmp) / "Diary")
 
             payload = onboarding_apply_runtime_bootstrap(
                 ["nova-rag"],
                 paths,
-                confirmation_text="APPLY OPEN NOVA ONBOARDING",
+                confirmation_text="APPLY ACTANARA ONBOARDING",
                 language_profile="en-US",
             )
 
@@ -3080,22 +3080,22 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_onboarding_apply_runtime_bootstrap_can_select_active_runtime_with_pointer(self):
         with tempfile.TemporaryDirectory() as tmp:
-            runtime = Path(tmp) / "NovaDiary"
+            runtime = Path(tmp) / "Actanara"
             bootstrap = Path(tmp) / "location.json"
             paths = runtime_paths_for_home(runtime, legacy_diary_root=Path(tmp) / "Diary")
 
-            with patch.dict(os.environ, {"NOVA_LOCATION_FILE": str(bootstrap)}, clear=False):
+            with patch.dict(os.environ, {"ACTANARA_LOCATION_FILE": str(bootstrap)}, clear=False):
                 payload = onboarding_apply_runtime_bootstrap(
                     ["nova-task"],
                     paths,
-                    confirmation_text="APPLY OPEN NOVA ONBOARDING",
+                    confirmation_text="APPLY ACTANARA ONBOARDING",
                     select_active_runtime=True,
                 )
 
             self.assertEqual(payload["status"], "runtime-bootstrap-applied")
             self.assertTrue(bootstrap.exists())
             pointer = json.loads(bootstrap.read_text(encoding="utf-8"))
-            self.assertEqual(pointer["novaHome"], str(runtime))
+            self.assertEqual(pointer["actanaraHome"], str(runtime))
             self.assertTrue(payload["runtime"]["selectedAsActiveRuntime"])
             self.assertEqual(payload["runtime"]["selectionBootstrapPath"], str(bootstrap))
             self.assertTrue(payload["safetyPolicy"]["writesBootstrapLocation"])
@@ -3123,13 +3123,13 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertTrue(contract["allowedCurrentPhase"]["writeFakeLaunchAgents"])
         self.assertTrue(contract["allowedCurrentPhase"]["writeRealLaunchAgents"])
         self.assertTrue(contract["allowedCurrentPhase"]["registerScheduler"])
-        self.assertEqual(contract["plistWriteConfirmationPhrase"], "WRITE OPEN NOVA LAUNCHAGENTS")
-        self.assertEqual(contract["registrationConfirmationPhrase"], "REGISTER OPEN NOVA SCHEDULER")
+        self.assertEqual(contract["plistWriteConfirmationPhrase"], "WRITE ACTANARA LAUNCHAGENTS")
+        self.assertEqual(contract["registrationConfirmationPhrase"], "REGISTER ACTANARA SCHEDULER")
 
     def test_onboarding_apply_scheduler_sandbox_writes_fake_launch_agents_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            runtime = root / "NovaDiary"
+            runtime = root / "Actanara"
             fake_home = root / "FakeHome"
             paths = runtime_paths_for_home(runtime, legacy_diary_root=root / "Diary")
 
@@ -3137,7 +3137,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                 ["dashboard"],
                 paths,
                 scheduler_home=fake_home,
-                confirmation_text="REGISTER OPEN NOVA SCHEDULER",
+                confirmation_text="REGISTER ACTANARA SCHEDULER",
             )
 
             launch_agents = fake_home / "Library" / "LaunchAgents"
@@ -3160,7 +3160,7 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_onboarding_apply_scheduler_sandbox_rejects_bad_confirmation_without_writes(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            runtime = root / "NovaDiary"
+            runtime = root / "Actanara"
             fake_home = root / "FakeHome"
             paths = runtime_paths_for_home(runtime, legacy_diary_root=root / "Diary")
 
@@ -3179,7 +3179,7 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_onboarding_apply_scheduler_plist_write_writes_launch_agents_without_launchctl(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            runtime = root / "NovaDiary"
+            runtime = root / "Actanara"
             launch_agent_home = root / "Home"
             paths = runtime_paths_for_home(runtime, legacy_diary_root=root / "Diary")
 
@@ -3187,7 +3187,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                 ["dashboard"],
                 paths,
                 launch_agent_home=launch_agent_home,
-                confirmation_text="WRITE OPEN NOVA LAUNCHAGENTS",
+                confirmation_text="WRITE ACTANARA LAUNCHAGENTS",
             )
 
             launch_agents = launch_agent_home / "Library" / "LaunchAgents"
@@ -3211,10 +3211,10 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_onboarding_apply_scheduler_plist_write_backs_up_existing_plist(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            runtime = root / "NovaDiary"
+            runtime = root / "Actanara"
             launch_agent_home = root / "Home"
             paths = runtime_paths_for_home(runtime, legacy_diary_root=root / "Diary")
-            existing = launch_agent_home / "Library" / "LaunchAgents" / "open-nova.daily.pipeline.plist"
+            existing = launch_agent_home / "Library" / "LaunchAgents" / "actanara.daily.pipeline.plist"
             existing.parent.mkdir(parents=True)
             existing.write_text("old plist\n", encoding="utf-8")
 
@@ -3222,7 +3222,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                 ["dashboard"],
                 paths,
                 launch_agent_home=launch_agent_home,
-                confirmation_text="WRITE OPEN NOVA LAUNCHAGENTS",
+                confirmation_text="WRITE ACTANARA LAUNCHAGENTS",
             )
 
             backup_paths = [item.get("backupPath") for item in payload["operationResults"] if item.get("backupPath")]
@@ -3234,7 +3234,7 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_onboarding_apply_scheduler_plist_write_rejects_bad_confirmation_without_writes(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            runtime = root / "NovaDiary"
+            runtime = root / "Actanara"
             launch_agent_home = root / "Home"
             paths = runtime_paths_for_home(runtime, legacy_diary_root=root / "Diary")
 
@@ -3242,7 +3242,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                 ["dashboard"],
                 paths,
                 launch_agent_home=launch_agent_home,
-                confirmation_text="REGISTER OPEN NOVA SCHEDULER",
+                confirmation_text="REGISTER ACTANARA SCHEDULER",
             )
 
         self.assertEqual(payload["status"], "scheduler-plist-rejected")
@@ -3264,14 +3264,14 @@ class RuntimeSettingsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            runtime = root / "NovaDiary"
+            runtime = root / "Actanara"
             launch_agent_home = root / "Home"
             paths = runtime_paths_for_home(runtime, legacy_diary_root=root / "Diary")
             onboarding_apply_scheduler_plist_write(
                 ["dashboard"],
                 paths,
                 launch_agent_home=launch_agent_home,
-                confirmation_text="WRITE OPEN NOVA LAUNCHAGENTS",
+                confirmation_text="WRITE ACTANARA LAUNCHAGENTS",
             )
 
             payload = onboarding_apply_scheduler_register(
@@ -3279,7 +3279,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                 paths,
                 launch_agent_home=launch_agent_home,
                 launchctl_runner=fake_runner,
-                confirmation_text="REGISTER OPEN NOVA SCHEDULER",
+                confirmation_text="REGISTER ACTANARA SCHEDULER",
             )
 
             audit_path = Path(payload["runtime"]["auditPath"])
@@ -3329,14 +3329,14 @@ class RuntimeSettingsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            runtime = root / "NovaDiary"
+            runtime = root / "Actanara"
             launch_agent_home = root / "Home"
             paths = runtime_paths_for_home(runtime, legacy_diary_root=root / "Diary")
             onboarding_apply_scheduler_plist_write(
                 ["dashboard"],
                 paths,
                 launch_agent_home=launch_agent_home,
-                confirmation_text="WRITE OPEN NOVA LAUNCHAGENTS",
+                confirmation_text="WRITE ACTANARA LAUNCHAGENTS",
             )
 
             payload = onboarding_apply_scheduler_register(
@@ -3344,7 +3344,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                 paths,
                 launch_agent_home=launch_agent_home,
                 launchctl_runner=fake_runner,
-                confirmation_text="REGISTER OPEN NOVA SCHEDULER",
+                confirmation_text="REGISTER ACTANARA SCHEDULER",
             )
 
         self.assertEqual(payload["status"], "scheduler-registered")
@@ -3372,14 +3372,14 @@ class RuntimeSettingsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            runtime = root / "NovaDiary"
+            runtime = root / "Actanara"
             launch_agent_home = root / "Home"
             paths = runtime_paths_for_home(runtime, legacy_diary_root=root / "Diary")
             onboarding_apply_scheduler_plist_write(
                 ["dashboard"],
                 paths,
                 launch_agent_home=launch_agent_home,
-                confirmation_text="WRITE OPEN NOVA LAUNCHAGENTS",
+                confirmation_text="WRITE ACTANARA LAUNCHAGENTS",
             )
             plist_paths = sorted((launch_agent_home / "Library" / "LaunchAgents").glob("*.plist"))
             plist_before = {path: (path.read_bytes(), path.stat().st_mode & 0o777) for path in plist_paths}
@@ -3391,7 +3391,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                 paths,
                 launch_agent_home=launch_agent_home,
                 launchctl_runner=fake_runner,
-                confirmation_text="REGISTER OPEN NOVA SCHEDULER",
+                confirmation_text="REGISTER ACTANARA SCHEDULER",
             )
 
             self.assertEqual(payload["status"], "scheduler-register-failed")
@@ -3415,14 +3415,14 @@ class RuntimeSettingsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            runtime = root / "NovaDiary"
+            runtime = root / "Actanara"
             paths = runtime_paths_for_home(runtime, legacy_diary_root=root / "Diary")
 
             payload = onboarding_apply_scheduler_register(
                 ["dashboard"],
                 paths,
                 launchctl_runner=fake_runner,
-                confirmation_text="WRITE OPEN NOVA LAUNCHAGENTS",
+                confirmation_text="WRITE ACTANARA LAUNCHAGENTS",
             )
 
         self.assertEqual(payload["status"], "scheduler-register-rejected")
@@ -3438,7 +3438,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            runtime = root / "NovaDiary"
+            runtime = root / "Actanara"
             launch_agent_home = root / "Home"
             paths = runtime_paths_for_home(runtime, legacy_diary_root=root / "Diary")
 
@@ -3447,7 +3447,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                 paths,
                 launch_agent_home=launch_agent_home,
                 launchctl_runner=fake_runner,
-                confirmation_text="REGISTER OPEN NOVA SCHEDULER",
+                confirmation_text="REGISTER ACTANARA SCHEDULER",
             )
 
         self.assertEqual(payload["status"], "scheduler-register-failed")
@@ -3469,21 +3469,21 @@ class RuntimeSettingsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            runtime = root / "NovaDiary"
+            runtime = root / "Actanara"
             launch_agent_home = root / "Home"
             paths = runtime_paths_for_home(runtime, legacy_diary_root=root / "Diary")
             onboarding_apply_scheduler_plist_write(
                 ["dashboard"],
                 paths,
                 launch_agent_home=launch_agent_home,
-                confirmation_text="WRITE OPEN NOVA LAUNCHAGENTS",
+                confirmation_text="WRITE ACTANARA LAUNCHAGENTS",
             )
             onboarding_apply_scheduler_register(
                 ["dashboard"],
                 paths,
                 launch_agent_home=launch_agent_home,
                 launchctl_runner=fake_runner,
-                confirmation_text="REGISTER OPEN NOVA SCHEDULER",
+                confirmation_text="REGISTER ACTANARA SCHEDULER",
             )
 
             payload = onboarding_apply_scheduler_unregister(
@@ -3491,7 +3491,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                 paths,
                 launch_agent_home=launch_agent_home,
                 launchctl_runner=fake_runner,
-                confirmation_text="UNREGISTER OPEN NOVA SCHEDULER",
+                confirmation_text="UNREGISTER ACTANARA SCHEDULER",
             )
 
             settings = read_settings(paths)
@@ -3525,14 +3525,14 @@ class RuntimeSettingsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            runtime = root / "NovaDiary"
+            runtime = root / "Actanara"
             paths = runtime_paths_for_home(runtime, legacy_diary_root=root / "Diary")
 
             payload = onboarding_apply_scheduler_unregister(
                 ["dashboard"],
                 paths,
                 launchctl_runner=fake_runner,
-                confirmation_text="REGISTER OPEN NOVA SCHEDULER",
+                confirmation_text="REGISTER ACTANARA SCHEDULER",
             )
 
         self.assertEqual(payload["status"], "scheduler-unregister-rejected")
@@ -3542,12 +3542,12 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_onboarding_one_liner_apply_bootstraps_runtime_and_keeps_scheduler_dry_run(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = runtime_paths_for_home(root / ".open-nova", legacy_diary_root=root / "Diary")
+            paths = runtime_paths_for_home(root / ".actanara", legacy_diary_root=root / "Diary")
 
             payload = onboarding_one_liner_apply(
                 ["dashboard"],
                 paths,
-                confirmation_text="APPLY OPEN NOVA ONBOARDING",
+                confirmation_text="APPLY ACTANARA ONBOARDING",
             )
 
         self.assertEqual(payload["status"], "one-liner-applied")
@@ -3562,12 +3562,12 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_onboarding_one_liner_apply_can_materialize_english_language_contract(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = runtime_paths_for_home(root / ".open-nova", legacy_diary_root=root / "Diary")
+            paths = runtime_paths_for_home(root / ".actanara", legacy_diary_root=root / "Diary")
 
             payload = onboarding_one_liner_apply(
                 ["nova-rag"],
                 paths,
-                confirmation_text="APPLY OPEN NOVA ONBOARDING",
+                confirmation_text="APPLY ACTANARA ONBOARDING",
                 language_profile="en-US",
             )
             settings = json.loads((paths.home / "config" / "settings.json").read_text(encoding="utf-8"))
@@ -3595,15 +3595,15 @@ class RuntimeSettingsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = runtime_paths_for_home(root / ".open-nova", legacy_diary_root=root / "Diary")
+            paths = runtime_paths_for_home(root / ".actanara", legacy_diary_root=root / "Diary")
             launch_agent_home = root / "Home"
 
             payload = onboarding_one_liner_apply(
                 ["dashboard"],
                 paths,
-                confirmation_text="APPLY OPEN NOVA ONBOARDING",
+                confirmation_text="APPLY ACTANARA ONBOARDING",
                 with_scheduler=True,
-                scheduler_confirmation_text="REGISTER OPEN NOVA SCHEDULER",
+                scheduler_confirmation_text="REGISTER ACTANARA SCHEDULER",
                 launch_agent_home=launch_agent_home,
                 launchctl_runner=fake_runner,
             )
@@ -3629,12 +3629,12 @@ class RuntimeSettingsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = runtime_paths_for_home(root / ".open-nova", legacy_diary_root=root / "Diary")
+            paths = runtime_paths_for_home(root / ".actanara", legacy_diary_root=root / "Diary")
 
             payload = onboarding_one_liner_apply(
                 ["dashboard"],
                 paths,
-                confirmation_text="APPLY OPEN NOVA ONBOARDING",
+                confirmation_text="APPLY ACTANARA ONBOARDING",
                 with_scheduler=True,
                 scheduler_confirmation_text="yes",
                 launchctl_runner=fake_runner,
@@ -3648,13 +3648,13 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_onboarding_one_liner_status_reads_artifacts_without_writes(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = runtime_paths_for_home(root / ".open-nova", legacy_diary_root=root / "Diary")
+            paths = runtime_paths_for_home(root / ".actanara", legacy_diary_root=root / "Diary")
             before = paths.home.exists()
             missing = onboarding_one_liner_status(paths)
             applied = onboarding_one_liner_apply(
                 ["dashboard"],
                 paths,
-                confirmation_text="APPLY OPEN NOVA ONBOARDING",
+                confirmation_text="APPLY ACTANARA ONBOARDING",
             )
             status = onboarding_one_liner_status(paths)
 
@@ -3672,12 +3672,12 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_onboarding_rollback_plan_status_aggregates_without_executing(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = runtime_paths_for_home(root / ".open-nova", legacy_diary_root=root / "Diary")
+            paths = runtime_paths_for_home(root / ".actanara", legacy_diary_root=root / "Diary")
             missing = onboarding_rollback_plan_status(paths)
             onboarding_one_liner_apply(
                 ["dashboard"],
                 paths,
-                confirmation_text="APPLY OPEN NOVA ONBOARDING",
+                confirmation_text="APPLY ACTANARA ONBOARDING",
             )
             available = onboarding_rollback_plan_status(paths)
 
@@ -3694,7 +3694,7 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertTrue(payload["readOnly"])
         self.assertTrue(payload["oneLinerReleaseGateOnly"])
         self.assertEqual(payload["status"], "passed")
-        self.assertEqual(payload["selectedProfiles"], ["open-nova", "dashboard", "nova-task"])
+        self.assertEqual(payload["selectedProfiles"], ["actanara", "dashboard", "nova-task"])
         self.assertFalse(payload["withScheduler"])
         gate_ids = {gate["id"] for gate in payload["gates"]}
         self.assertIn("runtime-bootstrap-apply", gate_ids)
@@ -3706,7 +3706,7 @@ class RuntimeSettingsTests(unittest.TestCase):
         payload = onboarding_one_liner_release_gate(["nova-rag"])
 
         self.assertEqual(payload["status"], "blocked")
-        self.assertEqual(payload["selectedProfiles"], ["open-nova", "dashboard", "nova-rag", "nova-task"])
+        self.assertEqual(payload["selectedProfiles"], ["actanara", "dashboard", "nova-rag", "nova-task"])
         self.assertIn("rag-not-required-for-minimal-v1", payload["blockingGates"])
 
     def test_onboarding_one_liner_release_gate_with_scheduler_passes_scheduler_gates(self):
@@ -3735,13 +3735,13 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertFalse(cases["default-runtime-apply-contract"]["evidence"]["installsDependencies"])
 
     def test_onboarding_release_gate_aggregates_readonly_gates(self):
-        payload = onboarding_release_gate(["nova-rag"], confirmation_text="APPLY OPEN NOVA ONBOARDING")
+        payload = onboarding_release_gate(["nova-rag"], confirmation_text="APPLY ACTANARA ONBOARDING")
 
         self.assertTrue(payload["readOnly"])
         self.assertTrue(payload["releaseGateOnly"])
         self.assertEqual(payload["status"], "blocked")
         self.assertTrue(payload["confirmationAccepted"])
-        self.assertEqual(payload["selectedProfiles"], ["open-nova", "dashboard", "nova-rag", "nova-task"])
+        self.assertEqual(payload["selectedProfiles"], ["actanara", "dashboard", "nova-rag", "nova-task"])
         gate_ids = {gate["id"] for gate in payload["gates"]}
         self.assertIn("one-liner-dry-run-schema", gate_ids)
         self.assertIn("blocked-apply-command", gate_ids)
@@ -3774,13 +3774,13 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertGreater(payload["summary"]["blocked"], 0)
 
     def test_onboarding_approval_packet_lists_required_operator_decisions(self):
-        payload = onboarding_approval_packet(["nova-rag"], confirmation_text="APPLY OPEN NOVA ONBOARDING")
+        payload = onboarding_approval_packet(["nova-rag"], confirmation_text="APPLY ACTANARA ONBOARDING")
 
         self.assertTrue(payload["readOnly"])
         self.assertTrue(payload["approvalPacketOnly"])
         self.assertEqual(payload["status"], "approval-required")
         self.assertEqual(payload["releaseGateStatus"], "blocked")
-        self.assertEqual(payload["selectedProfiles"], ["open-nova", "dashboard", "nova-rag", "nova-task"])
+        self.assertEqual(payload["selectedProfiles"], ["actanara", "dashboard", "nova-rag", "nova-task"])
         item_ids = {item["id"] for item in payload["operatorApprovalItems"]}
         self.assertIn("approve-settings-writes", item_ids)
         self.assertIn("approve-runtime-directory-writes", item_ids)
@@ -3803,7 +3803,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_rag_readiness_plan_covers_provider_states_without_side_effects(self):
         local_missing = rag_readiness_plan(
-            ["open-nova", "nova-rag"],
+            ["actanara", "nova-rag"],
             provider_mode="local",
             local_dependency_availability={"sentence-transformers": False, "torch": True, "numpy": True},
         )
@@ -3813,7 +3813,7 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertFalse(local_missing["installsLocalDependencies"])
 
         local_ready = rag_readiness_plan(
-            ["open-nova", "nova-rag"],
+            ["actanara", "nova-rag"],
             provider_mode="local",
             local_dependency_availability={"sentence-transformers": True, "torch": True, "numpy": True},
         )
@@ -3822,7 +3822,7 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertEqual(local_ready["finalSyncPolicy"], "run-final-sync-when-pipeline-completes")
 
         cloud_missing = rag_readiness_plan(
-            ["open-nova", "nova-rag"],
+            ["actanara", "nova-rag"],
             provider_mode="cloud",
             cloud_config={"provider": "example-cloud", "apiKeyEnv": "NOVA_RAG_CLOUD_API_KEY"},
         )
@@ -3831,7 +3831,7 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertFalse(cloud_missing["cloudApiCalls"])
 
         cloud_ready = rag_readiness_plan(
-            ["open-nova", "nova-rag"],
+            ["actanara", "nova-rag"],
             provider_mode="cloud",
             cloud_config={
                 "provider": "example-cloud",
@@ -3850,7 +3850,7 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertFalse(cloud_ready["cloudApiCalls"])
 
         sync_skipped = rag_readiness_plan(
-            ["open-nova", "nova-rag"],
+            ["actanara", "nova-rag"],
             provider_mode="local",
             sync_status="skipped",
             sync_skip_reason="missing-local-embedding-dependency",
@@ -3858,7 +3858,7 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertEqual(sync_skipped["readinessState"], "rag-sync-skipped")
         self.assertEqual(sync_skipped["skipReason"], "missing-local-embedding-dependency")
 
-        sync_complete = rag_readiness_plan(["open-nova", "nova-rag"], provider_mode="cloud", sync_status="complete")
+        sync_complete = rag_readiness_plan(["actanara", "nova-rag"], provider_mode="cloud", sync_status="complete")
         self.assertEqual(sync_complete["readinessState"], "rag-sync-complete")
         self.assertEqual(sync_complete["finalSyncPolicy"], "sync-complete")
 
@@ -3888,7 +3888,7 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_data_foundation_scheduler_preview_serializes_launchd_without_system_writes(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             fake_home = root / "Home"
             release = paths.home / "app" / "releases" / "resolved-release"
             venv = paths.home / "app" / "venvs" / "resolved-venv"
@@ -3930,7 +3930,7 @@ class RuntimeSettingsTests(unittest.TestCase):
         env = parsed["EnvironmentVariables"]
         self.assertEqual(managed["provider"], "launchd-user")
         self.assertEqual(managed["label"], "nova.phase38.pipeline")
-        self.assertEqual(env["NOVA_HOME"], str(paths.home))
+        self.assertEqual(env["ACTANARA_HOME"], str(paths.home))
         self.assertEqual(env["PATH"], foundation_scheduler_preview.MANAGED_LAUNCHD_PATH)
         self.assertEqual(env["PYTHONDONTWRITEBYTECODE"], "1")
         stable_source = paths.home / "app" / "source"
@@ -3941,8 +3941,8 @@ class RuntimeSettingsTests(unittest.TestCase):
         )
         self.assertNotIn("DIARY_OUTPUT_DIR", env)
         self.assertNotIn("TMP_WORKSPACE", env)
-        self.assertNotIn("NOVA_DATA_DB_PATH", env)
-        self.assertNotIn("NOVA_DATA_EXPORT_DIR", env)
+        self.assertNotIn("ACTANARA_DATA_DB_PATH", env)
+        self.assertNotIn("ACTANARA_DATA_EXPORT_DIR", env)
         self.assertNotIn("WORKSPACE_DIR", env)
         self.assertEqual(parsed["Label"], "nova.phase38.pipeline")
         self.assertEqual(parsed["WorkingDirectory"], str(stable_source))
@@ -4019,28 +4019,28 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertEqual(env_bucket["bySemantics"]["diagnostic-guard"], 1)
         self.assertIn("diagnostic-guard", {item["semantics"] for item in env_bucket["items"]})
 
-    def test_nova_settings_status_script_json_mode(self):
-        module_path = ROOT / "advanced" / "pipeline" / "run_nova_settings_status.py"
-        spec = importlib.util.spec_from_file_location("run_nova_settings_status", module_path)
+    def test_actanara_settings_status_script_json_mode(self):
+        module_path = ROOT / "advanced" / "pipeline" / "run_actanara_settings_status.py"
+        spec = importlib.util.spec_from_file_location("run_actanara_settings_status", module_path)
         module = importlib.util.module_from_spec(spec)
         assert spec and spec.loader
         spec.loader.exec_module(module)
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             with patch("sys.stdout") as stdout:
                 code = module.main(["--runtime", str(paths.home), "--legacy-diary-root", str(root / "Diary"), "--json"])
             written = "".join(call.args[0] for call in stdout.write.call_args_list)
 
         payload = json.loads(written)
         self.assertEqual(code, 1)
-        self.assertEqual(payload["runtime"]["novaHome"], str(paths.home))
+        self.assertEqual(payload["runtime"]["actanaraHome"], str(paths.home))
         self.assertEqual(payload["summary"]["status"], "error")
         self.assertIn("llm-provider", {check["id"] for check in payload["checks"] if check["status"] == "error"})
 
-    def test_nova_settings_status_runtime_inspection_does_not_initialize_home(self):
-        module_path = ROOT / "advanced" / "pipeline" / "run_nova_settings_status.py"
-        spec = importlib.util.spec_from_file_location("run_nova_settings_status_readonly", module_path)
+    def test_actanara_settings_status_runtime_inspection_does_not_initialize_home(self):
+        module_path = ROOT / "advanced" / "pipeline" / "run_actanara_settings_status.py"
+        spec = importlib.util.spec_from_file_location("run_actanara_settings_status_readonly", module_path)
         module = importlib.util.module_from_spec(spec)
         assert spec and spec.loader
         spec.loader.exec_module(module)
@@ -4049,7 +4049,7 @@ class RuntimeSettingsTests(unittest.TestCase):
             active = initialize_home(root / "ActiveNova", legacy_diary_root=root / "ActiveDiary")
             candidate = root / "CandidateNova"
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(active.home)}, clear=False),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(active.home)}, clear=False),
                 patch("sys.stdout") as stdout,
             ):
                 code = module.main(["--runtime", str(candidate), "--legacy-diary-root", str(root / "CandidateDiary"), "--json"])
@@ -4057,13 +4057,13 @@ class RuntimeSettingsTests(unittest.TestCase):
 
         payload = json.loads(written)
         self.assertEqual(code, 1)
-        self.assertEqual(payload["runtime"]["novaHome"], str(candidate))
+        self.assertEqual(payload["runtime"]["actanaraHome"], str(candidate))
         self.assertFalse(candidate.exists())
         self.assertTrue(payload["readOnly"])
 
     def test_scheduler_refreshes_current_day_week_and_month_once_per_day(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings(
                 {
                     "schedule": {
@@ -4077,7 +4077,7 @@ class RuntimeSettingsTests(unittest.TestCase):
             )
             now = datetime(2026, 5, 29, 5, 0, tzinfo=ZoneInfo("UTC"))
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch.object(scheduler.foundation, "queue_refresh", side_effect=[101, 102, 103]) as queue,
                 patch.object(scheduler.foundation, "execute_refresh") as execute,
             ):
@@ -4093,7 +4093,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_scheduler_does_not_run_before_enabled_system_time(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings(
                 {
                     "schedule": {
@@ -4106,17 +4106,17 @@ class RuntimeSettingsTests(unittest.TestCase):
                 paths,
             )
             now = datetime(2026, 5, 29, 4, 0, tzinfo=ZoneInfo("Asia/Hong_Kong"))
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 result = scheduler.run_due_snapshot_refresh(now)
             self.assertEqual(result["reason"], "before_scheduled_time")
 
     def test_scheduler_disabled_does_not_run_due_history_backfill(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings({"schedule": {"enabled": False, "mode": "system", "dashboardAggregationTime": "04:30"}}, paths)
             now = datetime(2026, 5, 29, 5, 0, tzinfo=ZoneInfo("Asia/Hong_Kong"))
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch.object(scheduler.foundation, "execute_due_scheduled_history_backfills") as execute,
             ):
                 result = scheduler.run_due_snapshot_refresh(now)
@@ -4127,7 +4127,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_scheduler_runs_due_history_backfill_before_aggregation_time(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings(
                 {
                     "schedule": {
@@ -4141,7 +4141,7 @@ class RuntimeSettingsTests(unittest.TestCase):
             )
             now = datetime(2026, 5, 29, 4, 0, tzinfo=ZoneInfo("Asia/Hong_Kong"))
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch.object(scheduler.foundation, "execute_due_scheduled_history_backfills", return_value=[{"runId": 7}]) as execute,
             ):
                 result = scheduler.run_due_snapshot_refresh(now)
@@ -4152,7 +4152,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_system_timer_preview_includes_pipeline_and_dashboard_jobs(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings(
                 {
                     "schedule": {
@@ -4163,7 +4163,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                 },
                 paths,
             )
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 preview = scheduler.preview_system_timer()
             jobs = {job["kind"]: job for job in preview["jobs"]}
             self.assertTrue(preview["supported"])
@@ -4177,7 +4177,7 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_system_timer_preview_can_probe_launchd_actual_registration(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             fake_home = root / "Home"
             write_settings(
                 {
@@ -4219,7 +4219,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_scheduler_status_effective_enabled_follows_actual_system_timer(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings(
                 {
                     "schedule": {
@@ -4241,7 +4241,7 @@ class RuntimeSettingsTests(unittest.TestCase):
             }
 
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch.object(scheduler, "preview_system_timer", return_value=timer_status),
             ):
                 status = scheduler.scheduler_status()
@@ -4253,7 +4253,7 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_linux_system_timer_preview_is_readonly_plan(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings(
                 {
                     "schedule": {
@@ -4264,7 +4264,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                 },
                 paths,
             )
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 preview = scheduler.preview_system_timer()
 
             jobs = {job["kind"]: job for job in preview["jobs"]}
@@ -4277,10 +4277,10 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_non_launchd_system_timer_install_and_uninstall_are_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings({"schedule": {"systemTimer": {"provider": "systemd", "label": "nova.test"}}}, paths)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 with self.assertRaises(ValueError):
                     scheduler.install_system_timer()
                 with self.assertRaises(ValueError):
@@ -4289,7 +4289,7 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_system_timer_install_marks_settings_registered(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {"schedule": {"timezone": "UTC", "systemTimer": {"provider": "launchd", "label": "nova.test"}}},
                 paths,
@@ -4299,7 +4299,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                 return root / "LaunchAgents" / f"{label}.plist"
 
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch("data_foundation.scheduler_preview.detect_system_timezone_authority", return_value="UTC"),
                 patch.object(scheduler, "_launch_agent_path", side_effect=plist_path),
                 patch.object(scheduler, "_launchctl") as launchctl,
@@ -4327,7 +4327,7 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_system_timer_install_failure_restores_preimage_and_handoff_audit(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {"schedule": {"timezone": "UTC", "systemTimer": {"provider": "launchd", "label": "nova.test"}}},
                 paths,
@@ -4342,7 +4342,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                     raise RuntimeError("bootstrap failed")
 
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch("data_foundation.scheduler_preview.detect_system_timezone_authority", return_value="UTC"),
                 patch.object(scheduler, "_launch_agent_path", side_effect=plist_path),
                 patch.object(scheduler, "_launchctl", side_effect=fail_bootstrap),
@@ -4369,10 +4369,10 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_system_timer_install_requires_confirmation_and_supports_dry_run(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings({"schedule": {"systemTimer": {"provider": "launchd", "label": "nova.test"}}}, paths)
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch.object(scheduler, "_launchctl") as launchctl,
             ):
                 dry_run = scheduler.install_system_timer({"dryRun": True})
@@ -4387,9 +4387,9 @@ class RuntimeSettingsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bootstrap = root / "location.json"
-            home = root / "NovaDiary"
-            with patch.dict(os.environ, {"NOVA_LOCATION_FILE": str(bootstrap)}, clear=False):
-                os.environ.pop("NOVA_HOME", None)
+            home = root / "Actanara"
+            with patch.dict(os.environ, {"ACTANARA_LOCATION_FILE": str(bootstrap)}, clear=False):
+                os.environ.pop("ACTANARA_HOME", None)
                 validation = dashboard_settings.validate_runtime_path(str(home))
                 self.assertTrue(validation["validation"]["valid"])
                 self.assertFalse(validation["validation"]["initialized"])
@@ -4402,15 +4402,15 @@ class RuntimeSettingsTests(unittest.TestCase):
                     }
                 )
                 self.assertTrue(selected["validation"]["initialized"])
-                self.assertEqual(selected["selected"]["novaHome"], str(home))
-                self.assertEqual(json.loads(bootstrap.read_text(encoding="utf-8"))["novaHome"], str(home))
+                self.assertEqual(selected["selected"]["actanaraHome"], str(home))
+                self.assertEqual(json.loads(bootstrap.read_text(encoding="utf-8"))["actanaraHome"], str(home))
                 audit_path = Path(selected["audit"]["path"])
                 self.assertTrue(audit_path.exists())
                 audit = json.loads(audit_path.read_text(encoding="utf-8").strip().splitlines()[-1])
                 self.assertEqual(audit["mode"], "initialize")
                 self.assertEqual(audit["candidate"], str(home))
                 current = dashboard_settings.current_runtime_path()
-                self.assertEqual(current["selected"]["novaHome"], str(home))
+                self.assertEqual(current["selected"]["actanaraHome"], str(home))
 
     def test_dashboard_runtime_path_rejects_legacy_import_mode(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -4421,19 +4421,19 @@ class RuntimeSettingsTests(unittest.TestCase):
             (legacy / "__diary_daily" / "2026-05-19" / "_filtered" / "codex" / "one.jsonl").write_text(
                 "{}\n", encoding="utf-8"
             )
-            with patch.dict(os.environ, {"NOVA_LOCATION_FILE": str(bootstrap)}, clear=False):
-                os.environ.pop("NOVA_HOME", None)
+            with patch.dict(os.environ, {"ACTANARA_LOCATION_FILE": str(bootstrap)}, clear=False):
+                os.environ.pop("ACTANARA_HOME", None)
                 with self.assertRaisesRegex(ValueError, "mode must be one of use, initialize"):
                     dashboard_settings.select_runtime_path(
                         {
-                            "path": str(root / "NovaDiary"),
+                            "path": str(root / "Actanara"),
                             "mode": "import_legacy",
                             "legacyDiaryRoot": str(legacy),
                             "confirmationText": dashboard_settings.RUNTIME_PATH_SELECT_CONFIRMATION,
                         }
                     )
             self.assertFalse(
-                (root / "NovaDiary" / "sources" / "archives" / "2026-05-19" / "filtered" / "codex" / "one.jsonl").exists()
+                (root / "Actanara" / "sources" / "archives" / "2026-05-19" / "filtered" / "codex" / "one.jsonl").exists()
             )
 
     def test_runtime_path_select_rejects_invalid_mode(self):
@@ -4452,9 +4452,9 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_diary_projection_rebuild_requires_confirmation_for_mutation(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch.object(dashboard_settings, "plan_diary_projection_rebuild", return_value={"dryRun": True}) as plan,
                 patch.object(dashboard_settings, "rebuild_diary_projections", return_value={"dryRun": False}) as rebuild,
             ):
@@ -4482,11 +4482,11 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_dashboard_rag_settings_status_and_actions_are_control_plane_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             index = root / "Diary" / "__diary_rag" / "index.jsonl"
             index.parent.mkdir(parents=True)
             index.write_text("{}\n", encoding="utf-8")
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False):
                 payload = dashboard_settings.update_rag_settings(
                     {
                         "enabled": True,
@@ -4548,10 +4548,10 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_dashboard_rag_settings_stores_raw_api_key_and_preserves_explicit_secret_ref(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             with patch.dict(
                 os.environ,
-                {"NOVA_HOME": str(paths.home), "OPEN_NOVA_SECRET_BACKEND": "runtime-file"},
+                {"ACTANARA_HOME": str(paths.home), "ACTANARA_SECRET_BACKEND": "runtime-file"},
                 clear=False,
             ):
                 stored = dashboard_settings.update_rag_settings(
@@ -4583,7 +4583,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                             "apiKeyEnv": "EXAMPLE_RAG_KEY",
                             "secretRef": {
                                 "backend": "process-env",
-                                "service": "open-nova",
+                                "service": "actanara",
                                 "account": "EXAMPLE_RAG_KEY",
                             },
                         },
@@ -4601,21 +4601,21 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_dashboard_rag_settings_cannot_change_language_profile(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False):
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False):
                 with self.assertRaisesRegex(ValueError, "rag.languageProfile is immutable"):
                     dashboard_settings.update_rag_settings({"languageProfile": "en"})
 
     def test_dashboard_rag_server_start_requires_confirmation_and_supports_dry_run(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             index = root / "Diary" / "__diary_rag" / "index.jsonl"
             index.parent.mkdir(parents=True)
             index.write_text("{}\n", encoding="utf-8")
             write_settings({"rag": {"enabled": True, "mode": "legacy"}}, paths)
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False),
                 patch.object(dashboard_settings, "start_rag_server") as start_server,
             ):
                 dry_run = dashboard_settings.rag_operator_action("server-start", {"dryRun": True})
@@ -4629,7 +4629,7 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_dashboard_rag_server_start_does_not_double_start_after_launch_agent(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {"rag": {"enabled": True, "mode": "v2", "server": {"enabled": True}}},
                 paths,
@@ -4641,7 +4641,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                 "pid": 4321,
             }
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False),
                 patch.object(dashboard_settings, "read_server_process_state", return_value=running_state) as read_state,
                 patch.object(dashboard_settings, "start_rag_server") as start_server,
             ):
@@ -4659,7 +4659,7 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_dashboard_rag_server_start_uses_direct_start_without_launch_agent_side_effect(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {"rag": {"enabled": True, "mode": "v2", "server": {"enabled": True}}},
                 paths,
@@ -4671,7 +4671,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                 "pid": None,
             }
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False),
                 patch.object(dashboard_settings, "read_server_process_state", return_value=stopped_state),
                 patch.object(
                     dashboard_settings,
@@ -4693,10 +4693,10 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_dashboard_rag_operator_actions_reject_start_and_index_when_product_switch_is_disabled(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"rag": {"mode": "disabled"}}, paths)
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False),
                 patch.object(dashboard_settings, "start_rag_server") as start,
                 patch.object(dashboard_settings, "sync_v2_production_index") as sync,
             ):
@@ -4716,10 +4716,10 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_dashboard_rag_candidate_refresh_job_uses_unified_sync_boundary(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"rag": {"enabled": True, "mode": "v2", "indexing": {"enabled": True}}}, paths)
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False),
                 patch.object(
                     rag_index_jobs,
                     "sync_v2_production_index",
@@ -4753,10 +4753,10 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_dashboard_rag_production_sync_job_promotes_active_index(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"rag": {"enabled": True, "mode": "v2", "indexing": {"enabled": True}}}, paths)
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False),
                 patch.object(
                     rag_index_jobs,
                     "sync_v2_production_index",
@@ -4794,10 +4794,10 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_dashboard_rag_profile_migration_job_uses_unified_sync_boundary(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"rag": {"enabled": True, "mode": "v2", "indexing": {"enabled": True}}}, paths)
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False),
                 patch.object(
                     rag_index_jobs,
                     "sync_v2_production_index",
@@ -4845,9 +4845,9 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_dashboard_rag_profile_migration_plan_reports_side_effects_without_queueing(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"rag": {"enabled": True, "mode": "v2", "indexing": {"enabled": True}}}, paths)
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False):
                 plan = rag_index_jobs.plan_profile_migration(
                     {
                         "initMode": True,
@@ -4874,10 +4874,10 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_dashboard_rag_initialization_job_auto_promotes_candidate(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"rag": {"enabled": True, "mode": "v2", "indexing": {"enabled": True}}}, paths)
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False),
                 patch.object(
                     rag_index_jobs,
                     "sync_v2_production_index",
@@ -4940,7 +4940,7 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_dashboard_rag_initialization_accepts_disabled_product_and_queues_retryable_dependency_setup(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings(
                 {
                     "features": {"rag": False, "embeddingServer": False},
@@ -4948,7 +4948,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                 },
                 paths,
             )
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False):
                 queued = rag_index_jobs.queue_profile_migration(
                     {
                         "initMode": True,
@@ -4972,9 +4972,9 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_dashboard_rag_initialization_plan_includes_local_dependency_install(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"rag": {"enabled": False, "mode": "disabled"}}, paths)
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False):
                 plan = rag_index_jobs.plan_profile_migration(
                     {
                         "initMode": True,
@@ -4996,9 +4996,9 @@ class RuntimeSettingsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False),
                 patch(
                     "agentic_rag.rag_server_lifecycle._python_has_modules",
                     side_effect=[False, False],
@@ -5024,10 +5024,10 @@ class RuntimeSettingsTests(unittest.TestCase):
     def test_dashboard_cloud_rag_initialization_enables_server_without_local_dependency_install(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"features": {"rag": False, "embeddingServer": False}, "rag": {"enabled": False, "mode": "disabled"}}, paths)
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False),
                 patch.object(rag_index_jobs, "sync_v2_production_index", return_value={"status": "candidate-ready", "build": {"manifest": {}}}),
                 patch.object(rag_index_jobs, "_ensure_local_rag_dependencies") as ensure_dependencies,
                 patch.object(
@@ -5128,10 +5128,10 @@ class RuntimeSettingsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"rag": {"retrieval": {"topK": 11}}}, paths)
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False),
                 patch.object(dashboard_settings, "get_rag_status", return_value=status),
                 patch.object(dashboard_settings.urllib.request, "urlopen", side_effect=fake_urlopen),
             ):
@@ -5208,7 +5208,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                     "query": "RAG current task",
                     "topK": 9,
                     "dateRange": {"from": "2026-06-01", "to": "2026-06-06"},
-                    "project": "open-nova",
+                    "project": "actanara",
                     "sourceSets": ["task-board-snapshot"],
                     "lifecycle": ["current-state"],
                     "workType": "task",
@@ -5221,7 +5221,7 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertEqual(result["schemaVersion"], 2)
         self.assertEqual(captured["payload"]["date_from"], "2026-06-01")
         self.assertEqual(captured["payload"]["date_to"], "2026-06-06")
-        self.assertEqual(captured["payload"]["project"], "open-nova")
+        self.assertEqual(captured["payload"]["project"], "actanara")
         self.assertEqual(captured["payload"]["source_sets"], ["task-board-snapshot"])
         self.assertEqual(captured["payload"]["lifecycle"], ["current-state"])
         self.assertEqual(captured["payload"]["work_type"], ["task"])
@@ -5269,10 +5269,10 @@ class RuntimeSettingsTests(unittest.TestCase):
         from app.routers import settings as settings_router
 
         with _persistent_secret_store_for_test(), tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             write_settings({"runtimeSources": {"dashboardReadSource": "foundation"}}, paths)
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
-                os.environ.pop("NOVA_DATA_FOUNDATION_ENABLED", None)
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
+                os.environ.pop("ACTANARA_DATA_FOUNDATION_ENABLED", None)
                 os.environ.pop("DASHBOARD_READ_SOURCE", None)
                 response = asyncio.run(
                     _dashboard_save_llm_provider_for_test(
@@ -5292,7 +5292,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                 self.assertIn("agentSchedulePrompt", settings_payload)
                 self.assertEqual(settings_payload["runtimeSources"]["dashboardReadSource"], "foundation")
                 self.assertEqual(settings_payload["authority"]["runtimeSources"]["DASHBOARD_READ_SOURCE"], "foundation")
-                self.assertEqual(settings_payload["runtimePath"]["selected"]["novaHome"], str(paths.home))
+                self.assertEqual(settings_payload["runtimePath"]["selected"]["actanaraHome"], str(paths.home))
                 self.assertTrue(settings_payload["runtimePath"]["validation"]["initialized"])
                 saved = asyncio.run(settings_router.api_update_settings({"schedule": {"dailyPipelineTime": "05:15"}}))
                 self.assertEqual(saved["schedule"]["dailyPipelineTime"], "05:15")
@@ -5309,8 +5309,8 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_dashboard_llm_provider_save_rejects_pipeline_unreadable_key(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 with (
                     patch.object(dashboard_settings, "default_secret_backend", return_value="macos-keychain"),
                     patch.object(
@@ -5345,10 +5345,10 @@ class RuntimeSettingsTests(unittest.TestCase):
         from app.routers import settings as settings_router
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
             read_settings(paths, redact_secrets=False)
             raw_before = json.loads((paths.config_dir / "settings.json").read_text(encoding="utf-8"))
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home), "OPEN_NOVA_SECRET_BACKEND": "memory"}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home), "ACTANARA_SECRET_BACKEND": "memory"}):
                 response = asyncio.run(
                     settings_router.api_update_llm_provider(
                         {
@@ -5371,8 +5371,8 @@ class RuntimeSettingsTests(unittest.TestCase):
         from app.routers import settings as settings_router
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
-            with patch.dict(os.environ, {"OPEN_NOVA_SECRET_BACKEND": "memory"}):
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
+            with patch.dict(os.environ, {"ACTANARA_SECRET_BACKEND": "memory"}):
                 write_llm_provider(
                     {
                         "mode": "preset",
@@ -5383,7 +5383,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                     paths,
                 )
             raw_before = json.loads((paths.config_dir / "settings.json").read_text(encoding="utf-8"))
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}, clear=False):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False):
                 response = asyncio.run(
                     settings_router.api_update_llm_provider(
                         {
@@ -5402,8 +5402,8 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_dashboard_settings_bundle_provider_save_rejects_pipeline_unreadable_key(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 with (
                     patch.object(dashboard_settings, "default_secret_backend", return_value="macos-keychain"),
                     patch.object(
@@ -5441,16 +5441,16 @@ class RuntimeSettingsTests(unittest.TestCase):
         from app.routers import settings as settings_router
 
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary", legacy_diary_root=Path(tmp) / "Diary")
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 status = asyncio.run(settings_router.api_onboarding_status(["nova-rag"]))
                 plan = asyncio.run(settings_router.api_onboarding_plan(["dashboard"]))
                 rejected = asyncio.run(settings_router.api_onboarding_plan(["bad-profile"]))
 
         self.assertTrue(status["readOnly"])
-        self.assertEqual(status["selectedDependencyProfiles"], ["open-nova", "dashboard", "nova-rag", "nova-task"])
+        self.assertEqual(status["selectedDependencyProfiles"], ["actanara", "dashboard", "nova-rag", "nova-task"])
         self.assertTrue(plan["planOnly"])
-        self.assertEqual(plan["selectedProfiles"], ["open-nova", "dashboard", "nova-task"])
+        self.assertEqual(plan["selectedProfiles"], ["actanara", "dashboard", "nova-task"])
         self.assertEqual(rejected.status_code, 400)
 
     @unittest.skipUnless(FASTAPI_AVAILABLE, "Dashboard runtime dependency fastapi is not installed in this interpreter")

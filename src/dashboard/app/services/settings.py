@@ -1,4 +1,4 @@
-"""Dashboard service for Nova runtime settings."""
+"""Dashboard service for Actanara runtime settings."""
 
 from __future__ import annotations
 
@@ -77,10 +77,10 @@ from .external_rag_skill_registration import (
 
 
 _DIARY_RELATIVE_DATE_RE = re.compile(r"(?:^|/)diary-(\d{4}-\d{2}-\d{2})/")
-RAG_SERVER_START_CONFIRMATION = "START OPEN NOVA RAG SERVER"
-RAG_SERVER_STOP_CONFIRMATION = "STOP OPEN NOVA RAG SERVER"
-RUNTIME_PATH_SELECT_CONFIRMATION = "SELECT OPEN NOVA RUNTIME PATH"
-DIARY_PROJECTION_REBUILD_CONFIRMATION = "REBUILD OPEN NOVA DIARY PROJECTIONS"
+RAG_SERVER_START_CONFIRMATION = "START ACTANARA RAG SERVER"
+RAG_SERVER_STOP_CONFIRMATION = "STOP ACTANARA RAG SERVER"
+RUNTIME_PATH_SELECT_CONFIRMATION = "SELECT ACTANARA RUNTIME PATH"
+DIARY_PROJECTION_REBUILD_CONFIRMATION = "REBUILD ACTANARA DIARY PROJECTIONS"
 RAG_SERVER_SEARCH_BUDGET_SECONDS = 60.0
 RAG_FACADE_TRANSPORT_GRACE_SECONDS = 5.0
 
@@ -485,7 +485,7 @@ def rag_external_agent_contract() -> dict:
         "version": 2,
         "readOnly": True,
         "mutationAllowed": False,
-        "purpose": "nova-RAG is a read-only long-term memory service backed by cleaned Open Nova pipeline outputs.",
+        "purpose": "nova-RAG is a read-only long-term memory service backed by cleaned Actanara pipeline outputs.",
         "usagePrompt": (
             "Use evidence sources in this order: (1) the current conversation, user-provided material, "
             "and local authoritative files; (2) the host Agent Runtime's built-in or connected "
@@ -1009,8 +1009,8 @@ def current_runtime_path() -> dict:
     return {
         "selected": _paths_payload(selected),
         "validation": _validation_payload(validation),
-        "envOverride": os.getenv("NOVA_HOME") is not None,
-        "locationFile": os.getenv("NOVA_LOCATION_FILE"),
+        "envOverride": os.getenv("ACTANARA_HOME") is not None,
+        "locationFile": os.getenv("ACTANARA_LOCATION_FILE"),
     }
 
 
@@ -1059,13 +1059,13 @@ def select_runtime_path(payload: dict) -> dict:
         "validation": _validation_payload(validate_home(selected.home)),
         "audit": audit,
         "importResult": _import_result_payload(import_result),
-        "envOverride": os.getenv("NOVA_HOME") is not None,
+        "envOverride": os.getenv("ACTANARA_HOME") is not None,
     }
 
 
 def _paths_payload(paths: RuntimePaths) -> dict:
     return {
-        "novaHome": str(paths.home),
+        "actanaraHome": str(paths.home),
         "configDir": str(paths.config_dir),
         "database": str(paths.db_path),
         "archives": str(paths.archives_dir),

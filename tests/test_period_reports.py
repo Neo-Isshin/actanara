@@ -116,7 +116,7 @@ def _fixture_metrics() -> dict:
 
 class PeriodReportProjectionTests(unittest.TestCase):
     def _home(self, root: Path):
-        paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "legacy")
+        paths = initialize_home(root / "Actanara", legacy_diary_root=root / "legacy")
         migrate(paths)
         run_id = begin_ingestion_run(paths, trigger_type="fixture", business_date=date(2026, 5, 19))
         return paths, run_id
@@ -213,7 +213,7 @@ class PeriodReportProjectionTests(unittest.TestCase):
                     "output": 1,
                     "cacheRead": 0,
                     "message_count": 2,
-                    "usageGroup": "nova-diary-v2",
+                    "usageGroup": "actanara",
                 },
                 {
                     "timestamp": "2026-06-22T12:00:00Z",
@@ -231,7 +231,7 @@ class PeriodReportProjectionTests(unittest.TestCase):
                     "output": 1,
                     "cacheRead": 0,
                     "message_count": 1,
-                    "usageGroup": "nova-diary-assets",
+                    "usageGroup": "actanara-assets",
                 }
             ],
         }
@@ -243,7 +243,7 @@ class PeriodReportProjectionTests(unittest.TestCase):
             projection = diary._period_asset_breakdown(date(2026, 6, 22), 7)
 
         rows = projection["workspaceUsage"]
-        self.assertEqual([row["name"] for row in rows], ["nova-diary-assets", "open-nova"])
+        self.assertEqual([row["name"] for row in rows], ["actanara-assets", "actanara"])
         self.assertEqual([row["tool"] for row in rows], ["Gemini CLI", "Codex"])
         self.assertEqual([row["days_active"] for row in rows], [1, 1])
         self.assertNotIn("home", [row["name"] for row in rows])
@@ -265,7 +265,7 @@ class PeriodReportProjectionTests(unittest.TestCase):
             )
             write_settings({"runtimeSources": {"reportReadSource": "foundation"}}, paths)
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch.object(diary, "SESSION_DIR", root / "empty-sessions"),
                 patch.object(diary, "_period_asset_breakdown", side_effect=AssertionError("live scanner called")),
                 patch.object(diary, "_session_memory_stats", side_effect=AssertionError("live memory scanner called")),
@@ -325,7 +325,7 @@ class PeriodReportProjectionTests(unittest.TestCase):
             write_rag_daily_status_snapshot(paths, current_end, {"entries": 13, "sizeMB": 1.8}, source_run_id=run_id)
             write_settings({"runtimeSources": {"reportReadSource": "foundation"}}, paths)
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch.object(diary, "_get_rag_memory_stats", return_value=({"entries": 99, "sizeMB": 9.9}, {})),
                 patch.object(diary, "parse_diary", side_effect=AssertionError("daily diary parser called")),
             ):
@@ -357,7 +357,7 @@ class PeriodReportProjectionTests(unittest.TestCase):
             )
             write_settings({"runtimeSources": {"reportReadSource": "foundation"}}, paths)
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch.object(diary, "SESSION_DIR", root / "empty-sessions"),
                 patch.object(diary, "_get_rag_memory_stats", return_value=({}, {})),
             ):
@@ -396,7 +396,7 @@ class PeriodReportProjectionTests(unittest.TestCase):
             )
             write_settings({"runtimeSources": {"reportReadSource": "foundation"}}, paths)
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch.object(diary, "SESSION_DIR", root / "empty-sessions"),
                 patch.object(diary, "_get_rag_memory_stats", return_value=({}, {})),
             ):
@@ -420,7 +420,7 @@ class PeriodReportProjectionTests(unittest.TestCase):
                 projection_type=DIARY_PERIOD_SUMMARY_PROJECTION,
             )
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch.object(diary, "SESSION_DIR", root / "empty-sessions"),
                 patch.object(diary, "_get_rag_memory_stats", return_value=({}, {})),
             ):
@@ -443,7 +443,7 @@ class PeriodReportProjectionTests(unittest.TestCase):
             )
             write_settings({"runtimeSources": {"reportReadSource": "legacy"}}, paths)
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch.object(diary, "parse_diary", side_effect=AssertionError("daily diary parser called")),
                 patch.object(diary, "_period_asset_breakdown", side_effect=AssertionError("legacy asset scanner called")),
             ):
@@ -458,7 +458,7 @@ class PeriodReportProjectionTests(unittest.TestCase):
             paths, _ = self._home(root)
             write_settings({"runtimeSources": {"reportReadSource": "foundation"}}, paths)
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch.object(diary, "SESSION_DIR", root / "empty-sessions"),
                 patch.object(diary, "_period_asset_breakdown", side_effect=AssertionError("live scanner called")),
                 patch.object(diary, "parse_diary", side_effect=AssertionError("daily diary parser called")),
@@ -484,7 +484,7 @@ class PeriodReportProjectionTests(unittest.TestCase):
             days = (today - start).days + 1
             write_settings({"runtimeSources": {"reportReadSource": "foundation"}}, paths)
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch.object(diary, "SESSION_DIR", root / "empty-sessions"),
                 patch.object(diary, "_period_asset_breakdown", side_effect=AssertionError("live scanner called")),
             ):
@@ -509,7 +509,7 @@ class PeriodReportProjectionTests(unittest.TestCase):
             )
             write_settings({"runtimeSources": {"reportReadSource": "foundation"}}, paths)
             with (
-                patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}),
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
                 patch.object(diary, "SESSION_DIR", root / "empty-sessions"),
                 patch.object(diary, "_get_rag_memory_stats", return_value=({"entries": 11, "sizeMB": 1.2}, {})),
                 patch.object(diary, "_session_memory_stats", side_effect=AssertionError("legacy memory scanner called")),
@@ -526,13 +526,13 @@ class PeriodReportProjectionTests(unittest.TestCase):
     def test_report_list_and_detail_use_foundation_documents_not_raw_markdown(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             report_dir = paths.diary_dir / "diary-2026-05-19"
             report_dir.mkdir(parents=True)
             report = report_dir / "智慧沉淀-260519.md"
             report.write_text("# runtime report\n\n## Lessons\nFoundation document content\n", encoding="utf-8")
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 reports = asyncio.run(diary_router.api_report_list())
                 missing = asyncio.run(diary_router.api_report_detail("report-2026-05-19"))
 
@@ -542,7 +542,7 @@ class PeriodReportProjectionTests(unittest.TestCase):
             migrate(paths)
             materialize_diary_markdown_day(paths, date(2026, 5, 19), source_run_id=None)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 reports = asyncio.run(diary_router.api_report_list())
                 detail = asyncio.run(diary_router.api_report_detail("report-2026-05-19"))
 
@@ -554,7 +554,7 @@ class PeriodReportProjectionTests(unittest.TestCase):
     def test_english_learning_report_fallback_title_uses_pipeline_profile(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "Diary")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             migrate(paths)
             write_settings({"pipeline": {"languageProfile": "en", "englishEnabled": True}}, paths)
             report_dir = paths.diary_dir / "diary-2026-05-19"
@@ -563,7 +563,7 @@ class PeriodReportProjectionTests(unittest.TestCase):
             report.write_text("## Lessons\nFoundation document content\n", encoding="utf-8")
             materialize_diary_markdown_day(paths, date(2026, 5, 19), source_run_id=None)
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 reports = asyncio.run(diary_router.api_report_list())
                 detail = asyncio.run(diary_router.api_report_detail("report-2026-05-19"))
 

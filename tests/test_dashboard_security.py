@@ -72,7 +72,7 @@ class DashboardSecurityTests(unittest.TestCase):
 
     def test_dashboard_settings_resolve_public_origin_fields(self):
         with tempfile.TemporaryDirectory() as tmp:
-            paths = initialize_home(Path(tmp) / "NovaDiary")
+            paths = initialize_home(Path(tmp) / "Actanara")
             write_settings(
                 {
                     "dashboard": {

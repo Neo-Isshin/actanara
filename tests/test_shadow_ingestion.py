@@ -73,7 +73,7 @@ class ShadowIngestionTests(unittest.TestCase):
     def test_usage_is_idempotent_hkt_scoped_and_protocol_excludes_cache_write(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "legacy")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "legacy")
             adapters = self._adapters(root)
             target = date(2026, 5, 19)
             (paths.config_dir / "projects-registry.json").write_text(
@@ -81,7 +81,7 @@ class ShadowIngestionTests(unittest.TestCase):
                     {
                         "version": 1,
                         "projects": [
-                            {"canonical_name": "open-nova", "canonical_root": "/workspace/example/open-nova"}
+                            {"canonical_name": "actanara", "canonical_root": "/workspace/example/actanara"}
                         ],
                     }
                 ),
@@ -113,7 +113,7 @@ class ShadowIngestionTests(unittest.TestCase):
             self.assertEqual(codex["protocol_total_tokens"], 15)
             self.assertEqual(json.loads(codex["metadata_json"])["token_semantics"], "last_token_usage")
             self.assertEqual(dict(codex_model), {"model_key": "gpt-5.5", "tokens": 15})
-            self.assertEqual([row["normalized_path"] for row in evidence], ["/workspace/example/open-nova"])
+            self.assertEqual([row["normalized_path"] for row in evidence], ["/workspace/example/actanara"])
             project_rows = daily_project_totals(paths, target)
             assigned = [row for row in project_rows if row["project_id_or_bucket"].startswith("project:")]
             self.assertEqual(assigned[0]["tool_key"], "claude-code")
@@ -132,7 +132,7 @@ class ShadowIngestionTests(unittest.TestCase):
                 "total_tokens": 12,
             }
             rows = [
-                {"type": "session_meta", "payload": {"id": "codex-session", "cwd": "/workspace/example/open-nova"}},
+                {"type": "session_meta", "payload": {"id": "codex-session", "cwd": "/workspace/example/actanara"}},
                 {"timestamp": "2026-05-19T04:00:00Z", "type": "turn_context", "payload": {"model": "gpt-5.5"}},
                 {
                     "timestamp": "2026-05-19T04:00:00Z",
@@ -159,7 +159,7 @@ class ShadowIngestionTests(unittest.TestCase):
             root = Path(tmp)
             artifact_path = root / "rollout-codex.jsonl"
             rows = [
-                {"type": "session_meta", "payload": {"id": "codex-session", "cwd": "/workspace/example/open-nova"}},
+                {"type": "session_meta", "payload": {"id": "codex-session", "cwd": "/workspace/example/actanara"}},
                 {"timestamp": "2026-05-19T02:00:00Z", "type": "turn_context", "payload": {"model": "gpt-5.5"}},
                 {
                     "timestamp": "2026-05-19T02:00:00Z",
@@ -171,7 +171,7 @@ class ShadowIngestionTests(unittest.TestCase):
                 },
             ]
             artifact_path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=root / "legacy")
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "legacy")
             write_settings({"general": {"timezone": "UTC"}}, paths)
 
             result = run_shadow_ingestion(
@@ -191,7 +191,7 @@ class ShadowIngestionTests(unittest.TestCase):
             root = Path(tmp)
             artifact_path = root / "rollout-codex.jsonl"
             rows = [
-                {"type": "session_meta", "payload": {"id": "codex-session", "cwd": "/workspace/example/open-nova"}},
+                {"type": "session_meta", "payload": {"id": "codex-session", "cwd": "/workspace/example/actanara"}},
                 {
                     "timestamp": "2026-05-19T04:00:00Z",
                     "type": "event_msg",
@@ -268,7 +268,7 @@ class ShadowIngestionTests(unittest.TestCase):
             agents = openclaw / "agents"
             (agents / "main" / "memory").mkdir(parents=True)
             (agents / "main" / "memory" / "memory.jsonl").write_text("{}\n", encoding="utf-8")
-            paths = initialize_home(root / "NovaDiary", legacy_diary_root=legacy)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=legacy)
             from data_foundation.jobs import begin_ingestion_run
             from data_foundation.observations import observe_non_rag_assets
 
@@ -295,7 +295,7 @@ class ShadowIngestionTests(unittest.TestCase):
     def test_period_ingestion_scans_sources_once(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary")
+            paths = initialize_home(root / "Actanara")
             start = date(2026, 5, 18)
             end = date(2026, 5, 19)
             result = run_shadow_period_ingestion(paths, start, end, adapters=self._adapters(root), observe_assets=False)
@@ -306,7 +306,7 @@ class ShadowIngestionTests(unittest.TestCase):
     def test_gemini_zero_token_message_is_kept_for_legacy_message_parity(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary")
+            paths = initialize_home(root / "Actanara")
             chat_root = root / "gemini"
             chat_root.mkdir()
             (chat_root / "session-zero.jsonl").write_text(

@@ -166,7 +166,7 @@ def list_refresh_jobs(*, limit: int = 20) -> dict:
     jobs = recent_projection_refresh_jobs(paths, limit=limit)
     return {
         "runtime": {
-            "novaHome": str(paths.home),
+            "actanaraHome": str(paths.home),
             "database": str(paths.db_path),
             "databaseExists": paths.db_path.exists(),
         },
@@ -306,7 +306,7 @@ def get_reader_readiness(*, period_start: date | None = None, period_days: int |
     return {
         "status": "ready" if ai_assets["ready"] and (report_ready is not False) and (diary_tasks_ready is not False) else "not_ready",
         "runtime": {
-            "novaHome": str(paths.home),
+            "actanaraHome": str(paths.home),
             "database": str(paths.db_path),
             "databaseExists": paths.db_path.exists(),
         },

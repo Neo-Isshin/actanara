@@ -245,7 +245,7 @@ def _resolve_embedding_device() -> str:
 
 def _internal_encode_authorized(request: Request) -> bool:
     expected = _read_internal_token()
-    supplied = str(request.headers.get("x-open-nova-rag-internal-token") or "")
+    supplied = str(request.headers.get("x-actanara-rag-internal-token") or "")
     return bool(expected and supplied and hmac.compare_digest(expected, supplied))
 
 

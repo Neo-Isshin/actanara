@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 from app.services import launcher, msgbox, rag_index_jobs, scheduler, settings
 from data_foundation.onboarding_plan import onboarding_subsystem_plan
-from data_foundation.onboarding_status import nova_onboarding_status
+from data_foundation.onboarding_status import actanara_onboarding_status
 from data_foundation.settings_transaction import SettingsTransactionError
 import logging
 
@@ -129,7 +129,7 @@ async def api_scheduler_system_timer_preview():
 @router.get("/onboarding/status")
 async def api_onboarding_status(profile: list[str] | None = Query(None)):
     try:
-        return nova_onboarding_status(selected_profiles=profile)
+        return actanara_onboarding_status(selected_profiles=profile)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     except Exception as e:

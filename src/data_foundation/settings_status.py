@@ -1,4 +1,4 @@
-"""Read-only Nova settings status payloads for future CLI/onboarding surfaces."""
+"""Read-only Actanara settings status payloads for future CLI/onboarding surfaces."""
 
 from __future__ import annotations
 
@@ -90,7 +90,7 @@ def _doctor_check_profile(check_id: str) -> str:
     return "all"
 
 
-def nova_settings_status(paths: RuntimePaths | None = None, *, doctor_profile: str = "all") -> dict[str, Any]:
+def actanara_settings_status(paths: RuntimePaths | None = None, *, doctor_profile: str = "all") -> dict[str, Any]:
     """Return a read-only status payload suitable for `status` and `doctor` views."""
     paths = paths or load_paths()
     profile = _normalize_doctor_profile(doctor_profile)
@@ -131,7 +131,7 @@ def nova_settings_status(paths: RuntimePaths | None = None, *, doctor_profile: s
         "readOnly": True,
         "doctorProfile": profile,
         "runtime": {
-            "novaHome": str(paths.home),
+            "actanaraHome": str(paths.home),
             "settingsPath": settings.get("settingsPath"),
             "database": str(paths.db_path),
             "state": str(paths.state_dir),
@@ -169,7 +169,7 @@ def nova_settings_status(paths: RuntimePaths | None = None, *, doctor_profile: s
     }
 
 
-def format_nova_settings_status(payload: dict[str, Any]) -> str:
+def format_actanara_settings_status(payload: dict[str, Any]) -> str:
     runtime = payload.get("runtime") or {}
     summary = payload.get("summary") or {}
     profile = str(payload.get("doctorProfile") or "all")
@@ -191,14 +191,14 @@ def format_nova_settings_status(payload: dict[str, Any]) -> str:
     ]
     by_id = {str(check.get("id") or ""): check for check in checks}
     if "llm-provider" in by_id and by_id["llm-provider"].get("status") != "ok":
-        next_steps.append("open-nova model set --help")
+        next_steps.append("actanara model set --help")
     if "llm-api-key" in by_id and by_id["llm-api-key"].get("status") != "ok":
-        next_steps.append("open-nova model key --value-stdin")
+        next_steps.append("actanara model key --value-stdin")
     return render_cli(
         title,
         fields=(
             ("Status", status_label(summary.get("status"))),
-            ("Data folder", runtime.get("novaHome", "—")),
+            ("Data folder", runtime.get("actanaraHome", "—")),
             ("Dashboard", dashboard.get("url", "—")),
             ("AI model", f"{provider.get('provider') or 'Not set'} / {provider.get('model') or 'Not set'}"),
             ("API key", "Ready" if provider.get("hasApiKey") else "Needs setup"),
@@ -248,7 +248,7 @@ def _friendly_settings_check(check: dict[str, Any]) -> str:
         source = check_id.split(":", 1)[1].split(".", 1)[0]
         name = friendly_name(source, fallback="Activity source")
         return status_item(status, f"{name} activity is available", f"{name} activity is unavailable")
-    ready, attention = labels.get(check_id, ("Open Nova check passed", "Open Nova needs attention"))
+    ready, attention = labels.get(check_id, ("Actanara check passed", "Actanara needs attention"))
     return status_item(status, ready, attention)
 
 
@@ -260,7 +260,7 @@ def _dedupe_text(values: list[str]) -> list[str]:
     return result
 
 
-def dump_nova_settings_status_json(payload: dict[str, Any]) -> str:
+def dump_actanara_settings_status_json(payload: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
 
 
@@ -690,10 +690,10 @@ def _service_registration(settings: dict[str, Any], runtime_source: dict[str, An
     by_label = {str(item.get("label")): item for item in launch_agents if isinstance(item, dict)}
 
     dashboard_labels = [
-        str(dashboard.get("serviceLabel") or "com.open-nova.dashboard"),
-        str(dashboard.get("watchdogLabel") or "com.open-nova.dashboard.watchdog"),
+        str(dashboard.get("serviceLabel") or "com.actanara.dashboard"),
+        str(dashboard.get("watchdogLabel") or "com.actanara.dashboard.watchdog"),
     ]
-    rag_label = str(((rag_server.get("launchAgent") or {}).get("label")) or "com.open-nova.rag-server")
+    rag_label = str(((rag_server.get("launchAgent") or {}).get("label")) or "com.actanara.rag-server")
     return {
         "schemaVersion": 1,
         "services": [
@@ -838,7 +838,7 @@ def _valid_v2_runtime_source_manifest(manifest: dict[str, Any]) -> bool:
         type(manifest.get("schemaVersion")) is not int
         or manifest.get("schemaVersion") != 2
         or set(manifest) != RUNTIME_SOURCE_FINAL_FIELDS
-        or manifest.get("product") != "open-nova"
+        or manifest.get("product") != "actanara"
         or manifest.get("deploymentMode") != "release-symlink"
         or _safe_manifest_datetime(manifest.get("copiedAt")) is None
         or (
@@ -1074,7 +1074,7 @@ def _safe_manifest_commit(value: Any) -> str | None:
 def _public_runtime_source_manifest(manifest: dict[str, Any], locator: dict[str, Any]) -> dict[str, Any]:
     public: dict[str, Any] = {
         "schemaVersion": manifest.get("schemaVersion") if type(manifest.get("schemaVersion")) is int else None,
-        "product": manifest.get("product") if manifest.get("schemaVersion") == 2 else "open-nova",
+        "product": manifest.get("product") if manifest.get("schemaVersion") == 2 else "actanara",
         "deploymentMode": (
             "release-symlink" if manifest.get("deploymentMode") == "release-symlink" else None
         ),
@@ -1138,7 +1138,7 @@ def _public_runtime_source_manifest(manifest: dict[str, Any], locator: dict[str,
 
 def _runtime_source_provenance(paths: RuntimePaths, dashboard: dict[str, Any], settings: dict[str, Any]) -> dict[str, Any]:
     project_root = Path(str(dashboard.get("projectRoot") or "")).expanduser()
-    manifest_path = project_root / ".open-nova-runtime-source.json"
+    manifest_path = project_root / ".actanara-runtime-source.json"
     payload: dict[str, Any] = {
         "status": "missing",
         "manifestExists": manifest_path.exists(),
@@ -1311,9 +1311,9 @@ def _launch_agent_source_alignment(dashboard: dict[str, Any], settings: dict[str
     rag = settings.get("rag") if isinstance(settings.get("rag"), dict) else {}
     rag_server = rag.get("server") if isinstance(rag.get("server"), dict) else {}
     labels = [
-        str(dashboard.get("serviceLabel") or "com.open-nova.dashboard"),
-        str(dashboard.get("watchdogLabel") or "com.open-nova.dashboard.watchdog"),
-        str(((rag_server.get("launchAgent") or {}).get("label")) or "com.open-nova.rag-server"),
+        str(dashboard.get("serviceLabel") or "com.actanara.dashboard"),
+        str(dashboard.get("watchdogLabel") or "com.actanara.dashboard.watchdog"),
+        str(((rag_server.get("launchAgent") or {}).get("label")) or "com.actanara.rag-server"),
     ]
     launch_agents = []
     mismatches = []
@@ -1349,7 +1349,7 @@ def _launch_agent_source_alignment(dashboard: dict[str, Any], settings: dict[str
             or (isinstance(working_directory, str) and working_directory == expected)
         )
         source_authority_present = bool(program_references) or working_directory_present
-        declared_project_root = env.get("NOVA_DASHBOARD_PROJECT_ROOT")
+        declared_project_root = env.get("ACTANARA_DASHBOARD_PROJECT_ROOT")
         environment_aligned = declared_project_root is None or (
             isinstance(declared_project_root, str) and declared_project_root == expected
         )
@@ -1363,7 +1363,7 @@ def _launch_agent_source_alignment(dashboard: dict[str, Any], settings: dict[str
             {
                 "status": "aligned" if aligned else "mismatch",
                 "aligned": aligned,
-                "reloadCommand": f"open-nova dashboard restart --label {label}",
+                "reloadCommand": f"actanara dashboard restart --label {label}",
             }
         )
         launch_agents.append(entry)
@@ -1380,7 +1380,7 @@ def _launch_agent_source_alignment(dashboard: dict[str, Any], settings: dict[str
             if not mismatches
             else "managed Dashboard LaunchAgent plist path/source mismatch; rewrite or reinstall LaunchAgents after source sync"
         ),
-        "postSyncReloadCommand": "open-nova dashboard restart",
+        "postSyncReloadCommand": "actanara dashboard restart",
     }
 
 
@@ -1448,7 +1448,7 @@ def _resource_profile(paths: RuntimePaths, dashboard: dict[str, Any], settings: 
             "resourceClass": "burst",
         },
         "externalTools": {
-            "processModel": "file/database reads by Dashboard or pipeline; no Nova-managed resident process",
+            "processModel": "file/database reads by Dashboard or pipeline; no Actanara-managed resident process",
             "expectedResidentProcesses": 0,
         },
     }

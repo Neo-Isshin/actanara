@@ -1,6 +1,6 @@
 # nova-RAG External Agent Read-Only Contract
 
-Status: Open Nova v1.0.x public interface contract
+Status: Actanara v1.0.x public interface contract
 
 ## Scope
 
@@ -11,7 +11,7 @@ change settings, start or stop servers, run indexing or promote indexes.
 
 ## Allowed Dashboard Facade
 
-External agents that call Open Nova through the Dashboard process should use
+External agents that call Actanara through the Dashboard process should use
 only:
 
 ```text
@@ -44,11 +44,11 @@ values; callers must not localize those values.
 Local CLI wrapper:
 
 ```text
-open-nova search "deployment issue" --top-k 5 --json
+actanara search "deployment issue" --top-k 5 --json
 ```
 
 The product wrapper calls only `POST /api/rag/external/search`. The legacy
-compatibility form `open-nova rag search-memory ...` remains available. Search
+compatibility form `actanara rag search-memory ...` remains available. Search
 commands must not start the
 nova-RAG server, run indexing, mutate memories or write settings.
 
@@ -270,7 +270,7 @@ legacy index.
 - `legacy` and `v2-shadow` modes are retired from the production search path;
   callers must report `available=false` rather than falling back to a legacy
   index when an active v2 manifest is not ready.
-- Production `~/.open-nova/reserved/rag/v2/manifest.json` is the active search
+- Production `~/.actanara/reserved/rag/v2/manifest.json` is the active search
   boundary. External-agent calls must not run indexing, promote candidates, or
   mutate the active manifest.
 - Generated Diary Markdown, embedded JSON shape, prompt payloads and output

@@ -3,9 +3,9 @@ requires = ["setuptools==83.0.0", "wheel==0.47.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "open-nova"
+name = "actanara"
 version = "1.0.2"
-description = "Open Nova local diary runtime, pipeline, dashboard, nova-RAG, and task system."
+description = "Actanara local diary runtime, pipeline, dashboard, nova-RAG, and task system."
 readme = "README.md"
 authors = [
   { name = "Neo-Isshin", email = "nxc8335@gmail.com" },
@@ -16,9 +16,9 @@ requires-python = ">=3.11"
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/Neo-Isshin/open-nova"
-Repository = "https://github.com/Neo-Isshin/open-nova"
-Issues = "https://github.com/Neo-Isshin/open-nova/issues"
+Homepage = "https://github.com/Neo-Isshin/actanara"
+Repository = "https://github.com/Neo-Isshin/actanara"
+Issues = "https://github.com/Neo-Isshin/actanara/issues"
 
 [project.optional-dependencies]
 dashboard = [
@@ -50,7 +50,7 @@ dev-test = [
 ]
 
 [project.scripts]
-open-nova = "data_foundation.cli:main"
+actanara = "data_foundation.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src", "app" = "src/dashboard/app", "advanced" = "advanced"}

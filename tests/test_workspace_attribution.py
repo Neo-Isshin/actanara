@@ -75,7 +75,7 @@ class WorkspaceAttributionTests(unittest.TestCase):
             project = root / "work" / "cataloged"
             project.mkdir(parents=True)
             (project / ".git").mkdir()
-            paths = initialize_home(root / "NovaDiary")
+            paths = initialize_home(root / "Actanara")
             migrate(paths)
             with connect(paths) as connection:
                 connection.execute(
@@ -108,7 +108,7 @@ class WorkspaceAttributionTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertFalse(workspace_usage_display_allowed(name))
 
-        self.assertTrue(workspace_usage_display_allowed("open-nova"))
+        self.assertTrue(workspace_usage_display_allowed("actanara"))
         self.assertTrue(workspace_usage_display_allowed("homebrew", project_marker_confirmed=True))
 
     def test_usage_group_resolver_prefers_openclaw_agent_path(self):
@@ -123,27 +123,27 @@ class WorkspaceAttributionTests(unittest.TestCase):
 
     def test_usage_group_resolver_uses_codex_cwd_project_marker(self):
         with tempfile.TemporaryDirectory() as tmp:
-            project = Path(tmp) / "work" / "open-nova"
+            project = Path(tmp) / "work" / "actanara"
             nested = project / "src"
             nested.mkdir(parents=True)
-            (project / "pyproject.toml").write_text('[project]\nname = "open-nova"\n', encoding="utf-8")
+            (project / "pyproject.toml").write_text('[project]\nname = "actanara"\n', encoding="utf-8")
 
             resolved = resolve_usage_group("codex", cwd=str(nested))
 
-        self.assertEqual(resolved.group, "open-nova")
+        self.assertEqual(resolved.group, "actanara")
         self.assertEqual(resolved.confidence, "high")
         self.assertEqual(resolved.source, "cwd")
 
     def test_usage_group_resolver_uses_codex_transcript_when_cwd_is_home(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            project = root / "work" / "open-nova"
+            project = root / "work" / "actanara"
             project.mkdir(parents=True)
-            (project / "pyproject.toml").write_text('[project]\nname = "open-nova"\n', encoding="utf-8")
+            (project / "pyproject.toml").write_text('[project]\nname = "actanara"\n', encoding="utf-8")
             session = root / ".codex" / "sessions" / "rollout-test.jsonl"
             session.parent.mkdir(parents=True)
             session.write_text(
-                '{"type":"event_msg","payload":{"type":"user_message","message":"继续 open-nova，项目目录：'
+                '{"type":"event_msg","payload":{"type":"user_message","message":"继续 actanara，项目目录：'
                 + str(project)
                 + '"}}\n',
                 encoding="utf-8",
@@ -151,28 +151,28 @@ class WorkspaceAttributionTests(unittest.TestCase):
 
             resolved = resolve_usage_group("codex", raw_path=str(session), cwd=str(Path.home()))
 
-        self.assertEqual(resolved.group, "open-nova")
+        self.assertEqual(resolved.group, "actanara")
         self.assertEqual(resolved.confidence, "high")
         self.assertEqual(resolved.source, "codex-transcript-path")
 
-    def test_legacy_nova_diary_v2_name_is_canonicalized_to_open_nova(self):
+    def test_actanara_project_name_is_canonical(self):
         with tempfile.TemporaryDirectory() as tmp:
-            project = Path(tmp) / "nova-diary-v2"
+            project = Path(tmp) / "actanara"
             project.mkdir()
-            (project / "pyproject.toml").write_text('[project]\nname = "nova-diary-v2"\n', encoding="utf-8")
+            (project / "pyproject.toml").write_text('[project]\nname = "actanara"\n', encoding="utf-8")
 
-            self.assertEqual(workspace_display_name(project), "open-nova")
+            self.assertEqual(workspace_display_name(project), "actanara")
 
     def test_user_workspace_attribution_rules_apply_to_paths_aliases_and_catalog(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            paths = initialize_home(root / "NovaDiary")
+            paths = initialize_home(root / "Actanara")
             project = root / "work" / "TokenClock"
             nested = project / "src"
             nested.mkdir(parents=True)
             (project / "package.json").write_text(json.dumps({"name": "TokenClock"}), encoding="utf-8")
 
-            with patch.dict(os.environ, {"NOVA_HOME": str(paths.home)}):
+            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
                 clear_workspace_attribution_caches()
                 preview = add_workspace_attribution_rule(
                     {"type": "path", "tool": "gemini-cli", "workspacePath": str(project)},
@@ -266,9 +266,9 @@ class WorkspaceAttributionTests(unittest.TestCase):
     def test_usage_group_resolver_uses_gemini_transcript_when_fallback_is_container(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            project = root / "Volumes" / "Example" / "work" / "open-nova"
+            project = root / "Volumes" / "Example" / "work" / "actanara"
             project.mkdir(parents=True)
-            (project / "pyproject.toml").write_text('[project]\nname = "open-nova"\n', encoding="utf-8")
+            (project / "pyproject.toml").write_text('[project]\nname = "actanara"\n', encoding="utf-8")
             session = root / ".gemini" / "tmp" / "ssd" / "chats" / "session-test.jsonl"
             session.parent.mkdir(parents=True)
             session.write_text(
@@ -278,7 +278,7 @@ class WorkspaceAttributionTests(unittest.TestCase):
 
             resolved = resolve_usage_group("gemini-cli", raw_path=str(session), fallback="Example")
 
-        self.assertEqual(resolved.group, "open-nova")
+        self.assertEqual(resolved.group, "actanara")
         self.assertEqual(resolved.confidence, "high")
         self.assertEqual(resolved.source, "gemini-transcript-path")
 

@@ -195,8 +195,8 @@ Dashboard Nova-Task reads SQLite authority. Current review behavior:
 Standalone recon:
 
 ```bash
-PYTHONPATH=~/.open-nova/app/source/src \
-python3 ~/.open-nova/app/source/advanced/pipeline/run_nova_task_work_graph_reconciliation.py \
+PYTHONPATH=~/.actanara/app/source/src \
+python3 ~/.actanara/app/source/advanced/pipeline/run_nova_task_work_graph_reconciliation.py \
   --date YYYY-MM-DD \
   --technical-report /path/to/技术进展-YYMMDD.md \
   --limit 120 \
@@ -206,8 +206,8 @@ python3 ~/.open-nova/app/source/advanced/pipeline/run_nova_task_work_graph_recon
 Full daily pipeline:
 
 ```bash
-PYTHONPATH=~/.open-nova/app/source/src \
-python3 ~/.open-nova/app/source/advanced/pipeline/run_daily_pipeline.py YYYY-MM-DD
+PYTHONPATH=~/.actanara/app/source/src \
+python3 ~/.actanara/app/source/advanced/pipeline/run_daily_pipeline.py YYYY-MM-DD
 ```
 
 ## Regression Expectations
