@@ -954,7 +954,7 @@ def build_stable_install_asset(
     if (
         b"if true; then\n" not in payload
         or not payload.endswith(b"fi\n")
-        or b"resolve_latest_stable_commit" not in payload
+        or b"resolve_official_main_commit" not in payload
     ):
         raise ReleaseBuildError("stable install bootstrap is missing its hosted-stream safety contract")
     target = output_directory / STABLE_INSTALL_ASSET

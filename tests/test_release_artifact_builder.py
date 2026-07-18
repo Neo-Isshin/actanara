@@ -75,7 +75,7 @@ def _init_repository(root: Path, *, version: str = "7.8.9") -> str:
     bootstrap.write_text(
         "#!/usr/bin/env zsh\n"
         "if true; then\n"
-        "resolve_latest_stable_commit() { return 0; }\n"
+        "resolve_official_main_commit() { return 0; }\n"
         "fi\n",
         encoding="utf-8",
     )
