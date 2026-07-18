@@ -4,6 +4,19 @@ All notable public changes to Actanara are documented here.
 
 ## Unreleased
 
+## [1.1.0] - 2026-07-18
+
+### Changed
+
+- Rename the main project, package, CLI, Runtime, Dashboard, installer,
+  LaunchAgents, documentation, and public repository from Open Nova to
+  Actanara.
+- Replace main-project environment variables and machine-contract path fields
+  with `ACTANARA_*` and `actanaraHome`; `nova-RAG`, `Nova-Task`,
+  `NOVA_RAG_*`, and `nova_task_*` remain subsystem contracts.
+- Publish Actanara-branded package and Runtime artifacts. The rename is a clean
+  project transition and does not retain old main-project aliases.
+
 ### Fixed
 
 - Validate only the selected installer payload blobs when an offline update
@@ -101,6 +114,7 @@ managed background services executing an older concrete source directory.
 - Runtime secrets remain in the Runtime-local private secret store and are
   excluded from source and release artifacts.
 
+[1.1.0]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.1.0
 [1.0.2]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.0.2
 [1.0.1]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.0.1
 [1.0.0]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.0.0
