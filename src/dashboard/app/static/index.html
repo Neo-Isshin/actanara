@@ -328,6 +328,9 @@
       <div class="page-subtitle" id="mr_sub" data-i18n="loadingEllipsis">加载中…</div>
       <div class="wr-summary-quote" id="mr_summaryQuote" style="display:none"></div>
       <button class="wr-export-btn" onclick="window.print()" title="导出 / 打印" data-i18n-title="exportPrintTitle">🖨️ <span data-i18n="exportPrint">导出</span></button>
+      <button type="button" class="wr-export-btn share-trigger-btn" id="mrShareBtn" onclick="openReportSharePreview('monthly', 'mr')" disabled>
+        <span class="share-button-icon" data-share-icon="share" aria-hidden="true"></span><span data-i18n="sharePng">分享图片</span>
+      </button>
       <button class="wr-export-btn" id="mrRefreshAssetsBtn" onclick="refreshMonthlyAssets()" title="在后台重建资产投影" data-i18n="refreshAssets" data-i18n-title="refreshAssetsTitle">更新资产</button>
     </div>
     <div class="wr-loading" id="mr_loading"><div class="wr-spinner"></div><span data-i18n="loadingMonthly">正在读取月报快照…</span></div>
@@ -367,6 +370,12 @@
         <div class="page-badge">📊 AI Assets</div>
         <button id="aiAssetsRefreshBtn" onclick="loadAiAssets()" style="background:var(--white);border:1px solid var(--border);color:var(--navy);font-size:12px;padding:4px 12px;border-radius:6px;cursor:pointer;transition:all 0.15s;display:inline-flex;align-items:center;gap:4px" onmouseover="this.style.borderColor='var(--purple-light)'" onmouseout="this.style.borderColor='var(--border)'">🔄 <span data-i18n="refresh">刷新</span></button>
         <button id="aiAssetsSnapshotRefreshBtn" onclick="refreshAiAssetsSnapshot()" style="background:var(--white);border:1px solid var(--border);color:var(--navy);font-size:12px;padding:4px 12px;border-radius:6px;cursor:pointer;transition:all 0.15s;display:inline-flex;align-items:center;gap:4px" onmouseover="this.style.borderColor='var(--purple-light)'" onmouseout="this.style.borderColor='var(--border)'" data-i18n="backgroundUpdate">后台更新</button>
+        <button type="button" class="wr-export-btn share-trigger-btn" id="aiAssetsShareBtn" onclick="openAiAssetsSharePreview()" disabled>
+          <span class="share-button-icon" data-share-icon="share" aria-hidden="true"></span><span data-i18n="sharePng">分享图片</span>
+        </button>
+        <button type="button" class="wr-export-btn" id="aiAssetsBackupBtn" onclick="openAiAssetsBackupModal()">
+          <span class="share-button-icon" data-share-icon="archive" aria-hidden="true"></span><span data-i18n="dataBackup">数据备份</span>
+        </button>
         <span id="aiAssetsUpdateTime" style="font-size:11px;color:var(--slate)"></span>
       </div>
     </div>

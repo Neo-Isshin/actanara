@@ -36,7 +36,7 @@ from data_foundation.settings import (
 from data_foundation.settings_transaction import recover_settings_transactions
 from data_foundation.time import resolve_timezone_name
 
-from . import foundation
+from . import backups, foundation
 
 logger = logging.getLogger("dashboard.scheduler")
 
@@ -746,6 +746,12 @@ async def _scheduler_loop() -> None:
             await asyncio.to_thread(run_due_snapshot_refresh)
         except Exception:
             logger.exception("Foundation settings scheduler tick failed")
+        try:
+            await asyncio.to_thread(backups.run_due_backup)
+        except Exception:
+            # Backup failures remain retryable within the current cadence bucket
+            # and must not prevent Foundation snapshot scheduling.
+            logger.exception("Actanara data-backup scheduler tick failed")
         try:
             await asyncio.wait_for(_stop_event.wait(), timeout=60)
         except asyncio.TimeoutError:

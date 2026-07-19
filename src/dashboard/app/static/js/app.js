@@ -308,6 +308,43 @@ const DASHBOARD_TEXT = {
     totalTokenMetric: '总 Token',
     totalMessageMetric: '总消息',
     cacheRateMetric: '缓存率',
+    sharePng: '分享图片',
+    sharePreviewTitle: '分享图片预览',
+    sharePreparing: '正在本地生成 PNG…',
+    shareCopyPng: '复制 PNG',
+    shareDownloadPng: '保存 PNG',
+    shareRetry: '重试',
+    shareCopied: 'PNG 已复制到剪贴板。',
+    shareClipboardUnavailable: '当前浏览器无法复制图片，请使用“保存 PNG”。',
+    shareCopyFailed: '复制失败，请使用“保存 PNG”。',
+    shareDownloadStarted: '已开始保存 PNG。',
+    shareDownloadFailed: '无法保存 PNG，请重试。',
+    shareRenderFailed: 'PNG 生成失败，请重试。',
+    sharePrivacyNote: '图片仅在当前浏览器生成，不会上传；只包含聚合数据。',
+    shareThemeLight: '浅色',
+    shareThemeDark: '深色',
+    sharePreviewAlt: 'Actanara 聚合数据分享图片预览',
+    shareRange: '时间范围',
+    shareTrend: '趋势',
+    shareOutcomes: '成果',
+    shareWeeklyTitle: 'Actanara 周度进展',
+    shareMonthlyTitle: 'Actanara 月度进展',
+    shareAssetsTitle: 'Actanara AI 资产概览',
+    shareMetricTokens: '聚合 Token',
+    shareMetricMessages: '消息数',
+    shareMetricSessions: '活跃 Sessions',
+    shareMetricCacheRate: '缓存率',
+    shareMetricActiveDays: '活跃天数',
+    shareMetricActiveSystems: '活跃系统',
+    shareOutcomeCompleted: '已完成任务',
+    shareOutcomeRagDelta: 'nova-RAG 增量',
+    shareOutcomeCronRate: '定时任务成功率',
+    shareOutcomeDiaries: '日记累计',
+    shareOutcomeRagEntries: 'nova-RAG 条目',
+    shareSummaryReport: (days, completed) => `本周期覆盖 ${days} 天，完成 ${completed} 项任务；下方仅展示聚合变化。`,
+    shareSummaryAssets: (days, systems) => `最近 ${days} 天趋势与 ${systems} 个活跃系统的聚合概览。`,
+    shareComparedPrevious: '较上一周期',
+    shareGeneratedLocally: '本地生成 · 隐私字段已排除',
   },
   en: {
     dayUnit: 'days',
@@ -446,6 +483,43 @@ const DASHBOARD_TEXT = {
     totalTokenMetric: 'Total Tokens',
     totalMessageMetric: 'Total Messages',
     cacheRateMetric: 'Cache Rate',
+    sharePng: 'Share PNG',
+    sharePreviewTitle: 'Share Image Preview',
+    sharePreparing: 'Generating PNG locally...',
+    shareCopyPng: 'Copy PNG',
+    shareDownloadPng: 'Save PNG',
+    shareRetry: 'Retry',
+    shareCopied: 'PNG copied to the clipboard.',
+    shareClipboardUnavailable: 'Image clipboard is unavailable; use “Save PNG”.',
+    shareCopyFailed: 'Copy failed; use “Save PNG”.',
+    shareDownloadStarted: 'PNG save started.',
+    shareDownloadFailed: 'PNG could not be saved. Try again.',
+    shareRenderFailed: 'PNG generation failed. Try again.',
+    sharePrivacyNote: 'The image is generated only in this browser and contains aggregate data only.',
+    shareThemeLight: 'Light',
+    shareThemeDark: 'Dark',
+    sharePreviewAlt: 'Actanara aggregate data share image preview',
+    shareRange: 'Time Range',
+    shareTrend: 'Trend',
+    shareOutcomes: 'Outcomes',
+    shareWeeklyTitle: 'Actanara Weekly Progress',
+    shareMonthlyTitle: 'Actanara Monthly Progress',
+    shareAssetsTitle: 'Actanara AI Assets Overview',
+    shareMetricTokens: 'Aggregate Tokens',
+    shareMetricMessages: 'Messages',
+    shareMetricSessions: 'Active Sessions',
+    shareMetricCacheRate: 'Cache Rate',
+    shareMetricActiveDays: 'Active Days',
+    shareMetricActiveSystems: 'Active Systems',
+    shareOutcomeCompleted: 'Completed Tasks',
+    shareOutcomeRagDelta: 'nova-RAG Growth',
+    shareOutcomeCronRate: 'Scheduled Job Success',
+    shareOutcomeDiaries: 'Diary Entries',
+    shareOutcomeRagEntries: 'nova-RAG Entries',
+    shareSummaryReport: (days, completed) => `${days} days covered and ${completed} tasks completed; only aggregate changes are shown below.`,
+    shareSummaryAssets: (days, systems) => `Aggregate trends across the last ${days} days and ${systems} active systems.`,
+    shareComparedPrevious: 'vs previous period',
+    shareGeneratedLocally: 'Generated locally · private fields excluded',
   },
 };
 
@@ -1984,6 +2058,48 @@ const AI_ASSETS_TEXT = {
     backgroundUpdate: '后台更新',
     retryUpdate: '重试更新',
     updateFailed: 'AI Assets 更新失败: ',
+    dataBackup: '数据备份',
+    dataBackupTitle: 'AI Assets 数据备份',
+    dataBackupLoading: '正在读取备份设置与最近状态…',
+    dataBackupPrivacy: '备份保存在你选择的本地目录；secret、缓存、日志、legacy index 与源码目录不会进入备份。',
+    backupTarget: '目标目录',
+    backupTargetPlaceholder: '/Volumes/Backup/Actanara',
+    backupItems: '备份内容',
+    backupDatabase: 'SQLite 一致性快照',
+    backupDiary: '日记 Markdown',
+    backupReports: '周报与月报',
+    backupRag: 'nova-RAG v2 active store',
+    backupTask: 'Nova-Task 投影/导出',
+    backupSettings: '脱敏 settings.json',
+    backupWorkspace: 'Workspace attribution',
+    backupRuntime: 'Runtime manifests',
+    backupRetentionCount: '保留数量',
+    backupRetentionDays: '保留天数',
+    backupSchedule: '定期备份',
+    backupFrequency: '频率',
+    backupDaily: '每天',
+    backupWeekly: '每周',
+    backupMonthly: '每月',
+    backupTime: '执行时间',
+    backupSaveSettings: '保存设置',
+    backupRunNow: '立即备份',
+    backupVerifyLatest: '验证最近备份',
+    backupConfirmation: '确认短语',
+    backupConfirmationHint: '立即备份前输入：',
+    backupNeverRun: '尚未运行备份',
+    backupTargetReady: '目标目录安全检查通过',
+    backupTargetNotReady: '目标目录尚未就绪',
+    backupSettingsSaved: '备份设置已保存。',
+    backupQueued: '备份已排队，正在本地创建一致性快照…',
+    backupRunning: '备份进行中…',
+    backupCompleted: '备份完成并通过 manifest 验证。',
+    backupCompletedWarnings: '备份已完成，但 retention 有警告。',
+    backupFailed: '备份失败：',
+    backupVerificationPassed: 'manifest、hash 与文件清单验证通过。',
+    backupVerificationFailed: '备份验证失败：',
+    backupRestoreUnavailable: '当前版本不提供 restore；未来只会接受验证通过的 manifest。',
+    backupSaving: '正在保存…',
+    backupVerifying: '正在验证…',
     totalTokens: '总消耗 Token',
     totalMessages: '累计消息数',
     activeSystems: '活跃系统',
@@ -2161,6 +2277,48 @@ const AI_ASSETS_TEXT = {
     backgroundUpdate: 'Background Update',
     retryUpdate: 'Retry Update',
     updateFailed: 'AI Assets update failed: ',
+    dataBackup: 'Data Backup',
+    dataBackupTitle: 'AI Assets Data Backup',
+    dataBackupLoading: 'Reading backup settings and latest status...',
+    dataBackupPrivacy: 'Backups stay in your selected local directory. Secrets, caches, logs, the legacy index, and source checkout are excluded.',
+    backupTarget: 'Target directory',
+    backupTargetPlaceholder: '/Volumes/Backup/Actanara',
+    backupItems: 'Backup contents',
+    backupDatabase: 'Consistent SQLite snapshot',
+    backupDiary: 'Diary Markdown',
+    backupReports: 'Weekly and monthly reports',
+    backupRag: 'nova-RAG v2 active store',
+    backupTask: 'Nova-Task projections/exports',
+    backupSettings: 'Sanitized settings.json',
+    backupWorkspace: 'Workspace attribution',
+    backupRuntime: 'Runtime manifests',
+    backupRetentionCount: 'Retention count',
+    backupRetentionDays: 'Retention days',
+    backupSchedule: 'Scheduled backups',
+    backupFrequency: 'Frequency',
+    backupDaily: 'Daily',
+    backupWeekly: 'Weekly',
+    backupMonthly: 'Monthly',
+    backupTime: 'Run time',
+    backupSaveSettings: 'Save Settings',
+    backupRunNow: 'Back Up Now',
+    backupVerifyLatest: 'Verify Latest Backup',
+    backupConfirmation: 'Confirmation phrase',
+    backupConfirmationHint: 'Before running, enter: ',
+    backupNeverRun: 'No backup has run yet',
+    backupTargetReady: 'Target directory passed safety checks',
+    backupTargetNotReady: 'Target directory is not ready',
+    backupSettingsSaved: 'Backup settings saved.',
+    backupQueued: 'Backup queued; creating a consistent local snapshot...',
+    backupRunning: 'Backup is running...',
+    backupCompleted: 'Backup completed and passed manifest verification.',
+    backupCompletedWarnings: 'Backup completed with retention warnings.',
+    backupFailed: 'Backup failed: ',
+    backupVerificationPassed: 'Manifest, hashes, and file inventory are valid.',
+    backupVerificationFailed: 'Backup verification failed: ',
+    backupRestoreUnavailable: 'Restore is not available in this version; a future restore will accept verified manifests only.',
+    backupSaving: 'Saving...',
+    backupVerifying: 'Verifying...',
     totalTokens: 'Total Tokens',
     totalMessages: 'Total Messages',
     activeSystems: 'Active Systems',
@@ -3218,6 +3376,659 @@ async function openMsgboxModal() {
   document.getElementById('modal-body').innerHTML = body;
 }
 
+/* ═══ Privacy-safe local PNG sharing ═══ */
+const ACTANARA_SHARE_CANVAS_WIDTH = 1200;
+const ACTANARA_SHARE_CANVAS_HEIGHT = 1500;
+const ACTANARA_SHARE_MAX_EDGE = 4096;
+const ACTANARA_SHARE_MAX_PIXELS = 4000000;
+const ACTANARA_SHARE_MAX_TREND_POINTS = 14;
+const ACTANARA_SHARE_PAYLOADS = new Map();
+const ACTANARA_SHARE_TOOL_NAMES = new Set(['OpenClaw', 'Claude Code', 'Gemini CLI', 'Codex', 'Hermes']);
+const ACTANARA_SHARE_FONT_STACK = '-apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Segoe UI", Arial, sans-serif';
+const ACTANARA_SHARE_PALETTES = Object.freeze({
+  light: Object.freeze({
+    background: '#f5f5ff', panel: '#ffffff', panelSoft: '#f0efff', text: '#071b32',
+    muted: '#5f6f84', accent: '#533afd', accentSoft: '#b9b9f9', positive: '#108c3d',
+    border: '#dfe5f0', grid: '#e8eaf5', shadow: 'rgba(38, 32, 110, 0.12)',
+  }),
+  dark: Object.freeze({
+    background: '#07111f', panel: '#0d1b2a', panelSoft: '#16243a', text: '#f8fafc',
+    muted: '#a7b4c7', accent: '#9d8cff', accentSoft: '#665efd', positive: '#4ade80',
+    border: '#26374d', grid: '#24344a', shadow: 'rgba(0, 0, 0, 0.3)',
+  }),
+});
+
+let ACTANARA_SHARE_PREVIEW = {
+  generation: 0,
+  key: '',
+  payload: null,
+  blob: null,
+  blobUrl: '',
+  canvas: null,
+  state: 'closed',
+};
+
+function shareIconSvg(name) {
+  const paths = {
+    share: '<circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><path d="m8.6 10.6 6.8-4.1"></path><path d="m8.6 13.4 6.8 4.1"></path>',
+    image: '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"></path>',
+    copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>',
+    download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" x2="12" y1="15" y2="3"></line>',
+    archive: '<rect width="20" height="5" x="2" y="3" rx="1"></rect><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"></path><path d="M10 12h4"></path>',
+  };
+  const body = paths[name] || paths.image;
+  return '<svg class="lucide-share-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true">' + body + '</svg>';
+}
+
+function hydrateShareIcons(root = document) {
+  root.querySelectorAll('[data-share-icon]').forEach(element => {
+    element.innerHTML = shareIconSvg(element.dataset.shareIcon || 'image');
+  });
+}
+
+function shareSafeNumber(value, minimum = 0, maximum = Number.MAX_SAFE_INTEGER) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return minimum;
+  return Math.min(maximum, Math.max(minimum, parsed));
+}
+
+function shareSafeDelta(value, maximum = Number.MAX_SAFE_INTEGER) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.min(maximum, Math.max(-maximum, parsed));
+}
+
+function shareIsoDate(value) {
+  const text = String(value || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return '';
+  const parsed = new Date(text + 'T00:00:00Z');
+  return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== text ? '' : text;
+}
+
+function shareAddDays(value, amount) {
+  const safe = shareIsoDate(value);
+  if (!safe) return '';
+  const parsed = new Date(safe + 'T00:00:00Z');
+  parsed.setUTCDate(parsed.getUTCDate() + Math.trunc(shareSafeNumber(amount, -366, 366)));
+  return parsed.toISOString().slice(0, 10);
+}
+
+function shareComparisonDelta(value) {
+  const row = value && typeof value === 'object' ? value : {};
+  if (row.deltaPercent !== null && row.deltaPercent !== undefined) return shareSafeDelta(row.deltaPercent, 100000);
+  return shareSafeDelta(row.delta, Number.MAX_SAFE_INTEGER);
+}
+
+function shareSafeTrend(series) {
+  if (!Array.isArray(series)) return [];
+  return series.slice(-ACTANARA_SHARE_MAX_TREND_POINTS).map(item => ({
+    date: shareIsoDate(item && item.date),
+    value: Math.round(shareSafeNumber(item && item.tokens)),
+  })).filter(item => item.date);
+}
+
+function shareResolvedTheme(value) {
+  if (value === 'light' || value === 'dark') return value;
+  const declared = document.documentElement.dataset.theme;
+  if (declared === 'light' || declared === 'dark') return declared;
+  return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function buildReportSharePayload(kind, source, range) {
+  const data = source && typeof source === 'object' ? source : {};
+  const labels = dashboardText();
+  const locale = dashboardLanguageProfile();
+  const days = Math.round(shareSafeNumber(range && range.days, 1, 62));
+  const start = shareIsoDate(range && range.start);
+  const end = shareIsoDate(range && range.end) || shareAddDays(start, days - 1);
+  const kpi = data.kpi && typeof data.kpi === 'object' ? data.kpi : {};
+  const comparison = data.workloadComparison && typeof data.workloadComparison === 'object' ? data.workloadComparison : {};
+  const task = data.taskStats && typeof data.taskStats === 'object' ? data.taskStats : {};
+  const cron = data.cronStats && typeof data.cronStats === 'object' ? data.cronStats : {};
+  const knowledge = data.knowledgePeriod && typeof data.knowledgePeriod === 'object' ? data.knowledgePeriod : {};
+  const rag = knowledge.rag && typeof knowledge.rag === 'object' ? knowledge.rag : {};
+  const completed = Math.round(shareSafeNumber(task.completed));
+  const safeKind = kind === 'monthly' ? 'monthly' : 'weekly';
+  return {
+    schemaVersion: 1,
+    kind: safeKind,
+    locale,
+    theme: shareResolvedTheme(),
+    title: safeKind === 'monthly' ? labels.shareMonthlyTitle : labels.shareWeeklyTitle,
+    range: { start, end, days },
+    summary: labels.shareSummaryReport(days, completed),
+    metrics: [
+      { key: 'tokens', value: Math.round(shareSafeNumber(kpi.totalTokens)), delta: shareComparisonDelta(comparison.totalTokens), format: 'tokens' },
+      { key: 'messages', value: Math.round(shareSafeNumber(kpi.totalMessages)), delta: shareComparisonDelta(comparison.totalMessages), format: 'integer' },
+      { key: 'sessions', value: Math.round(shareSafeNumber(kpi.activeSessions)), delta: null, format: 'integer' },
+      { key: 'cache-rate', value: shareSafeNumber(kpi.cacheHitRate, 0, 100), delta: shareComparisonDelta(comparison.cacheHitRate), format: 'percent' },
+    ],
+    trend: shareSafeTrend(data.dailyTokenSeries),
+    outcomes: [
+      { key: 'completed', value: completed, format: 'integer' },
+      { key: 'rag-delta', value: Math.round(shareSafeNumber(rag.deltaCount)), format: 'integer' },
+      { key: 'cron-rate', value: shareSafeNumber(cron.rate, 0, 100), format: 'percent' },
+    ],
+  };
+}
+
+function buildAiAssetsSharePayload(source) {
+  const data = source && typeof source === 'object' ? source : {};
+  const labels = dashboardText();
+  const locale = dashboardLanguageProfile();
+  const trendSource = Array.isArray(data.trend30d) ? data.trend30d : [];
+  const trend = trendSource.slice(-ACTANARA_SHARE_MAX_TREND_POINTS).map(item => {
+    const slots = item && item.slots && typeof item.slots === 'object' ? item.slots : {};
+    const value = ['上午', '下午', '晚上', '凌晨'].reduce((total, key) => total + shareSafeNumber(slots[key]), 0);
+    return { date: shareIsoDate(item && item.date), value: Math.round(shareSafeNumber(value)) };
+  }).filter(item => item.date);
+  const start = trend.length ? trend[0].date : '';
+  const end = trend.length ? trend[trend.length - 1].date : '';
+  const tools = Array.isArray(data.tools) ? data.tools : [];
+  const activeSystems = tools.filter(item => ACTANARA_SHARE_TOOL_NAMES.has(String(item && item.name || '')) && (
+    shareSafeNumber(item && item.todayTokens) > 0 || shareSafeNumber(item && item.allTimeTokens) > 0
+  )).length;
+  const diary = data.diary && typeof data.diary === 'object' ? data.diary : {};
+  const rag = data.rag && typeof data.rag === 'object' ? data.rag : {};
+  const cron = data.cronJobs && typeof data.cronJobs === 'object' ? data.cronJobs : {};
+  const days = Math.max(1, trend.length);
+  return {
+    schemaVersion: 1,
+    kind: 'ai-assets',
+    locale,
+    theme: shareResolvedTheme(),
+    title: labels.shareAssetsTitle,
+    range: { start, end, days },
+    summary: labels.shareSummaryAssets(days, activeSystems),
+    metrics: [
+      { key: 'tokens', value: Math.round(shareSafeNumber(data.totalTokens)), delta: null, format: 'tokens' },
+      { key: 'messages', value: Math.round(shareSafeNumber(data.totalMessages)), delta: null, format: 'integer' },
+      { key: 'active-days', value: Math.round(shareSafeNumber(data.activeDayCount)), delta: null, format: 'integer' },
+      { key: 'active-systems', value: activeSystems, delta: null, format: 'integer' },
+    ],
+    trend,
+    outcomes: [
+      { key: 'diaries', value: Math.round(shareSafeNumber(diary.count)), format: 'integer' },
+      { key: 'rag-entries', value: Math.round(shareSafeNumber(rag.entries)), format: 'integer' },
+      { key: 'cron-rate', value: shareSafeNumber(cron.successRate, 0, 100), format: 'percent' },
+    ],
+  };
+}
+
+function setSharePayload(key, payload, buttonId) {
+  ACTANARA_SHARE_PAYLOADS.set(key, payload);
+  const button = document.getElementById(buttonId);
+  if (button) button.disabled = false;
+}
+
+function clearSharePayload(key, buttonId) {
+  ACTANARA_SHARE_PAYLOADS.delete(key);
+  const button = document.getElementById(buttonId);
+  if (button) button.disabled = true;
+}
+
+function registerReportSharePayload(key, kind, source, range) {
+  const buttonId = kind === 'monthly' ? 'mrShareBtn' : key + '_shareBtn';
+  setSharePayload(key, buildReportSharePayload(kind, source, range), buttonId);
+}
+
+function registerAiAssetsSharePayload(source) {
+  setSharePayload('ai-assets', buildAiAssetsSharePayload(source), 'aiAssetsShareBtn');
+}
+
+function shareNormalizeText(value, maximum = 240) {
+  return Array.from(String(value || '').normalize('NFC').replace(/[\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2060\ufeff]/g, ' ').replace(/\s+/g, ' ').trim()).slice(0, maximum).join('');
+}
+
+function shareTextTokens(value, locale) {
+  const text = shareNormalizeText(value);
+  if (!text) return [];
+  if (typeof Intl.Segmenter === 'function') {
+    return Array.from(new Intl.Segmenter(locale === 'en' ? 'en' : 'zh', { granularity: 'word' }).segment(text), item => item.segment);
+  }
+  return text.match(/[\u3400-\u9fff\uf900-\ufaff]|[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*|\s+|./gu) || Array.from(text);
+}
+
+function shareEllipsize(ctx, value, maximumWidth) {
+  const ellipsis = '…';
+  const chars = Array.from(String(value || '').trimEnd());
+  while (chars.length && ctx.measureText(chars.join('') + ellipsis).width > maximumWidth) chars.pop();
+  return (chars.join('').trimEnd() + ellipsis) || ellipsis;
+}
+
+function shareWrapText(ctx, value, maximumWidth, maximumLines, locale) {
+  const rawTokens = shareTextTokens(value, locale);
+  const tokens = [];
+  rawTokens.forEach(token => {
+    if (ctx.measureText(token).width <= maximumWidth) {
+      tokens.push(token);
+    } else {
+      Array.from(token).forEach(char => tokens.push(char));
+    }
+  });
+  const lines = [];
+  let current = '';
+  let truncated = false;
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index];
+    if (!current && /^\s+$/.test(token)) continue;
+    const candidate = current + token;
+    if (ctx.measureText(candidate).width <= maximumWidth) {
+      current = candidate;
+      continue;
+    }
+    if (current) lines.push(current.trimEnd());
+    current = /^\s+$/.test(token) ? '' : token.trimStart();
+    if (lines.length === maximumLines) {
+      truncated = true;
+      break;
+    }
+  }
+  if (current && lines.length < maximumLines) lines.push(current.trimEnd());
+  if (lines.length > maximumLines) {
+    lines.length = maximumLines;
+    truncated = true;
+  }
+  if (!truncated && lines.length === maximumLines) {
+    const consumed = lines.join('').replace(/\s/g, '').length;
+    const available = shareNormalizeText(value).replace(/\s/g, '').length;
+    truncated = consumed < available;
+  }
+  if (truncated && lines.length) lines[lines.length - 1] = shareEllipsize(ctx, lines[lines.length - 1], maximumWidth);
+  return { lines, truncated };
+}
+
+function shareSetFont(ctx, size, weight = 500) {
+  ctx.font = `${weight} ${size}px ${ACTANARA_SHARE_FONT_STACK}`;
+}
+
+function shareDrawWrappedText(ctx, value, x, y, maximumWidth, lineHeight, maximumLines, locale) {
+  const wrapped = shareWrapText(ctx, value, maximumWidth, maximumLines, locale);
+  wrapped.lines.forEach((line, index) => ctx.fillText(line, x, y + index * lineHeight));
+  return y + wrapped.lines.length * lineHeight;
+}
+
+function shareRoundRect(ctx, x, y, width, height, radius) {
+  const r = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + width, y, x + width, y + height, r);
+  ctx.arcTo(x + width, y + height, x, y + height, r);
+  ctx.arcTo(x, y + height, x, y, r);
+  ctx.arcTo(x, y, x + width, y, r);
+  ctx.closePath();
+}
+
+function shareCompactNumber(value) {
+  const number = shareSafeNumber(value);
+  if (number >= 1e9) return (number / 1e9).toFixed(number >= 10e9 ? 1 : 2) + 'B';
+  if (number >= 1e6) return (number / 1e6).toFixed(number >= 10e6 ? 1 : 2) + 'M';
+  if (number >= 1e3) return (number / 1e3).toFixed(number >= 10e3 ? 1 : 2) + 'K';
+  return Math.round(number).toLocaleString();
+}
+
+function shareMetricLabel(key, labels) {
+  return ({
+    tokens: labels.shareMetricTokens,
+    messages: labels.shareMetricMessages,
+    sessions: labels.shareMetricSessions,
+    'cache-rate': labels.shareMetricCacheRate,
+    'active-days': labels.shareMetricActiveDays,
+    'active-systems': labels.shareMetricActiveSystems,
+  })[key] || labels.noData;
+}
+
+function shareOutcomeLabel(key, labels) {
+  return ({
+    completed: labels.shareOutcomeCompleted,
+    'rag-delta': labels.shareOutcomeRagDelta,
+    'cron-rate': labels.shareOutcomeCronRate,
+    diaries: labels.shareOutcomeDiaries,
+    'rag-entries': labels.shareOutcomeRagEntries,
+  })[key] || labels.noData;
+}
+
+function shareFormatValue(item) {
+  if (item.format === 'percent') return shareSafeNumber(item.value, 0, 100).toFixed(1).replace(/\.0$/, '') + '%';
+  if (item.format === 'tokens') return shareCompactNumber(item.value);
+  return Math.round(shareSafeNumber(item.value)).toLocaleString();
+}
+
+function renderActanaraShareCanvas(payload) {
+  const width = ACTANARA_SHARE_CANVAS_WIDTH;
+  const height = ACTANARA_SHARE_CANVAS_HEIGHT;
+  if (width > ACTANARA_SHARE_MAX_EDGE || height > ACTANARA_SHARE_MAX_EDGE || width * height > ACTANARA_SHARE_MAX_PIXELS) {
+    throw new Error('share canvas size limit exceeded');
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  canvas.dataset.shareCanvas = 'true';
+  const ctx = canvas.getContext('2d', { alpha: false });
+  if (!ctx) throw new Error('2d canvas unavailable');
+  const palette = ACTANARA_SHARE_PALETTES[shareResolvedTheme(payload.theme)];
+  const labels = dashboardText(payload.locale);
+  const locale = payload.locale === 'en' ? 'en' : 'zh';
+  const padding = 76;
+  const contentWidth = width - padding * 2;
+
+  ctx.fillStyle = palette.background;
+  ctx.fillRect(0, 0, width, height);
+  const glow = ctx.createRadialGradient(width - 110, 90, 20, width - 110, 90, 430);
+  glow.addColorStop(0, payload.theme === 'dark' ? 'rgba(157,140,255,0.28)' : 'rgba(83,58,253,0.2)');
+  glow.addColorStop(1, 'rgba(83,58,253,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, width, 520);
+
+  ctx.fillStyle = palette.accent;
+  shareRoundRect(ctx, padding, 72, 54, 54, 17);
+  ctx.fill();
+  ctx.strokeStyle = payload.theme === 'dark' ? '#ffffff' : '#ffffff';
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(padding + 15, 103);
+  ctx.lineTo(padding + 27, 87);
+  ctx.lineTo(padding + 39, 103);
+  ctx.stroke();
+  ctx.fillStyle = palette.text;
+  shareSetFont(ctx, 31, 720);
+  ctx.fillText('Actanara', padding + 72, 110);
+  ctx.fillStyle = palette.muted;
+  shareSetFont(ctx, 21, 520);
+  ctx.textAlign = 'right';
+  ctx.fillText(labels.shareGeneratedLocally, width - padding, 108);
+  ctx.textAlign = 'left';
+
+  ctx.fillStyle = palette.text;
+  shareSetFont(ctx, 58, 760);
+  const titleBottom = shareDrawWrappedText(ctx, payload.title, padding, 218, contentWidth, 70, 2, locale);
+  ctx.fillStyle = palette.muted;
+  shareSetFont(ctx, 24, 520);
+  const rangeText = [payload.range.start, payload.range.end].filter(Boolean).join('  —  ') || labels.noData;
+  ctx.fillText(labels.shareRange + '  ' + rangeText, padding, titleBottom + 18);
+
+  const summaryY = titleBottom + 76;
+  ctx.save();
+  ctx.shadowColor = palette.shadow;
+  ctx.shadowBlur = 28;
+  ctx.shadowOffsetY = 12;
+  ctx.fillStyle = palette.panel;
+  shareRoundRect(ctx, padding, summaryY, contentWidth, 190, 30);
+  ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = palette.accent;
+  shareRoundRect(ctx, padding + 30, summaryY + 31, 8, 128, 4);
+  ctx.fill();
+  ctx.fillStyle = palette.text;
+  shareSetFont(ctx, 31, 580);
+  shareDrawWrappedText(ctx, payload.summary, padding + 65, summaryY + 63, contentWidth - 105, 43, 3, locale);
+
+  const metricY = summaryY + 230;
+  const metricGap = 22;
+  const metricWidth = (contentWidth - metricGap) / 2;
+  const metricHeight = 184;
+  payload.metrics.slice(0, 4).forEach((item, index) => {
+    const column = index % 2;
+    const row = Math.floor(index / 2);
+    const x = padding + column * (metricWidth + metricGap);
+    const y = metricY + row * (metricHeight + metricGap);
+    ctx.fillStyle = palette.panel;
+    shareRoundRect(ctx, x, y, metricWidth, metricHeight, 26);
+    ctx.fill();
+    ctx.strokeStyle = palette.border;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = palette.muted;
+    shareSetFont(ctx, 22, 600);
+    ctx.fillText(shareMetricLabel(item.key, labels), x + 28, y + 44);
+    ctx.fillStyle = palette.text;
+    shareSetFont(ctx, 46, 720);
+    ctx.fillText(shareFormatValue(item), x + 28, y + 104);
+    if (item.delta !== null && item.delta !== undefined) {
+      const sign = item.delta > 0 ? '+' : '';
+      ctx.fillStyle = item.delta >= 0 ? palette.positive : palette.muted;
+      shareSetFont(ctx, 18, 620);
+      ctx.fillText(`${labels.shareComparedPrevious} ${sign}${Number(item.delta).toFixed(1).replace(/\.0$/, '')}%`, x + 28, y + 146);
+    }
+  });
+
+  const trendY = metricY + (metricHeight + metricGap) * 2 + 30;
+  ctx.fillStyle = palette.text;
+  shareSetFont(ctx, 27, 700);
+  ctx.fillText(labels.shareTrend, padding, trendY);
+  const chartY = trendY + 32;
+  const chartHeight = 210;
+  ctx.fillStyle = palette.panel;
+  shareRoundRect(ctx, padding, chartY, contentWidth, chartHeight, 26);
+  ctx.fill();
+  const values = payload.trend.slice(-ACTANARA_SHARE_MAX_TREND_POINTS);
+  const maxValue = Math.max(1, ...values.map(item => shareSafeNumber(item.value)));
+  const barGap = 12;
+  const available = contentWidth - 72;
+  const barWidth = values.length ? Math.max(12, (available - barGap * (values.length - 1)) / values.length) : 0;
+  values.forEach((item, index) => {
+    const value = shareSafeNumber(item.value);
+    const heightValue = Math.max(value > 0 ? 6 : 2, (value / maxValue) * 126);
+    const x = padding + 36 + index * (barWidth + barGap);
+    const y = chartY + 150 - heightValue;
+    ctx.fillStyle = value > 0 ? palette.accent : palette.grid;
+    shareRoundRect(ctx, x, y, barWidth, heightValue, Math.min(9, barWidth / 2));
+    ctx.fill();
+  });
+  ctx.fillStyle = palette.muted;
+  shareSetFont(ctx, 17, 500);
+  if (values.length) {
+    ctx.fillText(values[0].date.slice(5), padding + 36, chartY + 182);
+    ctx.textAlign = 'right';
+    ctx.fillText(values[values.length - 1].date.slice(5), width - padding - 36, chartY + 182);
+    ctx.textAlign = 'left';
+  } else {
+    ctx.fillText(labels.noData, padding + 36, chartY + 108);
+  }
+
+  const outcomeY = chartY + chartHeight + 45;
+  ctx.fillStyle = palette.text;
+  shareSetFont(ctx, 27, 700);
+  ctx.fillText(labels.shareOutcomes, padding, outcomeY);
+  const outcomeTop = outcomeY + 32;
+  const outcomeGap = 16;
+  const outcomeWidth = (contentWidth - outcomeGap * 2) / 3;
+  payload.outcomes.slice(0, 3).forEach((item, index) => {
+    const x = padding + index * (outcomeWidth + outcomeGap);
+    ctx.fillStyle = palette.panelSoft;
+    shareRoundRect(ctx, x, outcomeTop, outcomeWidth, 126, 22);
+    ctx.fill();
+    ctx.fillStyle = palette.muted;
+    shareSetFont(ctx, 18, 600);
+    shareDrawWrappedText(ctx, shareOutcomeLabel(item.key, labels), x + 22, outcomeTop + 35, outcomeWidth - 44, 24, 2, locale);
+    ctx.fillStyle = palette.text;
+    shareSetFont(ctx, 31, 720);
+    ctx.fillText(shareFormatValue(item), x + 22, outcomeTop + 98);
+  });
+
+  ctx.strokeStyle = palette.border;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(padding, height - 72);
+  ctx.lineTo(width - padding, height - 72);
+  ctx.stroke();
+  ctx.fillStyle = palette.muted;
+  shareSetFont(ctx, 18, 500);
+  ctx.fillText('actanara.local', padding, height - 38);
+  ctx.textAlign = 'right';
+  ctx.fillText('1200 × 1500 PNG', width - padding, height - 38);
+  ctx.textAlign = 'left';
+  return canvas;
+}
+
+function shareCanvasBlob(canvas) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('canvas toBlob returned null')), 'image/png');
+  });
+}
+
+function releaseActanaraShareArtifact() {
+  if (ACTANARA_SHARE_PREVIEW.blobUrl) URL.revokeObjectURL(ACTANARA_SHARE_PREVIEW.blobUrl);
+  ACTANARA_SHARE_PREVIEW.blob = null;
+  ACTANARA_SHARE_PREVIEW.blobUrl = '';
+  ACTANARA_SHARE_PREVIEW.canvas = null;
+}
+
+function releaseActanaraSharePreview() {
+  releaseActanaraShareArtifact();
+  ACTANARA_SHARE_PREVIEW = {
+    generation: 0, key: '', payload: null, blob: null, blobUrl: '', canvas: null, state: 'closed',
+  };
+}
+
+function sharePreparingMarkup() {
+  const labels = dashboardText();
+  return '<div class="share-preview-loading" data-share-state="preparing" role="status" aria-live="polite" aria-busy="true">' +
+    '<div class="wr-spinner"></div><span>' + escapeHtml(labels.sharePreparing) + '</span></div>';
+}
+
+function shareErrorMarkup() {
+  const labels = dashboardText();
+  return '<div class="share-preview-error" data-share-state="error" role="alert"><p>' + escapeHtml(labels.shareRenderFailed) + '</p>' +
+    '<button type="button" class="wr-export-btn" onclick="retryActanaraSharePreview()">' + escapeHtml(labels.shareRetry) + '</button></div>';
+}
+
+function shareReadyMarkup(theme) {
+  const labels = dashboardText();
+  return '<div class="share-preview-shell" data-share-state="ready">' +
+    '<div class="share-preview-toolbar" aria-label="Theme">' +
+      '<span class="share-preview-local"><span data-share-icon="image"></span>' + escapeHtml(labels.sharePrivacyNote) + '</span>' +
+      '<div class="share-theme-switch" role="group" aria-label="Theme">' +
+        '<button type="button" class="' + (theme === 'light' ? 'active' : '') + '" onclick="rerenderActanaraSharePreview(\'light\')">' + escapeHtml(labels.shareThemeLight) + '</button>' +
+        '<button type="button" class="' + (theme === 'dark' ? 'active' : '') + '" onclick="rerenderActanaraSharePreview(\'dark\')">' + escapeHtml(labels.shareThemeDark) + '</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="share-preview-image-wrap"><img id="actanaraSharePreviewImage" alt="' + escapeHtml(labels.sharePreviewAlt) + '" width="1200" height="1500"></div>' +
+    '<div class="share-preview-actions">' +
+      '<button type="button" class="wr-export-btn" id="actanaraShareCopyBtn" onclick="copyActanaraSharePng()"><span data-share-icon="copy"></span>' + escapeHtml(labels.shareCopyPng) + '</button>' +
+      '<button type="button" class="wr-export-btn share-primary-action" id="actanaraShareDownloadBtn" onclick="downloadActanaraSharePng()"><span data-share-icon="download"></span>' + escapeHtml(labels.shareDownloadPng) + '</button>' +
+    '</div>' +
+    '<div class="share-preview-status" id="actanaraShareStatus" role="status" aria-live="polite"></div>' +
+  '</div>';
+}
+
+async function renderActanaraSharePreview(generation, theme) {
+  const modalBody = document.getElementById('modal-body');
+  if (!modalBody) return;
+  ACTANARA_SHARE_PREVIEW.state = 'preparing';
+  modalBody.innerHTML = sharePreparingMarkup();
+  try {
+    const fontReady = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
+    await Promise.race([fontReady, new Promise(resolve => setTimeout(resolve, 800))]);
+    const payload = { ...ACTANARA_SHARE_PREVIEW.payload, theme: shareResolvedTheme(theme) };
+    const canvas = renderActanaraShareCanvas(payload);
+    const blob = await shareCanvasBlob(canvas);
+    if (!dashboardModalGenerationIsCurrent(generation) || ACTANARA_SHARE_PREVIEW.generation !== generation) return;
+    releaseActanaraShareArtifact();
+    const blobUrl = URL.createObjectURL(blob);
+    ACTANARA_SHARE_PREVIEW.payload = payload;
+    ACTANARA_SHARE_PREVIEW.canvas = canvas;
+    ACTANARA_SHARE_PREVIEW.blob = blob;
+    ACTANARA_SHARE_PREVIEW.blobUrl = blobUrl;
+    ACTANARA_SHARE_PREVIEW.state = 'ready';
+    modalBody.innerHTML = shareReadyMarkup(payload.theme);
+    const image = document.getElementById('actanaraSharePreviewImage');
+    if (image) image.src = blobUrl;
+    hydrateShareIcons(modalBody);
+  } catch (error) {
+    if (!dashboardModalGenerationIsCurrent(generation) || ACTANARA_SHARE_PREVIEW.generation !== generation) return;
+    console.error('Share PNG render failed:', error);
+    ACTANARA_SHARE_PREVIEW.state = 'error';
+    modalBody.innerHTML = shareErrorMarkup();
+  }
+}
+
+function openActanaraSharePreview(key) {
+  const payload = ACTANARA_SHARE_PAYLOADS.get(key);
+  if (!payload) return;
+  releaseActanaraSharePreview();
+  const labels = dashboardText();
+  const generation = openModal(labels.sharePreviewTitle, sharePreparingMarkup());
+  ACTANARA_SHARE_PREVIEW = {
+    generation, key, payload, blob: null, blobUrl: '', canvas: null, state: 'preparing',
+  };
+  renderActanaraSharePreview(generation, payload.theme);
+}
+
+function openReportSharePreview(kind, key) {
+  const payload = ACTANARA_SHARE_PAYLOADS.get(key);
+  if (!payload || payload.kind !== kind) return;
+  openActanaraSharePreview(key);
+}
+
+function openAiAssetsSharePreview() {
+  openActanaraSharePreview('ai-assets');
+}
+
+function retryActanaraSharePreview() {
+  if (!ACTANARA_SHARE_PREVIEW.payload || !ACTANARA_SHARE_PREVIEW.generation) return;
+  renderActanaraSharePreview(ACTANARA_SHARE_PREVIEW.generation, ACTANARA_SHARE_PREVIEW.payload.theme);
+}
+
+function rerenderActanaraSharePreview(theme) {
+  if (!ACTANARA_SHARE_PREVIEW.payload || !ACTANARA_SHARE_PREVIEW.generation) return;
+  renderActanaraSharePreview(ACTANARA_SHARE_PREVIEW.generation, theme);
+}
+
+function setActanaraShareStatus(message, tone) {
+  const status = document.getElementById('actanaraShareStatus');
+  if (!status) return;
+  status.textContent = message;
+  status.dataset.tone = tone || 'neutral';
+}
+
+async function copyActanaraSharePng() {
+  const labels = dashboardText();
+  const button = document.getElementById('actanaraShareCopyBtn');
+  const downloadButton = document.getElementById('actanaraShareDownloadBtn');
+  if (!ACTANARA_SHARE_PREVIEW.blob || ACTANARA_SHARE_PREVIEW.state !== 'ready') return;
+  if (button) button.disabled = true;
+  try {
+    if (!navigator.clipboard || typeof navigator.clipboard.write !== 'function' || typeof window.ClipboardItem !== 'function') {
+      setActanaraShareStatus(labels.shareClipboardUnavailable, 'warning');
+      if (downloadButton) downloadButton.focus();
+      return;
+    }
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': ACTANARA_SHARE_PREVIEW.blob })]);
+    setActanaraShareStatus(labels.shareCopied, 'success');
+  } catch (error) {
+    setActanaraShareStatus(labels.shareCopyFailed, 'warning');
+    if (downloadButton) downloadButton.focus();
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+function downloadActanaraSharePng() {
+  const labels = dashboardText();
+  const payload = ACTANARA_SHARE_PREVIEW.payload;
+  const blobUrl = ACTANARA_SHARE_PREVIEW.blobUrl;
+  if (!payload || !blobUrl || ACTANARA_SHARE_PREVIEW.state !== 'ready') return;
+  try {
+    const anchor = document.createElement('a');
+    const stamp = shareIsoDate(payload.range && payload.range.end) || 'snapshot';
+    anchor.href = blobUrl;
+    anchor.download = `actanara-${payload.kind}-${stamp}.png`;
+    anchor.hidden = true;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setActanaraShareStatus(labels.shareDownloadStarted, 'success');
+  } catch (error) {
+    setActanaraShareStatus(labels.shareDownloadFailed, 'error');
+  }
+}
+
+function actanaraSharePayload(key) {
+  const payload = ACTANARA_SHARE_PAYLOADS.get(key);
+  return payload ? JSON.parse(JSON.stringify(payload)) : null;
+}
+
 // ─── 动态加载周报（图表化） ────────────────────────────
 const WR_CHARTS = {};  // cache chart instances per page
 const WR_AGENT_COLORS = {
@@ -3302,6 +4113,7 @@ async function loadReport(reportId, navEl) {
       <div class="page-subtitle" id="${prefix}_sub">${escapeHtml(labels.loadingEllipsis)}</div>
       <div class="wr-summary-quote" id="${prefix}_summaryQuote" style="display:none"></div>
       <button class="wr-export-btn" onclick="window.print()" title="${escapeHtml(labels.exportPrintTitle)}">🖨️ ${escapeHtml(labels.exportPrint)}</button>
+      <button type="button" class="wr-export-btn share-trigger-btn" id="${prefix}_shareBtn" onclick="openReportSharePreview('weekly', '${prefix}')" disabled><span class="share-button-icon" data-share-icon="share" aria-hidden="true"></span>${escapeHtml(labels.sharePng)}</button>
       <button class="wr-export-btn" id="${prefix}_refreshAssets" onclick="refreshWeeklyAssets('${reportId}', '${prefix}')" title="${escapeHtml(labels.refreshAssetsTitle)}">${escapeHtml(labels.refreshAssets)}</button>
     </div>
     <div class="wr-loading" id="${prefix}_loading"><div class="wr-spinner"></div><span>${escapeHtml(labels.loadingWeekly)}</span></div>
@@ -3331,6 +4143,7 @@ async function loadReport(reportId, navEl) {
       <div class="wr-section" id="${prefix}_summaryDetailsSection" style="display:none"><div class="wr-section-header"><div class="wr-section-title"><span class="emoji">📋</span> ${escapeHtml(labels.summaryDetails)}</div></div><div class="wr-card full-width wr-summary-details" id="${prefix}_summaryDetails"></div></div>
     </div>`;
   document.getElementById('diary-pages').appendChild(page);
+  hydrateShareIcons(page);
   page.classList.add('active');
   location.hash = pageId;
   focusDashboardRoute(page);
@@ -3345,6 +4158,11 @@ async function loadReport(reportId, navEl) {
     const res = await fetch(url);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
+    registerReportSharePayload(prefix, 'weekly', data, {
+      start: startDate,
+      end: shareAddDays(startDate, 6),
+      days: 7,
+    });
     document.getElementById(prefix + '_loading').style.display = 'none';
     document.getElementById(prefix + '_content').style.display = 'block';
     document.getElementById(prefix + '_sub').textContent = (data.period || reportId) + ' · ' + (data.days || 0) + ' ' + labels.dayUnit;
@@ -3402,6 +4220,7 @@ function loadMonthlyReportById(mk, navEl) {
   if (loading) loading.style.display = '';
   if (content) content.style.display = 'none';
   if (loading) loading.innerHTML = '<div class="wr-spinner"></div><span>' + escapeHtml(labels.loadingMonthly) + '</span>';
+  clearSharePayload(MR_PREFIX, 'mrShareBtn');
   const notice = document.getElementById(MR_PREFIX + '_refreshNotice');
   if (notice) notice.style.display = 'none';
   wrDestroyCharts(MR_PREFIX);
@@ -3443,6 +4262,11 @@ async function loadMonthlyReport(mk) {
     if (requestToken !== MR_REQUEST_TOKEN || MR_CURRENT_MONTH !== mk) return;
 
     MR_LOADED[mk] = true;
+    registerReportSharePayload(MR_PREFIX, 'monthly', data, {
+      start: startDate,
+      end: shareAddDays(startDate, daysInMonth - 1),
+      days: daysInMonth,
+    });
     loading.style.display = 'none';
     content.style.display = 'block';
     sub.textContent = monthLabel + ' · ' + (data.days || 0) + ' ' + labels.dayDataUnit;
@@ -5470,6 +6294,7 @@ function trapDashboardDialogFocus(event, panel) {
 }
 
 function openModal(title, content) {
+  if (ACTANARA_SHARE_PREVIEW.state !== 'closed') releaseActanaraSharePreview();
   const modal = document.getElementById('modal');
   const generation = ++ACTANARA_MODAL_GENERATION;
   if (!modal.classList.contains('active')) ACTANARA_MODAL_RETURN_FOCUS = document.activeElement;
@@ -5491,6 +6316,7 @@ function dashboardModalGenerationIsCurrent(generation) {
 function closeModal() {
   const modal = document.getElementById('modal');
   ACTANARA_MODAL_GENERATION += 1;
+  releaseActanaraSharePreview();
   modal.classList.remove('active');
   modal.setAttribute('aria-hidden', 'true');
   document.body.style.overflow = '';
@@ -5505,6 +6331,7 @@ function closeModal() {
 }
 
 function modalBack() {
+  releaseActanaraSharePreview();
   if (modalHistory.length > 1) {
     ACTANARA_MODAL_GENERATION += 1;
     modalHistory.pop();
@@ -9683,6 +10510,7 @@ async function loadAiAssets() {
 
   loading.style.display = 'flex';
   content.style.display = 'none';
+  clearSharePayload('ai-assets', 'aiAssetsShareBtn');
   if (btn) btn.textContent = labels.loading;
 
   try {
@@ -9718,6 +10546,205 @@ async function loadAiAssets() {
     if (btn) btn.textContent = labels.retry;
   } finally {
     _aaLoading = false;
+  }
+}
+
+/* ═══ AI Assets private data backups ═══ */
+let AI_ASSETS_BACKUP_STATUS = null;
+
+function aiAssetsBackupErrorMessage(value) {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object') return String(value.message || value.code || value.reason || '');
+  return String(value);
+}
+
+function aiAssetsBackupLatestMarkup(latest, labels) {
+  if (!latest) return '<div class="backup-latest-empty">' + escapeHtml(labels.backupNeverRun) + '</div>';
+  const status = String(latest.status || 'unknown');
+  const tone = status === 'completed' ? 'success' : status === 'completed_with_warnings' ? 'warning' : status === 'failed' ? 'error' : 'neutral';
+  const completed = latest.completedAt || latest.startedAt || '';
+  const details = [];
+  if (latest.fileCount !== undefined) details.push(Number(latest.fileCount || 0).toLocaleString() + ' files');
+  if (latest.totalBytes !== undefined) details.push(foFormatBytes(latest.totalBytes || 0));
+  if (completed) details.push(new Date(completed).toLocaleString());
+  const error = aiAssetsBackupErrorMessage(latest.error);
+  return '<div class="backup-latest" data-tone="' + escapeHtml(tone) + '">' +
+    '<div class="backup-latest-title"><strong>' + escapeHtml(status) + '</strong>' + (latest.backupId ? '<code>' + escapeHtml(latest.backupId) + '</code>' : '') + '</div>' +
+    (details.length ? '<div class="backup-latest-meta">' + details.map(escapeHtml).join(' · ') + '</div>' : '') +
+    (error ? '<div class="backup-latest-error">' + escapeHtml(error) + '</div>' : '') +
+  '</div>';
+}
+
+function renderAiAssetsBackupModal(payload, generation, message = '', tone = 'neutral') {
+  if (!dashboardModalGenerationIsCurrent(generation)) return;
+  const labels = aiAssetsText();
+  const settings = payload && payload.settings || {};
+  const include = settings.include || {};
+  const retention = settings.retention || {};
+  const schedule = settings.schedule || {};
+  const readiness = payload && payload.targetReadiness || {};
+  const latest = payload && payload.latestRun || null;
+  const confirmation = String(payload && payload.confirmationTextRequired || 'BACK UP ACTANARA DATA');
+  const itemRows = [
+    ['database', labels.backupDatabase],
+    ['diaryMarkdown', labels.backupDiary],
+    ['periodReports', labels.backupReports],
+    ['ragV2', labels.backupRag],
+    ['novaTaskExports', labels.backupTask],
+    ['settings', labels.backupSettings],
+    ['workspaceAttribution', labels.backupWorkspace],
+    ['runtimeManifests', labels.backupRuntime],
+  ];
+  const readinessLabel = readiness.ready ? labels.backupTargetReady : labels.backupTargetNotReady;
+  document.getElementById('modal-body').innerHTML = '<div class="backup-modal" data-backup-modal="true">' +
+    '<div class="backup-privacy-note"><span data-share-icon="archive"></span><span>' + escapeHtml(labels.dataBackupPrivacy) + '</span></div>' +
+    '<label class="backup-field backup-field-wide"><span>' + escapeHtml(labels.backupTarget) + '</span><input id="backupTargetDirectory" type="text" autocomplete="off" spellcheck="false" placeholder="' + escapeHtml(labels.backupTargetPlaceholder) + '" value="' + escapeHtml(settings.targetDirectory || '') + '"></label>' +
+    '<div class="backup-target-state" data-ready="' + (readiness.ready ? 'true' : 'false') + '">' + escapeHtml(readinessLabel) + (readiness.code ? ' · ' + escapeHtml(readiness.code) : '') + '</div>' +
+    '<fieldset class="backup-fieldset"><legend>' + escapeHtml(labels.backupItems) + '</legend><div class="backup-check-grid">' + itemRows.map(([key, label]) =>
+      '<label><input type="checkbox" data-backup-include="' + key + '"' + (include[key] !== false ? ' checked' : '') + '><span>' + escapeHtml(label) + '</span></label>'
+    ).join('') + '</div></fieldset>' +
+    '<div class="backup-settings-grid">' +
+      '<label class="backup-field"><span>' + escapeHtml(labels.backupRetentionCount) + '</span><input id="backupRetentionCount" type="number" min="1" max="1000" value="' + escapeHtml(retention.maxBackups || 7) + '"></label>' +
+      '<label class="backup-field"><span>' + escapeHtml(labels.backupRetentionDays) + '</span><input id="backupRetentionDays" type="number" min="1" max="36500" value="' + escapeHtml(retention.maxAgeDays || 30) + '"></label>' +
+      '<label class="backup-field backup-switch"><span>' + escapeHtml(labels.backupSchedule) + '</span><input id="backupScheduleEnabled" type="checkbox"' + (schedule.enabled ? ' checked' : '') + '></label>' +
+      '<label class="backup-field"><span>' + escapeHtml(labels.backupFrequency) + '</span><select id="backupScheduleFrequency"><option value="daily"' + (schedule.frequency === 'daily' ? ' selected' : '') + '>' + escapeHtml(labels.backupDaily) + '</option><option value="weekly"' + (schedule.frequency !== 'daily' && schedule.frequency !== 'monthly' ? ' selected' : '') + '>' + escapeHtml(labels.backupWeekly) + '</option><option value="monthly"' + (schedule.frequency === 'monthly' ? ' selected' : '') + '>' + escapeHtml(labels.backupMonthly) + '</option></select></label>' +
+      '<label class="backup-field"><span>' + escapeHtml(labels.backupTime) + '</span><input id="backupScheduleTime" type="time" value="' + escapeHtml(schedule.timeOfDay || '05:00') + '"></label>' +
+    '</div>' +
+    '<div class="backup-form-actions"><button type="button" class="wr-export-btn" id="backupSaveBtn" onclick="saveAiAssetsBackupSettings()">' + escapeHtml(labels.backupSaveSettings) + '</button></div>' +
+    '<div class="backup-run-panel"><div><strong>' + escapeHtml(labels.backupRunNow) + '</strong><p>' + escapeHtml(labels.backupConfirmationHint) + ' <code>' + escapeHtml(confirmation) + '</code></p></div>' +
+      '<div class="backup-run-controls"><input id="backupConfirmationText" type="text" autocomplete="off" aria-label="' + escapeHtml(labels.backupConfirmation) + '"><button type="button" class="wr-export-btn share-primary-action" id="backupRunBtn" onclick="runAiAssetsBackupNow()">' + escapeHtml(labels.backupRunNow) + '</button></div>' +
+    '</div>' +
+    '<section class="backup-latest-section"><div class="backup-latest-heading"><strong>' + escapeHtml(labels.status) + '</strong>' + (latest && latest.backupId ? '<button type="button" class="wr-export-btn" id="backupVerifyBtn" onclick="verifyLatestAiAssetsBackup()">' + escapeHtml(labels.backupVerifyLatest) + '</button>' : '') + '</div>' + aiAssetsBackupLatestMarkup(latest, labels) + '</section>' +
+    '<div class="backup-restore-contract">' + escapeHtml(labels.backupRestoreUnavailable) + '</div>' +
+    '<div id="backupActionStatus" class="backup-action-status" data-tone="' + escapeHtml(tone) + '" role="status" aria-live="polite">' + escapeHtml(message) + '</div>' +
+  '</div>';
+  hydrateShareIcons(document.getElementById('modal-body'));
+}
+
+function readAiAssetsBackupForm() {
+  const include = {};
+  document.querySelectorAll('[data-backup-include]').forEach(input => { include[input.dataset.backupInclude] = input.checked; });
+  return {
+    targetDirectory: String(document.getElementById('backupTargetDirectory')?.value || '').trim(),
+    include,
+    retention: {
+      maxBackups: Number(document.getElementById('backupRetentionCount')?.value || 7),
+      maxAgeDays: Number(document.getElementById('backupRetentionDays')?.value || 30),
+    },
+    schedule: {
+      enabled: !!document.getElementById('backupScheduleEnabled')?.checked,
+      frequency: String(document.getElementById('backupScheduleFrequency')?.value || 'weekly'),
+      timeOfDay: String(document.getElementById('backupScheduleTime')?.value || '05:00'),
+    },
+  };
+}
+
+function setAiAssetsBackupAction(message, tone = 'neutral') {
+  const element = document.getElementById('backupActionStatus');
+  if (!element) return;
+  element.textContent = message;
+  element.dataset.tone = tone;
+}
+
+async function openAiAssetsBackupModal() {
+  const labels = aiAssetsText();
+  const generation = openModal(labels.dataBackupTitle, '<div class="wr-loading"><div class="wr-spinner"></div><span>' + escapeHtml(labels.dataBackupLoading) + '</span></div>');
+  try {
+    const response = await fetch('/api/ai-assets/backups/status');
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || ('HTTP ' + response.status));
+    if (!dashboardModalGenerationIsCurrent(generation)) return;
+    AI_ASSETS_BACKUP_STATUS = payload;
+    renderAiAssetsBackupModal(payload, generation);
+  } catch (error) {
+    if (!dashboardModalGenerationIsCurrent(generation)) return;
+    document.getElementById('modal-body').innerHTML = '<div class="share-preview-error" role="alert">' + escapeHtml(labels.backupFailed + error.message) + '</div>';
+  }
+}
+
+async function saveAiAssetsBackupSettings(options = {}) {
+  const labels = aiAssetsText();
+  const button = document.getElementById('backupSaveBtn');
+  const generation = ACTANARA_MODAL_GENERATION;
+  if (button) { button.disabled = true; button.textContent = labels.backupSaving; }
+  setAiAssetsBackupAction(labels.backupSaving);
+  try {
+    const response = await fetch('/api/ai-assets/backups/settings', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({backup: readAiAssetsBackupForm()}),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || ('HTTP ' + response.status));
+    AI_ASSETS_BACKUP_STATUS = payload;
+    renderAiAssetsBackupModal(payload, generation, options.silent ? '' : labels.backupSettingsSaved, 'success');
+    return payload;
+  } catch (error) {
+    setAiAssetsBackupAction(labels.backupFailed + error.message, 'error');
+    return null;
+  } finally {
+    const current = document.getElementById('backupSaveBtn');
+    if (current) { current.disabled = false; current.textContent = labels.backupSaveSettings; }
+  }
+}
+
+async function runAiAssetsBackupNow() {
+  const labels = aiAssetsText();
+  const confirmation = String(document.getElementById('backupConfirmationText')?.value || '');
+  const generation = ACTANARA_MODAL_GENERATION;
+  const previousRunId = AI_ASSETS_BACKUP_STATUS && AI_ASSETS_BACKUP_STATUS.latestRun && AI_ASSETS_BACKUP_STATUS.latestRun.runId;
+  const saved = await saveAiAssetsBackupSettings({silent: true});
+  if (!saved || !dashboardModalGenerationIsCurrent(generation)) return;
+  const button = document.getElementById('backupRunBtn');
+  if (button) button.disabled = true;
+  try {
+    const response = await fetch('/api/ai-assets/backups/run', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({confirmationText: confirmation}),
+    });
+    const queued = await response.json();
+    if (!response.ok) throw new Error(queued.error || ('HTTP ' + response.status));
+    setAiAssetsBackupAction(labels.backupQueued, 'neutral');
+    for (let attempt = 0; attempt < 180 && dashboardModalGenerationIsCurrent(generation); attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const statusResponse = await fetch('/api/ai-assets/backups/status');
+      const statusPayload = await statusResponse.json();
+      if (!statusResponse.ok) throw new Error(statusPayload.error || ('HTTP ' + statusResponse.status));
+      AI_ASSETS_BACKUP_STATUS = statusPayload;
+      const latest = statusPayload.latestRun;
+      if (!latest || latest.runId === previousRunId) continue;
+      if (latest.status === 'running') {
+        setAiAssetsBackupAction(labels.backupRunning, 'neutral');
+        continue;
+      }
+      const success = latest.status === 'completed' || latest.status === 'completed_with_warnings';
+      const message = latest.status === 'completed' ? labels.backupCompleted : latest.status === 'completed_with_warnings' ? labels.backupCompletedWarnings : labels.backupFailed + aiAssetsBackupErrorMessage(latest.error);
+      renderAiAssetsBackupModal(statusPayload, generation, message, success ? (latest.status === 'completed' ? 'success' : 'warning') : 'error');
+      return;
+    }
+    throw new Error('status timeout');
+  } catch (error) {
+    setAiAssetsBackupAction(labels.backupFailed + error.message, 'error');
+  } finally {
+    const current = document.getElementById('backupRunBtn');
+    if (current) current.disabled = false;
+  }
+}
+
+async function verifyLatestAiAssetsBackup() {
+  const labels = aiAssetsText();
+  const latest = AI_ASSETS_BACKUP_STATUS && AI_ASSETS_BACKUP_STATUS.latestRun;
+  if (!latest || !latest.backupId) return;
+  const button = document.getElementById('backupVerifyBtn');
+  if (button) { button.disabled = true; button.textContent = labels.backupVerifying; }
+  setAiAssetsBackupAction(labels.backupVerifying);
+  try {
+    const response = await fetch('/api/ai-assets/backups/' + encodeURIComponent(latest.backupId) + '/verify', {method: 'POST'});
+    const result = await response.json();
+    if (!response.ok || result.valid !== true) throw new Error(result.error || aiAssetsBackupErrorMessage(result.errors && result.errors[0]) || ('HTTP ' + response.status));
+    setAiAssetsBackupAction(labels.backupVerificationPassed, 'success');
+  } catch (error) {
+    setAiAssetsBackupAction(labels.backupVerificationFailed + error.message, 'error');
+  } finally {
+    if (button) { button.disabled = false; button.textContent = labels.backupVerifyLatest; }
   }
 }
 
@@ -10606,6 +11633,7 @@ function renderAaInfrastructure(d, labels) {
 function aaRender(d) {
   const labels = aiAssetsText();
   _aaState.data = d;
+  registerAiAssetsSharePayload(d);
   const el = id => document.getElementById(id);
   const tools = d.tools || [];
   const diary = d.diary || {};
@@ -12056,6 +13084,7 @@ setInterval(() => {
 
 // ── Initial data fetch (fallback if SSE slow) ──
 applyStaticDashboardText();
+hydrateShareIcons(document);
 ensureDashboardLanguageProfile().then(profile => applyStaticDashboardText(profile)).catch(() => {});
 refreshMsgbox();
 setInterval(refreshMsgbox, 60000);

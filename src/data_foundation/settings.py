@@ -107,6 +107,7 @@ OPERATOR_SETTINGS_WRITE_ALLOWED_TOP_LEVEL = {
     "todos",
 }
 OPERATOR_SETTINGS_WRITE_PROTECTED_TOP_LEVEL = {
+    "backup",
     "schemaVersion",
     "updatedAt",
     "llmProvider",
@@ -252,6 +253,18 @@ SETTINGS_AUTHORITY_GROUPS = (
             {"path": "schedule.dashboardAggregationTime", "defaultSource": "default_settings"},
             {"path": "schedule.refreshTargets", "defaultSource": "default_settings"},
             {"path": "schedule.systemTimer", "defaultSource": "default_settings"},
+        ),
+    },
+    {
+        "group": "backup",
+        "authority": "settings-json",
+        "writableVia": "Dashboard AI Assets backup controls",
+        "manualDefaultPolicy": "disabled until an external target directory is explicitly selected",
+        "fields": (
+            {"path": "backup.targetDirectory", "defaultSource": "empty; operator selection required"},
+            {"path": "backup.include", "defaultSource": "default_settings"},
+            {"path": "backup.retention", "defaultSource": "default_settings"},
+            {"path": "backup.schedule", "defaultSource": "default_settings"},
         ),
     },
     {
@@ -408,6 +421,28 @@ def default_settings(paths: RuntimePaths | None = None) -> dict:
                 "label": "actanara.daily",
                 "registered": False,
                 "registrationManagedBy": "manual",
+            },
+        },
+        "backup": {
+            "targetDirectory": "",
+            "include": {
+                "database": True,
+                "diaryMarkdown": True,
+                "periodReports": True,
+                "ragV2": True,
+                "novaTaskExports": True,
+                "settings": True,
+                "workspaceAttribution": True,
+                "runtimeManifests": True,
+            },
+            "retention": {
+                "maxBackups": 7,
+                "maxAgeDays": 30,
+            },
+            "schedule": {
+                "enabled": False,
+                "frequency": "weekly",
+                "timeOfDay": "05:00",
             },
         },
         "paths": {
@@ -1080,6 +1115,29 @@ def write_scheduler_handoff_settings(
     )
 
 
+def write_backup_settings(
+    backup_update: dict[str, Any],
+    paths: RuntimePaths | None = None,
+    *,
+    readiness_verifier: Callable[[], None] | None = None,
+) -> dict:
+    """Persist the dedicated data-backup policy through the settings transaction."""
+    paths = paths or load_paths()
+    normalized = normalize_backup_settings_update(backup_update)
+
+    def build_update(current: dict[str, Any]) -> dict[str, Any]:
+        current_backup = current.get("backup") if isinstance(current.get("backup"), dict) else {}
+        complete = _deep_merge(current_backup, normalized)
+        _validate_complete_backup_settings(complete)
+        return {"backup": normalized}
+
+    return _write_operator_settings_transaction(
+        paths,
+        build_update,
+        readiness_verifier=readiness_verifier,
+    )
+
+
 def _decode_json_document(content: bytes | None) -> dict[str, Any]:
     if content is None:
         return {}
@@ -1470,6 +1528,88 @@ def _validate_schedule_update(update: Any) -> None:
         label = system_timer.get("label")
         if label is not None and not str(label or "").strip():
             raise ValueError("schedule.systemTimer.label must be a non-empty string")
+
+
+BACKUP_INCLUDE_FIELDS = {
+    "database",
+    "diaryMarkdown",
+    "periodReports",
+    "ragV2",
+    "novaTaskExports",
+    "settings",
+    "workspaceAttribution",
+    "runtimeManifests",
+}
+
+
+def normalize_backup_settings_update(update: Any) -> dict[str, Any]:
+    """Validate and normalize the additive backup settings group."""
+    if not isinstance(update, dict):
+        raise ValueError("backup settings must be an object")
+    unexpected = sorted(set(update) - {"targetDirectory", "include", "retention", "schedule"})
+    if unexpected:
+        raise ValueError("unsupported backup settings fields: " + ", ".join(unexpected))
+    normalized = copy.deepcopy(update)
+    if "targetDirectory" in normalized:
+        raw_target = str(normalized.get("targetDirectory") or "").strip()
+        if "\x00" in raw_target:
+            raise ValueError("backup.targetDirectory contains a NUL byte")
+        if raw_target:
+            raw_path = Path(raw_target).expanduser()
+            if not raw_path.is_absolute():
+                raise ValueError("backup.targetDirectory must be an absolute path")
+            if ".." in Path(raw_target).parts:
+                raise ValueError("backup.targetDirectory must not contain directory traversal")
+            normalized["targetDirectory"] = str(raw_path.absolute())
+        else:
+            normalized["targetDirectory"] = ""
+    include = normalized.get("include")
+    if include is not None:
+        if not isinstance(include, dict):
+            raise ValueError("backup.include must be an object")
+        unknown = sorted(set(include) - BACKUP_INCLUDE_FIELDS)
+        if unknown:
+            raise ValueError("unsupported backup.include fields: " + ", ".join(unknown))
+        for key, value in include.items():
+            if type(value) is not bool:
+                raise ValueError(f"backup.include.{key} must be a boolean")
+    retention = normalized.get("retention")
+    if retention is not None:
+        if not isinstance(retention, dict):
+            raise ValueError("backup.retention must be an object")
+        unknown = sorted(set(retention) - {"maxBackups", "maxAgeDays"})
+        if unknown:
+            raise ValueError("unsupported backup.retention fields: " + ", ".join(unknown))
+        for key, upper in (("maxBackups", 1000), ("maxAgeDays", 36500)):
+            if key not in retention:
+                continue
+            value = retention[key]
+            if type(value) is bool or not isinstance(value, int) or not 1 <= value <= upper:
+                raise ValueError(f"backup.retention.{key} must be an integer in 1..{upper}")
+    schedule = normalized.get("schedule")
+    if schedule is not None:
+        if not isinstance(schedule, dict):
+            raise ValueError("backup.schedule must be an object")
+        unknown = sorted(set(schedule) - {"enabled", "frequency", "timeOfDay"})
+        if unknown:
+            raise ValueError("unsupported backup.schedule fields: " + ", ".join(unknown))
+        if "enabled" in schedule and type(schedule["enabled"]) is not bool:
+            raise ValueError("backup.schedule.enabled must be a boolean")
+        if "frequency" in schedule and schedule.get("frequency") not in {"daily", "weekly", "monthly"}:
+            raise ValueError("backup.schedule.frequency must be one of: daily, weekly, monthly")
+        if "timeOfDay" in schedule and not TIME_OF_DAY_RE.match(str(schedule.get("timeOfDay") or "")):
+            raise ValueError("backup.schedule.timeOfDay must use HH:MM 24-hour time")
+    return normalized
+
+
+def _validate_complete_backup_settings(settings: dict[str, Any]) -> None:
+    normalized = normalize_backup_settings_update(settings)
+    include = normalized.get("include") if isinstance(normalized.get("include"), dict) else {}
+    if not any(include.get(key) is True for key in BACKUP_INCLUDE_FIELDS):
+        raise ValueError("backup.include must select at least one backup item")
+    schedule = normalized.get("schedule") if isinstance(normalized.get("schedule"), dict) else {}
+    if schedule.get("enabled") and not str(normalized.get("targetDirectory") or "").strip():
+        raise ValueError("backup.targetDirectory is required when scheduled backups are enabled")
 
 
 def _validate_external_tools_update(update: Any) -> None:

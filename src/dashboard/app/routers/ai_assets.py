@@ -2,10 +2,12 @@ from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, BackgroundTasks, Request
 from fastapi.responses import JSONResponse, StreamingResponse
-from app.services import ai_assets, agents, foundation, skills
+from starlette.concurrency import run_in_threadpool
+from app.services import ai_assets, agents, backups, foundation, skills
 from app.services.dashboard_state import dashboard_failure
 from app.services.tz import hkt_today
 from data_foundation.refresh import HistoryBackfillAlreadyActiveError
+from data_foundation.settings_transaction import SettingsTransactionError
 import logging
 import asyncio
 import json
@@ -13,6 +15,14 @@ import json
 logger = logging.getLogger(__name__)
 router = APIRouter()
 events_router = APIRouter()
+
+
+def _backup_failure(error: backups.BackupFacadeError) -> JSONResponse:
+    return JSONResponse(
+        {"error": str(error), "code": error.code},
+        status_code=error.status_code,
+    )
+
 
 @router.get("/ai-assets")
 async def api_ai_assets():
@@ -33,6 +43,78 @@ async def api_ai_assets():
                 "activeDayCount": 0,
             },
         )
+
+
+@router.get("/ai-assets/backups/status")
+async def api_ai_assets_backup_status():
+    try:
+        return await run_in_threadpool(backups.get_backup_status)
+    except backups.BackupFacadeError as error:
+        return _backup_failure(error)
+    except Exception:
+        logger.error("GET /api/ai-assets/backups/status failed with an unexpected error")
+        return JSONResponse(
+            {"error": "Backup status is unavailable.", "code": "backup-status-unavailable"},
+            status_code=500,
+        )
+
+
+@router.put("/ai-assets/backups/settings")
+async def api_ai_assets_backup_settings(payload: dict):
+    try:
+        return await run_in_threadpool(backups.update_backup_settings, payload)
+    except backups.BackupFacadeError as error:
+        return _backup_failure(error)
+    except SettingsTransactionError as error:
+        return JSONResponse(
+            {"error": str(error), "code": "backup-settings-transaction-failed"},
+            status_code=409,
+        )
+    except ValueError as error:
+        return JSONResponse(
+            {"error": str(error), "code": "backup-settings-invalid"},
+            status_code=400,
+        )
+    except Exception:
+        logger.error("PUT /api/ai-assets/backups/settings failed with an unexpected error")
+        return JSONResponse(
+            {"error": "Backup settings could not be saved.", "code": "backup-settings-failed"},
+            status_code=500,
+        )
+
+
+@router.post("/ai-assets/backups/run")
+async def api_ai_assets_backup_run(
+    background_tasks: BackgroundTasks,
+    payload: dict | None = None,
+):
+    try:
+        queued = await run_in_threadpool(backups.queue_backup, payload)
+        background_tasks.add_task(backups.execute_backup, queued["jobId"])
+        return JSONResponse(queued, status_code=202)
+    except backups.BackupFacadeError as error:
+        return _backup_failure(error)
+    except Exception:
+        logger.error("POST /api/ai-assets/backups/run failed with an unexpected error")
+        return JSONResponse(
+            {"error": "Backup could not be queued.", "code": "backup-queue-failed"},
+            status_code=500,
+        )
+
+
+@router.post("/ai-assets/backups/{backup_id}/verify")
+async def api_ai_assets_backup_verify(backup_id: str):
+    try:
+        return await run_in_threadpool(backups.verify_backup_by_id, backup_id)
+    except backups.BackupFacadeError as error:
+        return _backup_failure(error)
+    except Exception:
+        logger.error("POST /api/ai-assets/backups/%s/verify failed with an unexpected error", backup_id)
+        return JSONResponse(
+            {"error": "Backup verification failed.", "code": "backup-verification-failed"},
+            status_code=500,
+        )
+
 
 @router.post("/ai-assets/tool-configs/discover")
 async def api_discover_tool_configs():
