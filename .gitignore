@@ -20,6 +20,7 @@ wheelhouse/
 node_modules/
 playwright-report/
 test-results/
+output/playwright/
 
 # Local config and secrets
 .env

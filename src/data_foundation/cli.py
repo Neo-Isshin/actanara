@@ -7,6 +7,7 @@ import json
 import sys
 
 from .external_agent_memory import DEFAULT_SEARCH_TIMEOUT_SECONDS, compact_memory_results, search_memory
+from .version import product_version
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -44,6 +45,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     selected_args = list(argv) if argv is not None else sys.argv[1:]
+    if selected_args == ["--version"]:
+        print(f"actanara {product_version()}")
+        return 0
     if not selected_args or selected_args[0] != "rag":
         from .operator_cli import main as operator_main
 

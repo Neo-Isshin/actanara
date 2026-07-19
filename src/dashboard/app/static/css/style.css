@@ -90,14 +90,19 @@ body {
   flex: 0 0 160px;
 }
 .sidebar-brand-banner {
-  display: block;
+  display: inline-flex;
+  align-items: center;
   width: 174px;
-  height: auto;
+  height: 48px;
   max-width: 174px;
   max-height: 48px;
-  border: 0;
-  object-fit: contain;
-  object-position: left center;
+  color: var(--navy);
+  font-family: var(--font-primary);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  line-height: 1;
+  white-space: nowrap;
   flex: 0 0 auto;
 }
 .sidebar-brand #sseStatus {
@@ -441,8 +446,17 @@ textarea:focus-visible {
 }
 .dashboard-welcome-banner {
   width: min(780px, 72vw);
-  max-height: 228px;
-  object-fit: contain;
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--navy);
+  font-family: var(--font-primary);
+  font-size: clamp(44px, 8vw, 96px);
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  line-height: 1;
+  white-space: nowrap;
 }
 .dashboard-welcome-title {
   max-width: 720px;

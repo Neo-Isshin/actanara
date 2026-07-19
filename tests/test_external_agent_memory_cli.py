@@ -41,6 +41,17 @@ class _FakeRawResponse(_FakeResponse):
 
 
 class ExternalAgentMemoryCliTests(unittest.TestCase):
+    def test_packaged_cli_reports_product_version(self):
+        with (
+            patch("data_foundation.cli.product_version", return_value="1.2.0") as version,
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            code = cli.main(["--version"])
+
+        self.assertEqual(code, 0)
+        version.assert_called_once_with()
+        self.assertEqual(output.getvalue(), "actanara 1.2.0\n")
+
     def test_advanced_cli_wrapper_delegates_to_packaged_entrypoint(self):
         module_path = ROOT / "advanced" / "cli" / "actanara.py"
         spec = importlib.util.spec_from_file_location("actanara_advanced_wrapper", module_path)

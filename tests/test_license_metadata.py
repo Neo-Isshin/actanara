@@ -17,7 +17,7 @@ class LicenseMetadataTests(unittest.TestCase):
     def test_pep639_metadata_declares_gpl_v3_or_later(self):
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
-        self.assertEqual(metadata["project"]["version"], "1.1.0")
+        self.assertEqual(metadata["project"]["version"], "1.2.0")
         self.assertEqual(metadata["project"]["readme"], "README.md")
         self.assertEqual(
             metadata["project"]["authors"],

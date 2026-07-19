@@ -397,6 +397,25 @@ class RuntimeDependencyLockTests(unittest.TestCase):
                 ["alpha", "beta"],
             )
 
+    def test_marker_evaluation_supports_legacy_pip_vendored_packaging(self):
+        class LegacyMarker:
+            def evaluate(self, environment):
+                return environment["sys_platform"] == "darwin"
+
+        class LegacyRequirement:
+            marker = LegacyMarker()
+
+            def __str__(self):
+                return "legacy-marker-fixture"
+
+        self.assertTrue(
+            lock_generator._requirement_applies(
+                LegacyRequirement(),
+                {"sys_platform": "darwin", "extra": ""},
+                set(),
+            )
+        )
+
     def test_generator_rejects_marker_variables_absent_from_lock_identity(self):
         for variable in sorted(lock_generator.UNLOCKED_MARKER_VARIABLES):
             with self.subTest(variable=variable), self.assertRaisesRegex(

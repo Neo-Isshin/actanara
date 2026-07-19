@@ -736,6 +736,8 @@ class DashboardStaticContractTests(unittest.TestCase):
         self.assertIn('id="page-home" class="page active"', html)
         self.assertIn('id="page-overview" class="page"', html)
         self.assertIn("sidebar-brand-banner", html)
+        self.assertIn(">ACTANARA</", html)
+        self.assertNotIn("/static/img/banner.png", html)
         self.assertIn("ragExternalSources", script)
         self.assertIn("previewRagExternalSources", script)
         self.assertIn("/api/rag/external-sources/plan", script)

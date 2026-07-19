@@ -216,16 +216,23 @@ def _requirement_applies(
         return True
     try:
         return any(
-            requirement.marker.evaluate(
-                {**environment, "extra": extra},
-                context="metadata",
-            )
+            _evaluate_metadata_marker(requirement.marker, {**environment, "extra": extra})
             for extra in ("", *sorted(active_extras))
         )
     except Exception as exc:
         raise LockGenerationError(
             f"Requires-Dist marker could not be evaluated: {requirement}"
         ) from exc
+
+
+def _evaluate_metadata_marker(marker: Any, environment: dict[str, str]) -> bool:
+    """Evaluate with modern packaging semantics and support pip's older vendor copy."""
+    try:
+        return bool(marker.evaluate(environment, context="metadata"))
+    except TypeError as exc:
+        if "unexpected keyword argument 'context'" not in str(exc):
+            raise
+        return bool(marker.evaluate(environment))
 
 
 def _profile_dependency_closure(

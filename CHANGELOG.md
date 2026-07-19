@@ -4,6 +4,59 @@ All notable public changes to Actanara are documented here.
 
 ## Unreleased
 
+## [1.2.0] - 2026-07-19
+
+### Added
+
+- Attribute reported or conservatively estimated LLM tokens to pipeline runs,
+  stages, calls, chunks, retries, and fallbacks, with detailed Dashboard views
+  that keep missing historical usage explicitly unavailable.
+- Add ordered multi-provider execution with per-provider readiness checks,
+  secret-safe failure records, and bounded fallback behavior across narrative,
+  period-summary, history, and Nova-Task LLM paths.
+- Add nova-RAG v2 external content sources with supplement or replace modes,
+  multiple recursive paths, include/exclude filters, bounded structured parsing,
+  symlink and traversal defenses, incremental metadata, and read-only dry-run
+  plans. Legacy `.doc` files remain unsupported and should first be converted to
+  `.docx`, PDF, or plain text.
+- Add Tailscale installation, login, IP, MagicDNS, reachability, and Serve
+  status checks plus explicit tailnet-only Serve controls. Funnel remains
+  unavailable and fail-closed, and nova-RAG is never exposed through this path.
+- Add browser-local social-share PNG previews for weekly reports, monthly
+  reports, and AI Assets, using a privacy allowlist rather than full-page DOM
+  capture, with clipboard and download fallbacks.
+- Add verified AI Assets backups with consistent SQLite snapshots, staged
+  atomic publication, per-file hashes, manifest self-verification, constrained
+  retention, scheduler integration, and bilingual Dashboard controls. This
+  release supports backup and verification only; restore is intentionally not
+  implemented.
+
+### Changed
+
+- Extend settings and machine-facing responses additively for provider chains,
+  external RAG sources, Tailscale state, share metadata, and backup policy while
+  retaining the legacy single-provider settings mirror.
+- Add migration `0019_pipeline_llm_attribution.sql`; all previous migrations
+  remain byte-for-byte unchanged and their compatibility hashes remain valid.
+- Treat active source metadata as the product-version authority for the CLI and
+  backup manifests, including when an older installed distribution remains in a
+  reused virtual environment.
+
+### Security and compatibility
+
+- Never include Runtime secret files in backups, redact settings secret values
+  and sensitive secret-reference details, and reject unsafe backup targets,
+  traversal, escaping symlinks, device files, insufficient space, and partial
+  publication.
+- Keep Tailscale Funnel disabled because the Dashboard session is not an
+  independent user-identity boundary; Serve binds only the loopback Dashboard
+  to the tailnet after explicit user action.
+- Preserve and upgrade Actanara v1.1.0 Runtime data through additive contracts.
+  Runtimes from the former Open Nova product remain outside the supported
+  compatibility boundary.
+- Write external content only to the nova-RAG v2 candidate store. The legacy
+  index is neither migrated nor modified.
+
 ## [1.1.0] - 2026-07-18
 
 ### Changed
@@ -114,6 +167,7 @@ managed background services executing an older concrete source directory.
 - Runtime secrets remain in the Runtime-local private secret store and are
   excluded from source and release artifacts.
 
+[1.2.0]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.2.0
 [1.1.0]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.1.0
 [1.0.2]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.0.2
 [1.0.1]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.0.1
