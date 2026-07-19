@@ -7,6 +7,7 @@ import json
 import urllib.request
 import re
 import time
+import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -15,16 +16,12 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 import config
 from data_foundation.diary_paths import diary_technical_report_path
 from data_foundation.settings import is_nova_task_enabled, resolve_llm_provider
-from data_foundation.llm_transport import send_anthropic_message, send_openai_compatible_message
+from data_foundation.llm_execution import execute_llm_message
 from data_foundation.nova_task import render_task_graph_context
 from data_foundation.paths import load_paths
 from data_foundation.time import business_today
 
-_LLM_PROVIDER = resolve_llm_provider(redact_secrets=False)
-API_KEY = _LLM_PROVIDER["apiKey"]
-API_HOST = _LLM_PROVIDER["endpoint"]
-MODEL = _LLM_PROVIDER["model"]
-API_TYPE = _LLM_PROVIDER.get("api") or "anthropic-messages"
+_LLM_PROVIDER = resolve_llm_provider(redact_secrets=True)
 THINKING_MODE = os.getenv("LLM_THINKING_MODE", "off").strip().lower()
 def _runtime_diary_root() -> Path:
     return load_paths().diary_dir
@@ -171,6 +168,12 @@ PROMPT_TECHNICAL_INTEGRATION = """【高级架构师技术报告 - Engineering C
 
 # ===================== CORE LOGIC =====================
 
+def _llm_chunk_id(label):
+    raw = str(label or "technical llm").strip()
+    slug = re.sub(r"[^\w.-]+", "-", raw, flags=re.UNICODE).strip("-_.").casefold()
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:10]
+    return f"{(slug[:80] or 'technical-llm')}-{digest}"
+
 def call_llm(prompt, label=None, max_tokens=16384):
     call_label = label or "technical llm"
     token_estimate = get_token_count(prompt)
@@ -180,18 +183,17 @@ def call_llm(prompt, label=None, max_tokens=16384):
         flush=True,
     )
     try:
-        sender = send_anthropic_message if API_TYPE == "anthropic-messages" else send_openai_compatible_message
-        content = sender(
-            endpoint=API_HOST,
-            api_key=API_KEY,
-            model=MODEL,
+        content = execute_llm_message(
             system=SYSTEM_PROMPT,
             prompt=prompt,
             temperature=0.05,
             max_tokens=max_tokens,
-            timeout=180,
             thinking_mode=THINKING_MODE,
-        )
+            paths=load_paths(),
+            pass_id="technical",
+            label=call_label,
+            chunk_id=_llm_chunk_id(call_label),
+        ).text
         cleaned = re.sub(r'<(think|思考)>[\s\S]*?</\1>', '', content).strip()
         print(
             f"   [TECH-LLM-END] {call_label}: {time.time() - started:.1f}s, chars={len(cleaned):,}",
@@ -200,7 +202,7 @@ def call_llm(prompt, label=None, max_tokens=16384):
         return cleaned
     except Exception as exc:
         print(f"   [TECH-LLM-ERROR] {call_label}: {time.time() - started:.1f}s, {exc}", flush=True)
-        return None
+        raise
 
 def build_raw_text(entries, max_chars):
     text = ""

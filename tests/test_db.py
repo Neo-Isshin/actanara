@@ -36,6 +36,7 @@ EXPECTED_MIGRATIONS = [
     "0016_nova_task_node_management",
     "0017_infrastructure_graph",
     "0018_pipeline_runs",
+    "0019_pipeline_llm_attribution",
 ]
 
 
@@ -361,6 +362,7 @@ db.migrate()
                     "0016_nova_task_node_management",
                     "0017_infrastructure_graph",
                     "0018_pipeline_runs",
+                    "0019_pipeline_llm_attribution",
                 ],
             )
             with connect(paths) as connection:

@@ -17,14 +17,11 @@ if str(ROOT_DIR) not in sys.path:
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from data_foundation.llm_transport import send_anthropic_message, send_openai_compatible_message
+from data_foundation.llm_execution import execute_llm_message
+from data_foundation.paths import load_paths
 from data_foundation.settings import resolve_llm_provider
 
-_LLM_PROVIDER = resolve_llm_provider(redact_secrets=False)
-API_KEY = _LLM_PROVIDER["apiKey"]
-API_HOST = _LLM_PROVIDER["endpoint"]
-MODEL = _LLM_PROVIDER["model"]
-API_TYPE = _LLM_PROVIDER.get("api") or "anthropic-messages"
+_LLM_PROVIDER = resolve_llm_provider(redact_secrets=True)
 LLM_TIMEOUT_SECONDS = int(_LLM_PROVIDER.get("timeoutSeconds") or 180)
 THINKING_MODE = os.getenv("LLM_THINKING_MODE", "off").strip().lower()
 
@@ -162,22 +159,27 @@ def integration_prompt(date_str: str, task_graph_context: str, evidence_packets:
     )
 
 
-def call_llm(prompt: str, label: str | None = None, max_tokens: int = 6144) -> str:
+def call_llm(
+    prompt: str,
+    label: str | None = None,
+    max_tokens: int = 6144,
+    chunk_id: str | None = None,
+) -> str:
     call_label = label or "english technical llm"
     started = time.time()
     print(f"   [EN-TECH-LLM-START] {call_label}: max_tokens={max_tokens}", flush=True)
-    sender = send_anthropic_message if API_TYPE == "anthropic-messages" else send_openai_compatible_message
-    content = sender(
-        endpoint=API_HOST,
-        api_key=API_KEY,
-        model=MODEL,
+    content = execute_llm_message(
         system=SYSTEM_TECHNICAL_EN + _thinking_instruction(),
         prompt=prompt,
         temperature=0.05,
         max_tokens=max_tokens,
         timeout=LLM_TIMEOUT_SECONDS,
         thinking_mode=THINKING_MODE,
-    ).strip()
+        paths=load_paths(),
+        pass_id="technical",
+        chunk_id=chunk_id or call_label,
+        label=call_label,
+    ).text.strip()
     cleaned = re.sub(r"<(think|thinking)>[\s\S]*?</\1>", "", content).strip()
     print(f"   [EN-TECH-LLM-END] {call_label}: {time.time() - started:.1f}s, chars={len(cleaned):,}", flush=True)
     return cleaned
@@ -188,11 +190,17 @@ def generate_from_entries(date_str: str, entries_by_source: dict[str, list[dict]
     for source, entries in entries_by_source.items():
         if not entries:
             continue
-        packets[source] = call_llm(partial_prompt(source, entries), label=f"{source} technical evidence", max_tokens=4096)
+        packets[source] = call_llm(
+            partial_prompt(source, entries),
+            label=f"{source} technical evidence",
+            max_tokens=4096,
+            chunk_id=f"source:{source}",
+        )
     report = call_llm(
         integration_prompt(date_str, task_graph_context, packets),
         label="english technical final integration",
         max_tokens=8192,
+        chunk_id="integration",
     )
     return {
         "status": "generated",

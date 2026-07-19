@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +16,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
 from diary_generator import language_profile, learning_pass, narrative_pass, technical_pass
+from data_foundation.llm_execution import ProviderChainError
 
 EN_NARRATIVE_SPEC = importlib.util.spec_from_file_location(
     "english_narrative_payload",
@@ -77,6 +79,48 @@ class _Response:
 
 
 class PromptPayloadContractTests(unittest.TestCase):
+    def test_narrative_parallel_provider_chain_failure_is_not_silently_dropped(self):
+        plans = [
+            {"slot": "morning", "plan": {"agent": "codex"}},
+            {"slot": "afternoon", "plan": {"agent": "claude"}},
+        ]
+
+        def failed_provider_chain(_plan):
+            raise ProviderChainError(
+                "all configured providers failed",
+                failure_class="timeout",
+                retryable=True,
+                call_id="narrative-parallel-call",
+            )
+
+        with (
+            patch.object(narrative_pass, "PIPELINE_CONCURRENCY", 2),
+            patch.object(
+                narrative_pass,
+                "_execute_summary_plan",
+                side_effect=failed_provider_chain,
+            ),
+            redirect_stdout(io.StringIO()),
+        ):
+            with self.assertRaises(ProviderChainError):
+                narrative_pass._execute_slot_plans(plans)
+
+    def test_narrative_parallel_non_llm_worker_failure_keeps_soft_failure_contract(self):
+        plans = [
+            {"slot": "morning", "plan": {"agent": "codex"}},
+            {"slot": "afternoon", "plan": {"agent": "claude"}},
+        ]
+        with (
+            patch.object(narrative_pass, "PIPELINE_CONCURRENCY", 2),
+            patch.object(
+                narrative_pass,
+                "_execute_summary_plan",
+                side_effect=ValueError("synthetic worker defect"),
+            ),
+            redirect_stdout(io.StringIO()),
+        ):
+            self.assertIsNone(narrative_pass._execute_slot_plans(plans))
+
     def test_english_pipeline_sources_do_not_use_retired_artifact_names(self):
         forbidden = ("technical-progress-", "learning-audit-")
         for path in sorted((ROOT / "src" / "diary_generator" / "en").glob("*.py")):
@@ -128,15 +172,14 @@ class PromptPayloadContractTests(unittest.TestCase):
     def _request_payload(self, function, argument):
         captured = {}
 
-        def fake_urlopen(request, **kwargs):
-            captured.update(json.loads(request.data.decode("utf-8")))
-            return _Response()
+        def fake_executor(**kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(text="ok")
 
         module = sys.modules[function.__module__]
         with (
-            patch.object(module, "API_TYPE", "anthropic-messages"),
-            patch.object(module, "API_HOST", "https://llm.test"),
-            patch("urllib.request.urlopen", side_effect=fake_urlopen),
+            patch.object(module, "execute_llm_message", side_effect=fake_executor),
+            patch.object(module, "load_paths", return_value="runtime-paths"),
             redirect_stdout(io.StringIO()),
         ):
             function(argument)
@@ -148,22 +191,31 @@ class PromptPayloadContractTests(unittest.TestCase):
         )
         payload = self._request_payload(narrative_pass.call_llm, partial)
         self.assertEqual(payload["system"], "你是一个专业的AI技术日记助手。" + narrative_pass._thinking_instruction())
-        self.assertEqual(payload["messages"][0]["content"], partial)
+        self.assertEqual(payload["prompt"], partial)
+        self.assertEqual(payload["pass_id"], "narrative")
+        self.assertEqual(payload["label"], "partial")
+        self.assertEqual(payload["chunk_id"], narrative_pass._llm_chunk_id("partial"))
+        self.assertEqual(payload["paths"], "runtime-paths")
         integrated = narrative_pass.PROMPT_INTEGRATION.replace("{raw_text}", "fixture-summary")
+        captured = {}
+
+        def fake_executor(**kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(text="ok")
+
         with (
-            patch.object(narrative_pass, "API_TYPE", "anthropic-messages"),
-            patch.object(narrative_pass, "API_HOST", "https://llm.test"),
-            patch("urllib.request.urlopen") as urlopen,
+            patch.object(narrative_pass, "execute_llm_message", side_effect=fake_executor),
+            patch.object(narrative_pass, "load_paths", return_value="runtime-paths"),
             redirect_stdout(io.StringIO()),
         ):
-            urlopen.return_value = _Response()
             narrative_pass.call_llm(integrated, True)
-            payload = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))
         self.assertEqual(
-            payload["system"],
+            captured["system"],
             "你是一个专业的技术日记整合助手。直接从'## 今日概要'开始输出。" + narrative_pass._thinking_instruction(),
         )
-        self.assertEqual(payload["messages"][0]["content"], integrated)
+        self.assertEqual(captured["prompt"], integrated)
+        self.assertEqual(captured["label"], "final integration")
+        self.assertEqual(captured["chunk_id"], narrative_pass._llm_chunk_id("final integration"))
 
     def test_english_narrative_payload_is_isolated_from_chinese_prompt_payload(self):
         partial = english_narrative_payload.partial_prompt(
@@ -189,11 +241,13 @@ class PromptPayloadContractTests(unittest.TestCase):
     def test_english_narrative_fixture_uses_llm_generation_path(self):
         calls = []
 
-        def fake_sender(**kwargs):
+        def fake_executor(**kwargs):
             calls.append(kwargs)
             if "Daily Overview" in kwargs["prompt"]:
-                return "## Daily Overview\n* **Runtime language gate**: The English profile stayed isolated."
-            return "- Runtime language gate implemented with contract coverage."
+                return SimpleNamespace(
+                    text="## Daily Overview\n* **Runtime language gate**: The English profile stayed isolated."
+                )
+            return SimpleNamespace(text="- Runtime language gate implemented with contract coverage.")
 
         fixture = {
             "codex": [
@@ -205,9 +259,8 @@ class PromptPayloadContractTests(unittest.TestCase):
             ]
         }
         with (
-            patch.object(english_narrative_payload, "API_TYPE", "anthropic-messages"),
-            patch.object(english_narrative_payload, "send_anthropic_message", side_effect=fake_sender),
-            patch.object(english_narrative_payload, "send_openai_compatible_message") as openai_sender,
+            patch.object(english_narrative_payload, "execute_llm_message", side_effect=fake_executor),
+            patch.object(english_narrative_payload, "load_paths", return_value="runtime-paths"),
             redirect_stdout(io.StringIO()),
         ):
             result = english_narrative_payload.generate_from_entries(fixture)
@@ -220,7 +273,9 @@ class PromptPayloadContractTests(unittest.TestCase):
         self.assertTrue(calls[0]["system"].startswith("You are a precise AI work-log summarization assistant."))
         self.assertTrue(calls[1]["system"].startswith("You are a precise technical diary editor."))
         self.assertIn("pipeline.englishEnabled", calls[0]["prompt"])
-        openai_sender.assert_not_called()
+        self.assertEqual([call["pass_id"] for call in calls], ["narrative", "narrative"])
+        self.assertEqual([call["chunk_id"] for call in calls], ["agent:codex", "integration"])
+        self.assertTrue(all(call["paths"] == "runtime-paths" for call in calls))
 
     def test_english_narrative_pass_writes_profile_filename(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -277,7 +332,10 @@ class PromptPayloadContractTests(unittest.TestCase):
         )
         payload = self._request_payload(technical_pass.call_llm, prompt)
         self.assertEqual(payload["system"], technical_pass.SYSTEM_PROMPT)
-        self.assertEqual(payload["messages"][0]["content"], prompt)
+        self.assertEqual(payload["prompt"], prompt)
+        self.assertEqual(payload["pass_id"], "technical")
+        self.assertEqual(payload["label"], "technical llm")
+        self.assertEqual(payload["chunk_id"], technical_pass._llm_chunk_id("technical llm"))
         self.assertIn(technical_pass.TASK_RULES, technical_pass.SYSTEM_PROMPT)
         self.assertIn("Engineering Chronicle", prompt)
         self.assertIn("no_material_technical_progress", prompt)
@@ -319,20 +377,24 @@ class PromptPayloadContractTests(unittest.TestCase):
     def test_english_technical_fixture_uses_llm_generation_path(self):
         calls = []
 
-        def fake_sender(**kwargs):
+        def fake_executor(**kwargs):
             calls.append(kwargs)
             if "Technical Progress Report" in kwargs["prompt"]:
-                return (
-                    "# 2026-05-19 Technical Progress Report\n\n"
-                    "## Engineering Objectives and Outcomes\n- English technical pass dry-run generated evidence.\n\n"
-                    "## Obstacles, Root Causes, and Detours\nNone\n\n"
-                    "## Implementation Path and Key Decisions\n- Updated src/diary_generator/en/technical_payload.py.\n\n"
-                    "## Verification Evidence\n- Fixture generation path executed.\n\n"
-                    "## Residual Risks and Follow-up Observation\nNone\n\n"
-                    "## Reusable Lessons\nNone\n\n"
-                    "## Nova-Task Reconciliation Hooks\nNone\n"
+                return SimpleNamespace(
+                    text=(
+                        "# 2026-05-19 Technical Progress Report\n\n"
+                        "## Engineering Objectives and Outcomes\n- English technical pass dry-run generated evidence.\n\n"
+                        "## Obstacles, Root Causes, and Detours\nNone\n\n"
+                        "## Implementation Path and Key Decisions\n- Updated src/diary_generator/en/technical_payload.py.\n\n"
+                        "## Verification Evidence\n- Fixture generation path executed.\n\n"
+                        "## Residual Risks and Follow-up Observation\nNone\n\n"
+                        "## Reusable Lessons\nNone\n\n"
+                        "## Nova-Task Reconciliation Hooks\nNone\n"
+                    )
                 )
-            return "- Evidence packet: changed src/diary_generator/en/technical_payload.py."
+            return SimpleNamespace(
+                text="- Evidence packet: changed src/diary_generator/en/technical_payload.py."
+            )
 
         fixture = {
             "codex": [
@@ -344,9 +406,8 @@ class PromptPayloadContractTests(unittest.TestCase):
             ]
         }
         with (
-            patch.object(english_technical_payload, "API_TYPE", "anthropic-messages"),
-            patch.object(english_technical_payload, "send_anthropic_message", side_effect=fake_sender),
-            patch.object(english_technical_payload, "send_openai_compatible_message") as openai_sender,
+            patch.object(english_technical_payload, "execute_llm_message", side_effect=fake_executor),
+            patch.object(english_technical_payload, "load_paths", return_value="runtime-paths"),
             redirect_stdout(io.StringIO()),
         ):
             result = english_technical_payload.generate_from_entries(
@@ -363,7 +424,9 @@ class PromptPayloadContractTests(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         self.assertIn("Technical Chronicle Contract", calls[0]["system"])
         self.assertIn("NT-123 English pipeline adaptation", calls[1]["prompt"])
-        openai_sender.assert_not_called()
+        self.assertEqual([call["pass_id"] for call in calls], ["technical", "technical"])
+        self.assertEqual([call["chunk_id"] for call in calls], ["source:codex", "integration"])
+        self.assertTrue(all(call["paths"] == "runtime-paths" for call in calls))
 
     def test_english_technical_pass_writes_profile_filename(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -412,7 +475,10 @@ class PromptPayloadContractTests(unittest.TestCase):
         prompt = learning_pass.PROMPT_LEARNING.replace("{date}", "2026-05-19").replace("{summary}", "fixture-summary")
         payload = self._request_payload(learning_pass.call_llm, prompt)
         self.assertEqual(payload["system"], learning_pass.SYSTEM_LEARNING + learning_pass._thinking_instruction())
-        self.assertEqual(payload["messages"][0]["content"], prompt)
+        self.assertEqual(payload["prompt"], prompt)
+        self.assertEqual(payload["pass_id"], "learning")
+        self.assertEqual(payload["label"], "learning llm")
+        self.assertEqual(payload["chunk_id"], learning_pass._llm_chunk_id("learning llm"))
 
     def test_english_learning_payload_uses_english_structure_without_chinese_headings(self):
         prompt = english_learning_payload.build_prompt(
@@ -443,20 +509,21 @@ class PromptPayloadContractTests(unittest.TestCase):
     def test_english_learning_fixture_uses_llm_generation_path(self):
         calls = []
 
-        def fake_sender(**kwargs):
+        def fake_executor(**kwargs):
             calls.append(kwargs)
-            return (
-                "# 2026-05-19 Learning and Infrastructure Audit\n\n"
-                "## Lessons\n### [codex] Partial YAML drift\n#### Problem\nPartial packets emitted YAML.\n"
-                "#### Root Cause\nThe prompt did not forbid intermediate YAML.\n"
-                "#### Recommendation\nOnly final integration should emit Nova-Task YAML.\n\n"
-                "## Infrastructure Updates\nNone"
+            return SimpleNamespace(
+                text=(
+                    "# 2026-05-19 Learning and Infrastructure Audit\n\n"
+                    "## Lessons\n### [codex] Partial YAML drift\n#### Problem\nPartial packets emitted YAML.\n"
+                    "#### Root Cause\nThe prompt did not forbid intermediate YAML.\n"
+                    "#### Recommendation\nOnly final integration should emit Nova-Task YAML.\n\n"
+                    "## Infrastructure Updates\nNone"
+                )
             )
 
         with (
-            patch.object(english_learning_payload, "API_TYPE", "anthropic-messages"),
-            patch.object(english_learning_payload, "send_anthropic_message", side_effect=fake_sender),
-            patch.object(english_learning_payload, "send_openai_compatible_message") as openai_sender,
+            patch.object(english_learning_payload, "execute_llm_message", side_effect=fake_executor),
+            patch.object(english_learning_payload, "load_paths", return_value="runtime-paths"),
             redirect_stdout(io.StringIO()),
         ):
             result = english_learning_payload.generate_from_summary(
@@ -472,7 +539,10 @@ class PromptPayloadContractTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertTrue(calls[0]["system"].startswith("You are a precise technical audit assistant."))
         self.assertIn("Technical partial packets emitted YAML too early", calls[0]["prompt"])
-        openai_sender.assert_not_called()
+        self.assertEqual(calls[0]["pass_id"], "learning")
+        self.assertEqual(calls[0]["chunk_id"], "audit")
+        self.assertEqual(calls[0]["label"], "learning audit")
+        self.assertEqual(calls[0]["paths"], "runtime-paths")
 
     def test_english_learning_pass_reads_english_narrative_and_writes_profile_filename(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -495,33 +565,44 @@ class PromptPayloadContractTests(unittest.TestCase):
         self.assertNotIn("Wrong source", generator.call_args.args[1])
 
     def test_english_payloads_use_configured_llm_timeout(self):
-        def fake_sender(**kwargs):
+        def fake_executor(**kwargs):
             observed.append(kwargs)
-            return "ok"
+            return SimpleNamespace(text="ok")
 
         observed = []
         with (
-            patch.object(english_narrative_payload, "API_TYPE", "anthropic-messages"),
             patch.object(english_narrative_payload, "LLM_TIMEOUT_SECONDS", 37),
-            patch.object(english_narrative_payload, "send_anthropic_message", side_effect=fake_sender),
+            patch.object(english_narrative_payload, "execute_llm_message", side_effect=fake_executor),
         ):
             english_narrative_payload.call_llm("Summarize this.", max_tokens=64)
 
         with (
-            patch.object(english_technical_payload, "API_TYPE", "anthropic-messages"),
             patch.object(english_technical_payload, "LLM_TIMEOUT_SECONDS", 38),
-            patch.object(english_technical_payload, "send_anthropic_message", side_effect=fake_sender),
+            patch.object(english_technical_payload, "execute_llm_message", side_effect=fake_executor),
         ):
             english_technical_payload.call_llm("Extract evidence.", max_tokens=64)
 
         with (
-            patch.object(english_learning_payload, "API_TYPE", "anthropic-messages"),
             patch.object(english_learning_payload, "LLM_TIMEOUT_SECONDS", 39),
-            patch.object(english_learning_payload, "send_anthropic_message", side_effect=fake_sender),
+            patch.object(english_learning_payload, "execute_llm_message", side_effect=fake_executor),
         ):
             english_learning_payload.call_llm("Extract lessons.")
 
         self.assertEqual([call["timeout"] for call in observed], [37, 38, 39])
+
+    def test_english_payloads_propagate_terminal_provider_chain_failures(self):
+        for module, invoke in (
+            (english_narrative_payload, lambda: english_narrative_payload.call_llm("narrative")),
+            (english_technical_payload, lambda: english_technical_payload.call_llm("technical")),
+            (english_learning_payload, lambda: english_learning_payload.call_llm("learning")),
+        ):
+            with self.subTest(module=module.__name__), patch.object(
+                module,
+                "execute_llm_message",
+                side_effect=RuntimeError("all configured providers failed"),
+            ), redirect_stdout(io.StringIO()):
+                with self.assertRaisesRegex(RuntimeError, "all configured providers failed"):
+                    invoke()
 
     def test_english_pipeline_mock_llm_smoke_chains_profile_artifacts(self):
         fixture_root = ROOT / "tests" / "fixtures" / "english_pipeline"

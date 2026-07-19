@@ -230,6 +230,39 @@ class PipelineCommandContractTests(unittest.TestCase):
             self.assertTrue(result.success)
             self.assertEqual(observed, [77])
 
+    def test_pipeline_step_passes_run_and_stage_attribution_only_to_child_environment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
+            script = Path(tmp) / "step.py"
+            script.write_text("", encoding="utf-8")
+            observed = {}
+
+            def runner(command, **kwargs):
+                observed.update(kwargs.get("env") or {})
+                return subprocess.CompletedProcess(command, 0, "ok\n", "")
+
+            with patch.dict(
+                os.environ,
+                {
+                    "ACTANARA_PIPELINE_RUN_ID": "outer-run",
+                    "ACTANARA_PIPELINE_STAGE_ID": "outer-stage",
+                },
+            ):
+                result = _run_step(
+                    PipelineStep("fixture", script),
+                    "2026-05-19",
+                    runner,
+                    paths,
+                    pipeline_run_id=42,
+                    stage_id="technical",
+                )
+                self.assertEqual(os.environ["ACTANARA_PIPELINE_RUN_ID"], "outer-run")
+                self.assertEqual(os.environ["ACTANARA_PIPELINE_STAGE_ID"], "outer-stage")
+
+        self.assertTrue(result.success)
+        self.assertEqual(observed["ACTANARA_PIPELINE_RUN_ID"], "42")
+        self.assertEqual(observed["ACTANARA_PIPELINE_STAGE_ID"], "technical")
+
     def test_pipeline_step_timeout_override_uses_script_name(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

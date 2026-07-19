@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from data_foundation.db import connect
+from data_foundation.llm_execution import ProviderChainError
 from data_foundation.nova_task import create_task_candidate, create_task_node
 from data_foundation.nova_task_layers import (
     LAYER_EVIDENCE_LEDGER,
@@ -41,6 +42,56 @@ from data_foundation.settings import write_settings
 
 
 class NovaTaskWorkGraphReconciliationTests(unittest.TestCase):
+    def test_production_reconciliation_uses_provider_chain_executor(self):
+        response = """```yaml
+nova_task:
+  date: "2026-07-18"
+```"""
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = initialize_home(Path(tmp) / "Actanara")
+            with (
+                patch(
+                    "data_foundation.nova_task_work_graph_reconciliation.execute_llm_message"
+                ) as execute,
+                patch(
+                    "data_foundation.nova_task_work_graph_reconciliation.resolve_llm_provider",
+                    side_effect=AssertionError("single-provider resolver must not run in production"),
+                ),
+            ):
+                execute.return_value.text = response
+                result = run_work_graph_reconciliation(
+                    paths,
+                    business_date=date(2026, 7, 18),
+                )
+
+        self.assertEqual(result.business_date, "2026-07-18")
+        execute.assert_called_once()
+        arguments = execute.call_args.kwargs
+        self.assertIs(arguments["paths"], paths)
+        self.assertEqual(arguments["pass_id"], "nova-task-work-graph-reconciliation")
+        self.assertEqual(arguments["label"], "Nova-Task work graph reconciliation")
+        self.assertIn("Technical report for 2026-07-18", arguments["prompt"])
+
+    def test_production_reconciliation_propagates_provider_chain_failure(self):
+        failure = ProviderChainError(
+            "LLM provider chain failed after 2 provider attempts",
+            failure_class="5xx",
+            retryable=True,
+            call_id="reconciliation-call",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = initialize_home(Path(tmp) / "Actanara")
+            with patch(
+                "data_foundation.nova_task_work_graph_reconciliation.execute_llm_message",
+                side_effect=failure,
+            ):
+                with self.assertRaises(ProviderChainError) as raised:
+                    run_work_graph_reconciliation(
+                        paths,
+                        business_date=date(2026, 7, 18),
+                    )
+        self.assertIs(raised.exception, failure)
+
     def test_default_date_uses_canonical_business_day_before_four_am(self):
         def fake_sender(**kwargs):
             self.assertIn('date: "2026-06-30"', kwargs["prompt"])

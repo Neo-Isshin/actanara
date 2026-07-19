@@ -154,6 +154,7 @@ let ACTANARA_DASHBOARD_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZo
 let ACTANARA_PIPELINE_LANGUAGE_PROFILE = 'zh';
 let ACTANARA_SETTINGS_LOADED = false;
 let ACTANARA_LAST_SETTINGS = null;
+let LLM_PROVIDER_CHAIN_DRAFT = null;
 let ACTANARA_SETTINGS_ADVANCED = false;
 let ACTANARA_SETTINGS_FORM_DRAFT = {};
 let ACTANARA_SETTINGS_LLM_DIRTY = false;
@@ -1791,6 +1792,18 @@ const LLM_UI_TEXT = {
     testPassed: '检测通过：',
     testFailedFull: '检测失败：',
     testFailed: '检测失败: ',
+    chainTitle: 'LLM Provider 与 Fallback',
+    primary: '主 Provider',
+    fallback: 'Fallback',
+    addFallback: '添加 Fallback',
+    manageFallbacks: '管理 Provider 顺序与 Fallback',
+    moveUp: '上移',
+    moveDown: '下移',
+    remove: '移除',
+    readiness: '就绪状态',
+    ready: '已就绪',
+    saveChain: '保存 Provider 链',
+    chainNote: '按顺序尝试；每个 Provider 使用独立模型、Endpoint、API 类型与密钥引用。',
   },
   en: {
     title: 'Diary Generation LLM Provider',
@@ -1825,6 +1838,18 @@ const LLM_UI_TEXT = {
     testPassed: 'Test passed: ',
     testFailedFull: 'Test failed: ',
     testFailed: 'Test failed: ',
+    chainTitle: 'LLM Providers and Fallbacks',
+    primary: 'Primary provider',
+    fallback: 'Fallback',
+    addFallback: 'Add fallback',
+    manageFallbacks: 'Manage provider order and fallbacks',
+    moveUp: 'Move up',
+    moveDown: 'Move down',
+    remove: 'Remove',
+    readiness: 'Readiness',
+    ready: 'Ready',
+    saveChain: 'Save provider chain',
+    chainNote: 'Providers are attempted in order; each keeps its own model, endpoint, API type, and secret reference.',
   },
 };
 
@@ -2299,6 +2324,128 @@ function formatBackgroundTaskTime(value) {
   return String(value).replace('T', ' ').slice(0, 19);
 }
 
+function pipelineTaskText() {
+  const en = dashboardLanguageProfile() === 'en';
+  return en ? {
+    details: 'Stage details', unavailable: 'unavailable', estimated: 'estimated',
+    duration: 'Duration', provider: 'Provider / model', calls: 'LLM calls', chunks: 'Chunks',
+    retries: 'Retries', fallbacks: 'Fallbacks', tokens: 'Tokens', input: 'input', output: 'output',
+    cacheRead: 'cache read', cacheWrite: 'cache write', reasoning: 'reasoning', total: 'total',
+    started: 'Started', completed: 'Completed', failure: 'Failure', artifacts: 'Artifacts',
+    committed: 'committed', notCommitted: 'not committed', usage: 'Usage', attempts: 'Attempts',
+    call: 'Call', chunk: 'Chunk', noCalls: 'No LLM call data for this stage', seconds: 's',
+  } : {
+    details: '阶段详情', unavailable: '不可用', estimated: '估算',
+    duration: '耗时', provider: 'Provider / 模型', calls: 'LLM 调用', chunks: 'Chunk 数',
+    retries: '重试', fallbacks: 'Fallback', tokens: 'Token', input: '输入', output: '输出',
+    cacheRead: '缓存读取', cacheWrite: '缓存写入', reasoning: '推理', total: '总计',
+    started: '开始', completed: '结束', failure: '失败', artifacts: '产物',
+    committed: '已提交', notCommitted: '未提交', usage: '用量', attempts: '尝试顺序',
+    call: '调用', chunk: 'Chunk', noCalls: '该阶段无 LLM 调用数据', seconds: '秒',
+  };
+}
+
+function formatPipelineTaskCount(value, unavailable) {
+  return value === null || value === undefined ? unavailable : Number(value).toLocaleString();
+}
+
+function formatPipelineTaskDuration(stage, labels) {
+  if (stage.durationSeconds !== null && stage.durationSeconds !== undefined) {
+    const value = Number(stage.durationSeconds);
+    return Number.isFinite(value) ? value.toFixed(value < 10 ? 2 : 1) + labels.seconds : labels.unavailable;
+  }
+  const start = Date.parse(stage.startedAt || '');
+  const end = Date.parse(stage.completedAt || '');
+  return Number.isFinite(start) && Number.isFinite(end)
+    ? Math.max(0, (end - start) / 1000).toFixed(2) + labels.seconds
+    : labels.unavailable;
+}
+
+function renderPipelineTokenLine(attribution, labels) {
+  const source = attribution && attribution.usageStatus ? String(attribution.usageStatus) : 'unavailable';
+  const values = attribution && attribution.tokens ? attribution.tokens : {};
+  const fields = [
+    [labels.input, 'inputTokens'], [labels.output, 'outputTokens'],
+    [labels.cacheRead, 'cacheReadTokens'], [labels.cacheWrite, 'cacheWriteTokens'],
+    [labels.reasoning, 'reasoningTokens'], [labels.total, 'totalTokens'],
+  ];
+  const tokens = fields.map(([label, key]) =>
+    '<span><b>' + escapeHtml(label) + '</b> ' + escapeHtml(formatPipelineTaskCount(values[key], labels.unavailable)) + '</span>'
+  ).join('');
+  const estimate = attribution && attribution.estimated ? ' · ' + labels.estimated : '';
+  return '<div class="pipeline-token-row"><strong>' + escapeHtml(labels.tokens) + '</strong>' + tokens +
+    '<small>' + escapeHtml(source + estimate) + '</small></div>';
+}
+
+function renderPipelineAttempt(attempt, index, labels) {
+  const target = [attempt.provider || attempt.providerId, attempt.model].filter(Boolean).join(' / ') || labels.unavailable;
+  const state = [attempt.status, attempt.failureClass, attempt.httpStatus].filter(value => value !== null && value !== undefined && value !== '').join(' · ');
+  const error = attempt.errorSummary ? ' · ' + attempt.errorSummary : '';
+  return '<li><b>#' + escapeHtml(index + 1) + '</b> ' + escapeHtml(target) +
+    (state ? ' · ' + escapeHtml(state) : '') + escapeHtml(error) + '</li>';
+}
+
+function renderPipelineCall(call, index, labels) {
+  const usage = call.usage || {};
+  const total = formatPipelineTaskCount(usage.totalTokens, labels.unavailable);
+  const identity = call.chunkId ? labels.chunk + ' ' + call.chunkId : labels.call + ' ' + (index + 1);
+  const target = [call.providerId, call.model].filter(Boolean).join(' / ') || labels.unavailable;
+  const attempts = Array.isArray(call.attempts) ? call.attempts : [];
+  const usageMethod = call.estimationMethod ? ' (' + call.estimationMethod + ')' : '';
+  const attemptsHtml = attempts.length
+    ? '<div class="pipeline-attempts"><b>' + escapeHtml(labels.attempts) + '</b><ol>' + attempts.map((attempt, attemptIndex) => renderPipelineAttempt(attempt, attemptIndex, labels)).join('') + '</ol></div>'
+    : '';
+  const failure = [call.failureClass, call.errorSummary].filter(Boolean).join(' · ');
+  return '<div class="pipeline-call-row">' +
+    '<div><strong>' + escapeHtml(identity) + '</strong><span class="task-monitor-status ' + escapeHtml(call.status || 'unknown') + '">' + escapeHtml(backgroundTaskStatusLabel(call.status)) + '</span></div>' +
+    '<div class="pipeline-call-meta">' + escapeHtml(target) + ' · ' + escapeHtml(labels.total) + ' ' + escapeHtml(total) +
+      ' · ' + escapeHtml((call.usageSource || labels.unavailable) + usageMethod) +
+      ' · ' + escapeHtml(labels.retries) + ' ' + escapeHtml(call.retryCount || 0) +
+      ' · ' + escapeHtml(labels.fallbacks) + ' ' + escapeHtml(call.fallbackCount || 0) + '</div>' +
+    (failure ? '<div class="task-monitor-error">' + escapeHtml(failure) + '</div>' : '') + attemptsHtml + '</div>';
+}
+
+function renderPipelineStageDetail(stage, labels) {
+  const attribution = stage.tokenAttribution || {};
+  const calls = Array.isArray(stage.calls) ? stage.calls : [];
+  const chunks = new Set(calls.map(call => call.chunkId).filter(Boolean)).size;
+  const chunkDisplay = attribution.callDataAvailable ? chunks : labels.unavailable;
+  const total = attribution.tokens ? formatPipelineTaskCount(attribution.tokens.totalTokens, labels.unavailable) : labels.unavailable;
+  const target = [stage.provider, stage.model].filter(Boolean).join(' / ') || labels.unavailable;
+  const artifacts = Array.isArray(stage.artifactPaths) ? stage.artifactPaths : [];
+  const artifactsHtml = artifacts.length
+    ? '<div class="pipeline-artifacts"><b>' + escapeHtml(labels.artifacts) + ' · ' + escapeHtml(stage.artifactCommitted ? labels.committed : labels.notCommitted) + '</b>' + artifacts.map(path => '<code>' + escapeHtml(path) + '</code>').join('') + '</div>'
+    : '';
+  const failure = [stage.failureClass, stage.errorSummary].filter(Boolean).join(' · ');
+  return '<details class="pipeline-stage-row">' +
+    '<summary><span><b>' + escapeHtml(stage.name || stage.stageId || labels.details) + '</b><small>' + escapeHtml(stage.stageId || '') + '</small></span>' +
+      '<span class="task-monitor-status ' + escapeHtml(stage.status || 'unknown') + '">' + escapeHtml(backgroundTaskStatusLabel(stage.status)) + '</span>' +
+      '<span>' + escapeHtml(labels.duration) + ' ' + escapeHtml(formatPipelineTaskDuration(stage, labels)) + '</span>' +
+      '<span>' + escapeHtml(labels.total) + ' ' + escapeHtml(total) + '</span></summary>' +
+    '<div class="pipeline-stage-body">' +
+      '<div class="pipeline-detail-grid">' +
+        '<span><b>' + escapeHtml(labels.started) + '</b>' + escapeHtml(formatBackgroundTaskTime(stage.startedAt)) + '</span>' +
+        '<span><b>' + escapeHtml(labels.completed) + '</b>' + escapeHtml(formatBackgroundTaskTime(stage.completedAt)) + '</span>' +
+        '<span><b>' + escapeHtml(labels.provider) + '</b>' + escapeHtml(target) + '</span>' +
+        '<span><b>' + escapeHtml(labels.calls) + ' / ' + escapeHtml(labels.chunks) + '</b>' + escapeHtml(formatPipelineTaskCount(stage.llmCallCount, labels.unavailable)) + ' / ' + escapeHtml(chunkDisplay) + '</span>' +
+        '<span><b>' + escapeHtml(labels.retries) + ' / ' + escapeHtml(labels.fallbacks) + '</b>' + escapeHtml(formatPipelineTaskCount(stage.retryCount, labels.unavailable)) + ' / ' + escapeHtml(formatPipelineTaskCount(stage.fallbackCount, labels.unavailable)) + '</span>' +
+      '</div>' + renderPipelineTokenLine(attribution, labels) +
+      (failure ? '<div class="task-monitor-error"><b>' + escapeHtml(labels.failure) + '</b> ' + escapeHtml(failure) + '</div>' : '') +
+      (calls.length ? '<div class="pipeline-call-list">' + calls.map((call, index) => renderPipelineCall(call, index, labels)).join('') + '</div>' : '<div class="pipeline-empty">' + escapeHtml(labels.noCalls) + '</div>') +
+      artifactsHtml +
+    '</div></details>';
+}
+
+function renderPipelineTaskDetails(task) {
+  if (task.source !== 'pipeline') return '';
+  const labels = pipelineTaskText();
+  const stages = Array.isArray(task.stageDetails) ? task.stageDetails : [];
+  return '<details class="pipeline-run-details"><summary>' + escapeHtml(labels.details) +
+    ' · ' + escapeHtml(labels.calls) + ' ' + escapeHtml(formatPipelineTaskCount(task.tokenAttribution && task.tokenAttribution.llmCallCount, labels.unavailable)) +
+    ' · ' + escapeHtml(labels.total) + ' ' + escapeHtml(formatPipelineTaskCount(task.tokenAttribution && task.tokenAttribution.tokens && task.tokenAttribution.tokens.totalTokens, labels.unavailable)) +
+    '</summary><div class="pipeline-stage-list">' + stages.map(stage => renderPipelineStageDetail(stage, labels)).join('') + '</div></details>';
+}
+
 function renderBackgroundTaskItem(task) {
   const labels = operatorText();
   const status = String(task.status || 'unknown');
@@ -2321,6 +2468,7 @@ function renderBackgroundTaskItem(task) {
     '<div class="task-monitor-subtitle">' + escapeHtml(task.subtitle || '') + '</div>' +
     '<div class="settings-progress"><div class="settings-progress-bar ' + (status === 'failed' ? 'failed' : '') + '" style="width:' + progress + '%"></div></div>' +
     '<div class="task-monitor-meta">' + escapeHtml(meta) + '</div>' +
+    renderPipelineTaskDetails(task) +
     error +
     actionHtml +
     '</div>';
@@ -7998,13 +8146,14 @@ async function uninstallSystemTimer() {
 
 async function openLlmProviderModal() {
   const labels = llmUiText();
-  const modalGeneration = openModal(labels.title, '<div class="wr-loading"><div class="wr-spinner"></div><span>' + escapeHtml(labels.readingProvider) + '</span></div>');
+  const modalGeneration = openModal(labels.chainTitle, '<div class="wr-loading"><div class="wr-spinner"></div><span>' + escapeHtml(labels.readingProvider) + '</span></div>');
   try {
-    const res = await fetch('/api/llm-provider');
+    const res = await fetch('/api/llm-provider-chain');
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    const provider = await res.json();
+    const chain = await res.json();
     if (dashboardModalGenerationIsCurrent(modalGeneration)) {
-      document.getElementById('modal-body').innerHTML = renderLlmProviderModal(provider);
+      LLM_PROVIDER_CHAIN_DRAFT = chain;
+      document.getElementById('modal-body').innerHTML = renderLlmProviderModal(chain);
     }
   } catch (e) {
     if (dashboardModalGenerationIsCurrent(modalGeneration)) {
@@ -8013,8 +8162,137 @@ async function openLlmProviderModal() {
   }
 }
 
-function renderLlmProviderModal(provider) {
-  return renderLlmProviderSettings(provider, true, true);
+function renderLlmProviderModal(chain) {
+  const labels = llmUiText();
+  const providers = Array.isArray(chain && chain.providers) ? chain.providers : [];
+  const catalog = Array.isArray(chain && chain.catalog) ? chain.catalog : [];
+  const rows = providers.map((provider, index) => renderLlmProviderChainRow(provider, index, providers.length, catalog)).join('');
+  return '<div class="llm-chain-editor">' +
+    '<div class="settings-note llm-chain-note">' + escapeHtml(labels.chainNote) + '</div>' +
+    '<div id="llmProviderChainRows">' + rows + '</div>' +
+    '<button type="button" class="wr-export-btn secondary llm-chain-add" onclick="addLlmProviderFallback()">+ ' + escapeHtml(labels.addFallback) + '</button>' +
+    '<div class="settings-actions"><span class="settings-status" id="llmSaveStatus" role="status" aria-live="polite"></span>' +
+      '<button class="wr-export-btn" onclick="closeModal()">' + escapeHtml(labels.cancel) + '</button>' +
+      '<button class="wr-export-btn" onclick="saveLlmProviderModal()">' + escapeHtml(labels.saveChain) + '</button></div>' +
+    '</div>';
+}
+
+function renderLlmProviderChainRow(provider, index, count, catalog) {
+  const labels = llmUiText();
+  const providerId = provider.provider || provider.presetProvider || 'custom';
+  const selectedCatalog = catalog.find(item => item.id === providerId) || {id:'custom', models:[]};
+  const custom = providerId === 'custom' || provider.mode === 'custom';
+  const providerOptions = catalog.map(item => '<option value="' + escapeHtml(item.id) + '" ' +
+    (item.id === providerId ? 'selected' : '') + ' ' + (item.enabled === false ? 'disabled' : '') + '>' +
+    escapeHtml(item.name || item.id) + '</option>').join('');
+  const modelOptions = (selectedCatalog.models || []).map(item => '<option value="' + escapeHtml(item.id) + '" ' +
+    (item.id === provider.model ? 'selected' : '') + '>' + escapeHtml(item.name || item.id) + '</option>').join('');
+  const readiness = provider.readiness || {};
+  const readinessText = readiness.ready ? labels.ready : (readiness.status || labels.notConfigured);
+  const readinessTitle = readiness.error || readinessText;
+  const role = index === 0 ? labels.primary : labels.fallback + ' ' + index;
+  const entryId = provider.entryId || ('provider-' + (index + 1));
+  const endpoint = provider.endpoint || selectedCatalog.endpoint || '';
+  const apiType = provider.api || selectedCatalog.api || 'openai-compatible';
+  return '<section class="llm-chain-row" data-llm-chain-index="' + escapeHtml(index) + '" data-entry-id="' + escapeHtml(entryId) + '">' +
+    '<div class="llm-chain-head"><div><b>' + escapeHtml(role) + '</b><code>' + escapeHtml(entryId) + '</code></div>' +
+      '<span class="task-monitor-status ' + (readiness.ready ? 'completed' : 'failed') + '" title="' + escapeHtml(readinessTitle) + '">' + escapeHtml(readinessText) + '</span>' +
+      '<div class="llm-chain-order">' +
+        '<button type="button" class="wr-export-btn secondary" onclick="moveLlmProviderChainEntry(' + index + ',-1)" ' + (index === 0 ? 'disabled' : '') + ' aria-label="' + escapeHtml(labels.moveUp) + '">↑</button>' +
+        '<button type="button" class="wr-export-btn secondary" onclick="moveLlmProviderChainEntry(' + index + ',1)" ' + (index === count - 1 ? 'disabled' : '') + ' aria-label="' + escapeHtml(labels.moveDown) + '">↓</button>' +
+        '<button type="button" class="wr-export-btn secondary" onclick="removeLlmProviderChainEntry(' + index + ')" ' + (count <= 1 ? 'disabled' : '') + ' aria-label="' + escapeHtml(labels.remove) + '">×</button>' +
+      '</div></div>' +
+    '<div class="llm-chain-fields">' +
+      '<label><span>' + escapeHtml(labels.provider) + '</span><select data-chain-field="provider" onchange="llmProviderChainCatalogChanged(' + index + ')">' + providerOptions + '</select></label>' +
+      (custom
+        ? '<label><span>' + escapeHtml(labels.model) + '</span><input data-chain-field="model" value="' + escapeHtml(provider.model || '') + '"></label>'
+        : '<label><span>' + escapeHtml(labels.model) + '</span><select data-chain-field="model">' + modelOptions + '</select></label>') +
+      '<label><span>Endpoint</span><input data-chain-field="endpoint" value="' + escapeHtml(endpoint) + '" ' + (custom ? '' : 'readonly') + '></label>' +
+      '<label><span>' + escapeHtml(labels.apiType) + '</span><select data-chain-field="api" ' + (custom ? '' : 'disabled') + '>' +
+        '<option value="openai-compatible" ' + (apiType === 'openai-compatible' ? 'selected' : '') + '>OpenAI compatible</option>' +
+        '<option value="anthropic-messages" ' + (apiType === 'anthropic-messages' ? 'selected' : '') + '>Anthropic Messages</option></select></label>' +
+      '<label><span>' + escapeHtml(labels.apiKey) + '</span><input data-chain-field="apiKey" type="password" value="" placeholder="' + escapeHtml(provider.hasApiKey ? labels.savedKeepBlank : labels.notConfigured) + '"></label>' +
+      '<label><span>' + escapeHtml(labels.requestTimeout) + '</span><input data-chain-field="timeoutSeconds" type="number" min="30" max="900" value="' + escapeHtml(provider.timeoutSeconds || 300) + '"></label>' +
+    '</div>' +
+    '<div class="llm-chain-test"><button type="button" class="wr-export-btn secondary" onclick="testLlmProviderChainEntry(' + index + ')">' + escapeHtml(labels.testAvailability) + '</button>' +
+      '<span id="llmProviderChainTest-' + index + '" role="status" aria-live="polite"></span></div>' +
+    '</section>';
+}
+
+function collectLlmProviderChainFromModal() {
+  return Array.from(document.querySelectorAll('[data-llm-chain-index]')).map(row => {
+    const value = name => row.querySelector('[data-chain-field="' + name + '"]')?.value || '';
+    const provider = value('provider') || 'custom';
+    const catalog = (LLM_PROVIDER_CHAIN_DRAFT && LLM_PROVIDER_CHAIN_DRAFT.catalog) || [];
+    const preset = catalog.find(item => item.id === provider) || {};
+    return {
+      entryId: row.dataset.entryId,
+      mode: provider === 'custom' ? 'custom' : 'preset',
+      provider,
+      model: value('model'),
+      endpoint: value('endpoint') || preset.endpoint || '',
+      api: value('api') || preset.api || 'openai-compatible',
+      apiKey: value('apiKey'),
+      timeoutSeconds: value('timeoutSeconds') || '300',
+    };
+  });
+}
+
+function rerenderLlmProviderChain(providers) {
+  if (!LLM_PROVIDER_CHAIN_DRAFT) LLM_PROVIDER_CHAIN_DRAFT = {catalog: []};
+  LLM_PROVIDER_CHAIN_DRAFT.providers = providers;
+  const body = document.getElementById('modal-body');
+  if (body) body.innerHTML = renderLlmProviderModal(LLM_PROVIDER_CHAIN_DRAFT);
+}
+
+function moveLlmProviderChainEntry(index, offset) {
+  const providers = collectLlmProviderChainFromModal();
+  const target = index + offset;
+  if (target < 0 || target >= providers.length) return;
+  [providers[index], providers[target]] = [providers[target], providers[index]];
+  rerenderLlmProviderChain(providers);
+}
+
+function removeLlmProviderChainEntry(index) {
+  const providers = collectLlmProviderChainFromModal();
+  if (providers.length <= 1) return;
+  providers.splice(index, 1);
+  rerenderLlmProviderChain(providers);
+}
+
+function addLlmProviderFallback() {
+  const providers = collectLlmProviderChainFromModal();
+  providers.push({entryId: 'fallback-' + Date.now().toString(36), provider:'custom', mode:'custom', api:'openai-compatible', timeoutSeconds:300, readiness:{ready:false, status:'not-configured'}});
+  rerenderLlmProviderChain(providers);
+}
+
+function llmProviderChainCatalogChanged(index) {
+  const providers = collectLlmProviderChainFromModal();
+  const catalog = (LLM_PROVIDER_CHAIN_DRAFT && LLM_PROVIDER_CHAIN_DRAFT.catalog) || [];
+  const selected = catalog.find(item => item.id === providers[index].provider) || {};
+  if (providers[index].provider !== 'custom') {
+    providers[index].endpoint = selected.endpoint || '';
+    providers[index].api = selected.api || 'openai-compatible';
+    providers[index].model = ((selected.models || [])[0] || {}).id || '';
+  }
+  rerenderLlmProviderChain(providers);
+}
+
+async function testLlmProviderChainEntry(index) {
+  const labels = llmUiText();
+  const providers = collectLlmProviderChainFromModal();
+  const resultEl = document.getElementById('llmProviderChainTest-' + index);
+  if (resultEl) resultEl.textContent = labels.testing;
+  try {
+    const res = await fetch('/api/llm-provider-chain/test', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(providers[index])});
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    if (resultEl) resultEl.textContent = data.ok
+      ? labels.testPassed + [data.provider, data.model].filter(Boolean).join(' / ') + ' · ' + (data.latencyMs || 0) + 'ms'
+      : labels.testFailedFull + (data.error || data.status || 'unknown');
+  } catch (e) {
+    if (resultEl) resultEl.textContent = labels.testFailed + e.message;
+  }
 }
 
 function renderLlmProviderSettings(provider, includeActions, showAdvanced = true) {
@@ -8081,6 +8359,7 @@ function renderLlmProviderSettings(provider, includeActions, showAdvanced = true
       <div class="settings-note" id="llmProviderTestResult">${escapeHtml(labels.testBeforeSave)}</div>
       <div class="settings-note" id="llmProviderCatalogNote">${providerNote}</div>
       ${advancedNotes}
+      ${includeActions ? '' : '<button type="button" class="wr-export-btn secondary llm-manage-chain" onclick="openLlmProviderModal()">' + escapeHtml(labels.manageFallbacks) + '</button>'}
       <script type="application/json" id="llmProviderCatalogData">${escapeHtml(JSON.stringify(catalog))}</script>
       <script type="application/json" id="llmProviderSavedKeysData">${escapeHtml(JSON.stringify(provider.savedProviderKeys || {}))}</script>
     </div>${actions}`;
@@ -8206,14 +8485,15 @@ async function saveLlmProviderModal() {
   const labels = llmUiText();
   const status = document.getElementById('llmSaveStatus');
   if (status) status.textContent = labels.saving;
-  const payload = collectLlmProviderSettingsFromModal();
+  const payload = {providers: collectLlmProviderChainFromModal()};
   try {
-    const res = await fetch('/api/llm-provider', {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+    const res = await fetch('/api/llm-provider-chain', {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error || ('HTTP ' + res.status));
     }
     const saved = await res.json();
+    LLM_PROVIDER_CHAIN_DRAFT = saved;
     document.getElementById('modal-body').innerHTML = renderLlmProviderModal(saved);
     const newStatus = document.getElementById('llmSaveStatus');
     if (newStatus) newStatus.textContent = labels.saved + new Date().toLocaleTimeString();

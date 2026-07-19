@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import sys
@@ -33,8 +34,10 @@ from data_foundation.period_summary import (
     DIARY_PERIOD_SUMMARY_PROJECTION,
     build_period_summary_payload,
     generate_period_summary_markdown,
+    generate_period_summary_result,
     materialize_period_summary_snapshot,
 )
+from data_foundation.llm_execution import ProviderChainError
 from data_foundation.paths import initialize_home, update_runtime_manifest_paths
 from data_foundation.jobs import begin_ingestion_run, ingestion_run_status
 from data_foundation.reports import LEGACY_ASSET_PROJECTION, read_period_projection, write_period_projection
@@ -1170,19 +1173,19 @@ Keep English prompts isolated.
     def test_period_summary_prompt_uses_generic_context_and_fixed_sections(self):
         captured = {}
 
-        def fake_sender(**kwargs):
+        def fake_executor(**kwargs):
             captured.update(kwargs)
-            return '{"markdown":"## 本周期总览\\n\\n- ok","highFrequencyTopics":[{"topic":"Runtime hardening","count":3,"reason":"evidence"}]}'
+            return SimpleNamespace(
+                text='{"markdown":"## 本周期总览\\n\\n- ok","highFrequencyTopics":[{"topic":"Runtime hardening","count":3,"reason":"evidence"}]}'
+            )
 
-        with (
-            patch(
-                "data_foundation.period_summary.resolve_llm_provider",
-                return_value={"apiKey": "secret", "endpoint": "https://example.test", "model": "m", "api": "openai-compatible", "timeoutSeconds": 480},
-            ),
-            patch("data_foundation.period_summary.send_openai_compatible_message", side_effect=fake_sender),
+        with patch(
+            "data_foundation.period_summary.execute_llm_message",
+            side_effect=fake_executor,
         ):
             result = generate_period_summary_markdown(
                 {
+                    "period": {"startDate": "2026-05-19", "endDate": "2026-05-25"},
                     "currentPeriod": {"kpi": {"totalTokens": 100}},
                     "previousPeriod": {"kpi": {"totalTokens": 80}},
                 }
@@ -1198,28 +1201,32 @@ Keep English prompts isolated.
         self.assertIn("## 工作强度与深夜投入", captured["prompt"])
         self.assertIn("## 关怀与鼓励", captured["prompt"])
         self.assertIn("名言或格言", captured["prompt"])
-        self.assertEqual(captured["timeout"], 480)
+        self.assertEqual(captured["pass_id"], "period-summary")
+        self.assertEqual(captured["chunk_id"], "period:2026-05-19:2026-05-25")
+        self.assertEqual(captured["label"], "Weekly/monthly period summary")
+        self.assertIsNone(captured["paths"])
+        self.assertNotIn("timeout", captured)
 
     def test_period_summary_prompt_uses_english_contract_for_english_profile(self):
         captured = {}
 
-        def fake_sender(**kwargs):
+        def fake_executor(**kwargs):
             captured.update(kwargs)
-            return '{"markdown":"## Period Overview\\n\\n- ok","highFrequencyTopics":[{"topic":"Runtime hardening","count":3,"reason":"evidence"}]}'
+            return SimpleNamespace(
+                text='{"markdown":"## Period Overview\\n\\n- ok","highFrequencyTopics":[{"topic":"Runtime hardening","count":3,"reason":"evidence"}]}'
+            )
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
             write_settings({"pipeline": {"languageProfile": "en", "englishEnabled": True}}, paths)
-            with (
-                patch(
-                    "data_foundation.period_summary.resolve_llm_provider",
-                    return_value={"apiKey": "secret", "endpoint": "https://example.test", "model": "m", "api": "openai-compatible", "timeoutSeconds": 480},
-                ),
-                patch("data_foundation.period_summary.send_openai_compatible_message", side_effect=fake_sender),
+            with patch(
+                "data_foundation.period_summary.execute_llm_message",
+                side_effect=fake_executor,
             ):
                 result = generate_period_summary_markdown(
                     {
+                        "period": {"startDate": "2026-05-01", "endDate": "2026-05-31"},
                         "currentPeriod": {"kpi": {"totalTokens": 100}},
                         "previousPeriod": {"kpi": {"totalTokens": 80}},
                     },
@@ -1233,6 +1240,74 @@ Keep English prompts isolated.
         self.assertIn("## Care and Encouragement", captured["prompt"])
         self.assertNotIn("请基于下面", captured["prompt"])
         self.assertIn("Output only a valid JSON object", captured["system"])
+        self.assertIs(captured["paths"], paths)
+        self.assertEqual(captured["chunk_id"], "period:2026-05-01:2026-05-31")
+
+    def test_period_summary_provider_chain_failure_propagates_from_direct_generation(self):
+        failure = ProviderChainError(
+            "LLM provider chain failed after 2 provider attempts",
+            failure_class="5xx",
+            retryable=True,
+            call_id="period-summary-call",
+        )
+        with patch(
+            "data_foundation.period_summary.execute_llm_message",
+            side_effect=failure,
+        ):
+            with self.assertRaises(ProviderChainError) as raised:
+                generate_period_summary_result(
+                    {
+                        "period": {"startDate": "2026-05-19", "endDate": "2026-05-25"},
+                        "currentPeriod": {},
+                        "previousPeriod": {},
+                    }
+                )
+
+        self.assertIs(raised.exception, failure)
+
+    def test_period_summary_materialization_marks_provider_failure_as_deterministic(self):
+        failure = ProviderChainError(
+            "LLM provider chain failed after 2 provider attempts",
+            failure_class="timeout",
+            retryable=True,
+            call_id="period-summary-materialization-call",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
+            migrate(paths)
+            start = date(2026, 5, 19)
+            end = date(2026, 5, 25)
+            write_period_projection(
+                paths,
+                start,
+                end,
+                {"summaryTopics": [], "lessons": []},
+                source_run_id=None,
+                projection_type=DIARY_PERIOD_PAGE_PROJECTION,
+            )
+            with patch(
+                "data_foundation.period_summary.execute_llm_message",
+                side_effect=failure,
+            ):
+                materialize_period_summary_snapshot(
+                    paths,
+                    start,
+                    end,
+                    source_run_id=None,
+                )
+            projection = read_period_projection(
+                paths,
+                start,
+                end,
+                projection_type=DIARY_PERIOD_SUMMARY_PROJECTION,
+            )
+
+        metrics = projection["metrics"]
+        self.assertEqual(metrics["generation"]["mode"], "deterministic")
+        self.assertIn("provider chain failed", metrics["generation"]["llmError"])
+        self.assertTrue(metrics["summary"]["markdown"].strip())
+        self.assertEqual(metrics["summary"]["highFrequencyTopics"], [])
 
 
 if __name__ == "__main__":

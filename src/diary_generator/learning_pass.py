@@ -28,14 +28,8 @@ from data_foundation.infrastructure import apply_infrastructure_updates, render_
 from data_foundation.time import business_today, business_now
 from data_foundation.llm_json import LLMJsonParseError, parse_llm_json_object
 from data_foundation.paths import load_paths
-from data_foundation.settings import resolve_llm_provider
-from data_foundation.llm_transport import send_anthropic_message, send_openai_compatible_message
+from data_foundation.llm_execution import execute_llm_message
 
-_LLM_PROVIDER = resolve_llm_provider(redact_secrets=False)
-API_KEY = _LLM_PROVIDER["apiKey"]
-API_HOST = _LLM_PROVIDER["endpoint"]
-MODEL = _LLM_PROVIDER["model"]
-API_TYPE = _LLM_PROVIDER.get("api") or "anthropic-messages"
 THINKING_MODE = os.getenv("LLM_THINKING_MODE", "off").strip().lower()
 def _runtime_diary_root() -> Path:
     return load_paths().diary_dir
@@ -110,19 +104,26 @@ def prepare_learning_summary(summary_text):
     text = re.sub(r'\n```json\n[\s\S]*?\n```\s*$', '', text).rstrip()
     return text
 
-def call_llm(prompt):
-    sender = send_anthropic_message if API_TYPE == "anthropic-messages" else send_openai_compatible_message
-    return sender(
-        endpoint=API_HOST,
-        api_key=API_KEY,
-        model=MODEL,
+def _llm_chunk_id(label):
+    raw = str(label or "learning llm").strip()
+    slug = re.sub(r"[^\w.-]+", "-", raw, flags=re.UNICODE).strip("-_.").casefold()
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:10]
+    return f"{(slug[:80] or 'learning-llm')}-{digest}"
+
+
+def call_llm(prompt, label=None):
+    call_label = label or "learning llm"
+    return execute_llm_message(
         system=SYSTEM_LEARNING + _thinking_instruction(),
         prompt=prompt,
         temperature=0.1,
         max_tokens=16384,
-        timeout=120,
         thinking_mode=THINKING_MODE,
-    )
+        paths=load_paths(),
+        pass_id="learning",
+        label=call_label,
+        chunk_id=_llm_chunk_id(call_label),
+    ).text
 
 
 def _debug_dir():
@@ -148,7 +149,7 @@ def repair_learning_json(raw_output):
             raw_output or "",
         ]
     )
-    return call_llm(prompt)
+    return call_llm(prompt, label="learning json repair")
 
 
 def repair_learning_markdown(raw_output):
@@ -163,7 +164,7 @@ def repair_learning_markdown(raw_output):
             raw_output or "",
         ]
     )
-    return call_llm(prompt)
+    return call_llm(prompt, label="learning markdown repair")
 
 
 def _strip_code_fence(text):
@@ -435,7 +436,7 @@ def parse_learning_response_json_compat(date_str, raw_output):
 def process_learning(date_str, summary_text):
     print(f"🧠 Running Learning Pass for {date_str}...")
     prompt = build_learning_prompt(date_str, summary_text)
-    res_raw = call_llm(prompt)
+    res_raw = call_llm(prompt, label="learning generation")
     if not res_raw:
         raise LearningPassError("Learning Pass LLM returned empty output")
 

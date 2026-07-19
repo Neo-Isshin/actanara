@@ -3,11 +3,13 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from data_foundation.db import connect
+from data_foundation.llm_execution import ProviderChainError
 from data_foundation.nova_task import create_task_node
 from data_foundation.nova_task_layers import (
     ORIGIN_PLANNED,
@@ -18,6 +20,67 @@ from data_foundation.paths import initialize_home
 
 
 class NovaTaskPlanningImportTests(unittest.TestCase):
+    def test_production_planning_import_uses_provider_chain_executor(self):
+        response = """```yaml
+nova_task:
+  planning_import:
+    document_title: "Actanara Roadmap"
+    project:
+      proposed_title: "actanara"
+      suggested_node_type: track
+      proposed_level: 1
+      matched_existing_node_id: ""
+      workspace_root_path: ""
+      reason: "Roadmap project boundary."
+      children: []
+```"""
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = initialize_home(Path(tmp) / "Actanara")
+            with (
+                patch(
+                    "data_foundation.nova_task_planning_import.execute_llm_message"
+                ) as execute,
+                patch(
+                    "data_foundation.nova_task_planning_import.resolve_llm_provider",
+                    side_effect=AssertionError("single-provider resolver must not run in production"),
+                ),
+            ):
+                execute.return_value.text = response
+                result = import_planning_document(
+                    paths,
+                    document_title="Actanara Roadmap",
+                    document_text="# Actanara Roadmap",
+                )
+
+        self.assertFalse(result.applied)
+        execute.assert_called_once()
+        arguments = execute.call_args.kwargs
+        self.assertIs(arguments["paths"], paths)
+        self.assertEqual(arguments["pass_id"], "nova-task-planning-import")
+        self.assertEqual(arguments["label"], "Nova-Task planning import")
+        self.assertIn("Document title:\nActanara Roadmap", arguments["prompt"])
+
+    def test_production_planning_import_propagates_provider_chain_failure(self):
+        failure = ProviderChainError(
+            "LLM provider chain failed after 2 provider attempts",
+            failure_class="timeout",
+            retryable=True,
+            call_id="planning-import-call",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = initialize_home(Path(tmp) / "Actanara")
+            with patch(
+                "data_foundation.nova_task_planning_import.execute_llm_message",
+                side_effect=failure,
+            ):
+                with self.assertRaises(ProviderChainError) as raised:
+                    import_planning_document(
+                        paths,
+                        document_title="Actanara Roadmap",
+                        document_text="# Actanara Roadmap",
+                    )
+        self.assertIs(raised.exception, failure)
+
     def test_planning_document_can_create_pathless_planned_l1_tree(self):
         def fake_sender(**kwargs):
             self.assertIn("Document title:\nActanara Agent RFC", kwargs["prompt"])

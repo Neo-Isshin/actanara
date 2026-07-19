@@ -21,6 +21,7 @@ from data_foundation.db import connect
 from data_foundation.paths import initialize_home
 from data_foundation.pipeline import PipelineStep, run_daily_pipeline
 from data_foundation.pipeline_runs import (
+    append_pipeline_step,
     create_pipeline_run,
     finish_pipeline_run,
     finish_pipeline_run_if_status,
@@ -253,6 +254,39 @@ class PipelineRunsTests(unittest.TestCase):
         self.assertFalse(won)
         self.assertEqual(run["status"], "failed")
         self.assertEqual(run["failureClass"], "cancelled")
+
+    def test_pipeline_run_and_stage_errors_are_redacted_before_dashboard_reads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
+            run_id = create_pipeline_run(
+                paths,
+                business_date="2026-06-22",
+                run_kind="daily",
+                requested_by="scheduler",
+            )
+            append_pipeline_step(
+                paths,
+                run_id,
+                name="Narrative",
+                status="failed",
+                reason='{"token":"stage-secret"} Authorization: Bearer stage-bearer',
+            )
+            finish_pipeline_run(
+                paths,
+                run_id,
+                status="failed",
+                failure_class="auth",
+                error_summary='{"api_key":"run-secret"} Bearer run-bearer',
+            )
+            run = latest_pipeline_run_for_date(paths, "2026-06-22")
+
+        serialized = json.dumps(run)
+        self.assertNotIn("stage-secret", serialized)
+        self.assertNotIn("stage-bearer", serialized)
+        self.assertNotIn("run-secret", serialized)
+        self.assertNotIn("run-bearer", serialized)
+        self.assertIn("[REDACTED]", run["steps"][0]["reason"])
+        self.assertIn("[REDACTED]", run["errorSummary"])
 
     def test_migration_creates_pipeline_runs_table(self):
         with tempfile.TemporaryDirectory() as tmp:

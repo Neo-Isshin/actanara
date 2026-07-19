@@ -12,6 +12,7 @@ import subprocess
 import sys
 import fcntl
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -33,12 +34,14 @@ from .nova_task import export_task_board_markdown, reconcile_workspace_project_a
 from .nova_task_work_graph_reconciliation import run_work_graph_reconciliation
 from .paths import RuntimePaths, initialize_home, load_paths
 from .pipeline_execution import PipelineExecutionBoundary, PipelineExecutionContext
+from .pipeline_llm_attribution import PIPELINE_RUN_ID_ENV, PIPELINE_STAGE_ID_ENV
 from .pipeline_runs import (
     append_pipeline_step,
     classify_pipeline_failure,
     create_pipeline_run,
     finish_pipeline_run_if_status,
     pipeline_run_by_id,
+    sanitize_pipeline_error_summary,
 )
 from .refresh import run_pipeline_blank_day_materialization, run_pipeline_daily_materialization
 from .settings import (
@@ -278,7 +281,7 @@ def record_pipeline_failure(paths: RuntimePaths, *, business_date: str, failed_s
     payload = {
         "businessDate": business_date,
         "failedStep": failed_step,
-        "reason": reason or failed_step,
+        "reason": sanitize_pipeline_error_summary(reason or failed_step),
         "createdAt": datetime.now().astimezone().isoformat(),
     }
     path = _pipeline_failure_log_path(paths)
@@ -306,6 +309,27 @@ def _pipeline_requested_by(trigger: str) -> str:
     if trigger in {"scheduler", "launchd", "daily"}:
         return "scheduler"
     return str(trigger or "scheduler")
+
+
+@contextmanager
+def _pipeline_llm_environment(pipeline_run_id: int, stage_id: str):
+    """Expose parent-process LLM attribution without leaking it after the stage."""
+
+    previous_run_id = os.environ.get(PIPELINE_RUN_ID_ENV)
+    previous_stage_id = os.environ.get(PIPELINE_STAGE_ID_ENV)
+    os.environ[PIPELINE_RUN_ID_ENV] = str(int(pipeline_run_id))
+    os.environ[PIPELINE_STAGE_ID_ENV] = str(stage_id)
+    try:
+        yield
+    finally:
+        if previous_run_id is None:
+            os.environ.pop(PIPELINE_RUN_ID_ENV, None)
+        else:
+            os.environ[PIPELINE_RUN_ID_ENV] = previous_run_id
+        if previous_stage_id is None:
+            os.environ.pop(PIPELINE_STAGE_ID_ENV, None)
+        else:
+            os.environ[PIPELINE_STAGE_ID_ENV] = previous_stage_id
 
 
 def _pipeline_artifact_paths(paths: RuntimePaths, date_str: str, *, language_profile: str = "zh") -> dict:
@@ -527,6 +551,7 @@ def latest_pipeline_failure(paths: RuntimePaths) -> dict | None:
         except json.JSONDecodeError:
             continue
         if isinstance(payload, dict):
+            payload["reason"] = sanitize_pipeline_error_summary(payload.get("reason"))
             return payload
     return None
 
@@ -538,6 +563,8 @@ def _run_step(
     paths: RuntimePaths | None = None,
     *,
     timeout_override: float | None = None,
+    pipeline_run_id: int | None = None,
+    stage_id: str | None = None,
 ) -> StepExecutionResult:
     display_name = _pipeline_step_display_name(step)
     if not step.script.exists():
@@ -556,6 +583,9 @@ def _run_step(
         env["PYTHONPATH"] = str(SRC_DIR)
         env.update(runtime_environment_overrides(paths))
         env.update(_pipeline_language_environment(paths))
+        if pipeline_run_id is not None and stage_id:
+            env[PIPELINE_RUN_ID_ENV] = str(int(pipeline_run_id))
+            env[PIPELINE_STAGE_ID_ENV] = str(stage_id)
         result = runner(
             command,
             capture_output=True,
@@ -1098,18 +1128,23 @@ def run_daily_pipeline(
             reason: str | None = None,
             metadata: dict[str, Any] | None = None,
             artifact_proofs: list[dict[str, Any]] | None = None,
+            started_at: str | None = None,
+            completed_at: str | None = None,
+            duration_seconds: float | None = None,
         ) -> None:
+            observed_completed_at = completed_at or datetime.now().astimezone().isoformat()
+            observed_started_at = started_at or observed_completed_at
+            observed_duration = 0.0 if duration_seconds is None else max(0.0, float(duration_seconds))
             proofs = list(artifact_proofs or [])
             durable_commit = bool(committed and proofs)
-            stage_metadata: dict[str, Any] = {
+            stage_metadata: dict[str, Any] = dict(metadata or {})
+            stage_metadata.update({
                 "stageId": stage_id,
                 "committed": durable_commit,
                 "artifactProofs": proofs,
-            }
+            })
             if proofs:
                 stage_metadata["artifactPaths"] = [proof["path"] for proof in proofs]
-            if metadata:
-                stage_metadata.update(metadata)
             append_pipeline_step(
                 selected,
                 ledger_run_id,
@@ -1117,6 +1152,9 @@ def run_daily_pipeline(
                 status=status,
                 reason=reason,
                 metadata=stage_metadata,
+                started_at=observed_started_at,
+                completed_at=observed_completed_at,
+                duration_seconds=observed_duration,
             )
 
         def reuse_stage(stage_id: str, name: str) -> bool:
@@ -1210,7 +1248,11 @@ def run_daily_pipeline(
                 else:
                     input_materializer = prepare_blank_day_foundation_inputs if blank_day_fast_path else foundation_preparer
                     input_artifacts_before = artifact_proof_map()
+                    input_started_at = datetime.now().astimezone().isoformat()
+                    input_started_monotonic = monotonic_clock()
                     inputs_ready = _call_materializer(input_materializer, target_date, selected, execution_context)
+                    input_completed_at = datetime.now().astimezone().isoformat()
+                    input_duration = max(0.0, float(monotonic_clock()) - float(input_started_monotonic))
                     input_artifacts_after = artifact_proof_map()
                     append_stage(
                         name=input_name,
@@ -1222,6 +1264,9 @@ def run_daily_pipeline(
                             input_artifacts_before,
                             input_artifacts_after,
                         ),
+                        started_at=input_started_at,
+                        completed_at=input_completed_at,
+                        duration_seconds=input_duration,
                     )
                 execution_context.checkpoint(f"{input_stage_id}:after")
                 if not inputs_ready:
@@ -1241,11 +1286,18 @@ def run_daily_pipeline(
                         blank_narrative_ready = True
                     else:
                         blank_narrative_artifacts_before = artifact_proof_map()
+                        blank_narrative_started_at = datetime.now().astimezone().isoformat()
+                        blank_narrative_started_monotonic = monotonic_clock()
                         blank_narrative_ready = _call_materializer(
                             materialize_blank_day_narrative,
                             target_date,
                             selected,
                             execution_context,
+                        )
+                        blank_narrative_completed_at = datetime.now().astimezone().isoformat()
+                        blank_narrative_duration = max(
+                            0.0,
+                            float(monotonic_clock()) - float(blank_narrative_started_monotonic),
                         )
                         blank_narrative_artifacts_after = artifact_proof_map()
                         append_stage(
@@ -1258,6 +1310,9 @@ def run_daily_pipeline(
                                 blank_narrative_artifacts_before,
                                 blank_narrative_artifacts_after,
                             ),
+                            started_at=blank_narrative_started_at,
+                            completed_at=blank_narrative_completed_at,
+                            duration_seconds=blank_narrative_duration,
                         )
                     execution_context.checkpoint("blank-narrative:after")
                     if not blank_narrative_ready:
@@ -1290,7 +1345,11 @@ def run_daily_pipeline(
                 else:
                     selected_post_materializer = materialize_blank_day_pipeline_outputs if blank_day_fast_path else post_materializer
                     post_artifacts_before = artifact_proof_map()
+                    post_started_at = datetime.now().astimezone().isoformat()
+                    post_started_monotonic = monotonic_clock()
                     post_ready = _call_materializer(selected_post_materializer, target_date, selected, execution_context)
+                    post_completed_at = datetime.now().astimezone().isoformat()
+                    post_duration = max(0.0, float(monotonic_clock()) - float(post_started_monotonic))
                     post_artifacts_after = artifact_proof_map()
                     append_stage(
                         name=post_name,
@@ -1302,6 +1361,9 @@ def run_daily_pipeline(
                             post_artifacts_before,
                             post_artifacts_after,
                         ),
+                        started_at=post_started_at,
+                        completed_at=post_completed_at,
+                        duration_seconds=post_duration,
                     )
                 execution_context.checkpoint(f"{post_stage_id}:after")
                 if not post_ready:
@@ -1364,11 +1426,23 @@ def run_daily_pipeline(
                 step_result = StepExecutionResult(True)
             else:
                 step_artifacts_before = artifact_proof_map()
+                step_started_at = datetime.now().astimezone().isoformat()
+                step_started_monotonic = monotonic_clock()
                 step_timeout = execution_context.bounded_timeout(
                     float(_step_timeout_seconds(step, selected)),
                     checkpoint=f"{stage_id}:subprocess-start",
                 )
-                step_result = _run_step(step, target_date, runner, selected, timeout_override=step_timeout)
+                step_result = _run_step(
+                    step,
+                    target_date,
+                    runner,
+                    selected,
+                    timeout_override=step_timeout,
+                    pipeline_run_id=ledger_run_id,
+                    stage_id=stage_id,
+                )
+                step_completed_at = datetime.now().astimezone().isoformat()
+                step_duration = max(0.0, float(monotonic_clock()) - float(step_started_monotonic))
                 step_artifacts_after = artifact_proof_map()
                 append_stage(
                     name=step.name,
@@ -1381,6 +1455,9 @@ def run_daily_pipeline(
                         step_artifacts_before,
                         step_artifacts_after,
                     ),
+                    started_at=step_started_at,
+                    completed_at=step_completed_at,
+                    duration_seconds=step_duration,
                 )
                 execution_context.checkpoint(f"{stage_id}:after")
                 if not step_result.success:
@@ -1412,11 +1489,19 @@ def run_daily_pipeline(
                     nova_task_ready = True
                 else:
                     nova_task_artifacts_before = artifact_proof_map()
-                    nova_task_ready = _call_materializer(
-                        nova_task_materializer,
-                        target_date,
-                        selected,
-                        execution_context,
+                    nova_task_started_at = datetime.now().astimezone().isoformat()
+                    nova_task_started_monotonic = monotonic_clock()
+                    with _pipeline_llm_environment(ledger_run_id, "nova-task"):
+                        nova_task_ready = _call_materializer(
+                            nova_task_materializer,
+                            target_date,
+                            selected,
+                            execution_context,
+                        )
+                    nova_task_completed_at = datetime.now().astimezone().isoformat()
+                    nova_task_duration = max(
+                        0.0,
+                        float(monotonic_clock()) - float(nova_task_started_monotonic),
                     )
                     nova_task_artifacts_after = artifact_proof_map()
                     append_stage(
@@ -1430,6 +1515,9 @@ def run_daily_pipeline(
                             nova_task_artifacts_before,
                             nova_task_artifacts_after,
                         ),
+                        started_at=nova_task_started_at,
+                        completed_at=nova_task_completed_at,
+                        duration_seconds=nova_task_duration,
                     )
                 execution_context.checkpoint("nova-task:after")
                 if nova_task_ready and nova_task_enabled and not nova_task_reused:

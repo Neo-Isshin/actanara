@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .db import connect
-from .llm_transport import send_anthropic_message, send_openai_compatible_message
+from .llm_execution import execute_llm_message
 from .nova_task import (
     _extract_nova_task_payload,
     _node_depth,
@@ -131,21 +131,32 @@ def import_planning_document(
     if not body:
         raise ValueError("document_text is required")
     prompt = build_planning_import_prompt(selected, document_title=title, document_text=body)
-    provider = resolve_llm_provider(selected, redact_secrets=False)
-    resolved_sender = sender or (
-        send_anthropic_message if provider.get("api") == "anthropic-messages" else send_openai_compatible_message
-    )
-    response = resolved_sender(
-        endpoint=provider["endpoint"],
-        api_key=provider["apiKey"],
-        model=provider["model"],
-        system=SYSTEM_PROMPT,
-        prompt=prompt,
-        temperature=0.05,
-        max_tokens=12000,
-        timeout=int(provider.get("timeoutSeconds") or 180),
-        thinking_mode="off",
-    )
+    if sender is None:
+        response = execute_llm_message(
+            paths=selected,
+            system=SYSTEM_PROMPT,
+            prompt=prompt,
+            temperature=0.05,
+            max_tokens=12000,
+            thinking_mode="off",
+            pass_id="nova-task-planning-import",
+            label="Nova-Task planning import",
+        ).text
+    else:
+        provider = resolve_llm_provider(selected, redact_secrets=False)
+        response = sender(
+            endpoint=provider["endpoint"],
+            api_key=provider["apiKey"],
+            model=provider["model"],
+            system=SYSTEM_PROMPT,
+            prompt=prompt,
+            temperature=0.05,
+            max_tokens=12000,
+            timeout=int(provider.get("timeoutSeconds") or 180),
+            thinking_mode="off",
+        )
+    if not str(response or "").strip():
+        raise ValueError("Nova-Task planning import returned empty content")
     artifact = _write_planning_import_artifact(selected, title, response, apply=apply)
     root_node_id = None
     root_created = False

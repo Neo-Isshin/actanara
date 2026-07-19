@@ -23,9 +23,11 @@ from .llm_provider_catalog import (
     DEFAULT_PIPELINE_GATE_TOKENS,
     PIPELINE_GATE_MODE_AUTO,
     PIPELINE_GATE_MODE_MANUAL,
+    SUPPORTED_APIS,
     auto_pipeline_gate_tokens,
     default_llm_provider_settings,
     llm_provider_catalog,
+    normalize_llm_provider_chain_update,
     normalize_llm_provider_update,
 )
 from .pipeline_language import (
@@ -108,6 +110,7 @@ OPERATOR_SETTINGS_WRITE_PROTECTED_TOP_LEVEL = {
     "schemaVersion",
     "updatedAt",
     "llmProvider",
+    "llmProviderChain",
     "rag",
 }
 SETTINGS_AUTHORITY_GROUPS = (
@@ -182,6 +185,11 @@ SETTINGS_AUTHORITY_GROUPS = (
             {"path": "llmProvider.apiKey", "env": "LLM_API_KEY", "defaultSource": "operator secret"},
             {"path": "llmProvider.pipelineConcurrency", "env": "LLM_PIPELINE_CONCURRENCY", "defaultSource": "provider default"},
             {"path": "llmProvider.timeoutSeconds", "env": None, "defaultSource": "nova-setting"},
+            {
+                "path": "llmProviderChain",
+                "env": None,
+                "defaultSource": "ordered provider entries; absent/empty projects legacy llmProvider as primary",
+            },
             {
                 "path": "llmProvider.pipelineGateTokens",
                 "env": "LLM_PIPELINE_GATE_TOKENS",
@@ -533,6 +541,7 @@ def default_settings(paths: RuntimePaths | None = None) -> dict:
         },
         "externalTools": default_external_tool_settings(),
         "llmProvider": default_llm_provider_settings(),
+        "llmProviderChain": [],
         "llmProviderSecrets": {},
         "todos": {
             "githubUrl": "",
@@ -579,21 +588,35 @@ def read_settings(paths: RuntimePaths | None = None, *, redact_secrets: bool = T
     result = copy.deepcopy(settings)
     if redact_secrets:
         provider = result.setdefault("llmProvider", {})
-        api_key = str(provider.get("apiKey") or "")
-        secret_ref = provider.get("secretRef") if isinstance(provider.get("secretRef"), dict) else None
-        migration_required = _secret_ref_requires_reentry(settings, secret_ref)
-        secret_readable = _secret_ref_has_pipeline_readable_key(
-            secret_ref,
-            paths=paths,
-            settings=settings,
-        )
-        provider["hasApiKey"] = bool(api_key or secret_readable)
-        provider["hasSecretRef"] = bool(secret_ref)
-        provider["secretReadable"] = secret_readable
-        provider["secretMigrationRequired"] = migration_required
-        provider["apiKey"] = MASKED_SECRET if api_key or secret_readable else ""
+        _redact_llm_provider_block(provider, settings=settings, paths=paths)
+        chain = result.get("llmProviderChain")
+        if isinstance(chain, list):
+            for entry in chain:
+                if isinstance(entry, dict):
+                    _redact_llm_provider_block(entry, settings=settings, paths=paths)
     result["settingsPath"] = str(_settings_path(paths))
     return result
+
+
+def _redact_llm_provider_block(
+    provider: dict[str, Any],
+    *,
+    settings: dict[str, Any],
+    paths: RuntimePaths,
+) -> None:
+    api_key = str(provider.get("apiKey") or "")
+    secret_ref = provider.get("secretRef") if isinstance(provider.get("secretRef"), dict) else None
+    migration_required = _secret_ref_requires_reentry(settings, secret_ref)
+    secret_readable = _secret_ref_has_pipeline_readable_key(
+        secret_ref,
+        paths=paths,
+        settings=settings,
+    )
+    provider["hasApiKey"] = bool(api_key or secret_readable)
+    provider["hasSecretRef"] = bool(secret_ref)
+    provider["secretReadable"] = secret_readable
+    provider["secretMigrationRequired"] = migration_required
+    provider["apiKey"] = MASKED_SECRET if api_key or secret_readable else ""
 
 
 def write_settings(update: dict[str, Any], paths: RuntimePaths | None = None) -> dict:
@@ -639,13 +662,30 @@ def _prepare_settings_update(
 ) -> tuple[dict[str, Any], tuple[tuple[dict, str], ...], tuple[dict, ...]]:
     merged = _deep_merge(current, update)
     _reconcile_pipeline_language_profile(merged, update)
+    secret_writes: list[tuple[dict, str]] = []
+    chain_update_present = "llmProviderChain" in update
+    legacy_provider_update_present = "llmProvider" in update
+    current_chain = _configured_llm_provider_chain(current)
+    if chain_update_present:
+        merged_chain = normalize_llm_provider_chain_update(
+            update.get("llmProviderChain"),
+            current_chain,
+        )
+        merged["llmProviderChain"] = _prepare_llm_provider_chain_secrets(
+            merged_chain,
+            current_chain,
+            current.get("llmProvider") if isinstance(current.get("llmProvider"), dict) else {},
+            secret_ref_factory=secret_ref_factory,
+            secret_writes=secret_writes,
+        )
+        merged["llmProvider"] = _legacy_provider_from_chain_entry(merged["llmProviderChain"][0])
+
     provider = merged.setdefault("llmProvider", {})
     current_provider = current.get("llmProvider", {}) if isinstance(current.get("llmProvider"), dict) else {}
     provider_id = _llm_provider_secret_provider_id(provider)
     current_provider_id = _llm_provider_secret_provider_id(current_provider)
     provider_secrets = _llm_provider_secret_refs(merged)
     api_key = str(provider.get("apiKey") or "")
-    secret_writes: list[tuple[dict, str]] = []
     if api_key and api_key != MASKED_SECRET:
         planned_ref = secret_ref_factory(provider_id)
         stored_ref = planned_ref.as_dict() if hasattr(planned_ref, "as_dict") else dict(planned_ref)
@@ -668,7 +708,24 @@ def _prepare_settings_update(
     elif provider_id != current_provider_id and provider.get("secretRef") == current_provider.get("secretRef"):
         provider.pop("secretRef", None)
     provider["apiKeyEnv"] = _normalized_persisted_api_key_env(str(provider.get("apiKeyEnv") or "LLM_API_KEY"))
+    if isinstance(provider.get("secretRef"), dict):
+        provider_secrets[provider_id] = copy.deepcopy(provider["secretRef"])
     merged["llmProviderSecrets"] = provider_secrets
+
+    if chain_update_present:
+        primary_entry = merged["llmProviderChain"][0]
+        merged["llmProviderChain"][0] = {
+            **_legacy_provider_from_chain_entry(provider),
+            "entryId": primary_entry["entryId"],
+        }
+    elif legacy_provider_update_present and current_chain:
+        merged["llmProviderChain"] = [
+            {
+                **_legacy_provider_from_chain_entry(provider),
+                "entryId": current_chain[0]["entryId"],
+            },
+            *copy.deepcopy(current_chain[1:]),
+        ]
 
     rag = merged.get("rag") if isinstance(merged.get("rag"), dict) else {}
     embedding = rag.get("embedding") if isinstance(rag.get("embedding"), dict) else {}
@@ -708,11 +765,91 @@ def _prepare_settings_update(
     return merged, tuple(secret_writes), garbage_collection_candidates
 
 
+def _prepare_llm_provider_chain_secrets(
+    chain: list[dict[str, Any]],
+    current_chain: list[dict[str, Any]],
+    current_provider: dict[str, Any],
+    *,
+    secret_ref_factory: Callable[[str], object],
+    secret_writes: list[tuple[dict, str]],
+) -> list[dict[str, Any]]:
+    current_by_id = {
+        str(entry.get("entryId")): entry
+        for entry in current_chain
+        if isinstance(entry, dict) and entry.get("entryId")
+    }
+    prepared: list[dict[str, Any]] = []
+    for index, raw_entry in enumerate(chain):
+        entry = copy.deepcopy(raw_entry)
+        entry_id = str(entry["entryId"])
+        provider_id = _llm_provider_secret_provider_id(entry)
+        current_entry = current_by_id.get(entry_id, {})
+        same_provider = (
+            bool(current_entry)
+            and provider_id == _llm_provider_secret_provider_id(current_entry)
+        )
+        raw_api_key = str(entry.get("apiKey") or "")
+        if raw_api_key and raw_api_key != MASKED_SECRET:
+            planned_ref = secret_ref_factory(_llm_provider_chain_secret_slot(entry))
+            stored_ref = planned_ref.as_dict() if hasattr(planned_ref, "as_dict") else dict(planned_ref)
+            secret_writes.append((stored_ref, raw_api_key))
+            entry["secretRef"] = stored_ref
+        elif same_provider and isinstance(current_entry.get("secretRef"), dict):
+            entry["secretRef"] = copy.deepcopy(current_entry["secretRef"])
+        elif (
+            index == 0
+            and provider_id == _llm_provider_secret_provider_id(current_provider)
+            and isinstance(current_provider.get("secretRef"), dict)
+        ):
+            entry["secretRef"] = copy.deepcopy(current_provider["secretRef"])
+        else:
+            entry.pop("secretRef", None)
+        entry["apiKey"] = ""
+        entry["apiKeyEnv"] = _normalized_persisted_api_key_env(
+            str(entry.get("apiKeyEnv") or "LLM_API_KEY")
+        )
+        prepared.append(entry)
+    return prepared
+
+
+def _configured_llm_provider_chain(settings: dict[str, Any]) -> list[dict[str, Any]]:
+    chain = settings.get("llmProviderChain")
+    if not isinstance(chain, list):
+        return []
+    return [copy.deepcopy(entry) for entry in chain if isinstance(entry, dict)]
+
+
+def _llm_provider_chain_secret_slot(entry: dict[str, Any]) -> str:
+    return (
+        f"chain:{str(entry.get('entryId') or 'provider')}:"
+        f"{_llm_provider_secret_provider_id(entry)}"
+    )
+
+
+def _legacy_provider_from_chain_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    legacy = copy.deepcopy(entry)
+    for key in (
+        "entryId",
+        "order",
+        "role",
+        "readiness",
+        "hasApiKey",
+        "hasSecretRef",
+        "secretReadable",
+        "secretMigrationRequired",
+    ):
+        legacy.pop(key, None)
+    return legacy
+
+
 def _settings_secret_refs(settings: dict[str, Any]) -> dict[tuple[str, str, str], dict]:
     refs: list[dict] = list(_llm_provider_secret_refs(settings).values())
     provider = settings.get("llmProvider") if isinstance(settings.get("llmProvider"), dict) else {}
     if isinstance(provider.get("secretRef"), dict):
         refs.append(provider["secretRef"])
+    for entry in _configured_llm_provider_chain(settings):
+        if isinstance(entry.get("secretRef"), dict):
+            refs.append(entry["secretRef"])
     rag = settings.get("rag") if isinstance(settings.get("rag"), dict) else {}
     embedding = rag.get("embedding") if isinstance(rag.get("embedding"), dict) else {}
     if isinstance(embedding.get("secretRef"), dict):
@@ -809,7 +946,13 @@ def write_operator_settings_bundle(
         if "llmProvider" in payload and isinstance(payload.get("llmProvider"), dict)
         else None
     )
-    if not allowed_settings and normalized_rag is None and raw_provider_update is None:
+    raw_provider_chain_update = payload.get("llmProviderChain") if "llmProviderChain" in payload else None
+    if (
+        not allowed_settings
+        and normalized_rag is None
+        and raw_provider_update is None
+        and raw_provider_chain_update is None
+    ):
         raise ValueError("settings bundle has no supported changes")
 
     def build_update(current: dict[str, Any]) -> dict[str, Any]:
@@ -829,6 +972,20 @@ def write_operator_settings_bundle(
             )
             _validate_llm_provider_complete(normalized_provider)
             combined["llmProvider"] = normalized_provider
+        if raw_provider_chain_update is not None:
+            current_chain = _configured_llm_provider_chain(current)
+            normalized_chain = normalize_llm_provider_chain_update(
+                raw_provider_chain_update,
+                current_chain,
+            )
+            for provider_index, normalized_provider in enumerate(normalized_chain):
+                try:
+                    _validate_llm_provider_complete(normalized_provider)
+                except ValueError as exc:
+                    raise ValueError(
+                        f"llmProviderChain[{provider_index}] is invalid: {exc}"
+                    ) from None
+            combined["llmProviderChain"] = normalized_chain
         return combined
 
     return _write_operator_settings_transaction(
@@ -1421,6 +1578,19 @@ def write_llm_provider(update: dict[str, Any], paths: RuntimePaths | None = None
     return write_settings({"llmProvider": normalized, "llmProviderSecrets": provider_secrets}, paths).get("llmProvider", {})
 
 
+def write_llm_provider_chain(
+    update: list[dict[str, Any]] | dict[str, Any],
+    paths: RuntimePaths | None = None,
+) -> list[dict[str, Any]]:
+    """Atomically persist an ordered provider chain and its independent secrets."""
+    saved = write_operator_settings_bundle(
+        {"llmProviderChain": update},
+        paths,
+    )
+    chain = saved.get("llmProviderChain")
+    return chain if isinstance(chain, list) else []
+
+
 def _validate_llm_provider_complete(provider: dict[str, Any]) -> None:
     if str(provider.get("provider") or "") == CUSTOM_PROVIDER_ID:
         if not str(provider.get("endpoint") or "").strip():
@@ -1502,6 +1672,56 @@ def _sanitize_persisted_secrets(
         elif api_key == MASKED_SECRET:
             provider["apiKey"] = ""
         settings["llmProviderSecrets"] = provider_secrets
+
+    chain = _configured_llm_provider_chain(settings)
+    if chain:
+        chain = normalize_llm_provider_chain_update(chain, chain)
+        sanitized_chain: list[dict[str, Any]] = []
+        for index, entry in enumerate(chain):
+            provider_id = _llm_provider_secret_provider_id(entry)
+            raw_api_key = str(entry.get("apiKey") or "")
+            secret_ref = entry.get("secretRef") if isinstance(entry.get("secretRef"), dict) else None
+            if (
+                secret_ref is None
+                and index == 0
+                and isinstance(provider, dict)
+                and provider_id == _llm_provider_secret_provider_id(provider)
+                and isinstance(provider.get("secretRef"), dict)
+            ):
+                secret_ref = copy.deepcopy(provider["secretRef"])
+            if secret_ref and migrate_persisted_refs:
+                entry["secretRef"] = _migrate_provider_secret_ref(
+                    paths,
+                    _llm_provider_chain_secret_slot(entry),
+                    secret_ref,
+                    migration_ledger=migration_ledger,
+                )
+            elif secret_ref:
+                entry["secretRef"] = copy.deepcopy(secret_ref)
+            elif raw_api_key and raw_api_key != MASKED_SECRET:
+                try:
+                    entry["secretRef"] = _store_secret_for_paths(
+                        _llm_provider_secret_ref(
+                            paths,
+                            _llm_provider_chain_secret_slot(entry),
+                        ),
+                        raw_api_key,
+                        paths,
+                    )
+                except Exception:
+                    entry.pop("secretRef", None)
+            entry["apiKey"] = ""
+            entry["apiKeyEnv"] = _normalized_persisted_api_key_env(
+                str(entry.get("apiKeyEnv") or "LLM_API_KEY")
+            )
+            sanitized_chain.append(entry)
+        settings["llmProviderChain"] = sanitized_chain
+        settings["llmProvider"] = _legacy_provider_from_chain_entry(sanitized_chain[0])
+        primary_ref = sanitized_chain[0].get("secretRef")
+        if isinstance(primary_ref, dict):
+            provider_secrets = _llm_provider_secret_refs(settings)
+            provider_secrets[_llm_provider_secret_provider_id(sanitized_chain[0])] = copy.deepcopy(primary_ref)
+            settings["llmProviderSecrets"] = provider_secrets
     _sanitize_rag_embedding_secret(
         paths,
         settings,
@@ -1940,12 +2160,17 @@ def write_runtime_sources(update: dict[str, Any], paths: RuntimePaths | None = N
     return write_settings({"runtimeSources": normalized}, paths).get("runtimeSources", {})
 
 
-def resolve_llm_provider(paths: RuntimePaths | None = None, *, redact_secrets: bool = False) -> dict:
+def resolve_llm_provider(
+    paths: RuntimePaths | None = None,
+    *,
+    redact_secrets: bool = False,
+    _migrate_persisted_secrets: bool = True,
+) -> dict:
     """Resolve provider settings for runtime use without exposing secrets by default."""
     paths = paths or load_paths()
     settings = (
         _read_settings_for_resolution(paths)
-        if redact_secrets
+        if redact_secrets or not _migrate_persisted_secrets
         else migrate_persisted_secret_refs(paths)
     )
     provider = settings.get("llmProvider", {}) if isinstance(settings.get("llmProvider"), dict) else {}
@@ -2018,12 +2243,202 @@ def resolve_llm_provider(paths: RuntimePaths | None = None, *, redact_secrets: b
     return resolved
 
 
+def resolve_llm_provider_chain(
+    paths: RuntimePaths | None = None,
+    redact_secrets: bool = False,
+    require_cross_process_secret: bool = False,
+) -> list[dict[str, Any]]:
+    """Resolve the ordered LLM provider chain using the settings authority.
+
+    Homes written before the additive chain field existed are projected as a
+    one-entry chain, so callers do not need a separate compatibility branch.
+    """
+    paths = paths or load_paths()
+    settings = (
+        _read_settings_for_resolution(paths)
+        if redact_secrets or require_cross_process_secret
+        else migrate_persisted_secret_refs(paths)
+    )
+    configured = _configured_llm_provider_chain(settings)
+    if not configured:
+        primary = resolve_llm_provider(
+            paths,
+            redact_secrets=redact_secrets,
+            _migrate_persisted_secrets=not require_cross_process_secret,
+        )
+        primary.update({"entryId": "legacy-primary", "order": 0, "role": "primary"})
+        primary["readiness"] = _llm_provider_entry_readiness(
+            primary,
+            require_cross_process_secret,
+        )
+        if redact_secrets:
+            primary["apiKey"] = MASKED_SECRET if primary.get("hasApiKey") else ""
+        return [primary]
+
+    resolved_chain: list[dict[str, Any]] = []
+    for index, entry in enumerate(configured):
+        resolved = _resolve_configured_llm_provider_entry(
+            settings,
+            entry,
+            paths=paths,
+        )
+        resolved.update(
+            {
+                "entryId": str(entry.get("entryId") or f"provider-{index + 1}"),
+                "order": index,
+                "role": "primary" if index == 0 else "fallback",
+            }
+        )
+        resolved["readiness"] = _llm_provider_entry_readiness(
+            resolved,
+            require_cross_process_secret,
+        )
+        if redact_secrets:
+            resolved["apiKey"] = MASKED_SECRET if resolved.get("hasApiKey") else ""
+        resolved_chain.append(resolved)
+    return resolved_chain
+
+
+def _resolve_configured_llm_provider_entry(
+    settings: dict[str, Any],
+    provider: dict[str, Any],
+    *,
+    paths: RuntimePaths,
+) -> dict[str, Any]:
+    resolved_provider = str(provider.get("provider") or CUSTOM_PROVIDER_ID)
+    resolved_endpoint = str(provider.get("endpoint") or "")
+    resolved_api = str(provider.get("api") or "openai-compatible")
+    auto_gate = auto_pipeline_gate_tokens(
+        provider.get("contextWindow"),
+        DEFAULT_PIPELINE_GATE_TOKENS,
+    )
+    settings_gate_mode = _pipeline_gate_mode(provider)
+    resolved_gate = _positive_int(
+        provider.get("pipelineGateTokens")
+        if settings_gate_mode == PIPELINE_GATE_MODE_MANUAL
+        else None,
+        auto_gate,
+    )
+    api_key_env_name = str(provider.get("apiKeyEnv") or "LLM_API_KEY")
+    env_api_key = os.getenv(api_key_env_name)
+    settings_api_key = str(provider.get("apiKey") or "")
+    secret_ref = provider.get("secretRef") if isinstance(provider.get("secretRef"), dict) else None
+    stored_api_key = (
+        _read_secret_for_paths(secret_ref, paths)
+        if secret_ref and not _secret_ref_requires_reentry(settings, secret_ref)
+        else ""
+    )
+    resolved_api_key = stored_api_key or settings_api_key or env_api_key or config.LLM_API_KEY
+    resolved = {
+        "provider": resolved_provider,
+        "endpoint": resolved_endpoint,
+        "model": str(provider.get("model") or ""),
+        "api": resolved_api,
+        "contextWindow": provider.get("contextWindow"),
+        "maxTokens": provider.get("maxTokens"),
+        "pipelineConcurrency": _positive_int(
+            provider.get("pipelineConcurrency"),
+            DEFAULT_PIPELINE_CONCURRENCY,
+        ),
+        "pipelineGateMode": settings_gate_mode,
+        "pipelineGateTokens": resolved_gate,
+        "autoPipelineGateTokens": auto_gate,
+        "pipelineGateDrift": resolved_gate != auto_gate,
+        "timeoutSeconds": _positive_int(
+            provider.get("timeoutSeconds"),
+            DEFAULT_LLM_TIMEOUT_SECONDS,
+        ),
+        "apiKey": resolved_api_key,
+        "apiKeyEnv": api_key_env_name,
+        "secretRef": copy.deepcopy(secret_ref) if secret_ref else {},
+    }
+    resolved["hasApiKey"] = bool(resolved_api_key)
+    resolved["source"] = {
+        "provider": "settings",
+        "endpoint": "settings" if resolved_endpoint else "unset",
+        "model": "settings" if resolved["model"] else "unset",
+        "apiKey": (
+            "secret-store"
+            if stored_api_key
+            else ("settings" if settings_api_key else ("env" if env_api_key else "default"))
+        ),
+    }
+    return resolved
+
+
+def _llm_provider_entry_readiness(
+    provider: dict[str, Any],
+    require_cross_process_secret: bool,
+) -> dict[str, Any]:
+    missing = [
+        field
+        for field in ("endpoint", "model", "apiKey")
+        if not str(provider.get(field) or "").strip()
+    ]
+    api = str(provider.get("api") or "")
+    secret_ref = provider.get("secretRef") if isinstance(provider.get("secretRef"), dict) else {}
+    backend = str(secret_ref.get("backend") or "")
+    error = ""
+    status = "ready"
+    if missing:
+        status = "missing-configuration"
+        error = "missing " + ", ".join(missing)
+    elif api not in SUPPORTED_APIS:
+        status = "unsupported-api"
+        error = f"unsupported API transport: {api or 'unset'}"
+    elif require_cross_process_secret and backend == "memory":
+        status = "cross-process-secret-unavailable"
+        error = "process-local memory secrets cannot be used by pipeline subprocesses"
+    readiness = {
+        "ready": not error,
+        "status": status,
+        "missing": missing,
+        "requireCrossProcessSecret": bool(require_cross_process_secret),
+        "secretBackend": backend or "environment-or-unset",
+    }
+    if error:
+        readiness["error"] = error
+    return readiness
+
+
+def llm_provider_chain_readiness_error(
+    paths: RuntimePaths | None = None,
+    require_cross_process_secret: bool = False,
+) -> str | None:
+    """Return the first safe, user-facing provider-chain readiness error."""
+    chain = resolve_llm_provider_chain(
+        paths,
+        False,
+        require_cross_process_secret,
+    )
+    for entry in chain:
+        readiness = entry.get("readiness") if isinstance(entry.get("readiness"), dict) else {}
+        if readiness.get("ready"):
+            continue
+        entry_id = str(entry.get("entryId") or "provider")
+        role = str(entry.get("role") or "fallback")
+        error = str(readiness.get("error") or "not ready")
+        api_key_env = _safe_env_var_name_for_message(
+            str(entry.get("apiKeyEnv") or "LLM_API_KEY")
+        )
+        if "apiKey" in (readiness.get("missing") or []):
+            error += f"; save a readable secret or set {api_key_env}"
+        return f"LLM provider chain entry {entry_id} ({role}) is not ready: {error}."
+    return None
+
+
 def llm_provider_readiness_error(
     paths: RuntimePaths | None = None,
     *,
     require_cross_process_secret: bool = False,
 ) -> str | None:
     """Return a user-facing error when the persisted LLM provider is unusable."""
+    settings = _read_settings_for_resolution(paths or load_paths())
+    if _configured_llm_provider_chain(settings):
+        return llm_provider_chain_readiness_error(
+            paths,
+            require_cross_process_secret,
+        )
     provider = resolve_llm_provider(paths, redact_secrets=False)
     missing = [field for field in ("endpoint", "model", "apiKey") if not str(provider.get(field) or "").strip()]
     if not missing:
@@ -2157,6 +2572,7 @@ def runtime_authority_contract(paths: RuntimePaths | None = None, *, persist_def
         "pipeline": resolve_pipeline_settings(paths),
         "dashboard": resolve_dashboard_settings(paths),
         "llmProvider": resolve_llm_provider(paths, redact_secrets=True),
+        "llmProviderChain": resolve_llm_provider_chain(paths, redact_secrets=True),
         "settingsAuthority": settings_authority_inventory(paths, persist_defaults=persist_defaults),
         "archivedLegacyAccess": {
             "runtimeSources": list(RUNTIME_SOURCE_FIELDS),
@@ -2182,6 +2598,7 @@ def settings_authority_inventory(paths: RuntimePaths | None = None, *, persist_d
     resolved_pipeline = resolve_pipeline_settings(paths)
     resolved_dashboard = resolve_dashboard_settings(paths)
     resolved_provider = resolve_llm_provider(paths, redact_secrets=True)
+    resolved_provider_chain = resolve_llm_provider_chain(paths, redact_secrets=True)
     groups = []
     for group in SETTINGS_AUTHORITY_GROUPS:
         fields = []
@@ -2197,6 +2614,7 @@ def settings_authority_inventory(paths: RuntimePaths | None = None, *, persist_d
                 resolved_pipeline,
                 resolved_dashboard,
                 resolved_provider,
+                resolved_provider_chain,
             )
             source = "settings" if settings_value is not None else "default"
             env_override = env_name is not None and os.getenv(str(env_name)) is not None
@@ -2311,6 +2729,7 @@ def _effective_authority_value(
     pipeline: dict,
     dashboard: dict,
     provider: dict,
+    provider_chain: list[dict[str, Any]],
 ) -> Any:
     if path.startswith("general."):
         return general.get(path.split(".", 1)[1], settings_value)
@@ -2325,6 +2744,8 @@ def _effective_authority_value(
     if path.startswith("llmProvider."):
         key = path.split(".", 1)[1]
         return provider.get(key, settings_value)
+    if path == "llmProviderChain":
+        return provider_chain
     return settings_value
 
 
@@ -2344,7 +2765,26 @@ def _redact_authority_value(path: str, value: Any) -> Any:
     lowered = path.lower()
     if "apikey" in lowered or "secret" in lowered or "token" in lowered and "pipelinegatetokens" not in lowered:
         return MASKED_SECRET if value else ""
+    if path == "llmProviderChain" and isinstance(value, list):
+        return [_redact_provider_chain_authority_entry(entry) for entry in value]
     return value
+
+
+def _redact_provider_chain_authority_entry(value: Any) -> Any:
+    if not isinstance(value, dict):
+        return value
+    result: dict[str, Any] = {}
+    for key, nested_value in value.items():
+        lowered = str(key).lower()
+        if "apikey" in lowered:
+            result[key] = MASKED_SECRET if nested_value else ""
+        elif "secret" in lowered and key != "secretBackend":
+            result[key] = bool(nested_value) if key == "secretRef" else nested_value
+        elif isinstance(nested_value, dict):
+            result[key] = _redact_provider_chain_authority_entry(nested_value)
+        else:
+            result[key] = nested_value
+    return result
 
 
 def _normalize_runtime_source(value: Any, env_name: str) -> str:

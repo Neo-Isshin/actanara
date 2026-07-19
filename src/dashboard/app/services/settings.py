@@ -18,16 +18,22 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 from data_foundation.settings import (
     MASKED_SECRET,
     build_agent_schedule_prompt,
+    llm_provider_chain_readiness_error,
     llm_provider_readiness_error,
     normalize_rag_settings_update,
     read_llm_provider,
     read_settings,
+    resolve_llm_provider_chain,
     runtime_authority_contract,
     write_operator_settings,
     write_operator_settings_bundle,
     write_settings,
 )
-from data_foundation.llm_provider_catalog import normalize_llm_provider_update
+from data_foundation.llm_provider_catalog import (
+    llm_provider_catalog,
+    normalize_llm_provider_chain_update,
+    normalize_llm_provider_update,
+)
 from data_foundation.llm_provider_test import check_llm_provider_availability
 from data_foundation.secret_store import default_secret_backend, read_secret
 from data_foundation.external_tool_catalog import add_external_tool_instance, rediscover_external_tools, supported_external_tool_catalog
@@ -879,6 +885,180 @@ def _attach_facade_budget_telemetry(
 
 def get_llm_provider() -> dict:
     return read_llm_provider()
+
+
+def get_llm_provider_chain() -> dict:
+    return _llm_provider_chain_status(load_paths())
+
+
+def update_llm_provider_chain(payload: dict) -> dict:
+    paths = load_paths()
+    entries = _llm_provider_chain_entries_payload(payload)
+    _validate_llm_provider_chain_update_pipeline_secrets(paths, entries)
+    saved = write_operator_settings_bundle(
+        {"llmProviderChain": entries},
+        paths,
+        readiness_verifier=lambda: _raise_if_llm_provider_chain_not_pipeline_ready(paths),
+    )
+    result = _llm_provider_chain_status(paths)
+    result["settingsTransaction"] = saved.get("settingsTransaction")
+    return result
+
+
+def test_llm_provider_chain_entry(payload: dict | None = None) -> dict:
+    request = payload if isinstance(payload, dict) else {}
+    candidate = request.get("entry") if isinstance(request.get("entry"), dict) else request
+    if not isinstance(candidate, dict) or not candidate:
+        raise ValueError("entry must be a non-empty provider object")
+    candidate = dict(candidate)
+    paths = load_paths()
+    raw_api_key = str(candidate.get("apiKey") or "")
+    entry_id = str(candidate.get("entryId") or "")
+    if not raw_api_key and entry_id:
+        persisted = next(
+            (
+                entry
+                for entry in resolve_llm_provider_chain(paths, False, False)
+                if str(entry.get("entryId") or "") == entry_id
+            ),
+            None,
+        )
+        if (
+            persisted
+            and str(persisted.get("provider") or "") == str(candidate.get("provider") or "")
+            and persisted.get("apiKey")
+        ):
+            candidate["apiKey"] = persisted["apiKey"]
+    result = check_llm_provider_availability(
+        paths,
+        candidate=candidate,
+    )
+    return {
+        **result,
+        "entryId": str(candidate.get("entryId") or "candidate"),
+        "persisted": False,
+    }
+
+
+def _llm_provider_chain_status(paths: RuntimePaths) -> dict:
+    entries = resolve_llm_provider_chain(
+        paths,
+        True,
+        True,
+    )
+    providers = []
+    for entry in entries:
+        public_entry = dict(entry)
+        secret_ref = public_entry.pop("secretRef", None)
+        source = public_entry.get("source") if isinstance(public_entry.get("source"), dict) else {}
+        public_entry["hasSecretRef"] = bool(secret_ref)
+        public_entry["hasSavedApiKey"] = bool(secret_ref) and source.get("apiKey") == "secret-store"
+        providers.append(public_entry)
+    readiness_error = llm_provider_chain_readiness_error(
+        paths,
+        True,
+    )
+    return {
+        "providers": providers,
+        "catalog": llm_provider_catalog(),
+        "readiness": {
+            "ready": readiness_error is None,
+            "status": "ready" if readiness_error is None else "not-ready",
+            **({"error": readiness_error} if readiness_error else {}),
+        },
+        "legacyPrimary": read_llm_provider(paths),
+    }
+
+
+def _llm_provider_chain_entries_payload(payload: dict) -> list[dict]:
+    if not isinstance(payload, dict):
+        raise ValueError("payload must be an object")
+    entries = payload.get("providers")
+    if entries is None:
+        entries = payload.get("entries")
+    if not isinstance(entries, list) or not entries:
+        raise ValueError("providers must contain at least one provider")
+    if any(not isinstance(entry, dict) for entry in entries):
+        raise ValueError("providers must contain provider objects")
+    return entries
+
+
+def _validate_llm_provider_chain_update_pipeline_secrets(
+    paths: RuntimePaths,
+    entries: list[dict],
+) -> None:
+    settings = read_settings(paths, redact_secrets=False)
+    current_entries = settings.get("llmProviderChain")
+    current_chain = current_entries if isinstance(current_entries, list) else []
+    normalized = normalize_llm_provider_chain_update(entries, current_chain)
+    resolved_current = resolve_llm_provider_chain(
+        paths,
+        False,
+        True,
+    )
+    current_by_id = {
+        str(entry.get("entryId")): entry
+        for entry in resolved_current
+        if isinstance(entry, dict) and entry.get("entryId")
+    }
+    legacy_primary = resolved_current[0] if resolved_current else {}
+    secret_backend = default_secret_backend()
+
+    for index, (raw_entry, normalized_entry) in enumerate(zip(entries, normalized, strict=True)):
+        entry_id = str(normalized_entry.get("entryId") or f"provider-{index + 1}")
+        provider_id = str(normalized_entry.get("provider") or "custom")
+        missing = [
+            field
+            for field in ("endpoint", "model")
+            if not str(normalized_entry.get(field) or "").strip()
+        ]
+        if missing:
+            raise ValueError(
+                f"LLM provider chain entry {entry_id} is not ready: missing {', '.join(missing)}."
+            )
+
+        raw_api_key = str(raw_entry.get("apiKey") or "")
+        if raw_api_key and raw_api_key != MASKED_SECRET:
+            if secret_backend in {"memory", "process-env", ""}:
+                raise ValueError(
+                    f"LLM provider chain entry {entry_id} is not ready for pipeline execution: "
+                    f"apiKey would be stored in the {secret_backend or 'unknown'} backend, which "
+                    "pipeline subprocesses cannot read. Use the runtime-file backend or the "
+                    "configured apiKeyEnv."
+                )
+            continue
+
+        current = current_by_id.get(entry_id)
+        if (
+            current is None
+            and index == 0
+            and provider_id == str(legacy_primary.get("provider") or "")
+        ):
+            current = legacy_primary
+        api_key_env = str(normalized_entry.get("apiKeyEnv") or "LLM_API_KEY")
+        if os.getenv(api_key_env):
+            continue
+        if current and provider_id == str(current.get("provider") or ""):
+            readiness = current.get("readiness") if isinstance(current.get("readiness"), dict) else {}
+            if readiness.get("ready"):
+                continue
+            error = str(readiness.get("error") or "apiKey is unavailable")
+            raise ValueError(
+                f"LLM provider chain entry {entry_id} is not ready for pipeline execution: {error}."
+            )
+        raise ValueError(
+            f"LLM provider chain entry {entry_id} is not ready for pipeline execution: missing apiKey; "
+            f"save a readable secret or set {api_key_env}."
+        )
+
+
+def _raise_if_llm_provider_chain_not_pipeline_ready(paths: RuntimePaths) -> None:
+    readiness_error = llm_provider_chain_readiness_error(
+        paths,
+        True,
+    )
+    if readiness_error:
+        raise ValueError(readiness_error)
 
 
 def update_llm_provider(payload: dict) -> dict:

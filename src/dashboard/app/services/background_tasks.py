@@ -7,6 +7,9 @@ from typing import Any
 
 from agentic_rag.rag_server_lifecycle import read_server_process_state
 from agentic_rag.rag_settings import resolve_rag_settings
+from data_foundation.paths import load_paths
+from data_foundation.pipeline_llm_attribution import pipeline_llm_attribution_by_stage
+from data_foundation.pipeline_runs import list_pipeline_runs
 
 from . import external_rag_skill_registration, foundation, foundation_ops, rag_index_jobs, scheduler
 from .ui_text import dashboard_language_profile, is_english_profile
@@ -22,6 +25,7 @@ def get_background_tasks(*, limit: int = 30) -> dict[str, Any]:
     degraded: list[dict[str, Any]] = []
     refresh_jobs: list[dict[str, Any]]
     repair_jobs: list[dict[str, Any]]
+    pipeline_tasks: list[dict[str, Any]]
     try:
         refresh_payload = foundation.list_refresh_jobs(limit=limit)
         refresh_jobs = [
@@ -42,10 +46,31 @@ def get_background_tasks(*, limit: int = 30) -> dict[str, Any]:
     except Exception as exc:
         degraded.append(_degraded_source("foundationRepairRuns", "foundation-repair", exc))
         repair_jobs = [_source_failure_task("foundation-repair-status", "foundation-repair", _ui("foundationRepairUnavailable", profile), exc)]
+    try:
+        paths = load_paths()
+        pipeline_tasks = [
+            _normalize_pipeline_run(
+                run,
+                pipeline_llm_attribution_by_stage(paths, int(run["id"])),
+                profile=profile,
+            )
+            for run in list_pipeline_runs(paths, limit=limit)
+            if isinstance(run, dict) and run.get("id") is not None
+        ]
+    except Exception as exc:
+        degraded.append(_degraded_source("pipelineRuns", "pipeline", exc))
+        pipeline_tasks = [
+            _source_failure_task(
+                "pipeline-status",
+                "pipeline",
+                _ui("pipelineRunsUnavailable", profile),
+                exc,
+            )
+        ]
     scheduler_tasks = _scheduler_tasks(profile=profile)
     rag_index_tasks = _rag_index_tasks(limit, profile=profile)
     rag_skill_tasks = _rag_skill_registration_tasks(limit, profile=profile)
-    tasks = refresh_jobs + repair_jobs + rag_index_tasks + rag_skill_tasks + scheduler_tasks
+    tasks = refresh_jobs + repair_jobs + pipeline_tasks + rag_index_tasks + rag_skill_tasks + scheduler_tasks
     service_statuses = [service for service in [_rag_lifecycle_service(profile=profile)] if service]
     tasks.sort(key=lambda item: item.get("sortAt") or "", reverse=True)
     active = [task for task in tasks if task.get("status") in ACTIVE_STATUSES]
@@ -63,6 +88,7 @@ def get_background_tasks(*, limit: int = 30) -> dict[str, Any]:
             "foundationRefreshJobs": sum(1 for job in refresh_jobs if job.get("source") == "foundation-refresh" and not job.get("degraded")),
             "historyBackfillJobs": sum(1 for job in refresh_jobs if job.get("source") == "history-backfill" and not job.get("degraded")),
             "foundationRepairRuns": sum(1 for job in repair_jobs if not job.get("degraded")),
+            "pipelineRuns": sum(1 for job in pipeline_tasks if not job.get("degraded")),
             "ragCandidateRefreshJobs": len(rag_index_tasks),
             "ragSkillRegistrationJobs": len(rag_skill_tasks),
             "schedulerJobs": len(scheduler_tasks),
@@ -181,6 +207,247 @@ def _normalize_repair_run(run: dict[str, Any], *, profile: str = "zh") -> dict[s
             "exitCode": run.get("exitCode") or run.get("exit_code"),
         },
     }
+
+
+def _normalize_pipeline_run(
+    run: dict[str, Any],
+    attribution: dict[str, Any],
+    *,
+    profile: str = "zh",
+) -> dict[str, Any]:
+    """Merge the durable pipeline stage ledger with secret-safe LLM calls."""
+
+    run_id = int(run["id"])
+    status = str(run.get("status") or "unknown")
+    business_date = str(run.get("businessDate") or run.get("business_date") or "-")
+    metadata = run.get("metadata") if isinstance(run.get("metadata"), dict) else {}
+    token_attribution = (
+        attribution.get("summary")
+        if isinstance(attribution.get("summary"), dict)
+        else _unavailable_token_attribution(run_id)
+    )
+    attributed_stages = {
+        str(stage.get("stageId") or ""): stage
+        for stage in (attribution.get("stages") or [])
+        if isinstance(stage, dict) and stage.get("stageId")
+    }
+    stage_details: list[dict[str, Any]] = []
+    observed_stage_ids: set[str] = set()
+    for index, step in enumerate(run.get("steps") or []):
+        if not isinstance(step, dict):
+            continue
+        step_metadata = step.get("metadata") if isinstance(step.get("metadata"), dict) else {}
+        stage_id = str(step_metadata.get("stageId") or f"step-{index + 1}")
+        observed_stage_ids.add(stage_id)
+        stage_details.append(
+            _merge_pipeline_stage(
+                stage_id,
+                step,
+                attributed_stages.get(stage_id),
+            )
+        )
+    for stage_id, stage_attribution in attributed_stages.items():
+        if stage_id in observed_stage_ids:
+            continue
+        stage_details.append(_merge_pipeline_stage(stage_id, None, stage_attribution))
+
+    artifact_paths = run.get("artifactPaths") if isinstance(run.get("artifactPaths"), dict) else {}
+    related_task = _pipeline_related_task(metadata)
+    provider_id = str(run.get("providerId") or run.get("provider_id") or "")
+    model = str(run.get("model") or "")
+    return {
+        "id": f"pipeline-{run_id}",
+        "source": "pipeline",
+        "title": f"{_ui('pipelineRunTitle', profile)} · {business_date}",
+        "subtitle": _pipeline_run_subtitle(
+            business_date,
+            str(run.get("runKind") or run.get("run_kind") or "daily"),
+            token_attribution,
+            profile=profile,
+        ),
+        "status": status,
+        "progress": _status_progress(status),
+        "startedAt": run.get("started_at") or run.get("startedAt"),
+        "completedAt": run.get("completed_at") or run.get("completedAt"),
+        "sortAt": run.get("completed_at") or run.get("completedAt") or run.get("started_at") or run.get("startedAt") or run.get("updated_at") or "",
+        "provider": provider_id,
+        "model": model,
+        "failureClass": run.get("failureClass") or run.get("failure_class"),
+        "errorSummary": run.get("errorSummary") or run.get("error_summary"),
+        "tokenAttribution": token_attribution,
+        "stageDetails": stage_details,
+        "artifactPaths": artifact_paths,
+        "artifactCommitted": status in {"completed", "skipped"} and bool(_flatten_artifact_paths(artifact_paths)),
+        "relatedTask": related_task,
+        "metadata": {
+            "pipelineRunId": run_id,
+            "businessDate": business_date,
+            "runKind": run.get("runKind") or run.get("run_kind"),
+            "requestedBy": run.get("requestedBy") or run.get("requested_by"),
+            "retryOfRunId": run.get("retryOfRunId") or run.get("retry_of_run_id"),
+            "provider": provider_id,
+            "model": model,
+            "relatedTask": related_task,
+        },
+        "actions": [],
+    }
+
+
+def _merge_pipeline_stage(
+    stage_id: str,
+    step: dict[str, Any] | None,
+    attribution: dict[str, Any] | None,
+) -> dict[str, Any]:
+    step = step if isinstance(step, dict) else {}
+    stage_attribution = attribution if isinstance(attribution, dict) else {}
+    step_metadata = step.get("metadata") if isinstance(step.get("metadata"), dict) else {}
+    calls = [call for call in (stage_attribution.get("calls") or []) if isinstance(call, dict)]
+    providers = stage_attribution.get("providers") if isinstance(stage_attribution.get("providers"), list) else []
+    actual_call = next(
+        (call for call in reversed(calls) if call.get("status") == "completed"),
+        calls[-1] if calls else {},
+    )
+    failure_classes = list(
+        dict.fromkeys(
+            str(call.get("failureClass"))
+            for call in calls
+            if call.get("failureClass")
+        )
+    )
+    call_errors = [str(call.get("errorSummary")) for call in calls if call.get("errorSummary")]
+    artifact_paths = [
+        str(path)
+        for path in (step_metadata.get("artifactPaths") or [])
+        if str(path)
+    ]
+    return {
+        "stageId": stage_id,
+        "name": step.get("name") or stage_id,
+        "status": step.get("status") or _stage_status_from_calls(calls),
+        "reason": step.get("reason"),
+        "startedAt": step.get("startedAt"),
+        "completedAt": step.get("completedAt") or step.get("updatedAt"),
+        "durationSeconds": step.get("durationSeconds"),
+        "provider": actual_call.get("providerId") or (providers[0].get("providerId") if providers else None),
+        "model": actual_call.get("model") or (providers[0].get("model") if providers else None),
+        "tokenAttribution": _stage_token_attribution(stage_attribution),
+        "providers": providers,
+        "calls": calls,
+        "llmCallCount": stage_attribution.get("llmCallCount"),
+        "retryCount": stage_attribution.get("retryCount"),
+        "fallbackCount": stage_attribution.get("fallbackCount"),
+        "failureClasses": failure_classes,
+        "failureClass": failure_classes[0] if failure_classes else None,
+        "errorSummary": step.get("reason") or (call_errors[0] if call_errors else None),
+        "artifactPaths": artifact_paths,
+        "artifactCommitted": step_metadata.get("committed") is True and bool(artifact_paths),
+    }
+
+
+def _stage_token_attribution(stage: dict[str, Any]) -> dict[str, Any]:
+    if not stage:
+        return {
+            "callDataAvailable": False,
+            "usageAvailable": False,
+            "usageStatus": "unavailable",
+            "tokens": _unavailable_tokens(),
+        }
+    return {
+        key: stage.get(key)
+        for key in (
+            "callDataAvailable",
+            "usageAvailable",
+            "usageStatus",
+            "estimated",
+            "llmCallCount",
+            "retryCount",
+            "fallbackCount",
+            "failedCallCount",
+            "unavailableCallCount",
+            "tokens",
+        )
+    }
+
+
+def _stage_status_from_calls(calls: list[dict[str, Any]]) -> str:
+    if not calls:
+        return "unknown"
+    return "failed" if any(call.get("status") == "failed" for call in calls) else "completed"
+
+
+def _unavailable_token_attribution(run_id: int) -> dict[str, Any]:
+    return {
+        "pipelineRunId": run_id,
+        "stageId": None,
+        "callDataAvailable": False,
+        "usageAvailable": False,
+        "usageStatus": "unavailable",
+        "estimated": False,
+        "llmCallCount": None,
+        "retryCount": None,
+        "fallbackCount": None,
+        "failedCallCount": None,
+        "unavailableCallCount": None,
+        "tokens": _unavailable_tokens(),
+        "providers": [],
+    }
+
+
+def _unavailable_tokens() -> dict[str, None]:
+    return {
+        "inputTokens": None,
+        "outputTokens": None,
+        "cacheReadTokens": None,
+        "cacheWriteTokens": None,
+        "reasoningTokens": None,
+        "totalTokens": None,
+    }
+
+
+def _flatten_artifact_paths(value: object) -> list[str]:
+    if isinstance(value, dict):
+        return [path for item in value.values() for path in _flatten_artifact_paths(item)]
+    if isinstance(value, list | tuple):
+        return [path for item in value for path in _flatten_artifact_paths(item)]
+    return [str(value)] if value else []
+
+
+def _pipeline_related_task(metadata: dict[str, Any]) -> dict[str, Any] | None:
+    trigger = str(metadata.get("trigger") or "")
+    source = ""
+    if trigger.startswith("history-backfill"):
+        source = "history-backfill"
+    elif trigger == "dashboard-daily-qa-repair":
+        source = "foundation-repair"
+    explicit_id = (
+        metadata.get("parentTaskId")
+        or metadata.get("historyBackfillRunId")
+        or metadata.get("foundationRepairRunId")
+        or metadata.get("refreshRunId")
+    )
+    if not source and explicit_id is None:
+        return None
+    return {
+        "source": source or str(metadata.get("parentTaskSource") or "background-task"),
+        "id": str(explicit_id) if explicit_id is not None else None,
+        "trigger": trigger or None,
+    }
+
+
+def _pipeline_run_subtitle(
+    business_date: str,
+    run_kind: str,
+    attribution: dict[str, Any],
+    *,
+    profile: str,
+) -> str:
+    total_tokens = (attribution.get("tokens") or {}).get("totalTokens")
+    token_text = (
+        f"{_ui('pipelineTotalTokens', profile)} {total_tokens:,}"
+        if isinstance(total_tokens, int)
+        else _ui("pipelineTokensUnavailable", profile)
+    )
+    return " · ".join((business_date, run_kind, token_text))
 
 
 def _scheduler_tasks(*, profile: str = "zh") -> list[dict[str, Any]]:
@@ -490,6 +757,10 @@ _UI_TEXT = {
         "dailyQaRepair": "Daily QA repair: ",
         "foundationRefreshUnavailable": "Foundation refresh jobs unavailable",
         "foundationRepairUnavailable": "Foundation repair runs unavailable",
+        "pipelineRunsUnavailable": "Pipeline 运行记录不可用",
+        "pipelineRunTitle": "每日管线",
+        "pipelineTotalTokens": "总 Token",
+        "pipelineTokensUnavailable": "Token 不可用",
         "businessDatePrefix": "business date ",
         "schedulerUnavailable": "Scheduler status unavailable",
         "ragCandidateUnavailable": "RAG candidate refresh unavailable",
@@ -527,6 +798,10 @@ _UI_TEXT = {
         "dailyQaRepair": "Daily QA repair: ",
         "foundationRefreshUnavailable": "Foundation refresh jobs unavailable",
         "foundationRepairUnavailable": "Foundation repair runs unavailable",
+        "pipelineRunsUnavailable": "Pipeline runs unavailable",
+        "pipelineRunTitle": "Daily pipeline",
+        "pipelineTotalTokens": "Total tokens",
+        "pipelineTokensUnavailable": "Tokens unavailable",
         "businessDatePrefix": "business date ",
         "schedulerUnavailable": "Scheduler status unavailable",
         "ragCandidateUnavailable": "RAG candidate refresh unavailable",

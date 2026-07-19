@@ -7,6 +7,7 @@ import json
 import re
 import sqlite3
 import time
+import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
 from collections import defaultdict, Counter
@@ -16,7 +17,7 @@ import sys, os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 from data_foundation.paths import load_paths
 from data_foundation.settings import default_external_tool_path, external_tool_path, resolve_llm_provider, resolve_runtime_source
-from data_foundation.llm_transport import send_anthropic_message, send_openai_compatible_message
+from data_foundation.llm_execution import ProviderChainError, execute_llm_message
 from data_foundation.time import business_today, business_window
 from data_foundation.weather import fetch_weather_for_date
 from data_foundation.diary_paths import (
@@ -27,11 +28,7 @@ from data_foundation.diary_paths import (
     diary_technical_report_path,
 )
 
-_LLM_PROVIDER = resolve_llm_provider(redact_secrets=False)
-API_KEY = _LLM_PROVIDER["apiKey"]
-API_HOST = _LLM_PROVIDER["endpoint"]
-MODEL = _LLM_PROVIDER["model"]
-API_TYPE = _LLM_PROVIDER.get("api") or "anthropic-messages"
+_LLM_PROVIDER = resolve_llm_provider(redact_secrets=True)
 THINKING_MODE = os.getenv("LLM_THINKING_MODE", "off").strip().lower()
 def _runtime_diary_root() -> Path:
     return load_paths().diary_dir
@@ -141,6 +138,13 @@ def get_token_count(text):
         except: pass
     return len(text) // 2
 
+
+def _llm_chunk_id(label):
+    raw = str(label or "narrative call").strip()
+    slug = re.sub(r"[^\w.-]+", "-", raw, flags=re.UNICODE).strip("-_.").casefold()
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:10]
+    return f"{(slug[:80] or 'narrative-call')}-{digest}"
+
 def call_llm(prompt, is_int=False, label=None, max_tokens=None):
     sys_content = "你是一个专业的AI技术日记助手。"
     if is_int: sys_content = "你是一个专业的技术日记整合助手。直接从'## 今日概要'开始输出。"
@@ -154,18 +158,17 @@ def call_llm(prompt, is_int=False, label=None, max_tokens=None):
         flush=True,
     )
     try:
-        sender = send_anthropic_message if API_TYPE == "anthropic-messages" else send_openai_compatible_message
-        content = sender(
-            endpoint=API_HOST,
-            api_key=API_KEY,
-            model=MODEL,
+        content = execute_llm_message(
             system=sys_content,
             prompt=prompt,
             temperature=0.05,
             max_tokens=output_budget,
-            timeout=180,
             thinking_mode=THINKING_MODE,
-        ).strip()
+            paths=load_paths(),
+            pass_id="narrative",
+            label=call_label,
+            chunk_id=_llm_chunk_id(call_label),
+        ).text.strip()
         cleaned = re.sub(r'<(think|思考)>[\s\S]*?</\1>|```json[\s\S]*?```', '', content).strip()
         print(
             f"   [LLM-END] {call_label}: {time.time() - started:.1f}s, chars={len(cleaned):,}",
@@ -174,7 +177,7 @@ def call_llm(prompt, is_int=False, label=None, max_tokens=None):
         return cleaned
     except Exception as e:
         print(f"   [LLM-ERROR] {call_label}: {time.time() - started:.1f}s, {e}", flush=True)
-        return None
+        raise
 
 def load_filtered_entries(date_str):
     base_dir = _runtime_diary_root() / "__diary_daily" / date_str / "_filtered"
@@ -693,6 +696,8 @@ def _execute_slot_plans(slot_plans):
             index, item = futures[future]
             try:
                 result = future.result()
+            except ProviderChainError:
+                raise
             except Exception as exc:
                 print(f"   [PARALLEL] {item['slot']} failed during narrative partial summary: {exc}")
                 result = None

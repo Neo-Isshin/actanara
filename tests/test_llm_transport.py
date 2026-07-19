@@ -15,6 +15,7 @@ from contextlib import contextmanager, redirect_stdout
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,13 +23,18 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
 from data_foundation.llm_transport import (
+    LlmTransportError,
+    LlmTransportResult,
+    LlmUsage,
     _reduced_max_tokens,
     anthropic_messages_payload,
     anthropic_messages_url,
     openai_chat_completions_payload,
     openai_chat_completions_url,
     send_anthropic_message,
+    send_anthropic_message_detailed,
     send_openai_compatible_message,
+    send_openai_compatible_message_detailed,
 )
 from diary_generator import learning_pass, narrative_pass, technical_pass
 
@@ -50,6 +56,14 @@ class _Response:
 class _AnthropicResponse(_Response):
     def read(self):
         return b'{"content":[{"type":"text","text":"OK"}]}'
+
+
+class _PayloadResponse(_Response):
+    def __init__(self, payload):
+        self.payload = payload
+
+    def read(self):
+        return json.dumps(self.payload).encode("utf-8")
 
 
 def _run_fixture_openssl(executable: str, *args: str) -> None:
@@ -494,6 +508,275 @@ class LLMTransportTests(unittest.TestCase):
         self.assertEqual(calls["count"], 2)
         sleep.assert_called_once()
 
+    def test_openai_detailed_sender_normalizes_reported_usage(self):
+        payload = {
+            "id": "chat-usage-1",
+            "choices": [{"message": {"content": "usage-ok"}}],
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 40,
+                "total_tokens": 140,
+                "prompt_tokens_details": {"cached_tokens": 25},
+                "completion_tokens_details": {"reasoning_tokens": 9},
+            },
+        }
+
+        with patch("urllib.request.urlopen", return_value=_PayloadResponse(payload)):
+            result = send_openai_compatible_message_detailed(
+                endpoint="https://api.example.com/v1",
+                api_key="secret",
+                model="model-a",
+                system="system",
+                prompt="prompt",
+                temperature=0.1,
+                max_tokens=123,
+                timeout=1,
+            )
+
+        self.assertIsInstance(result, LlmTransportResult)
+        self.assertIsInstance(result.usage, LlmUsage)
+        self.assertEqual(result.text, "usage-ok")
+        self.assertEqual(result.response_id, "chat-usage-1")
+        self.assertEqual(result.api_type, "openai-compatible")
+        self.assertEqual(result.model, "model-a")
+        self.assertEqual(result.payload_variant, "full")
+        self.assertEqual(result.attempt_count, 1)
+        self.assertEqual(result.retry_count, 0)
+        self.assertEqual(result.usage.input_tokens, 100)
+        self.assertEqual(result.usage.output_tokens, 40)
+        self.assertEqual(result.usage.cache_tokens, 25)
+        self.assertEqual(result.usage.cache_read_tokens, 25)
+        self.assertEqual(result.usage.reasoning_tokens, 9)
+        self.assertEqual(result.usage.total_tokens, 140)
+        self.assertEqual(result.usage.reported_total_tokens, 140)
+        self.assertFalse(result.usage.estimated)
+        self.assertEqual(result.usage.source, "provider_response")
+        self.assertEqual(result.usage.method, "provider-reported-total")
+        self.assertEqual(result.to_dict()["usage"]["reasoningTokens"], 9)
+
+    def test_openai_detailed_sender_accepts_responses_style_usage_names(self):
+        payload = {
+            "choices": [{"message": {"content": "alias-ok"}}],
+            "usage": {
+                "input_tokens": 31,
+                "output_tokens": 12,
+                "input_tokens_details": {"cached_tokens": 7},
+                "output_tokens_details": {"reasoning_tokens": 4},
+            },
+        }
+
+        with patch("urllib.request.urlopen", return_value=_PayloadResponse(payload)):
+            result = send_openai_compatible_message_detailed(
+                endpoint="https://api.example.com/v1",
+                api_key="secret",
+                model="model-a",
+                system="system",
+                prompt="prompt",
+                temperature=0.1,
+                max_tokens=123,
+                timeout=1,
+            )
+
+        self.assertEqual(result.usage.input_tokens, 31)
+        self.assertEqual(result.usage.output_tokens, 12)
+        self.assertEqual(result.usage.cache_tokens, 7)
+        self.assertEqual(result.usage.reasoning_tokens, 4)
+        self.assertEqual(result.usage.total_tokens, 43)
+        self.assertIsNone(result.usage.reported_total_tokens)
+        self.assertEqual(result.usage.method, "provider-input-plus-output")
+
+    def test_anthropic_detailed_sender_normalizes_cache_usage(self):
+        payload = {
+            "id": "msg-usage-1",
+            "content": [{"type": "text", "text": "anthropic-usage-ok"}],
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": 5,
+                "cache_creation_input_tokens": 3,
+                "cache_read_input_tokens": 7,
+                "thinking_tokens": 2,
+            },
+        }
+
+        with patch("urllib.request.urlopen", return_value=_PayloadResponse(payload)):
+            result = send_anthropic_message_detailed(
+                endpoint="https://api.example.com",
+                api_key="secret",
+                model="model-b",
+                system="system",
+                prompt="prompt",
+                temperature=0.1,
+                max_tokens=123,
+                timeout=1,
+            )
+
+        self.assertEqual(result.text, "anthropic-usage-ok")
+        self.assertEqual(result.response_id, "msg-usage-1")
+        self.assertEqual(result.api_type, "anthropic")
+        self.assertEqual(result.usage.input_tokens, 10)
+        self.assertEqual(result.usage.output_tokens, 5)
+        self.assertEqual(result.usage.cache_read_tokens, 7)
+        self.assertEqual(result.usage.cache_write_tokens, 3)
+        self.assertEqual(result.usage.cache_tokens, 10)
+        self.assertEqual(result.usage.reasoning_tokens, 2)
+        self.assertEqual(result.usage.total_tokens, 25)
+        self.assertIsNone(result.usage.reported_total_tokens)
+        self.assertEqual(result.usage.method, "provider-input-plus-output-plus-cache")
+
+    def test_detailed_senders_mark_missing_usage_as_estimated(self):
+        cases = (
+            (
+                "openai-compatible",
+                send_openai_compatible_message_detailed,
+                {"choices": [{"message": {"content": "estimated-openai"}}]},
+            ),
+            (
+                "anthropic",
+                send_anthropic_message_detailed,
+                {"content": [{"type": "text", "text": "estimated-anthropic"}]},
+            ),
+        )
+
+        for api_type, sender, payload in cases:
+            with self.subTest(api_type=api_type):
+                with patch("urllib.request.urlopen", return_value=_PayloadResponse(payload)):
+                    result = sender(
+                        endpoint="https://api.example.com/v1",
+                        api_key="secret",
+                        model="model",
+                        system="system text",
+                        prompt="prompt text",
+                        temperature=0.1,
+                        max_tokens=123,
+                        timeout=1,
+                    )
+
+                self.assertTrue(result.usage.estimated)
+                self.assertEqual(result.usage.source, "local_estimate")
+                self.assertEqual(
+                    result.usage.method,
+                    "utf8-bytes-divided-by-4-plus-message-overhead-v1",
+                )
+                self.assertEqual(
+                    result.usage.estimated_fields,
+                    ("input_tokens", "output_tokens", "total_tokens"),
+                )
+                self.assertIsNone(result.usage.reported_total_tokens)
+                self.assertGreater(result.usage.input_tokens, 0)
+                self.assertGreater(result.usage.output_tokens, 0)
+                self.assertEqual(
+                    result.usage.total_tokens,
+                    result.usage.input_tokens + result.usage.output_tokens,
+                )
+
+    def test_detailed_sender_classifies_http_failures_and_redacts_secrets(self):
+        synthetic_credential_value = "synthetic-transport-http-secret"
+        cases = (
+            (401, "auth", False),
+            (429, "rate_limit", True),
+            (503, "5xx", True),
+            (400, "request", False),
+        )
+
+        for status_code, failure_class, retryable in cases:
+            def fail_urlopen(request, **kwargs):
+                del kwargs
+                body = json.dumps(
+                    {"error": {"api_key": str(synthetic_credential_value), "message": "request failed"}}
+                ).encode("utf-8")
+                raise urllib.error.HTTPError(
+                    request.full_url,
+                    status_code,
+                    "provider failure",
+                    {},
+                    BytesIO(body),
+                )
+
+            with self.subTest(status_code=status_code):
+                with (
+                    patch("urllib.request.urlopen", side_effect=fail_urlopen),
+                    patch("data_foundation.llm_transport.time.sleep"),
+                ):
+                    with self.assertRaises(LlmTransportError) as raised:
+                        send_openai_compatible_message_detailed(
+                            endpoint="https://api.example.com/v1",
+                            api_key=str(synthetic_credential_value),
+                            model="model",
+                            system="system",
+                            prompt="prompt",
+                            temperature=0.1,
+                            max_tokens=16,
+                            timeout=1,
+                            thinking_mode="off",
+                        )
+
+                error = raised.exception
+                serialized = json.dumps(error.to_dict())
+                self.assertEqual(error.failure_class, failure_class)
+                self.assertEqual(error.status_code, status_code)
+                self.assertEqual(error.retryable, retryable)
+                self.assertTrue(error.attempts)
+                self.assertNotIn(synthetic_credential_value, str(error))
+                self.assertNotIn(synthetic_credential_value, serialized)
+                self.assertIn("[REDACTED]", str(error))
+
+    def test_detailed_sender_classifies_timeout_network_parse_and_config(self):
+        cases = (
+            (TimeoutError("timed out Authorization: Bearer timeout-secret"), "timeout", True),
+            (urllib.error.URLError(ConnectionResetError("network api_key=network-secret")), "network", True),
+        )
+
+        for failure, failure_class, retryable in cases:
+            with self.subTest(failure_class=failure_class):
+                with (
+                    patch("urllib.request.urlopen", side_effect=failure),
+                    patch("data_foundation.llm_transport.time.sleep"),
+                ):
+                    with self.assertRaises(LlmTransportError) as raised:
+                        send_openai_compatible_message_detailed(
+                            endpoint="https://api.example.com/v1",
+                            api_key="secret",
+                            model="model",
+                            system="system",
+                            prompt="prompt",
+                            temperature=0.1,
+                            max_tokens=16,
+                            timeout=1,
+                        )
+                self.assertEqual(raised.exception.failure_class, failure_class)
+                self.assertEqual(raised.exception.retryable, retryable)
+                self.assertNotIn(failure_class + "-secret", str(raised.exception))
+
+        malformed = _PayloadResponse({"choices": []})
+        with patch("urllib.request.urlopen", return_value=malformed):
+            with self.assertRaises(LlmTransportError) as parse_error:
+                send_openai_compatible_message_detailed(
+                    endpoint="https://api.example.com/v1",
+                    api_key="secret",
+                    model="model",
+                    system="system",
+                    prompt="prompt",
+                    temperature=0.1,
+                    max_tokens=16,
+                    timeout=1,
+                )
+        self.assertEqual(parse_error.exception.failure_class, "content_parse")
+        self.assertFalse(parse_error.exception.retryable)
+
+        with self.assertRaises(LlmTransportError) as config_error:
+            send_openai_compatible_message_detailed(
+                endpoint="",
+                api_key="secret",
+                model="model",
+                system="system",
+                prompt="prompt",
+                temperature=0.1,
+                max_tokens=16,
+                timeout=1,
+            )
+        self.assertEqual(config_error.exception.failure_class, "config")
+        self.assertFalse(config_error.exception.retryable)
+
     def test_tls_and_timeout_errors_remain_strict_and_redact_synthetic_secrets(self):
         synthetic_secret = "synthetic-" + "transport-secret-value"
         failures = (
@@ -536,40 +819,75 @@ class LLMTransportTests(unittest.TestCase):
                 self.assertNotIn(synthetic_secret, str(raised.exception))
                 self.assertIn("[REDACTED]", str(raised.exception))
 
-    def test_learning_pass_uses_openai_sender_for_openai_compatible_provider(self):
+    def test_learning_pass_uses_unified_executor(self):
         with (
-            patch.object(learning_pass, "API_TYPE", "openai-compatible"),
-            patch.object(learning_pass, "send_openai_compatible_message", return_value="ok") as openai_sender,
-            patch.object(learning_pass, "send_anthropic_message") as anthropic_sender,
+            patch.object(
+                learning_pass,
+                "execute_llm_message",
+                return_value=SimpleNamespace(text="ok"),
+            ) as executor,
+            patch.object(learning_pass, "load_paths", return_value="runtime-paths"),
         ):
             self.assertEqual(learning_pass.call_llm("prompt"), "ok")
-        openai_sender.assert_called_once()
-        self.assertEqual(openai_sender.call_args.kwargs["thinking_mode"], "off")
-        anthropic_sender.assert_not_called()
+        executor.assert_called_once()
+        self.assertEqual(executor.call_args.kwargs["thinking_mode"], "off")
+        self.assertEqual(executor.call_args.kwargs["pass_id"], "learning")
+        self.assertEqual(executor.call_args.kwargs["label"], "learning llm")
+        self.assertEqual(executor.call_args.kwargs["paths"], "runtime-paths")
 
-    def test_narrative_pass_uses_openai_sender_for_openai_compatible_provider(self):
+    def test_narrative_pass_uses_unified_executor(self):
         with (
-            patch.object(narrative_pass, "API_TYPE", "openai-compatible"),
-            patch.object(narrative_pass, "send_openai_compatible_message", return_value="ok") as openai_sender,
-            patch.object(narrative_pass, "send_anthropic_message") as anthropic_sender,
+            patch.object(
+                narrative_pass,
+                "execute_llm_message",
+                return_value=SimpleNamespace(text="ok"),
+            ) as executor,
+            patch.object(narrative_pass, "load_paths", return_value="runtime-paths"),
             redirect_stdout(io.StringIO()),
         ):
             self.assertEqual(narrative_pass.call_llm("prompt"), "ok")
-        openai_sender.assert_called_once()
-        self.assertEqual(openai_sender.call_args.kwargs["thinking_mode"], "off")
-        anthropic_sender.assert_not_called()
+        executor.assert_called_once()
+        self.assertEqual(executor.call_args.kwargs["thinking_mode"], "off")
+        self.assertEqual(executor.call_args.kwargs["pass_id"], "narrative")
+        self.assertEqual(executor.call_args.kwargs["label"], "partial")
+        self.assertEqual(executor.call_args.kwargs["paths"], "runtime-paths")
 
-    def test_technical_pass_uses_openai_sender_for_openai_compatible_provider(self):
+    def test_technical_pass_uses_unified_executor(self):
         with (
-            patch.object(technical_pass, "API_TYPE", "openai-compatible"),
-            patch.object(technical_pass, "send_openai_compatible_message", return_value="ok") as openai_sender,
-            patch.object(technical_pass, "send_anthropic_message") as anthropic_sender,
+            patch.object(
+                technical_pass,
+                "execute_llm_message",
+                return_value=SimpleNamespace(text="ok"),
+            ) as executor,
+            patch.object(technical_pass, "load_paths", return_value="runtime-paths"),
             redirect_stdout(io.StringIO()),
         ):
             self.assertEqual(technical_pass.call_llm("prompt"), "ok")
-        openai_sender.assert_called_once()
-        self.assertEqual(openai_sender.call_args.kwargs["thinking_mode"], "off")
-        anthropic_sender.assert_not_called()
+        executor.assert_called_once()
+        self.assertEqual(executor.call_args.kwargs["thinking_mode"], "off")
+        self.assertEqual(executor.call_args.kwargs["pass_id"], "technical")
+        self.assertEqual(executor.call_args.kwargs["label"], "technical llm")
+        self.assertEqual(executor.call_args.kwargs["paths"], "runtime-paths")
+
+    def test_chinese_narrative_and_technical_propagate_all_provider_failure(self):
+        for module, invoke, marker in (
+            (narrative_pass, lambda: narrative_pass.call_llm("prompt"), "[LLM-ERROR]"),
+            (technical_pass, lambda: technical_pass.call_llm("prompt"), "[TECH-LLM-ERROR]"),
+        ):
+            output = io.StringIO()
+            with self.subTest(module=module.__name__):
+                with (
+                    patch.object(
+                        module,
+                        "execute_llm_message",
+                        side_effect=RuntimeError("all configured providers failed"),
+                    ),
+                    patch.object(module, "load_paths", return_value="runtime-paths"),
+                    redirect_stdout(output),
+                ):
+                    with self.assertRaisesRegex(RuntimeError, "all configured providers failed"):
+                        invoke()
+            self.assertIn(marker, output.getvalue())
 
     def test_technical_pass_splits_partial_prompt_when_gate_is_exceeded(self):
         entries = [

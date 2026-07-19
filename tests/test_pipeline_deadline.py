@@ -100,6 +100,9 @@ class PipelineDeadlineTests(unittest.TestCase):
         self.assertEqual(foundation["status"], "completed")
         self.assertFalse(foundation["metadata"]["committed"])
         self.assertEqual(foundation["metadata"]["artifactProofs"], [])
+        self.assertEqual(foundation["durationSeconds"], 11.0)
+        self.assertIn("startedAt", foundation)
+        self.assertIn("completedAt", foundation)
 
     def test_post_and_nova_task_materializers_stop_following_stages_after_return(self):
         for boundary in ("post", "nova"):
@@ -153,6 +156,9 @@ class PipelineDeadlineTests(unittest.TestCase):
                 outcome = next(step for step in ledger["steps"] if step["metadata"].get("stageId") == committed_stage)
                 self.assertEqual(outcome["status"], "completed")
                 self.assertFalse(outcome["metadata"]["committed"])
+                self.assertEqual(outcome["durationSeconds"], 11.0)
+                self.assertIn("startedAt", outcome)
+                self.assertIn("completedAt", outcome)
 
     def test_blank_input_and_narrative_boundaries_use_same_deadline(self):
         for boundary in ("blank-inputs", "blank-narrative"):
@@ -194,6 +200,7 @@ class PipelineDeadlineTests(unittest.TestCase):
                 outcome = next(step for step in ledger["steps"] if step["metadata"].get("stageId") == boundary)
                 self.assertEqual(outcome["status"], "completed")
                 self.assertFalse(outcome["metadata"]["committed"])
+                self.assertEqual(outcome["durationSeconds"], 11.0)
 
     def test_cancel_wins_over_timeout_and_does_not_claim_sync_callable_was_interrupted(self):
         with tempfile.TemporaryDirectory() as tmp:

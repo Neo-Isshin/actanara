@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -16,6 +17,12 @@ ACTIVE_STATUSES = {"queued", "running"}
 SUCCESS_STATUSES = {"completed", "skipped"}
 AUTO_CATCHUP_LIMIT_DAYS = 3
 DEFAULT_LOOKBACK_DAYS = 7
+_SENSITIVE_ERROR_VALUE_RE = re.compile(
+    r"(?i)\b(api[_-]?key|authorization|password|secret|cookie|token|"
+    r"access[_-]?token|refresh[_-]?token|id[_-]?token)\b[\"']?\s*[:=]\s*[\"']?"
+    r"(?:bearer\s+)?[^\s,;|\"']+"
+)
+_BEARER_ERROR_VALUE_RE = re.compile(r"(?i)\bbearer\s+[^\s,;|]+")
 
 
 def create_pipeline_run(
@@ -69,6 +76,9 @@ def append_pipeline_step(
     status: str,
     reason: str | None = None,
     metadata: dict[str, Any] | None = None,
+    started_at: str | None = None,
+    completed_at: str | None = None,
+    duration_seconds: float | None = None,
 ) -> None:
     migrate(paths)
     now = datetime.now().astimezone().isoformat()
@@ -77,15 +87,20 @@ def append_pipeline_step(
         if row is None:
             return
         steps = _json_list(row["steps_json"])
-        steps.append(
-            {
-                "name": name,
-                "status": status,
-                "reason": reason,
-                "metadata": metadata or {},
-                "updatedAt": now,
-            }
-        )
+        step = {
+            "name": name,
+            "status": status,
+            "reason": sanitize_pipeline_error_summary(reason),
+            "metadata": metadata or {},
+            "updatedAt": now,
+        }
+        if started_at:
+            step["startedAt"] = str(started_at)
+        if completed_at:
+            step["completedAt"] = str(completed_at)
+        if duration_seconds is not None:
+            step["durationSeconds"] = max(0.0, float(duration_seconds))
+        steps.append(step)
         connection.execute(
             "UPDATE pipeline_runs SET steps_json = ?, updated_at = ? WHERE id = ?",
             (json.dumps(steps, ensure_ascii=False, sort_keys=True), now, run_id),
@@ -163,7 +178,7 @@ def _finish_pipeline_run(
             now,
             status,
             failure_class,
-            error_summary,
+            sanitize_pipeline_error_summary(error_summary),
             json.dumps(artifact_paths or {}, ensure_ascii=False, sort_keys=True),
             json.dumps(merged_metadata, ensure_ascii=False, sort_keys=True),
             now,
@@ -343,7 +358,7 @@ def _json_dict(raw: str | None) -> dict:
 
 def _row_dict(row) -> dict:
     result = dict(row)
-    result["steps"] = _json_list(result.pop("steps_json", "[]"))
+    result["steps"] = _safe_pipeline_steps(_json_list(result.pop("steps_json", "[]")))
     result["artifactPaths"] = _json_dict(result.pop("artifact_paths_json", "{}"))
     result["metadata"] = _json_dict(result.pop("metadata_json", "{}"))
     result["businessDate"] = result.get("business_date")
@@ -352,6 +367,32 @@ def _row_dict(row) -> dict:
     result["sourceTriggerId"] = result.get("source_trigger_id")
     result["providerId"] = result.get("provider_id")
     result["failureClass"] = result.get("failure_class")
+    result["error_summary"] = sanitize_pipeline_error_summary(result.get("error_summary"))
     result["errorSummary"] = result.get("error_summary")
     result["retryOfRunId"] = result.get("retry_of_run_id")
     return result
+
+
+def sanitize_pipeline_error_summary(value: str | None) -> str | None:
+    """Bound and redact pipeline errors before persistence or Dashboard reads."""
+
+    if value is None:
+        return None
+    sanitized = str(value).replace("\r", " ").replace("\n", " ")
+    sanitized = _SENSITIVE_ERROR_VALUE_RE.sub(
+        lambda match: f"{match.group(1)}=[REDACTED]",
+        sanitized,
+    )
+    return _BEARER_ERROR_VALUE_RE.sub("Bearer [REDACTED]", sanitized)[:500]
+
+
+def _safe_pipeline_steps(steps: list) -> list:
+    safe_steps = []
+    for item in steps:
+        if not isinstance(item, dict):
+            safe_steps.append(item)
+            continue
+        safe = dict(item)
+        safe["reason"] = sanitize_pipeline_error_summary(safe.get("reason"))
+        safe_steps.append(safe)
+    return safe_steps

@@ -17,14 +17,11 @@ if str(ROOT_DIR) not in sys.path:
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from data_foundation.llm_transport import send_anthropic_message, send_openai_compatible_message
+from data_foundation.llm_execution import execute_llm_message
+from data_foundation.paths import load_paths
 from data_foundation.settings import resolve_llm_provider
 
-_LLM_PROVIDER = resolve_llm_provider(redact_secrets=False)
-API_KEY = _LLM_PROVIDER["apiKey"]
-API_HOST = _LLM_PROVIDER["endpoint"]
-MODEL = _LLM_PROVIDER["model"]
-API_TYPE = _LLM_PROVIDER.get("api") or "anthropic-messages"
+_LLM_PROVIDER = resolve_llm_provider(redact_secrets=True)
 LLM_TIMEOUT_SECONDS = int(_LLM_PROVIDER.get("timeoutSeconds") or 180)
 THINKING_MODE = os.getenv("LLM_THINKING_MODE", "off").strip().lower()
 
@@ -112,25 +109,31 @@ def integration_prompt(agent_summaries: dict[str, str]) -> str:
     return PROMPT_INTEGRATION_EN.replace("{raw_text}", "\n\n".join(blocks))
 
 
-def call_llm(prompt: str, is_integration: bool = False, label: str | None = None, max_tokens: int | None = None) -> str:
+def call_llm(
+    prompt: str,
+    is_integration: bool = False,
+    label: str | None = None,
+    max_tokens: int | None = None,
+    chunk_id: str | None = None,
+) -> str:
     system = SYSTEM_INTEGRATION_EN if is_integration else SYSTEM_PARTIAL_EN
     system += _thinking_instruction()
     call_label = label or ("english final integration" if is_integration else "english partial")
     started = time.time()
     output_budget = max_tokens or (8192 if is_integration else 4096)
     print(f"   [EN-NARRATIVE-LLM-START] {call_label}: max_tokens={output_budget}", flush=True)
-    sender = send_anthropic_message if API_TYPE == "anthropic-messages" else send_openai_compatible_message
-    content = sender(
-        endpoint=API_HOST,
-        api_key=API_KEY,
-        model=MODEL,
+    content = execute_llm_message(
         system=system,
         prompt=prompt,
         temperature=0.05,
         max_tokens=output_budget,
         timeout=LLM_TIMEOUT_SECONDS,
         thinking_mode=THINKING_MODE,
-    ).strip()
+        paths=load_paths(),
+        pass_id="narrative",
+        chunk_id=chunk_id or call_label,
+        label=call_label,
+    ).text.strip()
     cleaned = re.sub(r"<(think|thinking)>[\s\S]*?</\1>|```json[\s\S]*?```", "", content).strip()
     print(f"   [EN-NARRATIVE-LLM-END] {call_label}: {time.time() - started:.1f}s, chars={len(cleaned):,}", flush=True)
     return cleaned
@@ -141,8 +144,17 @@ def generate_from_entries(entries_by_agent: dict[str, list[dict]]) -> dict[str, 
     for agent, entries in entries_by_agent.items():
         if not entries:
             continue
-        summaries[agent] = call_llm(partial_prompt(agent, entries), label=f"{agent} partial")
-    final = call_llm(integration_prompt(summaries), is_integration=True, label="english final integration")
+        summaries[agent] = call_llm(
+            partial_prompt(agent, entries),
+            label=f"{agent} partial",
+            chunk_id=f"agent:{agent}",
+        )
+    final = call_llm(
+        integration_prompt(summaries),
+        is_integration=True,
+        label="english final integration",
+        chunk_id="integration",
+    )
     return {
         "status": "generated",
         "pipelineLanguageProfile": "en",

@@ -90,6 +90,39 @@ async def api_test_llm_provider(payload: dict | None = None):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@router.get("/llm-provider-chain")
+async def api_get_llm_provider_chain():
+    try:
+        return await run_in_threadpool(settings.get_llm_provider_chain)
+    except Exception as e:
+        logger.exception("GET /api/llm-provider-chain failed")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@router.put("/llm-provider-chain")
+async def api_update_llm_provider_chain(payload: dict):
+    try:
+        return await run_in_threadpool(settings.update_llm_provider_chain, payload)
+    except SettingsTransactionError as e:
+        return _settings_transaction_error_response(e)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        logger.exception("PUT /api/llm-provider-chain failed")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@router.post("/llm-provider-chain/test")
+async def api_test_llm_provider_chain_entry(payload: dict | None = None):
+    try:
+        return await run_in_threadpool(settings.test_llm_provider_chain_entry, payload)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        logger.exception("POST /api/llm-provider-chain/test failed")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @router.get("/msgbox")
 async def api_msgbox(limit: int = 20):
     try:

@@ -8,6 +8,8 @@ and model metadata only; operator credentials remain in Actanara settings/env.
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 import re
 from typing import Any
 
@@ -23,6 +25,7 @@ PIPELINE_GATE_MODE_AUTO = "auto"
 PIPELINE_GATE_MODE_MANUAL = "manual"
 PIPELINE_GATE_MODES = {PIPELINE_GATE_MODE_AUTO, PIPELINE_GATE_MODE_MANUAL}
 ENV_VAR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+PROVIDER_ENTRY_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 OPENCLAW_ONBOARD_PROVIDER_IDS = {
     "openai",
     "anthropic",
@@ -593,6 +596,71 @@ def normalize_llm_provider_update(update: dict[str, Any], current: dict[str, Any
         "apiKey": update.get("apiKey", current.get("apiKey", "")),
         "apiKeyEnv": _normalized_api_key_env(update, current),
     }
+
+
+def normalize_llm_provider_chain_update(
+    update: list[dict[str, Any]] | dict[str, Any],
+    current: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Normalize an ordered provider chain while preserving stable entry IDs.
+
+    ``entryId`` identifies the configured slot, not the vendor. This lets an
+    operator configure the same provider more than once with different models,
+    endpoints, or secret references without the entries colliding.
+    """
+    raw_entries: Any = update.get("providers") if isinstance(update, dict) else update
+    if not isinstance(raw_entries, list) or not raw_entries:
+        raise ValueError("llmProviderChain must contain at least one provider")
+    if any(not isinstance(entry, dict) for entry in raw_entries):
+        raise ValueError("llmProviderChain entries must be objects")
+
+    current_entries = current if isinstance(current, list) else []
+    current_by_id = {
+        str(entry.get("entryId")): entry
+        for entry in current_entries
+        if isinstance(entry, dict) and PROVIDER_ENTRY_ID_RE.match(str(entry.get("entryId") or ""))
+    }
+    normalized: list[dict[str, Any]] = []
+    used_ids: set[str] = set()
+    generated_occurrences: dict[str, int] = {}
+    for raw_entry in raw_entries:
+        requested_id = str(raw_entry.get("entryId") or "").strip()
+        if requested_id and not PROVIDER_ENTRY_ID_RE.match(requested_id):
+            raise ValueError(
+                "llmProviderChain.entryId must start with an alphanumeric character "
+                "and contain only letters, digits, '.', '_', or '-'"
+            )
+        entry_id = requested_id or _generated_provider_entry_id(raw_entry, generated_occurrences)
+        if entry_id in used_ids:
+            raise ValueError(f"duplicate llmProviderChain.entryId: {entry_id}")
+        used_ids.add(entry_id)
+        normalized_entry = normalize_llm_provider_update(
+            raw_entry,
+            current_by_id.get(entry_id, {}),
+        )
+        normalized_entry["entryId"] = entry_id
+        normalized.append(normalized_entry)
+    return normalized
+
+
+def _generated_provider_entry_id(
+    entry: dict[str, Any],
+    occurrences: dict[str, int],
+) -> str:
+    identity = {
+        "provider": str(entry.get("provider") or entry.get("presetProvider") or CUSTOM_PROVIDER_ID),
+        "endpoint": str(entry.get("endpoint") or ""),
+        "model": str(entry.get("model") or ""),
+        "api": str(entry.get("api") or ""),
+    }
+    digest = hashlib.sha256(
+        json.dumps(identity, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()[:12]
+    base = re.sub(r"[^A-Za-z0-9_.-]+", "-", identity["provider"]).strip("-") or "provider"
+    occurrence = occurrences.get(digest, 0) + 1
+    occurrences[digest] = occurrence
+    suffix = f"-{occurrence}" if occurrence > 1 else ""
+    return f"{base[:96]}-{digest}{suffix}"
 
 
 def _normalized_api_key_env(update: dict[str, Any], current: dict[str, Any]) -> str:

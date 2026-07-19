@@ -10,12 +10,11 @@ from typing import Any, Callable
 
 from .diary_markdown import DIARY_PERIOD_PAGE_PROJECTION
 from .diary_paths import period_report_path
+from .llm_execution import execute_llm_message
 from .llm_json import parse_llm_json_object
-from .llm_provider_catalog import DEFAULT_LLM_TIMEOUT_SECONDS
-from .llm_transport import send_anthropic_message, send_openai_compatible_message
 from .paths import RuntimePaths
 from .reports import LEGACY_ASSET_PROJECTION, read_period_projection, write_period_projection
-from .settings import ensure_settings, resolve_llm_provider
+from .settings import ensure_settings
 
 DIARY_PERIOD_SUMMARY_PROJECTION = "diary-period-summary-v1"
 PeriodSummaryResult = dict[str, Any]
@@ -403,9 +402,6 @@ def generate_period_summary_markdown(context: dict, paths: RuntimePaths | None =
 
 
 def generate_period_summary_result(context: dict, paths: RuntimePaths | None = None) -> PeriodSummaryResult | None:
-    provider = resolve_llm_provider(paths, redact_secrets=False)
-    if not provider.get("apiKey") or not provider.get("endpoint") or not provider.get("model"):
-        return None
     language_profile = _language_profile(paths)
     labels = _labels(language_profile)
     if language_profile == "en":
@@ -468,19 +464,30 @@ def generate_period_summary_result(context: dict, paths: RuntimePaths | None = N
         ]
     prompt_lines.extend(["", json.dumps(context, ensure_ascii=False, sort_keys=True)])
     prompt = "\n".join(prompt_lines)
-    sender = send_anthropic_message if provider.get("api") == "anthropic-messages" else send_openai_compatible_message
-    raw = sender(
-        endpoint=provider["endpoint"],
-        api_key=provider["apiKey"],
-        model=provider["model"],
+    raw = execute_llm_message(
+        paths=paths,
         system=system,
         prompt=prompt,
         temperature=0.2,
         max_tokens=8192,
-        timeout=int(provider.get("timeoutSeconds") or DEFAULT_LLM_TIMEOUT_SECONDS),
-    ).strip()
+        pass_id="period-summary",
+        chunk_id=_period_summary_chunk_id(context),
+        label="Weekly/monthly period summary",
+    ).text.strip()
     parsed = parse_llm_json_object(raw).data
     return _coerce_period_summary_result(parsed)
+
+
+def _period_summary_chunk_id(context: dict) -> str:
+    period = context.get("period") if isinstance(context.get("period"), dict) else None
+    if period is None:
+        current = context.get("currentPeriod") if isinstance(context.get("currentPeriod"), dict) else {}
+        period = current.get("period") if isinstance(current.get("period"), dict) else {}
+    start_date = str(period.get("startDate") or "").strip()
+    end_date = str(period.get("endDate") or "").strip()
+    if start_date and end_date:
+        return f"period:{start_date}:{end_date}"
+    return "period:current"
 
 
 def write_period_summary_markdown(paths: RuntimePaths, start_date: date, end_date: date, markdown: str) -> Path:

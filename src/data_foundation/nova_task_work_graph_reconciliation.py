@@ -14,7 +14,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from .llm_transport import send_anthropic_message, send_openai_compatible_message
+from .llm_execution import execute_llm_message
 from .nova_task_layers import (
     LAYER_EVIDENCE_LEDGER,
     LAYER_PLANNING_OVERLAY,
@@ -478,21 +478,32 @@ def run_work_graph_reconciliation(
         technical_report=report_text,
         include_reconciled_test_set=include_reconciled_test_set,
     )
-    provider = resolve_llm_provider(selected, redact_secrets=False)
-    resolved_sender = sender or (
-        send_anthropic_message if provider.get("api") == "anthropic-messages" else send_openai_compatible_message
-    )
-    response = resolved_sender(
-        endpoint=provider["endpoint"],
-        api_key=provider["apiKey"],
-        model=provider["model"],
-        system=SYSTEM_PROMPT,
-        prompt=prompt,
-        temperature=0.05,
-        max_tokens=16384,
-        timeout=int(provider.get("timeoutSeconds") or 180),
-        thinking_mode="off",
-    )
+    if sender is None:
+        response = execute_llm_message(
+            paths=selected,
+            system=SYSTEM_PROMPT,
+            prompt=prompt,
+            temperature=0.05,
+            max_tokens=16384,
+            thinking_mode="off",
+            pass_id="nova-task-work-graph-reconciliation",
+            label="Nova-Task work graph reconciliation",
+        ).text
+    else:
+        provider = resolve_llm_provider(selected, redact_secrets=False)
+        response = sender(
+            endpoint=provider["endpoint"],
+            api_key=provider["apiKey"],
+            model=provider["model"],
+            system=SYSTEM_PROMPT,
+            prompt=prompt,
+            temperature=0.05,
+            max_tokens=16384,
+            timeout=int(provider.get("timeoutSeconds") or 180),
+            thinking_mode="off",
+        )
+    if not str(response or "").strip():
+        raise ValueError("Nova-Task work graph reconciliation returned empty content")
     artifact = _write_reconciliation_artifact(selected, target_date, response, apply=apply)
     ingest = NovaTaskEvidenceIngest(0, 0, 0)
     auto_confirmed = 0
