@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .rag_settings import RagSettings, resolve_rag_settings
+from .rag_settings import RagSettings, effective_indexing_source_sets, resolve_rag_settings
 from .rag_v2_store import SCHEMA_VERSION, RagV2OperationLockError, rag_v2_operation_lock
 from .rag_profile import profile_hash, settings_embedding_profile, source_profile_hash
 from .rag_v2_indexer import _source_profile
@@ -209,7 +209,7 @@ def _validate_candidate(manifest: dict[str, Any], settings: RagSettings, candida
     expected_embedding_hash = profile_hash(settings_embedding_profile(settings))
     if str(manifest.get("embeddingProfileHash") or "") != expected_embedding_hash:
         raise ValueError("candidate embeddingProfileHash does not match current RAG settings")
-    source_sets = tuple(str(item) for item in manifest.get("sourceSets") or settings.indexing_source_sets)
+    source_sets = tuple(str(item) for item in manifest.get("sourceSets") or effective_indexing_source_sets(settings))
     expected_source_hash = source_profile_hash(_source_profile(settings, source_sets))
     if str(manifest.get("sourceProfileHash") or "") != expected_source_hash:
         raise ValueError("candidate sourceProfileHash does not match current RAG settings")

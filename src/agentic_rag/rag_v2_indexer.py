@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .rag_retriever import infer_tags, infer_work_type
-from .rag_settings import RagSettings, resolve_rag_settings
+from .rag_settings import RagSettings, effective_indexing_source_sets, resolve_rag_settings
 from .rag_v2_store import SCHEMA_VERSION, initialize_shadow_build, _read_json, _root_manifest_for_candidate_update
 from .rag_memory_governance import governance_for_chunk, governance_for_source
 from .rag_profile import profile_hash, settings_embedding_profile, source_profile_hash
@@ -53,8 +53,9 @@ def build_v2_candidate_index(
     resolved = settings or resolve_rag_settings()
     if not resolved.indexing_enabled:
         raise ValueError("RAG indexing is disabled")
-    selected_source_sets = tuple(source_sets or resolved.indexing_source_sets)
+    selected_source_sets = tuple(source_sets) if source_sets is not None else effective_indexing_source_sets(resolved)
     _validate_source_sets(selected_source_sets)
+    _validate_external_source_selection(resolved, selected_source_sets)
     build = initialize_shadow_build(
         resolved,
         requested_by=requested_by,
@@ -130,7 +131,13 @@ def build_v2_candidate_index(
     now = _now_iso()
     byte_size = index_path.stat().st_size if index_path.exists() else 0
     checksum_value = checksum.hexdigest() if embedding_count else None
-    ready = bool(chunks) and embedding_count == len(chunks)
+    blocking_external_source_count = sum(
+        1
+        for source in source_records
+        if source.get("sourceSet") == "external-content"
+        and source.get("parserStatus") in {"error", "missing", "skipped", "unsupported"}
+    )
+    ready = bool(chunks) and embedding_count == len(chunks) and blocking_external_source_count == 0
     status = "ready" if ready else "partial"
     report = {
         "schemaVersion": SCHEMA_VERSION,
@@ -146,6 +153,7 @@ def build_v2_candidate_index(
         "reusedEmbeddingCount": reused_embedding_count,
         "dimensionMismatchCount": dimension_mismatch_count,
         "skippedCount": len(chunks) - embedding_count,
+        "blockingExternalSourceCount": blocking_external_source_count,
         "incremental": {
             "mode": "active-embedding-reuse",
             "activeCacheEntries": len(reusable_embeddings),
@@ -184,6 +192,7 @@ def build_v2_candidate_index(
         "reusedEmbeddingCount": reused_embedding_count,
         "dimensionMismatchCount": dimension_mismatch_count,
         "skippedCount": len(chunks) - embedding_count,
+        "blockingExternalSourceCount": blocking_external_source_count,
         "incremental": {
             "mode": "active-embedding-reuse",
             "activeCacheEntries": len(reusable_embeddings),
@@ -227,6 +236,7 @@ def build_v2_candidate_index(
         "reusedEmbeddingCount": reused_embedding_count,
         "dimensionMismatchCount": dimension_mismatch_count,
         "skippedCount": len(chunks) - embedding_count,
+        "blockingExternalSourceCount": blocking_external_source_count,
         "incremental": {
             "mode": "active-embedding-reuse",
             "activeCacheEntries": len(reusable_embeddings),
@@ -319,6 +329,12 @@ def collect_candidate_chunks(
         sources.extend(records)
     if "foundation-period-projections" in source_sets:
         collected, records = _collect_foundation_period_projections(settings)
+        chunks.extend(collected)
+        sources.extend(records)
+    if "external-content" in source_sets:
+        from .rag_external_sources import collect_external_source_chunks
+
+        collected, records = collect_external_source_chunks(settings)
         chunks.extend(collected)
         sources.extend(records)
     deduped: dict[str, dict[str, Any]] = {}
@@ -991,7 +1007,7 @@ def _collect_foundation_period_projections(settings: RagSettings) -> tuple[list[
 def _source_profile(settings: RagSettings, source_sets: list[str] | tuple[str, ...]) -> dict[str, Any]:
     _validate_source_sets(source_sets)
     diary_root = _diary_source_root(settings)
-    return {
+    result = {
         "schemaVersion": 1,
         "diarySourceRoot": str(diary_root),
         "filteredDialogueRoot": str(diary_root / "__diary_daily"),
@@ -1000,6 +1016,9 @@ def _source_profile(settings: RagSettings, source_sets: list[str] | tuple[str, .
         "foundationDbPath": str(_foundation_db_path(settings)),
         "sourceSets": list(source_sets),
     }
+    if "external-content" in source_sets:
+        result["externalSources"] = settings.external_sources.to_dict()
+    return result
 
 
 def _diary_source_root(settings: RagSettings) -> Path:
@@ -1010,6 +1029,15 @@ def _validate_source_sets(source_sets: list[str] | tuple[str, ...]) -> None:
     retired = sorted(RETIRED_SOURCE_SETS & {str(item).strip() for item in source_sets})
     if retired:
         raise ValueError(f"retired RAG sourceSets are not allowed in production v2 indexing: {', '.join(retired)}")
+
+
+def _validate_external_source_selection(settings: RagSettings, source_sets: list[str] | tuple[str, ...]) -> None:
+    if "external-content" not in source_sets:
+        return
+    if not settings.external_sources.enabled:
+        raise ValueError("external-content sourceSet requires rag.indexing.externalSources.enabled=true")
+    if not settings.external_sources.paths:
+        raise ValueError("external-content sourceSet requires at least one configured absolute path")
 
 
 def _lessons_path(settings: RagSettings) -> Path:
@@ -1125,15 +1153,16 @@ def _chunk_payload(
     date: Any,
     agent: Any,
     source_path: Path,
+    source_identity: str | None = None,
     line_number: int,
     stable_id: Any = None,
     project: Any = None,
     source_type: str = "jsonl",
     provenance: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    source_identity = _logical_source_path(source_path)
-    source_id = _source_id(source_set, source_identity)
-    chunk_id = str(stable_id or _chunk_id(source_set, source_identity, line_number, text))
+    selected_source_identity = source_identity or _logical_source_path(source_path)
+    source_id = _source_id(source_set, selected_source_identity)
+    chunk_id = str(stable_id or _chunk_id(source_set, selected_source_identity, line_number, text))
     chunk = {
         "id": chunk_id,
         "text": text,
@@ -1150,7 +1179,7 @@ def _chunk_payload(
         "textHash": _text_hash(text),
         "privacyClass": "local-private",
         "provenance": provenance or {},
-        "dedupeKey": hashlib.sha256(f"{source_set}|{source_identity}|{line_number}|{text[:160]}".encode("utf-8")).hexdigest(),
+        "dedupeKey": hashlib.sha256(f"{source_set}|{selected_source_identity}|{line_number}|{text[:160]}".encode("utf-8")).hexdigest(),
     }
     tags = infer_tags(chunk)
     chunk["tags"] = tags

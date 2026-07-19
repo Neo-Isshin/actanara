@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
-from .rag_settings import RagSettings, resolve_rag_settings
+from .rag_settings import RagSettings, effective_indexing_source_sets, resolve_rag_settings
 from data_foundation.network import host_for_url, require_loopback_host
 
 
@@ -36,7 +36,7 @@ def run_rag_eval(
     selected_profile = str(profile or "default").strip().lower()
     if selected_profile not in VALID_BENCHMARK_PROFILES:
         raise ValueError(f"unsupported RAG benchmark profile: {profile}")
-    configured_source_sets = {str(item) for item in resolved.indexing_source_sets}
+    configured_source_sets = {str(item) for item in effective_indexing_source_sets(resolved)}
     extended_missing = sorted(EXTENDED_BENCHMARK_SOURCE_SETS.difference(configured_source_sets))
     profile_disposition = (
         "configured-out"

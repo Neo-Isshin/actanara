@@ -88,6 +88,13 @@ SOURCE_SET_POLICIES: dict[str, dict[str, Any]] = {
         "retrievalWeight": 1.03,
         "canonicalEligible": True,
     },
+    "external-content": {
+        "authorityRank": 55,
+        "lifecycle": "operator-source",
+        "retention": "operator-controlled",
+        "retrievalWeight": 1.0,
+        "canonicalEligible": False,
+    },
 }
 
 DEFAULT_POLICY = {

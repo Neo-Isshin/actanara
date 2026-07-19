@@ -1496,6 +1496,33 @@ textarea:focus-visible {
 .settings-runtime-chip { display: inline-flex; align-items: center; border-radius: 999px; padding: 2px 7px; font-size: 11px; font-weight: 600; }
 .settings-runtime-chip.ok { color: var(--success-text); background: rgba(21,190,83,0.1); }
 .settings-runtime-chip.warn { color: var(--ruby); background: rgba(234,34,97,0.08); }
+.tailscale-settings { border-top: 1px solid var(--border); padding-top: 18px; }
+.tailscale-security-boundary { margin: 0 0 10px; border-left: 3px solid var(--purple); padding: 8px 10px; background: rgba(83,58,253,0.04); color: var(--slate); font-size: 11px; line-height: 1.55; }
+.tailscale-status-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.tailscale-status-cell { display: flex; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--border); padding: 7px 0; }
+.tailscale-status-cell b { color: var(--slate); font-size: 11px; }
+.tailscale-origin-ready, .tailscale-origin-required { margin-top: 10px; color: var(--navy); line-height: 1.5; }
+.tailscale-origin-required code { display: inline; margin: 0 6px; }
+.tailscale-funnel-boundary { margin-top: 14px; border: 1px solid rgba(234,34,97,0.2); border-radius: 8px; background: rgba(234,34,97,0.035); padding: 10px 12px; color: var(--navy); font-size: 12px; }
+.tailscale-funnel-boundary b { margin-right: 8px; }
+.tailscale-funnel-boundary p { margin: 7px 0 0; color: var(--ruby); line-height: 1.55; }
+.rag-external-sources { margin: 18px 0; padding-top: 16px; border-top: 1px solid var(--border); }
+.rag-external-switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 12px 0; color: var(--navy); font-size: 12px; font-weight: 650; }
+.rag-external-switch input, .rag-external-check input { width: 18px; height: 18px; accent-color: var(--purple); }
+.rag-external-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
+.rag-external-grid label { display: grid; gap: 6px; min-width: 0; color: var(--slate); font-size: 11px; }
+.rag-external-grid input, .rag-external-grid select, .rag-external-grid textarea { width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid var(--border); border-radius: 7px; background: var(--white); color: var(--navy); padding: 8px 9px; font: inherit; }
+.rag-external-grid textarea { resize: vertical; font-family: var(--font-mono); overflow-wrap: anywhere; }
+.rag-external-wide { grid-column: 1 / -1; }
+.rag-external-grid .rag-external-check { display: flex; align-items: center; gap: 8px; }
+.rag-external-doc-note { color: var(--ruby); margin-top: 10px; }
+.rag-external-actions { display: flex; justify-content: flex-end; margin-top: 10px; }
+.rag-external-loading { padding: 10px 0; }
+.rag-external-plan-ready { color: var(--success-text); margin-top: 10px; }
+.rag-external-plan-summary { margin: 8px 0; color: var(--navy); font-size: 12px; }
+.rag-external-plan-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 5px 8px; align-items: center; padding: 7px 0; border-top: 1px solid var(--border); font-size: 11px; }
+.rag-external-plan-row code, .rag-external-plan-row small { min-width: 0; overflow-wrap: anywhere; }
+.rag-external-plan-row small { grid-column: 2; color: var(--slate); }
 .rag-status-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -1562,6 +1589,9 @@ textarea:focus-visible {
   .settings-checks { grid-template-columns: 1fr; }
   .history-backfill-weeks { grid-template-columns: 1fr; padding-left: 0; }
   .settings-authority-policy { grid-template-columns: 1fr; }
+  .tailscale-status-grid { grid-template-columns: 1fr; }
+  .rag-external-grid { grid-template-columns: 1fr; }
+  .rag-external-wide { grid-column: auto; }
 }
 .wr-lessons-list { display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto; }
 .wr-lesson-card { border: 1px solid var(--border); border-radius: 6px; padding: 12px 16px; cursor: pointer; transition: all 0.15s; font-size: 13px; }

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .rag_memory_governance import governance_for_source
-from .rag_settings import DEFAULT_INDEXING_SOURCE_SETS, RagSettings, resolve_rag_settings
+from .rag_settings import DEFAULT_INDEXING_SOURCE_SETS, RagSettings, effective_indexing_source_sets, resolve_rag_settings
 
 try:
     from data_foundation.diary_paths import diary_report_prefix, diary_report_type_for_filename, iter_diary_markdown_files
@@ -32,7 +32,7 @@ def read_v2_coverage(settings: RagSettings | None = None) -> dict[str, Any]:
     for source in active_sources:
         by_source_set.setdefault(str(source.get("sourceSet") or ""), []).append(source)
 
-    configured = list(resolved.indexing_source_sets)
+    configured = list(effective_indexing_source_sets(resolved))
     source_sets = []
     for source_set in sorted(set(configured).union(DEFAULT_INDEXING_SOURCE_SETS).union(by_source_set.keys())):
         expected = _expected_source(source_set, settings=resolved)
@@ -350,6 +350,23 @@ def _expected_source(source_set: str, *, settings: RagSettings) -> dict[str, Any
     diary_root = settings.diary_source_root
     narrative_prefix = diary_report_prefix("narrative", settings.language_profile)
     technical_prefix = diary_report_prefix("technical", settings.language_profile)
+    if source_set == "external-content":
+        configured_paths = [Path(path) for path in settings.external_sources.paths]
+        existing_paths = [path for path in configured_paths if path.exists()]
+        return {
+            "kind": "external-local",
+            "required": bool(settings.external_sources.enabled),
+            "authority": "Operator-configured external local content; evidence, not Actanara authority.",
+            "pattern": None,
+            "fallbackPatterns": [],
+            "path": None,
+            "pathAlignedWithPipeline": True,
+            "exists": bool(existing_paths),
+            "configuredPathCount": len(configured_paths),
+            "discoveredSourceCount": len(existing_paths),
+            "paths": [str(path) for path in configured_paths[:50]],
+            "truncated": len(configured_paths) > 50,
+        }
     specs = {
         "filtered-dialogue-daily": {
             "kind": "glob",

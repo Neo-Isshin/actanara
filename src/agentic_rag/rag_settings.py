@@ -50,6 +50,11 @@ VALID_NOVA_RAG_MODES = {"legacy", "v2-shadow", "v2", "disabled"}
 VALID_LANGUAGE_PROFILES = {"zh", "en", "mixed"}
 VALID_EMBEDDING_PROVIDERS = {"local", "cloud"}
 VALID_RERANKER_PROVIDERS = {"none", "local-score"}
+VALID_EXTERNAL_SOURCE_MODES = {"supplement", "replace"}
+VALID_EXTERNAL_SOURCE_SYMLINK_POLICIES = {"reject", "within-root"}
+DEFAULT_EXTERNAL_SOURCE_MAX_FILE_BYTES = 10 * 1024 * 1024
+DEFAULT_EXTERNAL_SOURCE_MAX_TOTAL_BYTES = 256 * 1024 * 1024
+DEFAULT_EXTERNAL_SOURCE_MAX_FILES = 10_000
 DEFAULT_RAG_SERVER_HOST = "127.0.0.1"
 DEFAULT_RAG_SERVER_PORT = 3037
 DEFAULT_RAG_SERVER_HEALTH_PATH = "/health"
@@ -67,6 +72,34 @@ DEFAULT_INDEXING_SOURCE_SETS = (
 RETIRED_INDEXING_SOURCE_SETS = {"legacy-diary-daily"}
 DEFAULT_RETRIEVAL_LATENCY_BUDGET_SECONDS = 60.0
 MAX_RETRIEVAL_LATENCY_BUDGET_SECONDS = 120.0
+
+
+@dataclass(frozen=True)
+class ExternalSourceSettings:
+    enabled: bool
+    mode: str
+    paths: tuple[Path, ...]
+    recursive: bool
+    include: tuple[str, ...]
+    exclude: tuple[str, ...]
+    max_file_bytes: int
+    max_total_bytes: int
+    max_files: int
+    symlink_policy: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "mode": self.mode,
+            "paths": [str(path) for path in self.paths],
+            "recursive": self.recursive,
+            "include": list(self.include),
+            "exclude": list(self.exclude),
+            "max_file_bytes": self.max_file_bytes,
+            "max_total_bytes": self.max_total_bytes,
+            "max_files": self.max_files,
+            "symlink_policy": self.symlink_policy,
+        }
 
 
 @dataclass(frozen=True)
@@ -97,6 +130,7 @@ class RagSettings:
     indexing_enabled: bool
     indexing_source_sets: tuple[str, ...]
     indexing_default_full_rebuild: bool
+    external_sources: ExternalSourceSettings
     retrieval_top_k: int
     recency_half_life_days: int
     retrieval_latency_budget_seconds: float
@@ -118,6 +152,7 @@ class RagSettings:
         ):
             result[key] = str(result[key])
         result["indexing_source_sets"] = list(result["indexing_source_sets"])
+        result["external_sources"] = self.external_sources.to_dict()
         result.pop("runtime_home", None)
         return result
 
@@ -158,6 +193,7 @@ def resolve_rag_settings(paths: RuntimePaths | None = None, settings: dict | Non
     )
     source = _as_dict(future.get("source"))
     indexing = _as_dict(future.get("indexing"))
+    external_sources = _external_source_settings(_as_dict(indexing.get("externalSources")))
     diary_source_root = _absolute_path(
         _setting_or_default(
             source.get("root")
@@ -243,6 +279,7 @@ def resolve_rag_settings(paths: RuntimePaths | None = None, settings: dict | Non
             _as_list(indexing.get("sourceSets"), DEFAULT_INDEXING_SOURCE_SETS)
         ),
         indexing_default_full_rebuild=_to_bool(indexing.get("defaultFullRebuild", False)),
+        external_sources=external_sources,
         retrieval_top_k=_positive_int(retrieval.get("topK", 8), "rag.retrieval.topK"),
         recency_half_life_days=_positive_int(
             retrieval.get("recencyHalfLifeDays", 7),
@@ -321,6 +358,77 @@ def _normalize_indexing_source_sets(values: list[Any]) -> tuple[str, ...]:
             continue
         normalized.append(source_set)
     return tuple(normalized)
+
+
+def effective_indexing_source_sets(settings: RagSettings) -> tuple[str, ...]:
+    """Return the source-set snapshot implied by external source mode."""
+    external = settings.external_sources
+    if not external.enabled:
+        return settings.indexing_source_sets
+    if external.mode == "replace":
+        return ("external-content",)
+    return tuple(dict.fromkeys((*settings.indexing_source_sets, "external-content")))
+
+
+def _external_source_settings(value: dict[str, Any]) -> ExternalSourceSettings:
+    raw_paths = value.get("paths", [])
+    if not isinstance(raw_paths, list):
+        raise ValueError("rag.indexing.externalSources.paths must be a list")
+    paths: list[Path] = []
+    for item in raw_paths:
+        raw = str(item or "").strip()
+        if not raw:
+            continue
+        path = Path(raw).expanduser()
+        if not path.is_absolute():
+            raise ValueError("rag.indexing.externalSources.paths entries must be absolute paths")
+        paths.append(path.absolute())
+    include = _safe_glob_patterns(value.get("include", ["*", "**/*"]), "include")
+    exclude = _safe_glob_patterns(value.get("exclude", []), "exclude")
+    return ExternalSourceSettings(
+        enabled=_to_bool(value.get("enabled", False)),
+        mode=_normalize_choice(
+            _setting_or_default(value.get("mode"), "supplement"),
+            VALID_EXTERNAL_SOURCE_MODES,
+            "rag.indexing.externalSources.mode",
+        ),
+        paths=tuple(dict.fromkeys(paths)),
+        recursive=_to_bool(value.get("recursive", True)),
+        include=include,
+        exclude=exclude,
+        max_file_bytes=_positive_int(
+            value.get("maxFileBytes", DEFAULT_EXTERNAL_SOURCE_MAX_FILE_BYTES),
+            "rag.indexing.externalSources.maxFileBytes",
+        ),
+        max_total_bytes=_positive_int(
+            value.get("maxTotalBytes", DEFAULT_EXTERNAL_SOURCE_MAX_TOTAL_BYTES),
+            "rag.indexing.externalSources.maxTotalBytes",
+        ),
+        max_files=_positive_int(
+            value.get("maxFiles", DEFAULT_EXTERNAL_SOURCE_MAX_FILES),
+            "rag.indexing.externalSources.maxFiles",
+        ),
+        symlink_policy=_normalize_choice(
+            _setting_or_default(value.get("symlinkPolicy"), "reject"),
+            VALID_EXTERNAL_SOURCE_SYMLINK_POLICIES,
+            "rag.indexing.externalSources.symlinkPolicy",
+        ),
+    )
+
+
+def _safe_glob_patterns(value: Any, field: str) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        raise ValueError(f"rag.indexing.externalSources.{field} must be a list")
+    patterns: list[str] = []
+    for item in value:
+        pattern = str(item or "").strip().replace("\\", "/")
+        parts = pattern.split("/")
+        if not pattern or pattern.startswith("/") or ".." in parts:
+            raise ValueError(
+                f"rag.indexing.externalSources.{field} contains an unsafe traversal pattern: {item!r}"
+            )
+        patterns.append(pattern)
+    return tuple(dict.fromkeys(patterns))
 
 
 def _legacy_index_path(value: Any) -> Path:

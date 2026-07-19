@@ -29,6 +29,7 @@ dashboard = [
 ]
 rag-server = [
   "numpy>=1.26,<3",
+  "pypdf>=6,<7",
   "fastapi>=0.110,<1",
   "uvicorn>=0.29,<1",
   "pydantic>=2,<3",
@@ -47,6 +48,7 @@ dev-test = [
   "PyYAML>=6,<7",
   "croniter>=2,<7",
   "numpy>=1.26,<3",
+  "pypdf>=6,<7",
 ]
 
 [project.scripts]

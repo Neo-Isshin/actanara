@@ -67,6 +67,7 @@ from data_foundation.paths import (
     validate_home,
 )
 from agentic_rag.rag_settings import is_rag_product_enabled, rag_product_disabled_reason, resolve_rag_settings
+from agentic_rag.rag_external_sources import plan_external_sources
 from agentic_rag.rag_status import read_rag_status
 from agentic_rag.rag_server_lifecycle import read_server_process_state, start_rag_server, stop_rag_server
 from agentic_rag.rag_v2_sync import sync_v2_production_index
@@ -331,6 +332,19 @@ def update_rag_settings(payload: dict) -> dict:
         "rag": settings.get("rag", {}),
         "status": get_rag_status(probe_server=False),
     }
+
+
+def plan_rag_external_sources(payload: dict | None = None) -> dict:
+    """Preview external-source discovery/parsing without writing settings or indexes."""
+
+    request = payload if isinstance(payload, dict) else {}
+    update = request.get("rag") if isinstance(request.get("rag"), dict) else request
+    normalized = normalize_rag_settings_update(update)
+    current_settings = read_settings()
+    current_rag = current_settings.get("rag") if isinstance(current_settings.get("rag"), dict) else {}
+    merged_rag = _deep_merge_dict(current_rag, normalized)
+    candidate = resolve_rag_settings(settings={**current_settings, "rag": merged_rag})
+    return plan_external_sources(candidate)
 
 
 def get_rag_status(*, probe_server: bool = True) -> dict:

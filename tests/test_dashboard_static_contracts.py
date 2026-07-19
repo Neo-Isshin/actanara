@@ -736,6 +736,10 @@ class DashboardStaticContractTests(unittest.TestCase):
         self.assertIn('id="page-home" class="page active"', html)
         self.assertIn('id="page-overview" class="page"', html)
         self.assertIn("sidebar-brand-banner", html)
+        self.assertIn("ragExternalSources", script)
+        self.assertIn("previewRagExternalSources", script)
+        self.assertIn("/api/rag/external-sources/plan", script)
+        self.assertIn(".doc is unsupported", script)
         self.assertIn("sidebar-brand-home", html)
         self.assertIn("dashboard-welcome", html)
         home_block = html.split('id="page-home"', 1)[1].split('id="page-overview"', 1)[0]

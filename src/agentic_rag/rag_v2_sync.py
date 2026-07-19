@@ -16,14 +16,14 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from .rag_settings import RagSettings, rag_product_disabled_reason, resolve_rag_settings
+    from .rag_settings import RagSettings, effective_indexing_source_sets, rag_product_disabled_reason, resolve_rag_settings
     from .rag_server_lifecycle import read_rag_internal_token, read_server_process_state
     from .rag_v2_indexer import EmbeddingFn, build_v2_candidate_index
     from .rag_v2_promote import promote_v2_candidate, required_v2_promotion_confirmation
     from .rag_v2_store import RagV2OperationLockError, rag_v2_operation_lock, rag_v2_operation_lock_path
 except ImportError:  # pragma: no cover - direct script fallback
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from agentic_rag.rag_settings import RagSettings, rag_product_disabled_reason, resolve_rag_settings  # type: ignore
+    from agentic_rag.rag_settings import RagSettings, effective_indexing_source_sets, rag_product_disabled_reason, resolve_rag_settings  # type: ignore
     from agentic_rag.rag_server_lifecycle import read_rag_internal_token, read_server_process_state  # type: ignore
     from agentic_rag.rag_v2_indexer import EmbeddingFn, build_v2_candidate_index  # type: ignore
     from agentic_rag.rag_v2_promote import promote_v2_candidate, required_v2_promotion_confirmation  # type: ignore
@@ -312,7 +312,7 @@ def plan_v2_production_sync(
         "indexing": {
             "buildScope": "full-candidate-snapshot",
             "embeddingReuse": "active-embedding-reuse",
-            "sourceSets": list(resolved.indexing_source_sets),
+            "sourceSets": list(effective_indexing_source_sets(resolved)),
         },
         "settings": {
             "enabled": resolved.enabled,
@@ -358,7 +358,7 @@ def _plan_reason(*, promote: bool) -> str:
 
 def _candidate_gates(build: dict[str, Any], settings: RagSettings) -> dict[str, Any]:
     manifest = build.get("manifest") if isinstance(build.get("manifest"), dict) else {}
-    expected_source_sets = set(settings.indexing_source_sets)
+    expected_source_sets = set(effective_indexing_source_sets(settings))
     actual_source_sets = {str(item) for item in manifest.get("sourceSets", [])}
     checks = [
         _check("candidate-ready", manifest.get("status") == "ready", {"status": manifest.get("status")}),

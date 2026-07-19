@@ -487,6 +487,18 @@ def default_settings(paths: RuntimePaths | None = None) -> dict:
             "indexing": {
                 "enabled": True,
                 "defaultFullRebuild": False,
+                "externalSources": {
+                    "enabled": False,
+                    "mode": "supplement",
+                    "paths": [],
+                    "recursive": True,
+                    "include": ["*", "**/*"],
+                    "exclude": [],
+                    "maxFileBytes": 10485760,
+                    "maxTotalBytes": 268435456,
+                    "maxFiles": 10000,
+                    "symlinkPolicy": "reject",
+                },
                 "sourceSets": [
                     "filtered-dialogue-daily",
                     "lessons",
@@ -1220,6 +1232,11 @@ def normalize_rag_settings_update(update: Any) -> dict:
     server = normalized.get("server")
     if isinstance(server, dict) and "host" in server:
         server["host"] = require_loopback_host(server.get("host"))
+    indexing = normalized.get("indexing")
+    if indexing is not None and not isinstance(indexing, dict):
+        raise ValueError("rag.indexing must be an object")
+    if isinstance(indexing, dict) and "externalSources" in indexing:
+        indexing["externalSources"] = _normalize_external_sources_update(indexing.get("externalSources"))
     embedding = normalized.get("embedding")
     if not isinstance(embedding, dict):
         return normalized
@@ -1242,6 +1259,68 @@ def normalize_rag_settings_update(update: Any) -> dict:
         embedding["secretRef"] = allowed
     else:
         raise ValueError("rag.embedding.secretRef must be an object")
+    return normalized
+
+
+def _normalize_external_sources_update(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError("rag.indexing.externalSources must be an object")
+    normalized = copy.deepcopy(value)
+    for field in ("enabled", "recursive"):
+        if field in normalized and type(normalized[field]) is not bool:
+            raise ValueError(f"rag.indexing.externalSources.{field} must be a boolean")
+    if "mode" in normalized:
+        mode = str(normalized.get("mode") or "").strip()
+        if mode not in {"supplement", "replace"}:
+            raise ValueError("rag.indexing.externalSources.mode must be supplement or replace")
+        normalized["mode"] = mode
+    if "symlinkPolicy" in normalized:
+        policy = str(normalized.get("symlinkPolicy") or "").strip()
+        if policy not in {"reject", "within-root"}:
+            raise ValueError("rag.indexing.externalSources.symlinkPolicy must be reject or within-root")
+        normalized["symlinkPolicy"] = policy
+    if "paths" in normalized:
+        paths = normalized.get("paths")
+        if not isinstance(paths, list):
+            raise ValueError("rag.indexing.externalSources.paths must be a list")
+        normalized_paths: list[str] = []
+        for item in paths:
+            raw = str(item or "").strip()
+            if not raw:
+                raise ValueError("rag.indexing.externalSources.paths entries must be non-empty strings")
+            path = Path(raw).expanduser()
+            if not path.is_absolute():
+                raise ValueError("rag.indexing.externalSources.paths entries must be absolute paths")
+            normalized_paths.append(str(path.absolute()))
+        normalized["paths"] = list(dict.fromkeys(normalized_paths))
+    for field in ("include", "exclude"):
+        if field not in normalized:
+            continue
+        patterns = normalized.get(field)
+        if not isinstance(patterns, list):
+            raise ValueError(f"rag.indexing.externalSources.{field} must be a list")
+        normalized_patterns: list[str] = []
+        for item in patterns:
+            pattern = str(item or "").strip().replace("\\", "/")
+            if not pattern or pattern.startswith("/") or ".." in pattern.split("/"):
+                raise ValueError(
+                    f"rag.indexing.externalSources.{field} contains an unsafe traversal pattern: {item!r}"
+                )
+            normalized_patterns.append(pattern)
+        normalized[field] = list(dict.fromkeys(normalized_patterns))
+    for field in ("maxFileBytes", "maxTotalBytes", "maxFiles"):
+        if field not in normalized:
+            continue
+        raw = normalized.get(field)
+        if type(raw) is bool:
+            raise ValueError(f"rag.indexing.externalSources.{field} must be a positive integer")
+        try:
+            parsed = int(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"rag.indexing.externalSources.{field} must be a positive integer") from exc
+        if parsed <= 0:
+            raise ValueError(f"rag.indexing.externalSources.{field} must be a positive integer")
+        normalized[field] = parsed
     return normalized
 
 

@@ -6,7 +6,8 @@ except ImportError:  # pragma: no cover - exercised by lightweight test stubs
         return default
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
-from app.services import launcher, msgbox, rag_index_jobs, scheduler, settings
+from app.services import launcher, msgbox, rag_index_jobs, scheduler, settings, tailscale
+from app.services.dashboard_security import dashboard_security_config
 from data_foundation.onboarding_plan import onboarding_subsystem_plan
 from data_foundation.onboarding_status import actanara_onboarding_status
 from data_foundation.settings_transaction import SettingsTransactionError
@@ -14,6 +15,36 @@ import logging
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _tailscale_status_with_access():
+    status = tailscale.tailscale_status()
+    access = tailscale.dashboard_access_status(
+        status,
+        dashboard_security_config().get("allowedOrigins") or [],
+    )
+    status["dashboardAccess"] = access
+    status["requiredOrigin"] = access.get("origin")
+    status["configurationReady"] = bool(access.get("ready"))
+    status["serve"]["enableConfirmationTextRequired"] = tailscale.ENABLE_CONFIRMATION
+    status["serve"]["disableConfirmationTextRequired"] = tailscale.DISABLE_CONFIRMATION
+    status["canEnableServe"] = bool(status.get("canEnableServe") and access.get("ready"))
+    return status
+
+
+def _tailscale_serve_action(enabled: bool, payload: dict | None):
+    status = _tailscale_status_with_access()
+    if enabled and not (status.get("dashboardAccess") or {}).get("ready"):
+        raise tailscale.TailscalePolicyError(
+            "dashboard-origin-not-allowlisted",
+            "Save the detected MagicDNS HTTPS origin in Dashboard publicBaseUrl/allowedOrigins before enabling Serve.",
+        )
+    return tailscale.set_dashboard_serve(enabled, payload, observed_status=status)
+
+
+def _tailscale_error_response(error: tailscale.TailscaleError) -> JSONResponse:
+    status_code = 502 if isinstance(error, tailscale.TailscaleCommandError) else 409
+    return JSONResponse({"error": str(error), "code": error.code}, status_code=status_code)
 
 
 @router.get("/settings")
@@ -147,6 +178,37 @@ async def api_scheduler_status():
         return scheduler.scheduler_status()
     except Exception as e:
         logger.exception("GET /api/settings/scheduler failed")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@router.get("/settings/tailscale/status")
+async def api_tailscale_status():
+    try:
+        return await run_in_threadpool(_tailscale_status_with_access)
+    except Exception as e:
+        logger.exception("GET /api/settings/tailscale/status failed")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@router.post("/settings/tailscale/serve/enable")
+async def api_tailscale_serve_enable(payload: dict | None = None):
+    try:
+        return await run_in_threadpool(_tailscale_serve_action, True, payload)
+    except tailscale.TailscaleError as e:
+        return _tailscale_error_response(e)
+    except Exception as e:
+        logger.exception("POST /api/settings/tailscale/serve/enable failed")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@router.post("/settings/tailscale/serve/disable")
+async def api_tailscale_serve_disable(payload: dict | None = None):
+    try:
+        return await run_in_threadpool(_tailscale_serve_action, False, payload)
+    except tailscale.TailscaleError as e:
+        return _tailscale_error_response(e)
+    except Exception as e:
+        logger.exception("POST /api/settings/tailscale/serve/disable failed")
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
@@ -440,6 +502,17 @@ async def api_update_rag_settings(payload: dict):
         return JSONResponse({"error": str(e)}, status_code=400)
     except Exception as e:
         logger.exception("PUT /api/rag/settings failed")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@router.post("/rag/external-sources/plan")
+async def api_rag_external_sources_plan(payload: dict | None = None):
+    try:
+        return await run_in_threadpool(settings.plan_rag_external_sources, payload)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        logger.exception("POST /api/rag/external-sources/plan failed")
         return JSONResponse({"error": str(e)}, status_code=500)
 
 

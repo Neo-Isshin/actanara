@@ -209,6 +209,13 @@
           "version": "2.20.0"
         },
         {
+          "filename": "pypdf-6.14.2-py3-none-any.whl",
+          "name": "pypdf",
+          "sha256": "3f07891af76dc002657e04993ab9b4de81de29f9013b9761d0b7968bff12e946",
+          "url": "https://files.pythonhosted.org/packages/49/e6/136aa8993a2ae7214e0b0ef2edaa0d2e08d1d4e4982635b08a835ff31ec8/pypdf-6.14.2-py3-none-any.whl",
+          "version": "6.14.2"
+        },
+        {
           "filename": "python_dateutil-2.9.0.post0-py2.py3-none-any.whl",
           "name": "python-dateutil",
           "sha256": "a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427",
@@ -396,6 +403,7 @@
           "numpy",
           "pydantic",
           "pydantic-core",
+          "pypdf",
           "python-dateutil",
           "pyyaml",
           "six",
@@ -464,6 +472,7 @@
           "numpy",
           "pydantic",
           "pydantic-core",
+          "pypdf",
           "starlette",
           "typing-extensions",
           "typing-inspection",
@@ -681,6 +690,13 @@
           "version": "2.20.0"
         },
         {
+          "filename": "pypdf-6.14.2-py3-none-any.whl",
+          "name": "pypdf",
+          "sha256": "3f07891af76dc002657e04993ab9b4de81de29f9013b9761d0b7968bff12e946",
+          "url": "https://files.pythonhosted.org/packages/49/e6/136aa8993a2ae7214e0b0ef2edaa0d2e08d1d4e4982635b08a835ff31ec8/pypdf-6.14.2-py3-none-any.whl",
+          "version": "6.14.2"
+        },
+        {
           "filename": "python_dateutil-2.9.0.post0-py2.py3-none-any.whl",
           "name": "python-dateutil",
           "sha256": "a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427",
@@ -861,6 +877,7 @@
           "numpy",
           "pydantic",
           "pydantic-core",
+          "pypdf",
           "python-dateutil",
           "pyyaml",
           "six",
@@ -928,6 +945,7 @@
           "numpy",
           "pydantic",
           "pydantic-core",
+          "pypdf",
           "starlette",
           "typing-extensions",
           "typing-inspection",
@@ -1145,6 +1163,13 @@
           "version": "2.20.0"
         },
         {
+          "filename": "pypdf-6.14.2-py3-none-any.whl",
+          "name": "pypdf",
+          "sha256": "3f07891af76dc002657e04993ab9b4de81de29f9013b9761d0b7968bff12e946",
+          "url": "https://files.pythonhosted.org/packages/49/e6/136aa8993a2ae7214e0b0ef2edaa0d2e08d1d4e4982635b08a835ff31ec8/pypdf-6.14.2-py3-none-any.whl",
+          "version": "6.14.2"
+        },
+        {
           "filename": "python_dateutil-2.9.0.post0-py2.py3-none-any.whl",
           "name": "python-dateutil",
           "sha256": "a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427",
@@ -1332,6 +1357,7 @@
           "numpy",
           "pydantic",
           "pydantic-core",
+          "pypdf",
           "python-dateutil",
           "pyyaml",
           "six",
@@ -1400,6 +1426,7 @@
           "numpy",
           "pydantic",
           "pydantic-core",
+          "pypdf",
           "starlette",
           "typing-extensions",
           "typing-inspection",
@@ -1617,6 +1644,13 @@
           "version": "2.20.0"
         },
         {
+          "filename": "pypdf-6.14.2-py3-none-any.whl",
+          "name": "pypdf",
+          "sha256": "3f07891af76dc002657e04993ab9b4de81de29f9013b9761d0b7968bff12e946",
+          "url": "https://files.pythonhosted.org/packages/49/e6/136aa8993a2ae7214e0b0ef2edaa0d2e08d1d4e4982635b08a835ff31ec8/pypdf-6.14.2-py3-none-any.whl",
+          "version": "6.14.2"
+        },
+        {
           "filename": "python_dateutil-2.9.0.post0-py2.py3-none-any.whl",
           "name": "python-dateutil",
           "sha256": "a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427",
@@ -1797,6 +1831,7 @@
           "numpy",
           "pydantic",
           "pydantic-core",
+          "pypdf",
           "python-dateutil",
           "pyyaml",
           "six",
@@ -1864,6 +1899,7 @@
           "numpy",
           "pydantic",
           "pydantic-core",
+          "pypdf",
           "starlette",
           "typing-extensions",
           "typing-inspection",
@@ -2081,6 +2117,13 @@
           "version": "2.20.0"
         },
         {
+          "filename": "pypdf-6.14.2-py3-none-any.whl",
+          "name": "pypdf",
+          "sha256": "3f07891af76dc002657e04993ab9b4de81de29f9013b9761d0b7968bff12e946",
+          "url": "https://files.pythonhosted.org/packages/49/e6/136aa8993a2ae7214e0b0ef2edaa0d2e08d1d4e4982635b08a835ff31ec8/pypdf-6.14.2-py3-none-any.whl",
+          "version": "6.14.2"
+        },
+        {
           "filename": "python_dateutil-2.9.0.post0-py2.py3-none-any.whl",
           "name": "python-dateutil",
           "sha256": "a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427",
@@ -2268,6 +2311,7 @@
           "numpy",
           "pydantic",
           "pydantic-core",
+          "pypdf",
           "python-dateutil",
           "pyyaml",
           "six",
@@ -2336,6 +2380,7 @@
           "numpy",
           "pydantic",
           "pydantic-core",
+          "pypdf",
           "starlette",
           "typing-extensions",
           "typing-inspection",
@@ -2434,6 +2479,13 @@
           "version": "2.46.4"
         },
         {
+          "filename": "pypdf-6.14.2-py3-none-any.whl",
+          "name": "pypdf",
+          "sha256": "3f07891af76dc002657e04993ab9b4de81de29f9013b9761d0b7968bff12e946",
+          "url": "https://files.pythonhosted.org/packages/49/e6/136aa8993a2ae7214e0b0ef2edaa0d2e08d1d4e4982635b08a835ff31ec8/pypdf-6.14.2-py3-none-any.whl",
+          "version": "6.14.2"
+        },
+        {
           "filename": "python_dateutil-2.9.0.post0-py2.py3-none-any.whl",
           "name": "python-dateutil",
           "sha256": "a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427",
@@ -2516,6 +2568,7 @@
           "numpy",
           "pydantic",
           "pydantic-core",
+          "pypdf",
           "python-dateutil",
           "pyyaml",
           "six",
@@ -2535,6 +2588,7 @@
           "numpy",
           "pydantic",
           "pydantic-core",
+          "pypdf",
           "starlette",
           "typing-extensions",
           "typing-inspection",
@@ -2751,6 +2805,13 @@
           "version": "2.20.0"
         },
         {
+          "filename": "pypdf-6.14.2-py3-none-any.whl",
+          "name": "pypdf",
+          "sha256": "3f07891af76dc002657e04993ab9b4de81de29f9013b9761d0b7968bff12e946",
+          "url": "https://files.pythonhosted.org/packages/49/e6/136aa8993a2ae7214e0b0ef2edaa0d2e08d1d4e4982635b08a835ff31ec8/pypdf-6.14.2-py3-none-any.whl",
+          "version": "6.14.2"
+        },
+        {
           "filename": "python_dateutil-2.9.0.post0-py2.py3-none-any.whl",
           "name": "python-dateutil",
           "sha256": "a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427",
@@ -2938,6 +2999,7 @@
           "numpy",
           "pydantic",
           "pydantic-core",
+          "pypdf",
           "python-dateutil",
           "pyyaml",
           "six",
@@ -3006,6 +3068,7 @@
           "numpy",
           "pydantic",
           "pydantic-core",
+          "pypdf",
           "starlette",
           "typing-extensions",
           "typing-inspection",
@@ -3104,6 +3167,13 @@
           "version": "2.46.4"
         },
         {
+          "filename": "pypdf-6.14.2-py3-none-any.whl",
+          "name": "pypdf",
+          "sha256": "3f07891af76dc002657e04993ab9b4de81de29f9013b9761d0b7968bff12e946",
+          "url": "https://files.pythonhosted.org/packages/49/e6/136aa8993a2ae7214e0b0ef2edaa0d2e08d1d4e4982635b08a835ff31ec8/pypdf-6.14.2-py3-none-any.whl",
+          "version": "6.14.2"
+        },
+        {
           "filename": "python_dateutil-2.9.0.post0-py2.py3-none-any.whl",
           "name": "python-dateutil",
           "sha256": "a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427",
@@ -3186,6 +3256,7 @@
           "numpy",
           "pydantic",
           "pydantic-core",
+          "pypdf",
           "python-dateutil",
           "pyyaml",
           "six",
@@ -3205,6 +3276,7 @@
           "numpy",
           "pydantic",
           "pydantic-core",
+          "pypdf",
           "starlette",
           "typing-extensions",
           "typing-inspection",
@@ -3253,6 +3325,7 @@
         "croniter<7,>=2",
         "fastapi<1,>=0.110",
         "numpy<3,>=1.26",
+        "pypdf<7,>=6",
         "pyyaml<7,>=6",
         "uvicorn<1,>=0.29"
       ],
@@ -3268,6 +3341,7 @@
         "numpy",
         "pydantic",
         "pydantic-core",
+        "pypdf",
         "python-dateutil",
         "pyyaml",
         "six",
@@ -3341,6 +3415,7 @@
         "fastapi<1,>=0.110",
         "numpy<3,>=1.26",
         "pydantic<3,>=2",
+        "pypdf<7,>=6",
         "uvicorn<1,>=0.29"
       ],
       "packages": [
@@ -3354,6 +3429,7 @@
         "numpy",
         "pydantic",
         "pydantic-core",
+        "pypdf",
         "starlette",
         "typing-extensions",
         "typing-inspection",

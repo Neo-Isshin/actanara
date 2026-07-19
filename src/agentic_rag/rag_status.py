@@ -12,7 +12,7 @@ from typing import Any
 
 from .rag_active_source import resolve_active_rag_index
 from .rag_server_lifecycle import read_server_process_state
-from .rag_settings import RagSettings, rag_product_disabled_reason, resolve_rag_settings
+from .rag_settings import RagSettings, effective_indexing_source_sets, rag_product_disabled_reason, resolve_rag_settings
 from .rag_profile import manifest_embedding_profile, profiles_match, profile_with_hash, settings_embedding_profile
 from data_foundation.network import RAG_SERVER_NON_LOOPBACK_ISSUE_CODE, host_for_url, is_loopback_host
 
@@ -220,22 +220,28 @@ def _source_profile_status(settings: RagSettings, v2: dict[str, Any]) -> dict[st
 
 def _configured_source_profile(settings: RagSettings) -> dict[str, Any]:
     diary_root = Path(settings.diary_source_root).expanduser().absolute()
-    return {
+    source_sets = effective_indexing_source_sets(settings)
+    result = {
         "schemaVersion": 1,
         "diarySourceRoot": str(diary_root),
         "filteredDialogueRoot": str(diary_root / "__diary_daily"),
         "lessonsPath": str(Path(settings.lessons_path).expanduser().absolute()),
         "taskBoardPath": str(Path(settings.task_board_path).expanduser().absolute()),
         "foundationDbPath": str(Path(settings.foundation_db_path).expanduser().absolute()),
-        "sourceSets": list(settings.indexing_source_sets),
+        "sourceSets": list(source_sets),
     }
+    if "external-content" in source_sets:
+        result["externalSources"] = settings.external_sources.to_dict()
+    return result
 
 
 def _source_profiles_match(left: dict[str, Any], right: dict[str, Any]) -> bool:
     keys = ("diarySourceRoot", "filteredDialogueRoot", "lessonsPath", "taskBoardPath", "foundationDbPath")
     if any(str(left.get(key) or "") != str(right.get(key) or "") for key in keys):
         return False
-    return sorted(str(item) for item in left.get("sourceSets", [])) == sorted(str(item) for item in right.get("sourceSets", []))
+    if sorted(str(item) for item in left.get("sourceSets", [])) != sorted(str(item) for item in right.get("sourceSets", [])):
+        return False
+    return left.get("externalSources") == right.get("externalSources")
 
 
 def _server_status(settings: RagSettings, *, probe: bool, timeout_seconds: float) -> dict[str, Any]:

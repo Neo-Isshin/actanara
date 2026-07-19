@@ -950,6 +950,30 @@ const RAG_UI_TEXT = {
     cloudProviderCredentialMissing: '尚未配置云端 Embedding Key。',
     cloudProviderCredentialReentry: '旧 Keychain 密钥无法读取；请在此重新输入一次。',
     saveInstantParams: '保存即时参数',
+    externalSourcesTitle: '外部内容源',
+    externalSourcesNote: '仅解析你明确配置的本地路径。Dry-run 不写 settings 或 index；正式构建仍只写 nova-RAG v2 candidate store。',
+    externalSourcesEnabled: '启用外部内容源',
+    externalSourcesMode: '来源组合模式',
+    externalSourcesSupplement: '补充默认来源',
+    externalSourcesReplace: '替换默认来源',
+    externalSourcesPaths: '路径（每行一个绝对路径）',
+    externalSourcesRecursive: '递归扫描目录',
+    externalSourcesInclude: 'Include patterns（每行一个）',
+    externalSourcesExclude: 'Exclude patterns（每行一个）',
+    externalSourcesSymlink: '符号链接策略',
+    externalSourcesSymlinkReject: '全部拒绝',
+    externalSourcesSymlinkWithinRoot: '仅允许根目录内目标',
+    externalSourcesMaxFileBytes: '单文件上限（bytes）',
+    externalSourcesMaxTotalBytes: '总读取上限（bytes）',
+    externalSourcesMaxFiles: '文件数量上限',
+    externalSourcesDocUnsupported: '.doc 不受支持；请先转换为 .docx、PDF 或纯文本。',
+    externalSourcesDryRun: 'Dry-run 解析预览',
+    externalSourcesPlanning: '正在扫描与解析外部内容源…',
+    externalSourcesPlanReady: 'Dry-run 完成',
+    externalSourcesPlanFailed: 'Dry-run 失败: ',
+    externalSourcesNoRecords: '当前计划没有文件记录。',
+    externalSourcesSummary: '解析摘要',
+    externalSourcesBlocked: '需要处理',
     refreshStatus: '刷新 nova-RAG 状态…',
     refreshFailed: '刷新失败: ',
     enabling: '启用中…',
@@ -1090,6 +1114,30 @@ const RAG_UI_TEXT = {
     cloudProviderCredentialMissing: 'No cloud embedding key is configured.',
     cloudProviderCredentialReentry: 'The legacy Keychain value is unreadable. Enter the key here once.',
     saveInstantParams: 'Save Runtime Parameters',
+    externalSourcesTitle: 'External Content Sources',
+    externalSourcesNote: 'Only explicitly configured local paths are parsed. Dry-run writes neither settings nor indexes; real builds remain restricted to the nova-RAG v2 candidate store.',
+    externalSourcesEnabled: 'Enable external content sources',
+    externalSourcesMode: 'Source composition mode',
+    externalSourcesSupplement: 'Supplement default sources',
+    externalSourcesReplace: 'Replace default sources',
+    externalSourcesPaths: 'Paths (one absolute path per line)',
+    externalSourcesRecursive: 'Scan directories recursively',
+    externalSourcesInclude: 'Include patterns (one per line)',
+    externalSourcesExclude: 'Exclude patterns (one per line)',
+    externalSourcesSymlink: 'Symlink policy',
+    externalSourcesSymlinkReject: 'Reject all symlinks',
+    externalSourcesSymlinkWithinRoot: 'Allow targets within root only',
+    externalSourcesMaxFileBytes: 'Per-file limit (bytes)',
+    externalSourcesMaxTotalBytes: 'Total read limit (bytes)',
+    externalSourcesMaxFiles: 'File-count limit',
+    externalSourcesDocUnsupported: '.doc is unsupported; convert it to .docx, PDF, or plain text first.',
+    externalSourcesDryRun: 'Dry-run Parse Preview',
+    externalSourcesPlanning: 'Scanning and parsing external content sources...',
+    externalSourcesPlanReady: 'Dry-run complete',
+    externalSourcesPlanFailed: 'Dry-run failed: ',
+    externalSourcesNoRecords: 'The current plan has no file records.',
+    externalSourcesSummary: 'Parse Summary',
+    externalSourcesBlocked: 'Needs attention',
     refreshStatus: 'Refreshing nova-RAG status...',
     refreshFailed: 'Refresh failed: ',
     enabling: 'Enabling...',
@@ -1316,7 +1364,41 @@ const OPERATOR_UI_TEXT = {
     writableVia: '写入入口：',
     productLocalization: '产品与本地化',
     dashboardNetwork: 'Dashboard 网络访问',
-    dashboardNetworkNote: '默认 127.0.0.1 仅允许本机浏览器。局域网、Tailscale 或反向代理访问时，设置监听地址、公开 URL 和允许的浏览器 Origin；保存后重启 Dashboard。',
+    dashboardNetworkNote: '默认 127.0.0.1 仅允许本机浏览器。Tailscale 请使用下方 tailnet-only Serve，Dashboard 仍保持 loopback；仅手动配置局域网或其他反向代理时才修改监听地址。',
+    tailscaleTitle: 'Tailscale 安全访问',
+    tailscaleNote: '只检测已安装、登录、IP、MagicDNS 与节点连接状态，不执行 HTTP Serve 探测。不自动安装或登录。Serve 仅代理 loopback Dashboard 3036 到 tailnet；不会公开 nova-RAG，也不会启用 Funnel。',
+    tailscaleSecurityBoundary: '安全边界：tailnet 成员资格是远程访问边界；当前 Dashboard session 仅用于 CSRF/本进程会话，不是独立用户身份认证。',
+    tailscaleLoading: '正在读取 Tailscale 状态…',
+    tailscaleRefresh: '刷新状态',
+    tailscaleInstalled: 'CLI 安装',
+    tailscaleLogin: '登录/连接',
+    tailscaleIp: 'Tailnet IP',
+    tailscaleMagicDns: 'MagicDNS',
+    tailscaleReachability: '节点可达性（状态推断）',
+    tailscaleServe: 'Tailscale Serve（仅 tailnet）',
+    tailscaleFunnel: 'Tailscale Funnel（公网）',
+    tailscalePresent: '已安装',
+    tailscaleMissing: '不存在',
+    tailscaleConnected: '已连接',
+    tailscaleLoggedOut: '未登录',
+    tailscaleUnavailable: '不可用',
+    tailscaleReachable: '可达',
+    tailscaleNotReachable: '不可达',
+    tailscaleEnabled: '已启用',
+    tailscaleDisabled: '未启用',
+    tailscaleConflict: '存在非 Actanara Serve 配置；已保留',
+    tailscaleOriginReady: 'Dashboard MagicDNS Origin 已在安全允许列表中。',
+    tailscaleOriginRequired: '启用前请将此 HTTPS Origin 写入公开 URL 与允许 Origin，然后保存设置：',
+    tailscaleUseOrigin: '填入安全 Origin',
+    tailscaleEnableServe: '启用 tailnet-only Serve',
+    tailscaleDisableServe: '停用 Actanara Serve',
+    tailscaleActionPrompt: action => `输入确认短语以${action} Tailscale Serve：`,
+    tailscaleActionCancelled: '操作已取消：确认短语不匹配。',
+    tailscaleUpdating: '正在更新 Tailscale Serve…',
+    tailscaleActionSuccess: 'Tailscale Serve 操作成功。',
+    tailscaleStatusError: 'Tailscale 状态读取失败：',
+    tailscaleActionError: 'Tailscale Serve 操作失败：',
+    tailscaleFunnelBlocked: '高风险：Funnel 会把服务公开到互联网。当前安全策略禁止使用，Dashboard 不提供任何 Funnel 执行入口。',
     dashboardHost: '监听地址',
     dashboardPort: '监听端口',
     dashboardPublicBaseUrl: '公开 URL',
@@ -1587,7 +1669,41 @@ const OPERATOR_UI_TEXT = {
     writableVia: 'Writable via: ',
     productLocalization: 'Product and Localization',
     dashboardNetwork: 'Dashboard Network Access',
-    dashboardNetworkNote: 'Default 127.0.0.1 allows only the local browser. For LAN, Tailscale, or reverse-proxy access, set the bind address, public URL, and allowed browser Origins; restart Dashboard after saving.',
+    dashboardNetworkNote: 'Default 127.0.0.1 allows only the local browser. Use the tailnet-only Tailscale Serve control below while keeping Dashboard on loopback; change the bind address only for a manually managed LAN or other reverse proxy.',
+    tailscaleTitle: 'Tailscale Secure Access',
+    tailscaleNote: 'Detects installation, login, IP, MagicDNS, and node connection state only; it does not issue an HTTP Serve probe. It never installs or logs in. Serve proxies only the loopback Dashboard on 3036 to the tailnet; nova-RAG is not exposed and Funnel is never enabled.',
+    tailscaleSecurityBoundary: 'Security boundary: tailnet membership gates remote access; the current Dashboard session provides CSRF/process-local session protection, not independent user identity authentication.',
+    tailscaleLoading: 'Reading Tailscale status...',
+    tailscaleRefresh: 'Refresh Status',
+    tailscaleInstalled: 'CLI Installed',
+    tailscaleLogin: 'Login / Connection',
+    tailscaleIp: 'Tailnet IP',
+    tailscaleMagicDns: 'MagicDNS',
+    tailscaleReachability: 'Node Reachability (status inference)',
+    tailscaleServe: 'Tailscale Serve (tailnet only)',
+    tailscaleFunnel: 'Tailscale Funnel (public internet)',
+    tailscalePresent: 'installed',
+    tailscaleMissing: 'not found',
+    tailscaleConnected: 'connected',
+    tailscaleLoggedOut: 'logged out',
+    tailscaleUnavailable: 'unavailable',
+    tailscaleReachable: 'reachable',
+    tailscaleNotReachable: 'not reachable',
+    tailscaleEnabled: 'enabled',
+    tailscaleDisabled: 'disabled',
+    tailscaleConflict: 'non-Actanara Serve configuration exists and was preserved',
+    tailscaleOriginReady: 'The Dashboard MagicDNS Origin is in the security allowlist.',
+    tailscaleOriginRequired: 'Before enabling, put this HTTPS Origin in Public URL and Allowed Origins, then save settings: ',
+    tailscaleUseOrigin: 'Use Secure Origin',
+    tailscaleEnableServe: 'Enable Tailnet-only Serve',
+    tailscaleDisableServe: 'Disable Actanara Serve',
+    tailscaleActionPrompt: action => `Enter the confirmation phrase to ${action} Tailscale Serve: `,
+    tailscaleActionCancelled: 'Operation cancelled: confirmation phrase did not match.',
+    tailscaleUpdating: 'Updating Tailscale Serve...',
+    tailscaleActionSuccess: 'Tailscale Serve operation succeeded.',
+    tailscaleStatusError: 'Tailscale status read failed: ',
+    tailscaleActionError: 'Tailscale Serve operation failed: ',
+    tailscaleFunnelBlocked: 'High risk: Funnel publishes a service to the public internet. Current security policy forbids it, and Dashboard exposes no Funnel execution path.',
     dashboardHost: 'Bind Address',
     dashboardPort: 'Bind Port',
     dashboardPublicBaseUrl: 'Public URL',
@@ -5427,6 +5543,7 @@ function settingsTab(name) {
   if (name === 'onboarding') loadOnboardingReadiness();
   if (name === 'workspaceAttribution') loadWorkspaceAttributionSettings();
   if (name === 'startup') loadStartupLaunchAgents();
+  if (name === 'network') loadTailscaleStatus();
 }
 
 function captureSettingsFormDraft() {
@@ -5871,7 +5988,131 @@ function renderNetworkSettings(dashboard) {
       <div class="settings-row"><label>${escapeHtml(labels.dashboardPublicBaseUrl)}</label><input id="setDashboardPublicBaseUrl"${dashboardRestartAttr(dashboard.publicBaseUrl || '')} placeholder="http://127.0.0.1:3036" value="${escapeHtml(dashboard.publicBaseUrl || '')}"></div>
       <div class="settings-row"><label>${escapeHtml(labels.dashboardAllowedOrigins)}</label><textarea id="setDashboardAllowedOrigins"${dashboardRestartAttr(originsText)} placeholder="http://127.0.0.1:3036">${escapeHtml(originsText)}</textarea></div>
       <div class="settings-note">${escapeHtml(labels.dashboardAllowedOriginsHint)}<br>${escapeHtml(labels.restartCommand)}<code>${escapeHtml(DASHBOARD_RESTART_COMMAND)}</code> <button type="button" class="fo-copy-btn" onclick="copyDashboardRestartCommand()">${escapeHtml(labels.copyCommand)}</button><span class="fo-copy-status" id="dashboardRestartCopyStatusNetwork" aria-live="polite"></span></div>
+    </div>
+    <div class="settings-section tailscale-settings">
+      <div class="settings-section-title">${escapeHtml(labels.tailscaleTitle)}</div>
+      <div class="settings-note">${escapeHtml(labels.tailscaleNote)}</div>
+      <div class="tailscale-security-boundary">${escapeHtml(labels.tailscaleSecurityBoundary)}</div>
+      <div id="tailscaleStatus" class="settings-runtime-status" role="status" aria-live="polite">
+        <div class="wr-loading" style="padding:10px"><div class="wr-spinner"></div><span>${escapeHtml(labels.tailscaleLoading)}</span></div>
+      </div>
+      <div class="settings-timer-actions">
+        <button type="button" class="settings-browse-btn" onclick="loadTailscaleStatus()">${escapeHtml(labels.tailscaleRefresh)}</button>
+        <button type="button" class="settings-browse-btn" id="tailscaleEnableServeBtn" disabled onclick="tailscaleServeAction(true)">${escapeHtml(labels.tailscaleEnableServe)}</button>
+        <button type="button" class="settings-browse-btn" id="tailscaleDisableServeBtn" disabled onclick="tailscaleServeAction(false)">${escapeHtml(labels.tailscaleDisableServe)}</button>
+      </div>
+      <div id="tailscaleActionStatus" class="settings-note" role="status" aria-live="polite"></div>
+      <div class="tailscale-funnel-boundary">
+        <b>${escapeHtml(labels.tailscaleFunnel)}</b>
+        <span class="settings-runtime-chip warn">${escapeHtml(labels.tailscaleUnavailable)}</span>
+        <p>${escapeHtml(labels.tailscaleFunnelBlocked)}</p>
+      </div>
     </div>`;
+}
+
+async function loadTailscaleStatus(successMessage = '') {
+  const labels = operatorText();
+  const panel = document.getElementById('tailscaleStatus');
+  if (!panel) return;
+  panel.innerHTML = '<div class="wr-loading" style="padding:10px"><div class="wr-spinner"></div><span>' + escapeHtml(labels.tailscaleLoading) + '</span></div>';
+  const enableButton = document.getElementById('tailscaleEnableServeBtn');
+  const disableButton = document.getElementById('tailscaleDisableServeBtn');
+  if (enableButton) enableButton.disabled = true;
+  if (disableButton) disableButton.disabled = true;
+  try {
+    const response = await fetch('/api/settings/tailscale/status');
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || ('HTTP ' + response.status));
+    window.ACTANARA_TAILSCALE_STATUS = data;
+    panel.innerHTML = renderTailscaleStatus(data);
+    if (enableButton) enableButton.disabled = !data.canEnableServe;
+    if (disableButton) disableButton.disabled = !data.canDisableServe;
+    const actionStatus = document.getElementById('tailscaleActionStatus');
+    if (successMessage && actionStatus) actionStatus.textContent = successMessage;
+  } catch (error) {
+    window.ACTANARA_TAILSCALE_STATUS = null;
+    panel.innerHTML = '<div class="fo-job-error" style="padding:10px">' + escapeHtml(labels.tailscaleStatusError + error.message) + '</div>';
+  }
+}
+
+function renderTailscaleStatus(data) {
+  const labels = operatorText();
+  const dns = data.dns || {};
+  const serve = data.serve || {};
+  const access = data.dashboardAccess || {};
+  const ips = data.ips || {};
+  const loginLabel = data.connected
+    ? labels.tailscaleConnected
+    : (data.loginState === 'logged-out' ? labels.tailscaleLoggedOut : labels.tailscaleUnavailable);
+  const serveLabel = serve.conflict
+    ? labels.tailscaleConflict
+    : (serve.enabled ? labels.tailscaleEnabled : labels.tailscaleDisabled);
+  const ipLabel = [ips.ipv4, ips.ipv6].filter(Boolean).join(' / ') || '—';
+  const dnsLabel = dns.magicDnsEnabled ? (dns.name || dns.suffix || labels.tailscaleEnabled) : labels.tailscaleDisabled;
+  const accessHtml = access.ready
+    ? '<div class="tailscale-origin-ready"><span class="settings-runtime-chip ok">OK</span> ' + escapeHtml(labels.tailscaleOriginReady) + '</div>'
+    : (access.origin
+      ? '<div class="tailscale-origin-required">' + escapeHtml(labels.tailscaleOriginRequired) + '<code>' + escapeHtml(access.origin) + '</code> <button type="button" class="settings-browse-btn" onclick="tailscaleUseMagicDnsOrigin()">' + escapeHtml(labels.tailscaleUseOrigin) + '</button></div>'
+      : '');
+  const errors = Array.isArray(data.errors) && data.errors.length
+    ? '<ul>' + data.errors.map(item => '<li>' + escapeHtml(item.code || item.message || String(item)) + '</li>').join('') + '</ul>'
+    : '';
+  return '<div class="tailscale-status-grid">' +
+      tailscaleStatusCell(labels.tailscaleInstalled, data.installed ? labels.tailscalePresent : labels.tailscaleMissing, data.installed) +
+      tailscaleStatusCell(labels.tailscaleLogin, loginLabel, data.connected) +
+      tailscaleStatusCell(labels.tailscaleIp, ipLabel, Boolean(ips.ipv4 || ips.ipv6)) +
+      tailscaleStatusCell(labels.tailscaleMagicDns, dnsLabel, dns.magicDnsEnabled) +
+      tailscaleStatusCell(labels.tailscaleReachability, data.reachable ? labels.tailscaleReachable : labels.tailscaleNotReachable, data.reachable) +
+      tailscaleStatusCell(labels.tailscaleServe, serveLabel, serve.exclusiveManaged) +
+    '</div>' + accessHtml + errors;
+}
+
+function tailscaleStatusCell(label, value, positive) {
+  return '<div class="tailscale-status-cell"><b>' + escapeHtml(label) + '</b><span class="settings-runtime-chip ' + (positive ? 'ok' : 'warn') + '">' + escapeHtml(value) + '</span></div>';
+}
+
+function tailscaleUseMagicDnsOrigin() {
+  const origin = String((((window.ACTANARA_TAILSCALE_STATUS || {}).dashboardAccess || {}).origin) || '').trim();
+  if (!origin) return;
+  const publicBase = document.getElementById('setDashboardPublicBaseUrl');
+  const allowedOrigins = document.getElementById('setDashboardAllowedOrigins');
+  if (publicBase) publicBase.value = origin;
+  if (allowedOrigins) {
+    const origins = allowedOrigins.value.split(/\r?\n/).map(item => item.trim()).filter(Boolean);
+    if (!origins.includes(origin)) origins.push(origin);
+    allowedOrigins.value = origins.join('\n');
+  }
+  const status = document.getElementById('tailscaleActionStatus');
+  if (status) status.textContent = operatorText().tailscaleOriginRequired + origin;
+}
+
+async function tailscaleServeAction(enable) {
+  const labels = operatorText();
+  const current = window.ACTANARA_TAILSCALE_STATUS || {};
+  const serve = current.serve || {};
+  const confirmationText = enable ? serve.enableConfirmationTextRequired : serve.disableConfirmationTextRequired;
+  if (!confirmationText) return;
+  const actionName = enable ? labels.tailscaleEnableServe : labels.tailscaleDisableServe;
+  const supplied = prompt(labels.tailscaleActionPrompt(actionName) + confirmationText);
+  const status = document.getElementById('tailscaleActionStatus');
+  if (supplied !== confirmationText) {
+    if (status) status.textContent = labels.tailscaleActionCancelled;
+    return;
+  }
+  if (status) status.textContent = labels.tailscaleUpdating;
+  const endpoint = enable ? '/api/settings/tailscale/serve/enable' : '/api/settings/tailscale/serve/disable';
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({confirmationText}),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || data.code || ('HTTP ' + response.status));
+    await loadTailscaleStatus(labels.tailscaleActionSuccess);
+  } catch (error) {
+    if (status) status.textContent = labels.tailscaleActionError + error.message;
+  }
 }
 
 function renderScheduleSettings(schedule, agentPrompt, showAdvanced = false) {
@@ -6936,6 +7177,14 @@ function renderRagSettings(rag, status) {
   const activeProfile = profile.active || {};
   const configuredLabel = ragProfileLabel(configuredProfile);
   const activeLabel = activeProfile && activeProfile.model ? ragProfileLabel(activeProfile) : labels.noActiveProfile;
+  const indexing = rag.indexing || {};
+  const external = indexing.externalSources || {};
+  const externalStatus = status.externalSources || external;
+  const externalMode = external.mode === 'replace' ? 'replace' : 'supplement';
+  const externalSymlink = external.symlinkPolicy === 'within-root' ? 'within-root' : 'reject';
+  const externalPaths = Array.isArray(external.paths) ? external.paths : [];
+  const externalInclude = Array.isArray(external.include) ? external.include : [];
+  const externalExclude = Array.isArray(external.exclude) ? external.exclude : [];
   return `
     <div class="settings-section">
       <div class="settings-section-title">${escapeHtml(labels.instantParams)}</div>
@@ -6949,8 +7198,90 @@ function renderRagSettings(rag, status) {
       ${embeddingMode === 'cloud' ? `
       <div class="settings-row"><label>${escapeHtml(labels.cloudProviderCredential)}</label><input id="setRagCloudProviderCredential" type="password" autocomplete="new-password" placeholder="${escapeHtml(labels.cloudProviderCredentialPlaceholder)}" aria-describedby="setRagCloudProviderCredentialHint"></div>
       <div class="settings-note" id="setRagCloudProviderCredentialHint">${escapeHtml(cloudKeyHint)}</div>` : ''}
+      <section class="rag-external-sources" id="ragExternalSources">
+        <div class="settings-section-title">${escapeHtml(labels.externalSourcesTitle)}</div>
+        <div class="settings-note">${escapeHtml(labels.externalSourcesNote)}</div>
+        <label class="rag-external-switch"><span>${escapeHtml(labels.externalSourcesEnabled)}</span><input id="setRagExternalEnabled" type="checkbox" ${external.enabled ? 'checked' : ''}></label>
+        <div class="rag-external-grid">
+          <label><span>${escapeHtml(labels.externalSourcesMode)}</span><select id="setRagExternalMode"><option value="supplement" ${externalMode === 'supplement' ? 'selected' : ''}>${escapeHtml(labels.externalSourcesSupplement)}</option><option value="replace" ${externalMode === 'replace' ? 'selected' : ''}>${escapeHtml(labels.externalSourcesReplace)}</option></select></label>
+          <label><span>${escapeHtml(labels.externalSourcesSymlink)}</span><select id="setRagExternalSymlink"><option value="reject" ${externalSymlink === 'reject' ? 'selected' : ''}>${escapeHtml(labels.externalSourcesSymlinkReject)}</option><option value="within-root" ${externalSymlink === 'within-root' ? 'selected' : ''}>${escapeHtml(labels.externalSourcesSymlinkWithinRoot)}</option></select></label>
+          <label class="rag-external-wide"><span>${escapeHtml(labels.externalSourcesPaths)}</span><textarea id="setRagExternalPaths" rows="3">${escapeHtml(externalPaths.join('\n'))}</textarea></label>
+          <label class="rag-external-wide rag-external-check"><input id="setRagExternalRecursive" type="checkbox" ${external.recursive !== false ? 'checked' : ''}><span>${escapeHtml(labels.externalSourcesRecursive)}</span></label>
+          <label><span>${escapeHtml(labels.externalSourcesInclude)}</span><textarea id="setRagExternalInclude" rows="3">${escapeHtml(externalInclude.join('\n'))}</textarea></label>
+          <label><span>${escapeHtml(labels.externalSourcesExclude)}</span><textarea id="setRagExternalExclude" rows="3">${escapeHtml(externalExclude.join('\n'))}</textarea></label>
+          <label><span>${escapeHtml(labels.externalSourcesMaxFileBytes)}</span><input id="setRagExternalMaxFileBytes" type="number" min="1" value="${escapeHtml(external.maxFileBytes || 10485760)}"></label>
+          <label><span>${escapeHtml(labels.externalSourcesMaxTotalBytes)}</span><input id="setRagExternalMaxTotalBytes" type="number" min="1" value="${escapeHtml(external.maxTotalBytes || 268435456)}"></label>
+          <label><span>${escapeHtml(labels.externalSourcesMaxFiles)}</span><input id="setRagExternalMaxFiles" type="number" min="1" value="${escapeHtml(external.maxFiles || 5000)}"></label>
+        </div>
+        <div class="settings-note rag-external-doc-note">${escapeHtml(labels.externalSourcesDocUnsupported)}</div>
+        <div class="settings-runtime-line"><b>${escapeHtml(labels.status)}</b> ${escapeHtml(externalStatus.enabled ? labels.enabled : labels.disabled)} · ${escapeHtml(externalMode)} · ${escapeHtml(String(externalPaths.length))} path(s)</div>
+        <div class="rag-external-actions"><button type="button" class="settings-browse-btn secondary" id="ragExternalPlanBtn" onclick="previewRagExternalSources()">${escapeHtml(labels.externalSourcesDryRun)}</button></div>
+        <div id="ragExternalSourcesPlan" aria-live="polite"></div>
+      </section>
       <button type="button" class="settings-browse-btn" onclick="saveRagSettingsPanel()">${escapeHtml(labels.saveInstantParams)}</button>
     </div>`;
+}
+
+function ragExternalList(id) {
+  return String(document.getElementById(id)?.value || '').split(/\r?\n/).map(item => item.trim()).filter(Boolean);
+}
+
+function collectRagExternalSourcesFromModal(previous) {
+  const external = previous || {};
+  if (!document.getElementById('setRagExternalEnabled')) return external;
+  return {
+    enabled: Boolean(document.getElementById('setRagExternalEnabled')?.checked),
+    mode: document.getElementById('setRagExternalMode')?.value || 'supplement',
+    paths: ragExternalList('setRagExternalPaths'),
+    recursive: Boolean(document.getElementById('setRagExternalRecursive')?.checked),
+    include: ragExternalList('setRagExternalInclude'),
+    exclude: ragExternalList('setRagExternalExclude'),
+    maxFileBytes: Number(document.getElementById('setRagExternalMaxFileBytes')?.value || external.maxFileBytes || 10485760),
+    maxTotalBytes: Number(document.getElementById('setRagExternalMaxTotalBytes')?.value || external.maxTotalBytes || 268435456),
+    maxFiles: Number(document.getElementById('setRagExternalMaxFiles')?.value || external.maxFiles || 5000),
+    symlinkPolicy: document.getElementById('setRagExternalSymlink')?.value || 'reject',
+  };
+}
+
+function renderRagExternalSourcesPlan(plan) {
+  const labels = ragUiText();
+  const summary = plan.summary || {};
+  const sources = Array.isArray(plan.sources) ? plan.sources.slice(0, 12) : [];
+  const rows = sources.map(source => {
+    const status = source.parserStatus || source.status || 'unknown';
+    const tone = status === 'parsed' || status === 'cached' ? 'ok' : 'warn';
+    const detail = source.parserError || source.suggestion || source.parserVersion || '';
+    return '<div class="rag-external-plan-row"><span class="settings-runtime-chip ' + tone + '">' + escapeHtml(status) + '</span><code>' + escapeHtml(source.sourcePath || source.path || '—') + '</code>' + (detail ? '<small>' + escapeHtml(detail) + '</small>' : '') + '</div>';
+  }).join('');
+  const blockers = Array.isArray(plan.blockers) ? plan.blockers : [];
+  return '<div class="rag-external-plan-summary"><b>' + escapeHtml(labels.externalSourcesSummary) + '</b> · ' +
+    escapeHtml(String(summary.sourceRecordCount || 0)) + ' sources · ' + escapeHtml(String(summary.chunkCount || 0)) + ' chunks · ' +
+    escapeHtml(String(summary.parseErrorCount || 0)) + ' errors' + (blockers.length ? ' · ' + escapeHtml(labels.externalSourcesBlocked) : '') + '</div>' +
+    (rows || '<div class="settings-note">' + escapeHtml(labels.externalSourcesNoRecords) + '</div>');
+}
+
+async function previewRagExternalSources() {
+  const labels = ragUiText();
+  const panel = document.getElementById('ragExternalSourcesPlan');
+  const button = document.getElementById('ragExternalPlanBtn');
+  if (!panel || !button) return;
+  const previous = (((window._lastRagSettings || {}).indexing || {}).externalSources) || {};
+  const externalSources = collectRagExternalSourcesFromModal(previous);
+  button.disabled = true;
+  panel.innerHTML = '<div class="wr-loading rag-external-loading"><div class="wr-spinner"></div><span>' + escapeHtml(labels.externalSourcesPlanning) + '</span></div>';
+  try {
+    const res = await fetch('/api/rag/external-sources/plan', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({rag: {indexing: {externalSources}}}),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    panel.innerHTML = '<div class="settings-note rag-external-plan-ready">' + escapeHtml(labels.externalSourcesPlanReady) + '</div>' + renderRagExternalSourcesPlan(data);
+  } catch (e) {
+    panel.innerHTML = '<div class="fo-job-error">' + escapeHtml(labels.externalSourcesPlanFailed + e.message) + '</div>';
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function rerenderRagSettingsPanel() {
@@ -7261,6 +7592,7 @@ function collectRagSettingsFromModal() {
   const previous = window._lastRagSettings || {};
   const previousEmbedding = previous.embedding || {};
   const previousRetrieval = previous.retrieval || {};
+  const previousIndexing = previous.indexing || {};
   const enabled = previous.enabled !== false && (previous.mode || 'v2') !== 'disabled';
   const embeddingMode = previousEmbedding.mode || previousEmbedding.provider || 'local';
   const providerId = previousEmbedding.providerId || embeddingMode;
@@ -7284,6 +7616,7 @@ function collectRagSettingsFromModal() {
     indexing: {
       enabled,
       defaultFullRebuild: false,
+      externalSources: collectRagExternalSourcesFromModal(previousIndexing.externalSources || {}),
     },
   };
   const device = previousEmbedding.device;
