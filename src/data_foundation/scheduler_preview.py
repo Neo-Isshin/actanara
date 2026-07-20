@@ -593,6 +593,7 @@ def _systemd_timer_preview(
 ) -> dict[str, Any]:
     jobs = _linux_timer_jobs(schedule, timer, paths)
     units = scheduler_units(paths, schedule, timer)
+    units_by_name = {unit.name: unit for unit in units}
     unit_root = default_user_unit_dir()
     configured_registered = bool(timer.get("registered"))
     runtime_probe = {
@@ -613,11 +614,99 @@ def _systemd_timer_preview(
                 "units": [unit.name for unit in units if unit.enable_now],
             }
     actual_registered = runtime_probe.get("actualRegistered")
+    probe_records = {
+        str(item.get("name")): item
+        for item in runtime_probe.get("units") or []
+        if isinstance(item, dict) and item.get("name")
+    }
+    job_previews = []
+    for job in jobs:
+        service_name = str(job["unitName"])
+        timer_name = str(job["timerName"])
+        service_path = unit_root / service_name
+        timer_path = unit_root / timer_name
+        definitions = []
+        for name, target in ((service_name, service_path), (timer_name, timer_path)):
+            expected = units_by_name[name].content
+            if not probe_runtime:
+                definitions.append(
+                    {"name": name, "path": str(target), "exists": None, "aligned": None}
+                )
+                continue
+            try:
+                actual = target.read_text(encoding="utf-8")
+            except FileNotFoundError:
+                definitions.append(
+                    {"name": name, "path": str(target), "exists": False, "aligned": False}
+                )
+            except OSError:
+                definitions.append(
+                    {"name": name, "path": str(target), "exists": True, "aligned": False}
+                )
+            else:
+                definitions.append(
+                    {
+                        "name": name,
+                        "path": str(target),
+                        "exists": True,
+                        "aligned": actual == expected,
+                    }
+                )
+        timer_probe = probe_records.get(timer_name)
+        actual_loaded = (
+            bool(timer_probe.get("enabled") and timer_probe.get("active"))
+            if timer_probe is not None
+            else None
+        )
+        definitions_present = (
+            all(item.get("exists") is True for item in definitions) if probe_runtime else None
+        )
+        definitions_aligned = (
+            all(item.get("aligned") is True for item in definitions) if probe_runtime else None
+        )
+        issue_codes = []
+        if probe_runtime and definitions_present is False:
+            issue_codes.append("systemd-unit-missing")
+        elif probe_runtime and definitions_aligned is False:
+            issue_codes.append("systemd-unit-definition-mismatch")
+        if timer_probe is not None and not timer_probe.get("enabled"):
+            issue_codes.append("systemd-timer-disabled")
+        if timer_probe is not None and not timer_probe.get("active"):
+            issue_codes.append("systemd-timer-inactive")
+        job_previews.append(
+            {
+                "kind": job["kind"],
+                "unitName": service_name,
+                "timerName": timer_name,
+                "time": job["time"],
+                "command": job["command"],
+                "unitPath": str(service_path),
+                "timerPath": str(timer_path),
+                "runtimeStatus": {
+                    "provider": "systemd",
+                    "status": (
+                        "not-probed"
+                        if not probe_runtime
+                        else "aligned"
+                        if actual_loaded and definitions_aligned
+                        else "mismatch"
+                    ),
+                    "actualLoaded": actual_loaded,
+                    "systemdEnabled": timer_probe.get("enabled") if timer_probe else None,
+                    "systemdActive": timer_probe.get("active") if timer_probe else None,
+                    "definitionsPresent": definitions_present,
+                    "definitionsAligned": definitions_aligned,
+                    "definitions": definitions,
+                    "issueCodes": issue_codes,
+                },
+            }
+        )
+    linux_supported = platform.system() == "Linux"
     return {
         "provider": "systemd",
-        "supported": platform.system() == "Linux",
-        "registrationImplemented": False,
-        "installerRegistrationImplemented": platform.system() == "Linux",
+        "supported": linux_supported,
+        "registrationImplemented": linux_supported,
+        "installerRegistrationImplemented": linux_supported,
         "registered": configured_registered if actual_registered is None else bool(actual_registered),
         "configuredRegistered": configured_registered,
         "actualRegistered": actual_registered,
@@ -629,18 +718,7 @@ def _systemd_timer_preview(
         ),
         "runtimeProbe": {"enabled": probe_runtime, **runtime_probe},
         "binary": os.environ.get("ACTANARA_INSTALL_SYSTEMCTL") or shutil.which("systemctl"),
-        "jobs": [
-            {
-                "kind": job["kind"],
-                "unitName": job["unitName"],
-                "timerName": job["timerName"],
-                "time": job["time"],
-                "command": job["command"],
-                "unitPath": str(unit_root / job["unitName"]),
-                "timerPath": str(unit_root / job["timerName"]),
-            }
-            for job in jobs
-        ],
+        "jobs": job_previews,
         "installPlan": [
             "Create user-level systemd service and timer units under ~/.config/systemd/user.",
             "Run systemctl --user daemon-reload.",
@@ -651,7 +729,7 @@ def _systemd_timer_preview(
             "Move generated unit files into $ACTANARA_HOME/state/backups/systemd.",
             "Mark schedule.systemTimer.registered=false in settings.json.",
         ],
-        "note": "The Linux installer can register these units; Dashboard handoff remains read-only.",
+        "note": "The Linux installer registers these units; Dashboard schedule editing remains read-only.",
     }
 
 

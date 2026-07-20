@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from data_foundation.paths import initialize_home, runtime_paths_for_home
 from data_foundation.scheduler_preview import preview_system_timer
 from data_foundation.settings import write_settings
+from data_foundation.settings_status import actanara_settings_status
 from data_foundation.systemd_user import (
     SystemdUserError,
     dashboard_unit,
@@ -376,11 +377,85 @@ class SystemdUserTests(unittest.TestCase):
 
         self.assertTrue(preview["supported"])
         self.assertTrue(preview["installerRegistrationImplemented"])
-        self.assertFalse(preview["registrationImplemented"])
+        self.assertTrue(preview["registrationImplemented"])
         self.assertTrue(preview["actualRegistered"])
         self.assertFalse(preview["registrationMismatch"])
+        self.assertTrue(all(not job["runtimeStatus"]["definitionsAligned"] for job in preview["jobs"]))
+        self.assertTrue(
+            all("systemd-unit-missing" in job["runtimeStatus"]["issueCodes"] for job in preview["jobs"])
+        )
         self.assertEqual(len(commands), 4)
         self.assertTrue(all(command[1] == "--user" for command in commands))
+
+    def test_linux_scheduler_doctor_uses_systemd_registration_and_definitions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = self._runtime(root)
+            config_home = root / "config"
+            unit_dir = config_home / "systemd" / "user"
+            unit_dir.mkdir(parents=True)
+            schedule = {
+                "enabled": True,
+                "mode": "system",
+                "timezone": "UTC",
+                "dailyPipelineTime": "04:00",
+                "dashboardAggregationTime": "04:30",
+                "systemTimer": {
+                    "provider": "systemd",
+                    "label": "actanara.test",
+                    "registered": True,
+                },
+            }
+            dashboard = {
+                "server": {"enabled": True},
+                "systemdUser": {
+                    "registered": True,
+                    "registrationManagedBy": "linux-installer",
+                    "units": ["actanara-dashboard.service"],
+                },
+            }
+            timer = schedule["systemTimer"]
+            units = scheduler_units(paths, schedule, timer)
+            units.append(dashboard_unit(paths, dashboard))
+            for unit in units:
+                (unit_dir / unit.name).write_text(unit.content, encoding="utf-8")
+            write_settings(
+                {
+                    "features": {"dashboard": True},
+                    "dashboard": dashboard,
+                    "schedule": schedule,
+                },
+                paths,
+            )
+            probe = {
+                "status": "registered",
+                "actualRegistered": True,
+                "units": [
+                    {"name": unit.name, "enabled": True, "active": True}
+                    for unit in units
+                    if unit.enable_now and unit.name.endswith(".timer")
+                ],
+            }
+            with (
+                patch.dict(os.environ, {"XDG_CONFIG_HOME": str(config_home)}),
+                patch("data_foundation.settings_status.platform.system", return_value="Linux"),
+                patch("data_foundation.scheduler_preview.platform.system", return_value="Linux"),
+                patch("data_foundation.scheduler_preview.probe_user_units", return_value=probe),
+            ):
+                payload = actanara_settings_status(paths, doctor_profile="scheduler")
+
+        checks = {item["id"]: item for item in payload["checks"]}
+        dashboard_status = {
+            item["id"]: item for item in payload["serviceRegistration"]["services"]
+        }["dashboard"]
+        self.assertEqual(payload["serviceRegistration"]["provider"], "systemd-user")
+        self.assertEqual(dashboard_status["status"], "registered")
+        self.assertTrue(dashboard_status["unitFilesPresent"])
+        self.assertEqual(checks["systemd-registration:dashboard"]["status"], "ok")
+        self.assertEqual(checks["scheduler-provider"]["status"], "ok")
+        self.assertEqual(checks["scheduler-job:daily-pipeline"]["status"], "ok")
+        self.assertEqual(checks["scheduler-job:dashboard-aggregation"]["status"], "ok")
+        self.assertEqual(payload["summary"]["status"], "ok")
 
 
 if __name__ == "__main__":

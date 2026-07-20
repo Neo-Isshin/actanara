@@ -1828,11 +1828,11 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertNotIn("runtime-home", {check["id"] for check in pipeline["checks"]})
         self.assertEqual(scheduler["doctorProfile"], "scheduler")
         self.assertNotIn("actanara model", scheduler_text)
-        self.assertTrue(any(item.startswith("launchagent-registration:") for item in scheduler_ids))
-        self.assertNotIn("launchagent-registration:rag-server", scheduler_ids)
+        self.assertTrue(any(item.endswith("registration:dashboard") for item in scheduler_ids))
+        self.assertFalse(any(item.endswith("registration:rag-server") for item in scheduler_ids))
         self.assertEqual(rag["doctorProfile"], "rag")
         self.assertNotIn("actanara model", rag_text)
-        self.assertIn("launchagent-registration:rag-server", rag_ids)
+        self.assertTrue(any(item.endswith("registration:rag-server") for item in rag_ids))
 
     def test_rag_server_settings_reject_new_nonloopback_write_and_doctor_blocks_legacy_value(self):
         with self.assertRaisesRegex(ValueError, "must be localhost or a numeric loopback"):
@@ -4297,12 +4297,15 @@ class RuntimeSettingsTests(unittest.TestCase):
                 },
                 paths,
             )
-            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
+            with (
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
+                patch("data_foundation.scheduler_preview.platform.system", return_value="Linux"),
+            ):
                 preview = scheduler.preview_system_timer()
 
             jobs = {job["kind"]: job for job in preview["jobs"]}
             self.assertEqual(preview["provider"], "systemd")
-            self.assertFalse(preview["registrationImplemented"])
+            self.assertTrue(preview["registrationImplemented"])
             self.assertIn("~/.config/systemd/user", " ".join(preview["installPlan"]))
             self.assertEqual(jobs["daily-pipeline"]["timerName"], "nova.test.pipeline.timer")
             self.assertIn("run_daily_pipeline.py", jobs["daily-pipeline"]["command"])

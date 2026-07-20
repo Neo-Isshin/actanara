@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import platform
 import plistlib
 import pwd
 import re
@@ -79,6 +80,7 @@ def _doctor_check_profile(check_id: str) -> str:
         return "rag"
     if (
         check_id.startswith("launchagent-registration")
+        or check_id.startswith("systemd-registration")
         or check_id.startswith("scheduler-")
         or check_id == "runtime-source-launchagent-alignment"
     ):
@@ -107,7 +109,7 @@ def actanara_settings_status(paths: RuntimePaths | None = None, *, doctor_profil
     resource_profile = _resource_profile(paths, dashboard, settings)
     runtime_source = _runtime_source_provenance(paths, dashboard, settings)
     dependencies = dependency_profiles_status()
-    service_registration = _service_registration(settings, runtime_source)
+    service_registration = _service_registration(paths, settings, runtime_source)
     scheduler_registration = _scheduler_registration_status(
         paths,
         settings,
@@ -236,7 +238,7 @@ def _friendly_settings_check(check: dict[str, Any]) -> str:
         "scheduler-settings-registration": ("Schedule settings are current", "Schedule settings need attention"),
         "scheduler-desired-actual": ("Automatic daily runs match your settings", "Automatic daily runs do not match your settings"),
     }
-    if check_id.startswith("launchagent-registration:"):
+    if check_id.startswith(("launchagent-registration:", "systemd-registration:")):
         service = check_id.split(":", 1)[1]
         name = "Memory service" if "rag" in service or "embedding" in service else "Dashboard service"
         return status_item(status, f"{name} is ready", f"{name} needs attention")
@@ -383,10 +385,16 @@ def _doctor_checks(
             continue
         checks.append(
             _check(
-                f"launchagent-registration:{service.get('id')}",
-                bool(service.get("registered") and service.get("plistsPresent")),
+                f"{service.get('checkPrefix') or 'launchagent-registration'}:{service.get('id')}",
+                bool(
+                    service.get("registered")
+                    and service.get(
+                        "definitionsAligned",
+                        service.get("definitionsPresent", service.get("plistsPresent")),
+                    )
+                ),
                 "warn",
-                str(service.get("message") or f"{service.get('label')} LaunchAgent registration state is unknown"),
+                str(service.get("message") or f"{service.get('label')} service registration state is unknown"),
             )
         )
     checks.extend(_scheduler_doctor_checks(scheduler_registration))
@@ -512,6 +520,40 @@ def _scheduler_registration_status(
 
 def _scheduler_job_status(job: dict[str, Any], *, desired_registered: bool) -> dict[str, Any]:
     runtime = job.get("runtimeStatus") if isinstance(job.get("runtimeStatus"), dict) else {}
+    if runtime.get("provider") == "systemd":
+        actual_loaded = runtime.get("actualLoaded")
+        definitions_present = runtime.get("definitionsPresent")
+        definitions_aligned = runtime.get("definitionsAligned")
+        issue_codes = sorted({str(item) for item in runtime.get("issueCodes") or [] if str(item)})
+        if actual_loaded is None:
+            status = "unknown"
+        elif desired_registered:
+            status = "aligned" if actual_loaded and definitions_aligned else "mismatch"
+        else:
+            status = "mismatch" if actual_loaded else "expected-absent"
+        return {
+            "kind": str(job.get("kind") or "unknown"),
+            "label": str(job.get("timerName") or "unknown"),
+            "desiredLoaded": desired_registered,
+            "actualLoaded": actual_loaded,
+            "actualRunning": runtime.get("systemdActive"),
+            "runtimeStatus": str(runtime.get("status") or "not-probed"),
+            "plistPresent": bool(definitions_present),
+            "persistentDefinitionStatus": (
+                "aligned"
+                if definitions_aligned
+                else "mismatch"
+                if definitions_present
+                else "missing"
+                if definitions_present is False
+                else "not-probed"
+            ),
+            "loadedDefinitionStatus": "not-applicable",
+            "provenanceAligned": bool(definitions_aligned),
+            "issueCodes": issue_codes,
+            "definitionHashes": {"expected": None, "persistent": None, "loaded": None},
+            "status": status,
+        }
     persistent = runtime.get("persistentPlist") if isinstance(runtime.get("persistentPlist"), dict) else {}
     loaded_definition = runtime.get("loadedDefinition") if isinstance(runtime.get("loadedDefinition"), dict) else {}
     actual_loaded = runtime.get("launchctlLoaded")
@@ -555,6 +597,8 @@ def _scheduler_runtime_probe_status(value: Any) -> dict[str, Any]:
             "alignedJobs",
             "mismatchedJobs",
             "plistJobs",
+            "actualRegistered",
+            "units",
         )
         if key in runtime_probe
     }
@@ -680,12 +724,47 @@ def _scheduler_handoff_journal_status(paths: RuntimePaths) -> dict[str, Any]:
     }
 
 
-def _service_registration(settings: dict[str, Any], runtime_source: dict[str, Any]) -> dict[str, Any]:
+def _service_registration(
+    paths: RuntimePaths,
+    settings: dict[str, Any],
+    runtime_source: dict[str, Any],
+) -> dict[str, Any]:
     features = settings.get("features") if isinstance(settings.get("features"), dict) else {}
     dashboard = settings.get("dashboard") if isinstance(settings.get("dashboard"), dict) else {}
     dashboard_server = dashboard.get("server") if isinstance(dashboard.get("server"), dict) else {}
     rag = settings.get("rag") if isinstance(settings.get("rag"), dict) else {}
     rag_server = rag.get("server") if isinstance(rag.get("server"), dict) else {}
+    if platform.system() == "Linux":
+        from .systemd_user import dashboard_unit, rag_unit
+
+        return {
+            "schemaVersion": 1,
+            "provider": "systemd-user",
+            "services": [
+                _systemd_service_status(
+                    service_id="dashboard",
+                    label="Dashboard server",
+                    expected=bool(features.get("dashboard", True) and dashboard_server.get("enabled", True)),
+                    audit=(
+                        dashboard.get("systemdUser")
+                        if isinstance(dashboard.get("systemdUser"), dict)
+                        else {}
+                    ),
+                    expected_units=[dashboard_unit(paths, dashboard)],
+                ),
+                _systemd_service_status(
+                    service_id="rag-server",
+                    label="nova-RAG server",
+                    expected=bool(rag.get("enabled") and rag_server.get("enabled")),
+                    audit=(
+                        rag_server.get("systemdUser")
+                        if isinstance(rag_server.get("systemdUser"), dict)
+                        else {}
+                    ),
+                    expected_units=[rag_unit(paths)],
+                ),
+            ],
+        }
     launch_agents = runtime_source.get("launchAgents") if isinstance(runtime_source.get("launchAgents"), list) else []
     by_label = {str(item.get("label")): item for item in launch_agents if isinstance(item, dict)}
 
@@ -696,6 +775,7 @@ def _service_registration(settings: dict[str, Any], runtime_source: dict[str, An
     rag_label = str(((rag_server.get("launchAgent") or {}).get("label")) or "com.actanara.rag-server")
     return {
         "schemaVersion": 1,
+        "provider": "launchd-user",
         "services": [
             _launch_service_status(
                 service_id="dashboard",
@@ -714,6 +794,84 @@ def _service_registration(settings: dict[str, Any], runtime_source: dict[str, An
                 plist_status_by_label=by_label,
             ),
         ],
+    }
+
+
+def _systemd_service_status(
+    *,
+    service_id: str,
+    label: str,
+    expected: bool,
+    audit: dict[str, Any],
+    expected_units: list[Any],
+) -> dict[str, Any]:
+    from .systemd_user import MANAGED_UNIT_HEADER, UNIT_NAME_RE, default_user_unit_dir
+
+    configured_units = audit.get("units") if isinstance(audit.get("units"), list) else []
+    unit_names = [str(item) for item in configured_units if UNIT_NAME_RE.fullmatch(str(item))]
+    expected_by_name = {str(unit.name): str(unit.content) for unit in expected_units}
+    if not unit_names:
+        unit_names = list(expected_by_name)
+    root = default_user_unit_dir()
+    unit_paths = [root / name for name in unit_names]
+    managed = []
+    aligned = []
+    for name, target in zip(unit_names, unit_paths):
+        try:
+            content = target.read_text(encoding="utf-8")
+        except OSError:
+            managed.append(False)
+            aligned.append(False)
+        else:
+            first_line = content.splitlines()[0] if content.splitlines() else ""
+            managed.append(first_line == MANAGED_UNIT_HEADER)
+            aligned.append(content == expected_by_name.get(name))
+    definitions_present = bool(unit_paths) and all(managed)
+    definitions_aligned = (
+        definitions_present
+        and set(unit_names) == set(expected_by_name)
+        and all(aligned)
+    )
+    registered = bool(audit.get("registered"))
+    if not expected:
+        status = "not-expected"
+        message = f"{label} systemd user registration is not expected for the selected installer settings"
+    elif registered and definitions_aligned:
+        status = "registered"
+        message = f"{label} systemd user registration is recorded and managed unit files are aligned"
+    elif registered and definitions_present:
+        status = "stale-unit"
+        message = f"{label} systemd user registration is recorded, but managed unit files are stale"
+    elif registered:
+        status = "missing-unit"
+        message = f"{label} systemd user registration is recorded, but managed unit files are missing"
+    elif definitions_present:
+        status = "unit-present-audit-missing"
+        message = (
+            f"{label} systemd user units are present, but settings registration audit is missing; "
+            "reinstall or update service registration to record ownership"
+        )
+    else:
+        status = "not-registered"
+        message = f"{label} systemd user registration is not recorded; rerun the Linux installer"
+    return {
+        "id": service_id,
+        "label": label,
+        "expected": expected,
+        "provider": "systemd-user",
+        "checkPrefix": "systemd-registration",
+        "status": status,
+        "registered": registered,
+        "registeredAt": audit.get("registeredAt"),
+        "registrationManagedBy": audit.get("registrationManagedBy"),
+        "lastAction": audit.get("lastAction"),
+        "backupDir": audit.get("backupDir"),
+        "units": unit_names,
+        "unitPaths": [str(item) for item in unit_paths],
+        "unitFilesPresent": definitions_present,
+        "definitionsPresent": definitions_present,
+        "definitionsAligned": definitions_aligned,
+        "message": message,
     }
 
 
