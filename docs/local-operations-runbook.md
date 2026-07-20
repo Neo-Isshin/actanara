@@ -297,16 +297,13 @@ actanara update --apply
 - `--dry-run` runs a bootstrap and installer preview and reports whether the active venv can be reused or a locked candidate rebuild is required; a cold remote source cache can still limit the preview to source acquisition;
 - Only `--apply` performs the real update transaction.
 
-The one-liner installer and updater use the same dependency contract and exact
-Runtime lock from the selected `main` commit.
-
-The default apply mode reuses the active venv only when its immutable dependency
-marker, environment identity, selected profiles, exact Runtime lock, and live
-distributions all match. This path changes the source pointer without running
-pip. Otherwise the updater creates and validates a new venv from the persistent
-hash-verified wheelhouse before atomically switching pointers. It never installs
-into the active venv. A legacy Runtime with no marker takes the rebuild path;
-malformed or unsafe profile evidence fails closed before service changes.
+The installer and updater use the same dependency contract and exact Runtime lock
+from the selected `main` commit. The default apply reuses the active venv only
+when dependencies, Python ABI, enabled profiles, and the live venv contents **all
+match**—it switches the source pointer without running pip; otherwise it builds a
+separate candidate venv from the hash-verified lock and atomically switches
+pointers only after validation, never installing into the active venv. Missing or
+ambiguous evidence fails closed rather than guessing a dependency selection.
 
 ```bash
 actanara update --apply --offline --ref <full-commit-sha>        # cached remote commit
@@ -315,10 +312,8 @@ actanara update --apply --source-only                            # require venv 
 actanara update --apply --force-rebuild                          # require a new locked candidate venv
 ```
 
-Offline remote selection requires a full commit already present under the
-installer `--cache-root`; offline mode never resolves `latest`. An offline
-rebuild also fails before service stop when the trusted cache under
-`~/.actanara/app/dependency-cache/v1` is incomplete or altered.
+Offline mode accepts only a full commit already present in the installer cache or
+a local `--source-root`; it never resolves `latest`.
 
 Select an immutable full commit:
 

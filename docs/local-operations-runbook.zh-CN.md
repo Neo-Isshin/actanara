@@ -297,15 +297,7 @@ actanara update --apply
 - `--dry-run` 会运行 bootstrap 和安装器预演，并说明复用现有 venv 还是按锁重建；远端源码冷缓存时仍可能只能展示源码获取计划；
 - 只有 `--apply` 会执行真实更新事务。
 
-one-liner installer 与 updater 使用所选 `main` commit 中相同的 dependency contract
-和精确 Runtime lock。
-
-默认更新只会在不可变依赖 marker、Python ABI/平台、启用 profile、精确 Runtime
-lock 和 venv 内真实 distribution 全部一致时复用 active venv；该路径只切换源码
-pointer，不运行 pip。否则会从持久、逐文件 hash 验证的 wheelhouse 创建独立
-candidate venv，通过验证后才原子切换 pointer，绝不在 active venv 中原地安装。
-旧 Runtime 缺少 marker 时会保守重建；marker 或 profile 证据损坏、不安全时会在停服
-前 fail closed。
+安装器与 updater 使用所选 `main` commit 中相同的 dependency contract 与精确 Runtime lock。默认更新会在依赖、Python ABI、启用 profile 与 venv 内实际安装**完全一致**时复用 active venv（只切换源码指针，不运行 pip）；否则从带 hash 校验的 lock 构建独立候选 venv，验证通过才原子切换，绝不在 active venv 中原地安装。证据缺失或不明确时保守失败，不会冒险猜测依赖选择。
 
 ```bash
 actanara update --apply --offline --ref <full-commit-sha>        # 使用已缓存远端 commit
@@ -314,9 +306,7 @@ actanara update --apply --source-only                            # 必须复用 
 actanara update --apply --force-rebuild                          # 必须创建按锁构建的新 candidate venv
 ```
 
-离线远端选择必须提供已存在于 installer `--cache-root` 中的完整 commit；离线模式绝不
-解析 `latest`。离线重建若发现 `~/.actanara/app/dependency-cache/v1` 缺失、不完整或
-被篡改，会在停止服务之前失败。
+离线模式只接受已存在于 installer 缓存中的完整 commit 或本地 `--source-root`，绝不解析 `latest`。
 
 指定不可变完整 commit：
 
@@ -393,7 +383,7 @@ Actanara 当前没有产品级一键卸载器。不要只删除 `~/.actanara`，
 ## 18. 相关参考
 
 - [中文 README](../README.zh-CN.md)
-- [英文新用户指南](new-user-onboarding-runbook.md)
+- [中文新用户指南](new-user-onboarding-runbook.zh-CN.md)
 - [CLI 产品边界（English）](cli-boundary.md)
 - [nova-RAG 外部 Agent 合约（English）](rag-external-agent-contract.md)
 - [GitHub Releases](https://github.com/Neo-Isshin/actanara/releases)

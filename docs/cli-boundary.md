@@ -19,6 +19,7 @@ actanara model key --value-stdin
 actanara onboard status
 actanara onboard doctor
 actanara onboard plan
+actanara dashboard restart
 actanara config show
 actanara config keys
 actanara config get general.timezone

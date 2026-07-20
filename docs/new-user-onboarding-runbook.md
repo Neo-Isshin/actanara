@@ -1,5 +1,12 @@
 # Actanara Installation Guide
 
+<p align="center">
+  <img src="https://img.shields.io/badge/Language-English%20·%20Current-2563EB?style=for-the-badge" alt="Current language: English">
+  <a href="new-user-onboarding-runbook.zh-CN.md"><img src="https://img.shields.io/badge/Language-简体中文-C026D3?style=for-the-badge" alt="切换到简体中文安装指南"></a>
+</p>
+
+**English (current)** · [简体中文](new-user-onboarding-runbook.zh-CN.md) · [Back to README](../README.md)
+
 This guide covers a new installation, the first health checks, and supported
 updates. GitHub Releases in
 [`Neo-Isshin/actanara`](https://github.com/Neo-Isshin/actanara) are the
@@ -143,49 +150,22 @@ Apply the latest stable Release:
 actanara update --apply
 ```
 
-The default updater accepts only a stable GitHub Release whose tag resolves to
-a full commit. No Release, API rate limit or error, draft/prerelease state,
-malformed tag, abbreviated SHA, symbolic ref, or non-commit object fails closed.
-There is no silent fallback to another host or to `main`.
+Actanara updates only to a stable GitHub Release whose tag resolves to a full
+commit; there is no silent fallback to another host or to `main`. When
+dependencies are unchanged it reuses the existing venv; otherwise it rebuilds
+from the hash-verified lock and validates before switching. Settings, SQLite,
+logs, generated assets, service configuration, and rollback metadata are
+preserved, and a failed activation restores the previous source, venv, and
+service state.
 
-For a checkout-based operator update, the installer supports explicit upgrade
-mode:
+To upgrade from a local checkout instead:
 
 ```bash
 zsh install/install.sh --upgrade --runtime /path/to/runtime --source-root "$PWD"
 ```
 
-The updater computes a dependency fingerprint before stopping services. When
-the active immutable dependency marker, Python ABI/platform identity, enabled
-profiles, direct contract, locked transitive closure, and live distributions all
-match, it creates only a new immutable source generation and reuses the existing
-venv generation without invoking pip. When that evidence is missing, untrusted,
-or different, it builds a separate candidate venv from the locked wheelhouse and
-switches source and venv pointers only after validation. The active venv is never
-modified in place. Unsafe or ambiguous profile evidence fails closed before
-service changes rather than guessing a dependency selection.
-
-Operational controls are:
-
-```bash
-actanara update --dry-run
-actanara update --apply --offline --ref <full-commit-sha>
-actanara update --apply --offline --source-root /path/to/source
-actanara update --apply --source-only
-actanara update --apply --force-rebuild
-```
-
-`--source-only` fails closed unless reuse is proven. `--force-rebuild` always
-creates a candidate venv. Offline source selection requires a local
-`--source-root` or a full `--ref` already present in the installer source cache;
-offline mode does not resolve `latest`. Offline rebuilds additionally require a
-complete trusted cache at `<runtime>/app/dependency-cache/v1` and fail before
-service stop when it is missing or altered. Settings, SQLite, logs, generated user data, service
-configuration, and rollback metadata remain Runtime-owned and are preserved.
-If activation or health verification fails, the transaction restores the
-previous active source, venv, and service state. Product version reporting comes
-from the active source manifest; stale `actanara-*.dist-info` in a reused venv
-is not authoritative and is not refreshed in place.
+For offline, pinned-commit, or forced-rebuild updates, see the
+[Local Operations Runbook](local-operations-runbook.md#13-updates).
 
 ## Backup and recovery
 
