@@ -10,6 +10,7 @@ import os
 import platform
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import tomllib
@@ -149,8 +150,59 @@ def build_plan(args: argparse.Namespace) -> InstallPlan:
     )
 
 
+def _preflight_linux_services(plan: InstallPlan) -> None:
+    if not (plan.scheduler or plan.dashboard_service or plan.rag_enabled):
+        return
+    systemctl = os.environ.get("ACTANARA_INSTALL_SYSTEMCTL") or shutil.which("systemctl")
+    if not systemctl:
+        raise LinuxInstallError(
+            "systemctl is required for requested Linux user services; disable those services or install systemd"
+        )
+    try:
+        manager = subprocess.run(
+            [systemctl, "--user", "show-environment"],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise LinuxInstallError("the systemd user manager preflight could not run") from exc
+    if manager.returncode != 0:
+        raise LinuxInstallError(
+            "the systemd user manager is unavailable; start a user session or disable managed services"
+        )
+
+    if not plan.dashboard_service:
+        return
+    try:
+        addresses = socket.getaddrinfo(
+            plan.dashboard_host,
+            plan.dashboard_port,
+            type=socket.SOCK_STREAM,
+        )
+    except socket.gaierror as exc:
+        raise LinuxInstallError("the Dashboard loopback host could not be resolved") from exc
+    checked: set[tuple[int, tuple]] = set()
+    for family, socktype, protocol, _canonical, address in addresses:
+        key = (family, address)
+        if key in checked:
+            continue
+        checked.add(key)
+        probe = socket.socket(family, socktype, protocol)
+        try:
+            probe.bind(address)
+        except OSError as exc:
+            raise LinuxInstallError(
+                f"Dashboard port {plan.dashboard_port} is unavailable on {plan.dashboard_host}"
+            ) from exc
+        finally:
+            probe.close()
+
+
 def _validate_plan(plan: InstallPlan, args: argparse.Namespace) -> dependency_contract.ContractSelection:
-    if platform.system() != "Linux" and not _env_flag("ACTANARA_INSTALL_TEST_MODE"):
+    host_platform = platform.system()
+    if host_platform != "Linux" and not _env_flag("ACTANARA_INSTALL_TEST_MODE"):
         raise LinuxInstallError("the Linux installer can only run on Linux")
     if args.upgrade or args.repair_existing or args.source_only:
         raise LinuxInstallError("Linux upgrades are not enabled yet; use a fresh Runtime path")
@@ -174,8 +226,8 @@ def _validate_plan(plan: InstallPlan, args: argparse.Namespace) -> dependency_co
         python_version = tuple(int(item) for item in version.stdout.strip().split("."))
     except ValueError:
         python_version = ()
-    if version.returncode != 0 or python_version < (3, 11):
-        raise LinuxInstallError("Python 3.11 or newer is required")
+    if version.returncode != 0 or python_version != (3, 13):
+        raise LinuxInstallError("the current Linux Runtime lock requires CPython 3.13")
     required = (
         "pyproject.toml",
         "install/dependency_contract.py",
@@ -196,6 +248,8 @@ def _validate_plan(plan: InstallPlan, args: argparse.Namespace) -> dependency_co
     )
     if any(path.exists() or path.is_symlink() for path in markers):
         raise LinuxInstallError("existing Runtime state requires Linux upgrade support")
+    if host_platform == "Linux":
+        _preflight_linux_services(plan)
     try:
         return dependency_contract.load_contract_selection(
             plan.source_root / "install" / "runtime-dependencies.lock.json",

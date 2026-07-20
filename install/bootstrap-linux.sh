@@ -28,7 +28,7 @@ Bootstrap options:
   --ref COMMIT         Exact 40- or 64-character commit.
   --cache-root PATH    Installer source/dependency cache root.
   --git PATH           Git executable.
-  --python PATH        Python 3.11+ executable.
+  --python PATH        CPython 3.13 executable.
   --offline            Never access the network.
   --dry-run            Validate and print the Linux installation plan.
 EOF
@@ -159,8 +159,8 @@ if [ ! -f "$SOURCE_ROOT/install/install_linux.py" ]; then
   exit 2
 fi
 
-if ! "$PYTHON_BIN" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' >/dev/null 2>&1; then
-  bootstrap_error "Python 3.11 or newer is required for Linux setup"
+if ! "$PYTHON_BIN" -c 'import platform, sys; raise SystemExit(0 if platform.python_implementation() == "CPython" and sys.version_info[:2] == (3, 13) else 1)' >/dev/null 2>&1; then
+  bootstrap_error "the current Linux Runtime lock requires CPython 3.13"
   exit 2
 fi
 

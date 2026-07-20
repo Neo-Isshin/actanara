@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -54,6 +55,46 @@ class LinuxInstallerTests(unittest.TestCase):
                 self.assertRaisesRegex(install_linux.LinuxInstallError, "local embedding wheels remain gated"),
             ):
                 install_linux._validate_plan(plan, args)
+
+    def test_linux_service_preflight_requires_a_working_user_manager(self):
+        args = self._args()
+        plan = install_linux.build_plan(args)
+        with (
+            patch.object(install_linux.shutil, "which", return_value="/usr/bin/systemctl"),
+            patch.object(
+                install_linux.subprocess,
+                "run",
+                return_value=subprocess.CompletedProcess([], 1, "", "no user bus"),
+            ),
+            self.assertRaisesRegex(install_linux.LinuxInstallError, "systemd user manager is unavailable"),
+        ):
+            install_linux._preflight_linux_services(plan)
+
+    def test_linux_service_preflight_rejects_an_occupied_dashboard_port(self):
+        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.addCleanup(listener.close)
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+        args = self._args("--dashboard-port", str(port))
+        plan = install_linux.build_plan(args)
+        with (
+            patch.object(install_linux.shutil, "which", return_value="/usr/bin/systemctl"),
+            patch.object(
+                install_linux.subprocess,
+                "run",
+                return_value=subprocess.CompletedProcess([], 0, "", ""),
+            ),
+            self.assertRaisesRegex(install_linux.LinuxInstallError, f"Dashboard port {port} is unavailable"),
+        ):
+            install_linux._preflight_linux_services(plan)
+
+    def test_linux_service_preflight_can_be_skipped_for_cli_only_install(self):
+        args = self._args("--no-scheduler", "--no-dashboard-server")
+        plan = install_linux.build_plan(args)
+        with patch.object(install_linux.subprocess, "run") as run:
+            install_linux._preflight_linux_services(plan)
+
+        run.assert_not_called()
 
     def test_dry_run_reports_exact_targets_without_writing_runtime(self):
         with tempfile.TemporaryDirectory() as tmp:
