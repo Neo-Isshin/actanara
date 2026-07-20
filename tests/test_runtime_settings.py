@@ -1674,6 +1674,33 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertEqual(timer["staleReason"], "operator-settings-changed")
         self.assertEqual(timer["lastActionStatus"], "registered-stale")
 
+    def test_write_operator_settings_marks_registered_systemd_timer_stale(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
+            write_settings(
+                {
+                    "schedule": {
+                        "dailyPipelineTime": "04:00",
+                        "systemTimer": {
+                            "provider": "systemd",
+                            "label": "actanara.test",
+                            "registered": True,
+                            "lastActionStatus": "success",
+                        },
+                    }
+                },
+                paths,
+            )
+
+            updated = write_operator_settings({"schedule": {"dailyPipelineTime": "04:15"}}, paths)
+
+        timer = updated["schedule"]["systemTimer"]
+        self.assertTrue(timer["registered"])
+        self.assertTrue(timer["stale"])
+        self.assertTrue(timer["reinstallRequired"])
+        self.assertEqual(timer["staleReason"], "operator-settings-changed")
+        self.assertEqual(timer["lastActionStatus"], "registered-stale")
+
     def test_write_operator_settings_syncs_generated_diary_path_to_runtime_manifest(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -3908,7 +3935,10 @@ class RuntimeSettingsTests(unittest.TestCase):
                 paths,
             )
 
-            with patch.object(foundation_scheduler_preview.Path, "home", return_value=fake_home):
+            with (
+                patch.object(foundation_scheduler_preview.Path, "home", return_value=fake_home),
+                patch.object(foundation_scheduler_preview.platform, "system", return_value="Darwin"),
+            ):
                 preview = foundation_scheduler_preview.preview_system_timer(paths)
 
             jobs = {job["kind"]: job for job in preview["jobs"]}
@@ -4163,7 +4193,10 @@ class RuntimeSettingsTests(unittest.TestCase):
                 },
                 paths,
             )
-            with patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}):
+            with (
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}),
+                patch.object(foundation_scheduler_preview.platform, "system", return_value="Darwin"),
+            ):
                 preview = scheduler.preview_system_timer()
             jobs = {job["kind"]: job for job in preview["jobs"]}
             self.assertTrue(preview["supported"])

@@ -17,6 +17,7 @@ from typing import Any
 import config
 
 from .paths import RuntimePaths, load_paths
+from .platform_support import default_timer_provider
 from .settings import read_settings
 from .time import (
     SCHEDULER_SYSTEM_TIMEZONE_UNKNOWN_ISSUE_CODE,
@@ -40,7 +41,7 @@ def preview_system_timer(
     settings = read_settings(runtime_paths, redact_secrets=True, persist_defaults=False)
     schedule = settings.get("schedule", {})
     timer = schedule.get("systemTimer", {}) if isinstance(schedule.get("systemTimer"), dict) else {}
-    provider = timer.get("provider", "launchd")
+    provider = timer.get("provider", default_timer_provider())
     desired_state = _scheduler_desired_state(schedule, timer)
     if provider == "systemd":
         return {**desired_state, **_systemd_timer_preview(schedule, timer)}

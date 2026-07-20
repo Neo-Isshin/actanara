@@ -36,6 +36,7 @@ from .pipeline_language import (
     valid_pipeline_language_profiles,
 )
 from .network import require_loopback_host
+from .platform_support import default_timer_provider
 from .external_tool_definitions import default_external_tool_settings_from_catalog
 from .paths import (
     RUNTIME_SCHEMA_VERSION,
@@ -417,7 +418,7 @@ def default_settings(paths: RuntimePaths | None = None) -> dict:
                 "currentMonth": True,
             },
             "systemTimer": {
-                "provider": "launchd",
+                "provider": default_timer_provider(),
                 "label": "actanara.daily",
                 "registered": False,
                 "registrationManagedBy": "manual",
@@ -1240,7 +1241,7 @@ def _mark_system_timer_stale_if_needed(current: dict[str, Any], update: dict[str
             raise ValueError(
                 "scheduler-handoff-required: change system/agent scheduler ownership through the explicit handoff API"
             )
-    if timer.get("provider", "launchd") != "launchd" or not timer.get("registered"):
+    if timer.get("provider", default_timer_provider()) not in {"launchd", "systemd"} or not timer.get("registered"):
         return update
     if not _update_affects_system_timer(update):
         return update
