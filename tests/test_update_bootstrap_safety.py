@@ -122,7 +122,12 @@ exit 0
         child_pid, master_fd = pty.fork()
         if child_pid == 0:
             os.chdir(self.root)
-            os.execvpe(command[0], command, env or self._environment())
+            try:
+                os.execvpe(command[0], command, env or self._environment())
+            except OSError:
+                # Never let an exec failure fall back into unittest execution
+                # in the forked child; that would recursively run the suite.
+                os._exit(127)
         os.write(master_fd, response.encode("utf-8"))
         output = bytearray()
         try:
@@ -143,6 +148,13 @@ exit 0
             output.decode("utf-8", errors="replace"),
             "",
         )
+
+    def test_tty_exec_failure_returns_without_forking_another_test_runner(self):
+        env = self._environment(PATH=str(self.bin_dir))
+
+        result = self._run_with_tty("--help", response="\n", env=env)
+
+        self.assertEqual(result.returncode, 127)
 
     def _remote_arguments(self, *, source_url: str = DEFAULT_SOURCE_URL, ref: str | None = None) -> list[str]:
         arguments = [
