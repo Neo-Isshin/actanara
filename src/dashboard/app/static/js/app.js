@@ -1479,7 +1479,7 @@ const OPERATOR_UI_TEXT = {
     dashboardAllowedOrigins: '允许的浏览器 Origin',
     dashboardAllowedOriginsHint: '每行一个 Origin，例如 http://100.x.y.z:3036 或 https://actanara.example.com。',
     dashboardService: 'Dashboard 服务',
-    dashboardRestartNote: '这些值保存到 settings.json；已运行的 Dashboard LaunchAgent 需要重启后才会采用网络/启动参数变更。',
+    dashboardRestartNote: '这些值保存到 settings.json；已运行的 Dashboard 服务需要安全 reconcile 或重启后才会采用网络/启动参数变更。',
     restartCommand: '重启命令：',
     copyCommand: '复制命令',
     copyPrompt: '复制提示词',
@@ -1492,12 +1492,12 @@ const OPERATOR_UI_TEXT = {
     dashboardAggregationTime: 'Dashboard 聚合时间',
     systemTimerProvider: '系统定时器 Provider',
     systemTimerLabel: '系统定时器 Label',
-    systemTimerNote: '系统定时任务不会在保存设置时自动写入。安装会创建两个用户级 launchd job：每日管线和 Dashboard Foundation 聚合，并保留备份/卸载路径。',
+    systemTimerNote: '系统定时任务不会在保存设置时自动写入。安装/更新会由当前平台的用户级服务管理器创建每日管线和 Dashboard Foundation 聚合任务，并保留补偿与安全卸载路径。',
     previewSystemTimer: '预览系统定时任务',
     installUpdate: '安装/更新',
     uninstall: '卸载',
     startupServicesTitle: '开机自启',
-    startupServicesNote: '管理用户级 launchd LaunchAgent。启用或停用会写入/卸载对应 plist，并调用 launchctl；显示状态按系统实际 loaded 状态检测。',
+    startupServicesNote: '管理当前平台的用户级服务。macOS 使用 launchd，Linux 使用 systemd user；状态、运行态和定义一致性均按系统实际结果检测。',
     startupDashboardServer: 'Dashboard server',
     startupRagServer: 'nova-RAG / Embedding server',
     startupReading: '读取开机自启状态…',
@@ -1514,7 +1514,14 @@ const OPERATOR_UI_TEXT = {
     startupPartial: '部分启用',
     startupUnknown: '未知',
     startupSettingsMismatch: 'settings 状态不一致',
-    startupJobs: 'launchd jobs',
+    startupJobs: '受管理任务',
+    startupReconcile: '安全 reconcile',
+    startupStart: '启动',
+    startupStop: '停止',
+    startupRestart: '重启',
+    startupDefinitionMismatch: '服务定义不一致',
+    startupRunning: '运行中',
+    startupStopped: '已停止',
     autoRefreshTargets: '自动刷新目标',
     currentDaySnapshot: '当天 snapshot',
     currentWeekSnapshot: '本周 snapshot',
@@ -1563,8 +1570,8 @@ const OPERATOR_UI_TEXT = {
     uninstallCancelledMismatch: '卸载已取消：确认短语不匹配。',
     installingSystemTimer: '安装系统定时任务…',
     uninstallingSystemTimer: '卸载系统定时任务…',
-    installedJobs: (count) => `已安装 ${count} 个 launchd job。Backup: `,
-    uninstalledJobs: (count) => `已卸载 ${count} 个 launchd job。Backup: `,
+    installedJobs: (count) => `已安装/更新 ${count} 个用户级任务。Backup: `,
+    uninstalledJobs: (count) => `已安全卸载 ${count} 个用户级任务。Backup: `,
     installFailed: '安装失败: ',
     uninstallFailed: '卸载失败: ',
     githubProject: 'GitHub 项目主页',
@@ -1784,7 +1791,7 @@ const OPERATOR_UI_TEXT = {
     dashboardAllowedOrigins: 'Allowed Browser Origins',
     dashboardAllowedOriginsHint: 'One Origin per line, for example http://100.x.y.z:3036 or https://actanara.example.com.',
     dashboardService: 'Dashboard Service',
-    dashboardRestartNote: 'These values are saved to settings.json. A running Dashboard LaunchAgent must be restarted before network/startup parameter changes fully apply.',
+    dashboardRestartNote: 'These values are saved to settings.json. A running Dashboard service must be safely reconciled or restarted before network/startup parameter changes fully apply.',
     restartCommand: 'Restart command: ',
     copyCommand: 'Copy Command',
     copyPrompt: 'Copy Prompt',
@@ -1797,12 +1804,12 @@ const OPERATOR_UI_TEXT = {
     dashboardAggregationTime: 'Dashboard Aggregation Time',
     systemTimerProvider: 'System Timer Provider',
     systemTimerLabel: 'System Timer Label',
-    systemTimerNote: 'System timers are not written automatically when settings are saved. Installation creates two user-level launchd jobs: daily pipeline and Dashboard Foundation aggregation, with backup/uninstall paths.',
+    systemTimerNote: 'System timers are not written automatically when settings are saved. Install/update uses the current platform user-service manager for the daily pipeline and Dashboard Foundation aggregation, with compensation and safe uninstall paths.',
     previewSystemTimer: 'Preview System Timers',
     installUpdate: 'Install / Update',
     uninstall: 'Uninstall',
     startupServicesTitle: 'Startup',
-    startupServicesNote: 'Manage user-level launchd LaunchAgents. Enabling or disabling writes/unloads the managed plist and calls launchctl; displayed status is detected from the actual loaded state.',
+    startupServicesNote: 'Manage user services for the current platform. macOS uses launchd and Linux uses systemd user; status, runtime state, and definition alignment come from the real service manager.',
     startupDashboardServer: 'Dashboard server',
     startupRagServer: 'nova-RAG / Embedding server',
     startupReading: 'Reading startup status...',
@@ -1819,7 +1826,14 @@ const OPERATOR_UI_TEXT = {
     startupPartial: 'partial',
     startupUnknown: 'unknown',
     startupSettingsMismatch: 'settings mismatch',
-    startupJobs: 'launchd jobs',
+    startupJobs: 'managed jobs',
+    startupReconcile: 'Safe reconcile',
+    startupStart: 'Start',
+    startupStop: 'Stop',
+    startupRestart: 'Restart',
+    startupDefinitionMismatch: 'service definition mismatch',
+    startupRunning: 'running',
+    startupStopped: 'stopped',
     autoRefreshTargets: 'Auto Refresh Targets',
     currentDaySnapshot: 'Current Day Snapshot',
     currentWeekSnapshot: 'Current Week Snapshot',
@@ -1868,8 +1882,8 @@ const OPERATOR_UI_TEXT = {
     uninstallCancelledMismatch: 'Uninstall cancelled: confirmation phrase did not match.',
     installingSystemTimer: 'Installing system timers...',
     uninstallingSystemTimer: 'Uninstalling system timers...',
-    installedJobs: (count) => `Installed ${count} launchd job${Number(count) === 1 ? '' : 's'}. Backup: `,
-    uninstalledJobs: (count) => `Uninstalled ${count} launchd job${Number(count) === 1 ? '' : 's'}. Backup: `,
+    installedJobs: (count) => `Installed/updated ${count} user job${Number(count) === 1 ? '' : 's'}. Backup: `,
+    uninstalledJobs: (count) => `Safely uninstalled ${count} user job${Number(count) === 1 ? '' : 's'}. Backup: `,
     installFailed: 'Install failed: ',
     uninstallFailed: 'Uninstall failed: ',
     githubProject: 'GitHub Project Home',
@@ -6369,7 +6383,7 @@ function settingsTab(name) {
   document.querySelectorAll('.settings-pane').forEach(el => el.classList.toggle('active', el.dataset.pane === name));
   if (name === 'onboarding') loadOnboardingReadiness();
   if (name === 'workspaceAttribution') loadWorkspaceAttributionSettings();
-  if (name === 'startup') loadStartupLaunchAgents();
+  if (name === 'startup') loadStartupServices();
   if (name === 'network') loadTailscaleStatus();
 }
 
@@ -7069,21 +7083,21 @@ function renderStartupSettings() {
     <div class="settings-section">
       <div class="settings-section-title">${escapeHtml(labels.startupServicesTitle)}</div>
       <div class="settings-note">${escapeHtml(labels.startupServicesNote)}</div>
-      <div id="startupLaunchAgents" class="settings-runtime-status">
+      <div id="startupServices" class="settings-runtime-status">
         <div class="wr-loading" style="padding:12px"><div class="wr-spinner"></div><span>${escapeHtml(labels.startupReading)}</span></div>
       </div>
     </div>`;
 }
 
-async function loadStartupLaunchAgents(message = '') {
+async function loadStartupServices(message = '') {
   const labels = operatorText();
-  const panel = document.getElementById('startupLaunchAgents');
+  const panel = document.getElementById('startupServices');
   if (!panel) return;
   panel.innerHTML = '<div class="wr-loading" style="padding:12px"><div class="wr-spinner"></div><span>' + escapeHtml(labels.startupReading) + '</span></div>';
   try {
     const [dashboardRes, ragRes] = await Promise.all([
-      fetch('/api/settings/launcher/dashboard/preview'),
-      fetch('/api/settings/launcher/rag/preview')
+      fetch('/api/settings/services/dashboard/preview'),
+      fetch('/api/settings/services/rag/preview')
     ]);
     if (!dashboardRes.ok) throw new Error('dashboard HTTP ' + dashboardRes.status);
     if (!ragRes.ok) throw new Error('rag HTTP ' + ragRes.status);
@@ -7092,50 +7106,60 @@ async function loadStartupLaunchAgents(message = '') {
       rag: await ragRes.json()
     };
     ACTANARA_STARTUP_PREVIEWS = previews;
-    panel.innerHTML = renderStartupLaunchAgents(previews, message);
+    panel.innerHTML = renderStartupServices(previews, message);
   } catch (e) {
     panel.innerHTML = '<div class="fo-job-error" style="padding:12px">' + escapeHtml(labels.startupReadFailed + e.message) + '</div>';
   }
 }
 
-function renderStartupLaunchAgents(previews, message = '') {
+function renderStartupServices(previews, message = '') {
   const labels = operatorText();
   return [
-    message ? '<div class="settings-note" id="startupLaunchAgentStatus">' + escapeHtml(message) + '</div>' : '<div class="settings-note" id="startupLaunchAgentStatus"></div>',
-    renderStartupLaunchAgentRow('dashboard', labels.startupDashboardServer, previews.dashboard || {}),
-    renderStartupLaunchAgentRow('rag', labels.startupRagServer, previews.rag || {})
+    message ? '<div class="settings-note" id="startupServiceStatus">' + escapeHtml(message) + '</div>' : '<div class="settings-note" id="startupServiceStatus"></div>',
+    renderStartupServiceRow('dashboard', labels.startupDashboardServer, previews.dashboard || {}),
+    renderStartupServiceRow('rag', labels.startupRagServer, previews.rag || {})
   ].join('');
 }
 
-function renderStartupLaunchAgentRow(kind, label, preview) {
+function renderStartupServiceRow(kind, label, preview) {
   const labels = operatorText();
   const registered = startupPreviewRegistered(preview);
   const status = startupPreviewStatus(preview);
   const probe = preview.runtimeProbe || {};
   const expectedJobs = Number(probe.expectedJobs ?? ((preview.jobs || []).length || 0));
   const loadedJobs = Number(probe.loadedJobs ?? 0);
-  const plistJobs = Number(probe.plistJobs ?? 0);
+  const definitionJobs = Number(probe.definitionJobs ?? probe.plistJobs ?? 0);
   const mismatch = preview.registrationMismatch ? '<span class="settings-runtime-chip warn">' + escapeHtml(labels.startupSettingsMismatch) + '</span>' : '';
+  const definitionMismatch = preview.definitionsAligned === false && registered ? '<span class="settings-runtime-chip warn">' + escapeHtml(labels.startupDefinitionMismatch) + '</span>' : '';
   const jobs = (preview.jobs || []).map(job => {
     const runtime = job.runtimeStatus || {};
-    const loaded = runtime.launchctlLoaded === true ? 'loaded' : runtime.launchctlLoaded === false ? 'not-loaded' : (runtime.status || 'unknown');
-    const chipClass = loaded === 'loaded' ? 'ok' : 'warn';
+    const running = runtime.launchctlLoaded === true || runtime.systemdActive === true;
+    const stopped = runtime.launchctlLoaded === false || runtime.systemdActive === false;
+    const runtimeLabel = running ? labels.startupRunning : stopped ? labels.startupStopped : (runtime.status || labels.startupUnknown);
+    const identifier = job.label || job.unitName || '';
+    const definitionPath = job.plistPath || job.unitPath || '';
     return '<div class="settings-runtime-line" style="padding-left:26px">' +
-      '<span class="settings-runtime-chip ' + chipClass + '">' + escapeHtml(loaded) + '</span> ' +
-      '<b>' + escapeHtml(job.kind || job.label || '') + '</b>' +
-      '<code>Label: ' + escapeHtml(job.label || '') + '</code>' +
-      '<code>Plist: ' + escapeHtml(job.plistPath || '') + '</code>' +
+      '<span class="settings-runtime-chip ' + (running ? 'ok' : 'warn') + '">' + escapeHtml(runtimeLabel) + '</span> ' +
+      '<b>' + escapeHtml(job.kind || identifier) + '</b>' +
+      '<code>' + escapeHtml(identifier) + '</code>' +
+      '<code>' + escapeHtml(definitionPath) + '</code>' +
       '</div>';
   }).join('');
   return '<div class="settings-job-row">' +
     '<div class="settings-runtime-line" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">' +
-      '<label class="settings-check" style="margin:0;min-width:240px"><input type="checkbox" id="startupLaunchAgent-' + escapeHtml(kind) + '" ' + (registered ? 'checked' : '') + ' onchange="toggleStartupLaunchAgent(\'' + escapeJs(kind) + '\', this.checked)"> ' + escapeHtml(label) + '</label>' +
+      '<label class="settings-check" style="margin:0;min-width:240px"><input type="checkbox" id="startupService-' + escapeHtml(kind) + '" ' + (registered ? 'checked' : '') + ' onchange="toggleStartupService(\'' + escapeJs(kind) + '\', this.checked)"> ' + escapeHtml(label) + '</label>' +
       '<span class="settings-runtime-chip ' + status.className + '">' + escapeHtml(status.label) + '</span>' +
     '</div>' +
     '<div class="settings-runtime-line">' +
-      '<b>' + escapeHtml(labels.startupJobs) + '</b> ' + escapeHtml(String(loadedJobs)) + '/' + escapeHtml(String(expectedJobs)) + ' loaded · plist=' + escapeHtml(String(plistJobs)) + '/' + escapeHtml(String(expectedJobs)) + ' · source=' + escapeHtml(preview.registrationSource || 'unknown') +
+      '<b>' + escapeHtml(labels.startupJobs) + '</b> ' + escapeHtml(String(loadedJobs)) + '/' + escapeHtml(String(expectedJobs)) + ' running · definitions=' + escapeHtml(String(definitionJobs)) + '/' + escapeHtml(String(expectedJobs)) + ' · provider=' + escapeHtml(preview.serviceManager || preview.provider || 'unknown') + ' · source=' + escapeHtml(preview.registrationSource || 'unknown') +
     '</div>' +
-    (mismatch ? '<div class="settings-runtime-flags">' + mismatch + '</div>' : '') +
+    ((mismatch || definitionMismatch) ? '<div class="settings-runtime-flags">' + mismatch + definitionMismatch + '</div>' : '') +
+    '<div class="settings-timer-actions">' +
+      '<button type="button" class="settings-browse-btn" onclick="applyStartupServiceAction(\'' + escapeJs(kind) + '\', \'install\')">' + escapeHtml(labels.startupReconcile) + '</button>' +
+      '<button type="button" class="settings-browse-btn" onclick="applyStartupServiceAction(\'' + escapeJs(kind) + '\', \'start\')">' + escapeHtml(labels.startupStart) + '</button>' +
+      '<button type="button" class="settings-browse-btn" onclick="applyStartupServiceAction(\'' + escapeJs(kind) + '\', \'stop\')">' + escapeHtml(labels.startupStop) + '</button>' +
+      '<button type="button" class="settings-browse-btn" onclick="applyStartupServiceAction(\'' + escapeJs(kind) + '\', \'restart\')">' + escapeHtml(labels.startupRestart) + '</button>' +
+    '</div>' +
     jobs +
   '</div>';
 }
@@ -7148,6 +7172,7 @@ function startupPreviewRegistered(preview) {
 function startupPreviewStatus(preview) {
   const labels = operatorText();
   const probeStatus = ((preview || {}).runtimeProbe || {}).status || '';
+  if (startupPreviewRegistered(preview) && preview.actualRunning === false) return {label: labels.startupStopped, className: 'warn'};
   if (startupPreviewRegistered(preview)) return {label: labels.startupLoaded, className: 'ok'};
   if (probeStatus === 'partial') return {label: labels.startupPartial, className: 'warn'};
   if (preview && (preview.actualRegistered === false || preview.registered === false)) return {label: labels.startupNotLoaded, className: 'warn'};
@@ -7155,55 +7180,63 @@ function startupPreviewStatus(preview) {
 }
 
 function startupConfirmationText(kind, action, preview) {
-  const fromPreview = action === 'install'
-    ? (preview || {}).installConfirmationTextRequired
-    : (preview || {}).uninstallConfirmationTextRequired;
+  const key = action + 'ConfirmationTextRequired';
+  const fromPreview = (preview || {})[key];
   if (fromPreview) return fromPreview;
   const fallback = {
     dashboard: {
-      install: 'INSTALL ACTANARA DASHBOARD LAUNCHAGENT',
-      uninstall: 'UNINSTALL ACTANARA DASHBOARD LAUNCHAGENT'
+      install: 'INSTALL ACTANARA DASHBOARD SERVICE',
+      uninstall: 'UNINSTALL ACTANARA DASHBOARD SERVICE',
+      start: 'START ACTANARA DASHBOARD SERVICE',
+      stop: 'STOP ACTANARA DASHBOARD SERVICE',
+      restart: 'RESTART ACTANARA DASHBOARD SERVICE'
     },
     rag: {
-      install: 'INSTALL ACTANARA RAG LAUNCHAGENT',
-      uninstall: 'UNINSTALL ACTANARA RAG LAUNCHAGENT'
+      install: 'INSTALL ACTANARA RAG SERVICE',
+      uninstall: 'UNINSTALL ACTANARA RAG SERVICE',
+      start: 'START ACTANARA RAG SERVICE',
+      stop: 'STOP ACTANARA RAG SERVICE',
+      restart: 'RESTART ACTANARA RAG SERVICE'
     }
   };
   return ((fallback[kind] || {})[action]) || '';
 }
 
-function startupLaunchAgentEndpoint(kind, action) {
-  const endpoints = {
-    dashboard: {
-      install: '/api/settings/launcher/dashboard/install',
-      uninstall: '/api/settings/launcher/dashboard/uninstall'
-    },
-    rag: {
-      install: '/api/settings/launcher/rag/install',
-      uninstall: '/api/settings/launcher/rag/uninstall'
-    }
-  };
-  return ((endpoints[kind] || {})[action]) || '';
+function startupServiceEndpoint(kind, action) {
+  if (!['dashboard', 'rag'].includes(kind)) return '';
+  if (!['install', 'uninstall', 'start', 'stop', 'restart'].includes(action)) return '';
+  return '/api/settings/services/' + encodeURIComponent(kind) + '/' + encodeURIComponent(action);
 }
 
-async function toggleStartupLaunchAgent(kind, checked) {
+async function toggleStartupService(kind, checked) {
+  return applyStartupServiceAction(kind, checked ? 'install' : 'uninstall');
+}
+
+async function applyStartupServiceAction(kind, action) {
   const labels = operatorText();
   const previews = ACTANARA_STARTUP_PREVIEWS || {};
   const preview = previews[kind] || {};
-  const action = checked ? 'install' : 'uninstall';
   const service = kind === 'dashboard' ? labels.startupDashboardServer : labels.startupRagServer;
-  const actionLabel = checked ? labels.startupEnableAction : labels.startupDisableAction;
+  const actionLabels = {
+    install: labels.startupEnableAction,
+    uninstall: labels.startupDisableAction,
+    start: labels.startupStart,
+    stop: labels.startupStop,
+    restart: labels.startupRestart,
+  };
+  const actionLabel = actionLabels[action] || action;
   const confirmationText = startupConfirmationText(kind, action, preview);
-  const endpoint = startupLaunchAgentEndpoint(kind, action);
-  if (!endpoint) throw new Error('unknown startup LaunchAgent action');
+  const endpoint = startupServiceEndpoint(kind, action);
+  if (!endpoint) throw new Error('unknown startup service action');
   const typed = prompt(labels.startupApplyPrompt(service, actionLabel) + confirmationText);
   if (typed !== confirmationText) {
-    const status = document.getElementById('startupLaunchAgentStatus');
+    const status = document.getElementById('startupServiceStatus');
     if (status) status.innerHTML = '<span class="settings-runtime-chip warn">' + escapeHtml(labels.startupCancelledMismatch) + '</span>';
-    await loadStartupLaunchAgents();
+    await loadStartupServices();
+    await loadRagManagedService(labels.startupCancelledMismatch);
     return;
   }
-  const panel = document.getElementById('startupLaunchAgents');
+  const panel = document.getElementById('startupServices');
   if (panel) panel.innerHTML = '<div class="wr-loading" style="padding:12px"><div class="wr-spinner"></div><span>' + escapeHtml(labels.startupUpdating) + '</span></div>';
   try {
     const res = await fetch(endpoint, {
@@ -7216,9 +7249,12 @@ async function toggleStartupLaunchAgent(kind, checked) {
       throw new Error(err.error || ('HTTP ' + res.status));
     }
     await res.json().catch(() => ({}));
-    await loadStartupLaunchAgents(labels.startupUpdated);
+    await loadStartupServices(labels.startupUpdated);
+    await loadRagManagedService(labels.startupUpdated);
   } catch (e) {
     if (panel) panel.innerHTML = '<div class="fo-job-error" style="padding:12px">' + escapeHtml(labels.startupApplyFailed + e.message) + '</div>';
+    const ragPanel = document.getElementById('ragManagedService');
+    if (ragPanel) ragPanel.innerHTML = '<div class="fo-job-error" style="padding:12px">' + escapeHtml(labels.startupApplyFailed + e.message) + '</div>';
   }
 }
 
@@ -7984,6 +8020,7 @@ function updateNovaRagPowerButton(status) {
 
 function renderRagSettings(rag, status) {
   const labels = ragUiText();
+  const serviceLabels = operatorText();
   rag = rag || {};
   status = status || {};
   if (rag.embedding && Object.prototype.hasOwnProperty.call(rag.embedding, 'apiKey')) {
@@ -8012,7 +8049,13 @@ function renderRagSettings(rag, status) {
   const externalPaths = Array.isArray(external.paths) ? external.paths : [];
   const externalInclude = Array.isArray(external.include) ? external.include : [];
   const externalExclude = Array.isArray(external.exclude) ? external.exclude : [];
+  queueMicrotask(() => loadRagManagedService());
   return `
+    <div class="settings-section">
+      <div class="settings-section-title">${escapeHtml(serviceLabels.startupRagServer)} · ${escapeHtml(serviceLabels.startupServicesTitle)}</div>
+      <div class="settings-note">${escapeHtml(serviceLabels.startupServicesNote)}</div>
+      <div id="ragManagedService" class="settings-runtime-status"><div class="wr-loading" style="padding:12px"><div class="wr-spinner"></div><span>${escapeHtml(serviceLabels.startupReading)}</span></div></div>
+    </div>
     <div class="settings-section">
       <div class="settings-section-title">${escapeHtml(labels.instantParams)}</div>
       <div class="settings-runtime-status">
@@ -8649,6 +8692,21 @@ async function loadRagSearchPage() {
   }
 }
 
+async function loadRagManagedService(message = '') {
+  const panel = document.getElementById('ragManagedService');
+  if (!panel) return;
+  const labels = operatorText();
+  try {
+    const response = await fetch('/api/settings/services/rag/preview');
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    const preview = await response.json();
+    ACTANARA_STARTUP_PREVIEWS = Object.assign({}, ACTANARA_STARTUP_PREVIEWS || {}, {rag: preview});
+    panel.innerHTML = (message ? '<div class="settings-note">' + escapeHtml(message) + '</div>' : '') + renderStartupServiceRow('rag', labels.startupRagServer, preview);
+  } catch (error) {
+    panel.innerHTML = '<div class="fo-job-error" style="padding:12px">' + escapeHtml(labels.startupReadFailed + error.message) + '</div>';
+  }
+}
+
 function renderRagSearchStatus(status) {
   const labels = ragUiText();
   const panel = document.getElementById('ragSearchStatus');
@@ -9223,10 +9281,13 @@ function renderSystemTimerPreview(data) {
   }
   const jobs = data.jobs || [];
   const jobHtml = jobs.map(job => {
+    const identifier = job.label || job.timerName || job.unitName || '';
+    const definitionPath = job.plistPath || job.timerPath || job.unitPath || '';
+    const command = (job.programArguments || []).join(' ') || job.command || '';
     return '<div class="settings-timer-job"><b>' + escapeHtml(job.kind) + ' · ' + escapeHtml(job.time) + '</b>' +
-      '<code>Label: ' + escapeHtml(job.label) + '</code>' +
-      '<code>Plist: ' + escapeHtml(job.plistPath) + '</code>' +
-      '<code>' + escapeHtml((job.programArguments || []).join(' ')) + '</code></div>';
+      '<code>' + escapeHtml(identifier) + '</code>' +
+      '<code>' + escapeHtml(definitionPath) + '</code>' +
+      '<code>' + escapeHtml(command) + '</code></div>';
   }).join('');
   return '<div class="settings-note" style="padding:12px;margin:0">Provider: ' + escapeHtml(data.provider) + ' · Registered: ' + (data.registered ? 'yes' : 'no') + '</div>' + jobHtml;
 }

@@ -729,7 +729,7 @@ def _systemd_timer_preview(
             "Move generated unit files into $ACTANARA_HOME/state/backups/systemd.",
             "Mark schedule.systemTimer.registered=false in settings.json.",
         ],
-        "note": "The Linux installer registers these units; Dashboard schedule editing remains read-only.",
+        "note": "Installer and Dashboard use the same managed systemd user-unit definitions; install/update safely reconciles changed schedules.",
     }
 
 

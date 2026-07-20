@@ -7,6 +7,7 @@ import fcntl
 import hashlib
 import json
 import os
+import platform
 import plistlib
 import re
 import subprocess
@@ -24,6 +25,7 @@ from data_foundation.scheduler_preview import (
     _launch_agent_path,
     _launchd_jobs,
     _launchd_runtime_status,
+    _linux_timer_jobs,
     preview_system_timer as _preview_system_timer,
 )
 from data_foundation.settings import (
@@ -34,6 +36,15 @@ from data_foundation.settings import (
     write_settings,
 )
 from data_foundation.settings_transaction import recover_settings_transactions
+from data_foundation.systemd_user import (
+    SystemdUserError,
+    UserUnit,
+    finalize_user_unit_transaction,
+    install_user_units,
+    rollback_user_unit_transaction,
+    scheduler_units,
+    uninstall_user_units,
+)
 from data_foundation.time import resolve_timezone_name
 
 from . import backups, foundation
@@ -109,14 +120,24 @@ def preview_system_timer(
     )
 
 
-def install_system_timer(payload: dict | None = None) -> dict:
+def install_system_timer(
+    payload: dict | None = None,
+    *,
+    systemctl_runner=None,
+    unit_dir: Path | None = None,
+) -> dict:
     payload = payload if isinstance(payload, dict) else {}
     paths = load_paths()
     settings = read_settings(paths, redact_secrets=False)
     schedule = settings.get("schedule", {})
     timer = schedule.get("systemTimer", {}) if isinstance(schedule.get("systemTimer"), dict) else {}
-    if timer.get("provider", "launchd") != "launchd":
-        raise ValueError("only launchd system timer provider is supported")
+    provider = str(timer.get("provider") or "launchd")
+    if provider not in {"launchd", "systemd"}:
+        raise ValueError("system timer provider must be launchd or systemd")
+    if (provider == "launchd" and platform.system() != "Darwin") or (
+        provider == "systemd" and platform.system() != "Linux"
+    ):
+        raise ValueError(f"{provider} is not the user timer provider for this platform")
     if payload.get("dryRun") is True:
         return {
             **preview_system_timer(paths),
@@ -126,6 +147,15 @@ def install_system_timer(payload: dict | None = None) -> dict:
         }
     if str(payload.get("confirmationText") or "") != SCHEDULER_INSTALL_CONFIRMATION:
         raise ValueError(f"confirmationText must be exactly: {SCHEDULER_INSTALL_CONFIRMATION}")
+    if provider == "systemd":
+        return _execute_systemd_scheduler_handoff(
+            paths,
+            schedule=schedule,
+            timer=timer,
+            action="install",
+            systemctl_runner=systemctl_runner,
+            unit_dir=unit_dir,
+        )
     timezone_boundary = preview_system_timer(paths, probe_runtime=False).get("timezoneBoundary") or {}
     if timezone_boundary.get("status") == "blocked":
         raise ValueError(f"Blocked: {timezone_boundary.get('issueCode') or 'scheduler-timezone-boundary'}")
@@ -167,14 +197,24 @@ def install_system_timer(payload: dict | None = None) -> dict:
     return {"installed": installed, "backupDir": None, "handoff": handoff}
 
 
-def uninstall_system_timer(payload: dict | None = None) -> dict:
+def uninstall_system_timer(
+    payload: dict | None = None,
+    *,
+    systemctl_runner=None,
+    unit_dir: Path | None = None,
+) -> dict:
     payload = payload if isinstance(payload, dict) else {}
     paths = load_paths()
     settings = read_settings(paths, redact_secrets=False)
     schedule = settings.get("schedule", {})
     timer = schedule.get("systemTimer", {}) if isinstance(schedule.get("systemTimer"), dict) else {}
-    if timer.get("provider", "launchd") != "launchd":
-        raise ValueError("only launchd system timer provider is supported")
+    provider = str(timer.get("provider") or "launchd")
+    if provider not in {"launchd", "systemd"}:
+        raise ValueError("system timer provider must be launchd or systemd")
+    if (provider == "launchd" and platform.system() != "Darwin") or (
+        provider == "systemd" and platform.system() != "Linux"
+    ):
+        raise ValueError(f"{provider} is not the user timer provider for this platform")
     if payload.get("dryRun") is True:
         return {
             **preview_system_timer(paths),
@@ -187,6 +227,16 @@ def uninstall_system_timer(payload: dict | None = None) -> dict:
     target_mode = str(payload.get("targetMode") or "disabled")
     if target_mode not in {"agent", "disabled"}:
         raise ValueError("targetMode must be one of: agent, disabled")
+    if provider == "systemd":
+        return _execute_systemd_scheduler_handoff(
+            paths,
+            schedule=schedule,
+            timer=timer,
+            action="uninstall",
+            target_mode=target_mode,
+            systemctl_runner=systemctl_runner,
+            unit_dir=unit_dir,
+        )
     jobs = _launchd_jobs(schedule, timer, paths)
     schedule_tz = ZoneInfo(resolve_timezone_name(paths, settings=settings, group="schedule"))
     now = datetime.now(schedule_tz)
@@ -218,6 +268,162 @@ def uninstall_system_timer(payload: dict | None = None) -> dict:
         },
     )
     return {"removed": removed, "backupDir": None, "handoff": handoff}
+
+
+def _execute_systemd_scheduler_handoff(
+    paths,
+    *,
+    schedule: dict[str, Any],
+    timer: dict[str, Any],
+    action: str,
+    target_mode: str = "disabled",
+    systemctl_runner=None,
+    unit_dir: Path | None = None,
+) -> dict[str, Any]:
+    """Commit systemd timer definitions and scheduler settings as one handoff."""
+
+    desired_units = scheduler_units(paths, schedule, timer)
+    desired_names = [unit.name for unit in desired_units]
+    recorded_names = _recorded_systemd_scheduler_names(timer)
+    obsolete_names = [name for name in recorded_names if name not in desired_names]
+    obsolete_units = [
+        UserUnit(name=name, content="", enable_now=name.endswith(".timer"))
+        for name in obsolete_names
+    ]
+    jobs = _linux_timer_jobs(schedule, timer, paths)
+    job_results = [
+        {
+            "kind": job["kind"],
+            "unitName": job["unitName"],
+            "timerName": job["timerName"],
+            "time": job["time"],
+        }
+        for job in jobs
+    ]
+    now = datetime.now().astimezone().isoformat()
+    registered = action == "install"
+    schedule_update = {
+        "enabled": True if registered else target_mode == "agent",
+        "mode": "system" if registered or target_mode == "disabled" else "agent",
+        "systemTimer": {
+            "provider": "systemd",
+            "label": str(timer.get("label") or "actanara.daily"),
+            "registered": registered,
+            "registrationManagedBy": "dashboard-handoff",
+            "registeredAt" if registered else "unregisteredAt": now,
+            "jobs": desired_names if registered else [],
+            "lastAction": action,
+            "lastActionStatus": "success",
+            "lastError": None,
+            "lastErrorAt": None,
+            "stale": False,
+            "reinstallRequired": False,
+        },
+    }
+    holder: dict[str, Any] = {"results": []}
+    runner = systemctl_runner or subprocess.run
+
+    def precommit(context: dict[str, str]):
+        results: list[dict[str, Any]] = holder["results"]
+        try:
+            if registered:
+                if obsolete_units:
+                    results.append(
+                        uninstall_user_units(
+                            paths,
+                            obsolete_units,
+                            unit_dir=unit_dir,
+                            runner=runner,
+                            defer_commit=True,
+                            transaction_context=context,
+                        )
+                    )
+                results.append(
+                    install_user_units(
+                        paths,
+                        desired_units,
+                        unit_dir=unit_dir,
+                        runner=runner,
+                        defer_commit=True,
+                        transaction_context=context,
+                        recover_transactions=not results,
+                    )
+                )
+            else:
+                removal_by_name = {unit.name: unit for unit in desired_units}
+                removal_by_name.update({unit.name: unit for unit in obsolete_units})
+                results.append(
+                    uninstall_user_units(
+                        paths,
+                        list(removal_by_name.values()),
+                        unit_dir=unit_dir,
+                        runner=runner,
+                        defer_commit=True,
+                        transaction_context=context,
+                    )
+                )
+        except Exception:
+            for result in reversed(results):
+                try:
+                    rollback_user_unit_transaction(paths, str(result["transactionId"]), runner=runner)
+                except Exception:
+                    pass
+            raise
+
+        def cleanup() -> None:
+            for result in reversed(results):
+                rollback_user_unit_transaction(paths, str(result["transactionId"]), runner=runner)
+
+        return cleanup
+
+    try:
+        saved = write_scheduler_handoff_settings(
+            schedule_update,
+            paths,
+            precommit_side_effects=precommit,
+        )
+    except SystemdUserError as exc:
+        raise RuntimeError(str(exc)) from exc
+    results = holder["results"]
+    if not results:
+        raise RuntimeError("systemd scheduler handoff did not create a transaction")
+    for result in results:
+        finalize_user_unit_transaction(paths, str(result["transactionId"]), runner=runner)
+    handoff = {
+        "schemaVersion": 1,
+        "provider": "systemd-user",
+        "status": "committed",
+        "action": action,
+        "transactions": [str(result["transactionId"]) for result in results],
+        "settingsTransaction": saved.get("settingsTransaction"),
+    }
+    backup_directories = [
+        str(result["backupDirectory"])
+        for result in results
+        if result.get("backupDirectory")
+    ]
+    return {
+        "installed" if registered else "removed": job_results,
+        "backupDir": backup_directories[-1] if backup_directories else None,
+        "backupDirectories": backup_directories,
+        "handoff": handoff,
+    }
+
+
+def _recorded_systemd_scheduler_names(timer: dict[str, Any]) -> list[str]:
+    suffixes = (
+        ".pipeline.service",
+        ".pipeline.timer",
+        ".dashboard-aggregation.service",
+        ".dashboard-aggregation.timer",
+    )
+    return sorted(
+        {
+            str(name)
+            for name in timer.get("jobs") or []
+            if isinstance(name, str) and name.endswith(suffixes)
+        }
+    )
 
 
 def scheduler_handoff_checkpoint(phase: str, transaction_id: str) -> None:

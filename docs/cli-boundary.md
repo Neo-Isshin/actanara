@@ -64,21 +64,25 @@ operator debugging, but they are not the primary product surface:
 `actanara rag search-memory` is a compatibility alias for the read-only
 Dashboard RAG facade. Product docs should prefer `actanara search ...`.
 
-## Scheduler Boundary
+## Scheduler and Service Boundary
 
-macOS scheduling uses one planner: `data_foundation.scheduler_preview`.
+macOS and Linux scheduling use one planner:
+`data_foundation.scheduler_preview`.
 
-- Dashboard system timer controls call the Dashboard scheduler service, which
-  writes managed LaunchAgent plists, calls `launchctl`, and updates scheduler
-  settings in one operation.
-- Installer and CLI onboarding apply use the same planner in explicit phases:
-  runtime bootstrap, plist write, then launchd registration. This keeps install
-  bootstrap auditable without routing through a running Dashboard process.
-- Linux scheduler apply is outside the v1.0.x product boundary; the managed
-  scheduler implementation targets macOS user LaunchAgents.
+- On macOS, Dashboard system timer controls retain the established launchd
+  handoff: managed LaunchAgent plists, `launchctl`, and scheduler settings are
+  updated in one transaction.
+- On Linux, the same Dashboard controls install, reconcile, and safely remove
+  managed systemd user services and timers through `systemctl --user`.
+- Installer and Dashboard Linux flows share the render, alignment, backup,
+  compensation, and recovery implementation in
+  `data_foundation.systemd_user`; neither flow changes linger implicitly or
+  removes an unmanaged unit.
+- Dashboard and optional RAG services use the platform service manager:
+  launchd on macOS and systemd user units on Linux.
 
-The expected current state is not "one function owns every call"; it is "one
-LaunchAgent contract and one planner, with separate guarded apply surfaces."
+The expected current state is one platform-neutral service contract with
+separate, guarded launchd and systemd-user backends.
 
 ## Out Of Boundary
 
@@ -86,5 +90,5 @@ Do not add current-version CLI commands that:
 
 - edit prompt payloads, diary schemas, RAG evidence schema, or machine contracts;
 - let external governance agents modify or append RAG facts;
-- turn Linux scheduler previews into write-capable apply flows;
+- bypass the platform service manager to mutate launchd or systemd definitions;
 - hide RAG sync failures as successful pipeline completion.

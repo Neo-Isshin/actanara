@@ -6,7 +6,7 @@ except ImportError:  # pragma: no cover - exercised by lightweight test stubs
         return default
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
-from app.services import launcher, msgbox, rag_index_jobs, scheduler, settings, tailscale
+from app.services import msgbox, rag_index_jobs, scheduler, service_manager, settings, tailscale
 from app.services.dashboard_security import dashboard_security_config
 from data_foundation.onboarding_plan import onboarding_subsystem_plan
 from data_foundation.onboarding_status import actanara_onboarding_status
@@ -247,6 +247,8 @@ async def api_onboarding_plan(profile: list[str] | None = Query(None)):
 async def api_scheduler_system_timer_install(payload: dict | None = None):
     try:
         return scheduler.install_system_timer(payload)
+    except SettingsTransactionError as e:
+        return _settings_transaction_error_response(e)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     except Exception as e:
@@ -258,6 +260,8 @@ async def api_scheduler_system_timer_install(payload: dict | None = None):
 async def api_scheduler_system_timer_uninstall(payload: dict | None = None):
     try:
         return scheduler.uninstall_system_timer(payload)
+    except SettingsTransactionError as e:
+        return _settings_transaction_error_response(e)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     except Exception as e:
@@ -268,7 +272,7 @@ async def api_scheduler_system_timer_uninstall(payload: dict | None = None):
 @router.get("/settings/launcher/dashboard/preview")
 async def api_dashboard_launch_agent_preview():
     try:
-        return launcher.preview_dashboard_launch_agent()
+        return service_manager.preview_service("dashboard")
     except Exception as e:
         logger.exception("GET /api/settings/launcher/dashboard/preview failed")
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -277,7 +281,11 @@ async def api_dashboard_launch_agent_preview():
 @router.post("/settings/launcher/dashboard/install")
 async def api_dashboard_launch_agent_install(payload: dict | None = None):
     try:
-        return launcher.install_dashboard_launch_agent(payload)
+        return service_manager.install_service("dashboard", payload)
+    except SettingsTransactionError as e:
+        return _settings_transaction_error_response(e)
+    except service_manager.ServiceManagerError as e:
+        return JSONResponse({"error": str(e)}, status_code=409)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     except Exception as e:
@@ -288,7 +296,11 @@ async def api_dashboard_launch_agent_install(payload: dict | None = None):
 @router.post("/settings/launcher/dashboard/uninstall")
 async def api_dashboard_launch_agent_uninstall(payload: dict | None = None):
     try:
-        return launcher.uninstall_dashboard_launch_agent(payload)
+        return service_manager.uninstall_service("dashboard", payload)
+    except SettingsTransactionError as e:
+        return _settings_transaction_error_response(e)
+    except service_manager.ServiceManagerError as e:
+        return JSONResponse({"error": str(e)}, status_code=409)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     except Exception as e:
@@ -299,7 +311,7 @@ async def api_dashboard_launch_agent_uninstall(payload: dict | None = None):
 @router.get("/settings/launcher/rag/preview")
 async def api_rag_launch_agent_preview():
     try:
-        return launcher.preview_rag_launch_agent()
+        return service_manager.preview_service("rag")
     except Exception as e:
         logger.exception("GET /api/settings/launcher/rag/preview failed")
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -308,7 +320,11 @@ async def api_rag_launch_agent_preview():
 @router.post("/settings/launcher/rag/install")
 async def api_rag_launch_agent_install(payload: dict | None = None):
     try:
-        return launcher.install_rag_launch_agent(payload)
+        return service_manager.install_service("rag", payload)
+    except SettingsTransactionError as e:
+        return _settings_transaction_error_response(e)
+    except service_manager.ServiceManagerError as e:
+        return JSONResponse({"error": str(e)}, status_code=409)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     except Exception as e:
@@ -319,11 +335,47 @@ async def api_rag_launch_agent_install(payload: dict | None = None):
 @router.post("/settings/launcher/rag/uninstall")
 async def api_rag_launch_agent_uninstall(payload: dict | None = None):
     try:
-        return launcher.uninstall_rag_launch_agent(payload)
+        return service_manager.uninstall_service("rag", payload)
+    except SettingsTransactionError as e:
+        return _settings_transaction_error_response(e)
+    except service_manager.ServiceManagerError as e:
+        return JSONResponse({"error": str(e)}, status_code=409)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     except Exception as e:
         logger.exception("POST /api/settings/launcher/rag/uninstall failed")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@router.get("/settings/services/{kind}/preview")
+async def api_service_manager_preview(kind: str):
+    try:
+        return service_manager.preview_service(kind)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        logger.exception("GET /api/settings/services/%s/preview failed", kind)
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@router.post("/settings/services/{kind}/{action}")
+async def api_service_manager_action(kind: str, action: str, payload: dict | None = None):
+    try:
+        if action == "install":
+            return service_manager.install_service(kind, payload)
+        if action == "uninstall":
+            return service_manager.uninstall_service(kind, payload)
+        if action in {"start", "stop", "restart"}:
+            return service_manager.control_service(kind, action, payload)
+        raise ValueError("service action must be install, uninstall, start, stop, or restart")
+    except SettingsTransactionError as e:
+        return _settings_transaction_error_response(e)
+    except service_manager.ServiceManagerError as e:
+        return JSONResponse({"error": str(e)}, status_code=409)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        logger.exception("POST /api/settings/services/%s/%s failed", kind, action)
         return JSONResponse({"error": str(e)}, status_code=500)
 
 

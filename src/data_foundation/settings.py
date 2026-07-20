@@ -1116,6 +1116,25 @@ def write_scheduler_handoff_settings(
     )
 
 
+def write_service_manager_settings(
+    registration_update: dict[str, Any],
+    paths: RuntimePaths,
+    *,
+    precommit_side_effects: Callable[[dict], Callable[[], None] | None],
+) -> dict:
+    """Commit internal service-registration metadata around an external handoff."""
+
+    if not isinstance(registration_update, dict) or not registration_update:
+        raise ValueError("service registration update must be a non-empty object")
+    if set(registration_update) - {"dashboard", "rag"}:
+        raise ValueError("service registration update contains an unsupported group")
+    return _write_operator_settings_transaction(
+        paths,
+        lambda _current: registration_update,
+        precommit_side_effects=precommit_side_effects,
+    )
+
+
 def write_backup_settings(
     backup_update: dict[str, Any],
     paths: RuntimePaths | None = None,

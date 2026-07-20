@@ -155,7 +155,7 @@ nova-RAG (optional) → Read-only Retrieval for External Runtimes
 - 🛠️ **Base tools:** Requires `git` and `curl`, plus `zsh` on macOS or POSIX `sh` on Linux; no `sudo`.
 - 🐍 **Python:** macOS supports Python ≥ 3.11 and can install a verified managed Python; the audited Linux lock currently targets CPython 3.13.
 - 🌐 **Network and storage:** Installation needs access to GitHub, the Python package index, and your model services; the first local `nova-RAG` run may download model weights.
-- ⏱️ **Linux services:** Dashboard and scheduling use user-level systemd units. When a controlling terminal is available, the installer asks whether they should continue after logout before making a no-`sudo` linger request. Non-interactive installs preserve linger unless `--enable-linger` or `--require-linger` is explicit.
+- ⏱️ **Linux services:** Dashboard, scheduling, and optional RAG use user-level systemd units. When a controlling terminal is available, the installer asks whether they should continue after logout before making a no-`sudo` linger request. Non-interactive installs preserve linger unless `--enable-linger` or `--require-linger` is explicit.
 - 🪟 **Windows:** Not a supported one-line target; some components can still be run from source by advanced users.
 
 **Currently supported agent runtimes:** 🦞 OpenClaw · ✳️ Claude Code · 🤖 Codex · ✨ Gemini CLI · ⚕️ Hermes. What can be collected depends on whether compatible logs exist locally and whether their paths are enabled; additional runtimes and broader cross-platform support are planned for future releases.

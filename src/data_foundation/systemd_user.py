@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+import fcntl
+import hashlib
+import json
 import os
 import platform
 import re
 import shutil
 import subprocess
 import tempfile
+import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Any, Callable, Iterable
 
 from .paths import RuntimePaths
 
@@ -30,6 +35,10 @@ class UserUnit:
     name: str
     content: str
     enable_now: bool = True
+
+
+def systemd_transaction_checkpoint(phase: str, transaction_id: str) -> None:
+    """No-op checkpoint patched by interruption-window tests."""
 
 
 def _quote(value: str) -> str:
@@ -292,6 +301,117 @@ def probe_user_units(units: Iterable[UserUnit], *, runner: Runner = subprocess.r
     }
 
 
+def inspect_user_units(
+    units: Iterable[UserUnit],
+    *,
+    unit_dir: Path | None = None,
+    runner: Runner = subprocess.run,
+) -> dict[str, Any]:
+    """Inspect runtime state and persistent definition alignment without writes."""
+
+    selected_units = _validated_units(units)
+    root = unit_dir or default_user_unit_dir()
+    runtime_supported = platform.system() == "Linux" and bool(_systemctl_binary())
+    records: list[dict[str, Any]] = []
+    for unit in selected_units:
+        target = root / unit.name
+        file_state = _unit_file_state(target, expected=unit.content)
+        enabled: bool | None = None
+        active: bool | None = None
+        if runtime_supported:
+            state = _snapshot_unit_states((unit.name,), runner=runner)[unit.name]
+            enabled = state["enabled"]
+            active = state["active"]
+        records.append(
+            {
+                "name": unit.name,
+                "path": str(target),
+                "enableNow": unit.enable_now,
+                "enabled": enabled,
+                "active": active,
+                **file_state,
+            }
+        )
+    managed = all(item["managed"] is True for item in records)
+    definitions_aligned = all(item["aligned"] is True for item in records)
+    enabled_records = [item for item in records if item["enableNow"]]
+    actual_enabled = (
+        all(item["enabled"] is True for item in enabled_records)
+        if runtime_supported and enabled_records
+        else None
+    )
+    actual_active = (
+        all(item["active"] is True for item in enabled_records)
+        if runtime_supported and enabled_records
+        else None
+    )
+    return {
+        "provider": "systemd-user",
+        "supported": runtime_supported,
+        "unitDirectory": str(root),
+        "units": records,
+        "definitionsPresent": all(item["exists"] is True for item in records),
+        "definitionsManaged": managed,
+        "definitionsAligned": definitions_aligned,
+        "actualEnabled": actual_enabled,
+        "actualActive": actual_active,
+        "actualRegistered": (
+            actual_enabled and actual_active
+            if actual_enabled is not None and actual_active is not None
+            else None
+        ),
+    }
+
+
+def control_user_units(
+    paths: RuntimePaths,
+    units: Iterable[UserUnit],
+    action: str,
+    *,
+    unit_dir: Path | None = None,
+    runner: Runner = subprocess.run,
+) -> dict[str, Any]:
+    """Start, stop, or restart installed Actanara-managed user units."""
+
+    _require_linux()
+    if action not in {"start", "stop", "restart"}:
+        raise SystemdUserError("systemd user-unit action must be start, stop, or restart")
+    selected_units = _validated_units(units)
+    root = unit_dir or default_user_unit_dir()
+    names = [unit.name for unit in selected_units if unit.enable_now]
+    if not names:
+        raise SystemdUserError("systemd user-unit action has no runnable units")
+    recovery = recover_user_unit_transactions(paths, runner=runner)
+    blocked = next((item for item in recovery if item.get("status") == "conflict"), None)
+    if blocked:
+        raise SystemdUserError("systemd transaction recovery is blocked by a state conflict")
+    for unit in selected_units:
+        target = root / unit.name
+        state = _unit_file_state(target, expected=unit.content)
+        if not state["exists"]:
+            raise SystemdUserError(f"systemd unit is not installed: {unit.name}")
+        if not state["managed"]:
+            raise SystemdUserError(f"refusing to control an unmanaged systemd unit: {unit.name}")
+        if action in {"start", "restart"} and not state["aligned"]:
+            raise SystemdUserError(
+                f"systemd unit definition must be reconciled before {action}: {unit.name}"
+            )
+    _run_systemctl((action, *names), runner=runner)
+    states = _snapshot_unit_states(names, runner=runner)
+    expected_active = action != "stop"
+    if any(state["active"] is not expected_active for state in states.values()):
+        raise SystemdUserError(f"systemd user units did not reach the requested {action} state")
+    return {
+        "status": "stopped" if action == "stop" else "running",
+        "action": action,
+        "provider": "systemd-user",
+        "units": names,
+        "states": [{"name": name, **states[name]} for name in names],
+        "recoveredTransactions": [item.get("id") for item in recovery],
+        "linger": linger_status(runner=runner),
+    }
+
+
 def _snapshot_unit_states(names: Iterable[str], *, runner: Runner) -> dict[str, dict[str, bool]]:
     states: dict[str, dict[str, bool]] = {}
     for name in names:
@@ -308,6 +428,11 @@ def _restore_unit_states(states: dict[str, dict[str, bool]], *, runner: Runner) 
             _run_systemctl(("disable", "--now", *names), runner=runner, allow_status={0, 1, 3, 4, 5})
         except Exception:
             pass
+    if names:
+        try:
+            _run_systemctl(("reset-failed", *names), runner=runner, allow_status={0, 1, 3, 4, 5})
+        except Exception:
+            pass
     for name, state in states.items():
         try:
             if state["enabled"] and state["active"]:
@@ -318,6 +443,314 @@ def _restore_unit_states(states: dict[str, dict[str, bool]], *, runner: Runner) 
                 _run_systemctl(("start", name), runner=runner)
         except Exception:
             pass
+
+
+def _require_linux() -> None:
+    if platform.system() != "Linux" and os.environ.get("ACTANARA_INSTALL_TEST_MODE") != "1":
+        raise SystemdUserError("systemd user units are only supported on Linux")
+
+
+def _validated_units(units: Iterable[UserUnit]) -> list[UserUnit]:
+    selected = list(units)
+    if not selected or len({unit.name for unit in selected}) != len(selected):
+        raise SystemdUserError("systemd unit set is empty or duplicated")
+    if any(not UNIT_NAME_RE.fullmatch(unit.name) for unit in selected):
+        raise SystemdUserError("systemd unit name is unsafe")
+    return selected
+
+
+def _unit_file_state(target: Path, *, expected: str | None = None) -> dict[str, Any]:
+    if target.is_symlink() or (target.exists() and not target.is_file()):
+        raise SystemdUserError(f"systemd unit target is unsafe: {target.name}")
+    try:
+        content = target.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {"exists": False, "managed": False, "aligned": False, "definitionHash": None}
+    except (OSError, UnicodeError) as exc:
+        raise SystemdUserError(f"systemd unit target is unreadable: {target.name}") from exc
+    managed = content.splitlines()[0] == MANAGED_UNIT_HEADER if content.splitlines() else False
+    return {
+        "exists": True,
+        "managed": managed,
+        "aligned": content == expected if expected is not None else None,
+        "definitionHash": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+    }
+
+
+def _read_optional_bytes(path: Path) -> bytes | None:
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
+        return None
+
+
+def _bytes_hash(content: bytes | None) -> str:
+    return "missing" if content is None else hashlib.sha256(content).hexdigest()
+
+
+def _resource_hash(path: Path) -> str:
+    return _bytes_hash(_read_optional_bytes(path))
+
+
+def _systemd_transaction_root(paths: RuntimePaths) -> Path:
+    return paths.state_dir / "systemd-transactions"
+
+
+@contextmanager
+def _systemd_transaction_lock(paths: RuntimePaths):
+    root = _systemd_transaction_root(paths)
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    root.chmod(0o700)
+    with (root / ".lock").open("a+b") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _atomic_write_bytes(path: Path, content: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        temporary.chmod(0o600)
+        os.replace(temporary, path)
+        path.chmod(0o600)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _write_systemd_journal(transaction_dir: Path, journal: dict[str, Any]) -> None:
+    _atomic_write_bytes(
+        transaction_dir / "journal.json",
+        (json.dumps(journal, sort_keys=True, indent=2) + "\n").encode("utf-8"),
+    )
+
+
+def _read_systemd_journal(transaction_dir: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads((transaction_dir / "journal.json").read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _advance_systemd_transaction(
+    transaction_dir: Path,
+    journal: dict[str, Any],
+    phase: str,
+    *,
+    status: str | None = None,
+) -> None:
+    journal["phase"] = phase
+    if status is not None:
+        journal["status"] = status
+    _write_systemd_journal(transaction_dir, journal)
+
+
+def _begin_systemd_transaction(
+    paths: RuntimePaths,
+    *,
+    action: str,
+    units: list[UserUnit],
+    unit_dir: Path,
+    prior_states: dict[str, dict[str, bool]],
+    transaction_context: dict[str, str] | None,
+) -> tuple[Path, dict[str, Any]]:
+    transaction_id = uuid.uuid4().hex
+    transaction_dir = _systemd_transaction_root(paths) / transaction_id
+    transaction_dir.mkdir(parents=True, mode=0o700)
+    transaction_dir.chmod(0o700)
+    records: list[dict[str, Any]] = []
+    for unit in units:
+        target = unit_dir / unit.name
+        before = _read_optional_bytes(target)
+        if before is not None:
+            _atomic_write_bytes(transaction_dir / f"{unit.name}.before", before)
+        desired = unit.content.encode("utf-8") if action == "install" else None
+        records.append(
+            {
+                "name": unit.name,
+                "enableNow": unit.enable_now,
+                "beforeExists": before is not None,
+                "beforeHash": _bytes_hash(before),
+                "afterHash": _bytes_hash(desired),
+                "beforeMode": (target.stat().st_mode & 0o777) if before is not None else None,
+                "priorState": prior_states[unit.name],
+            }
+        )
+    context = transaction_context if isinstance(transaction_context, dict) else {}
+    journal = {
+        "schemaVersion": 1,
+        "id": transaction_id,
+        "status": "active",
+        "phase": "prior-captured",
+        "action": action,
+        "provider": "systemd-user",
+        "unitDirectory": str(unit_dir),
+        "settingsBeforeHash": context.get("settingsBeforeHash"),
+        "settingsAfterHash": context.get("settingsAfterHash"),
+        "units": records,
+    }
+    _write_systemd_journal(transaction_dir, journal)
+    systemd_transaction_checkpoint("after-prior-captured", transaction_id)
+    return transaction_dir, journal
+
+
+def _transaction_targets(journal: dict[str, Any]) -> tuple[Path, list[dict[str, Any]]]:
+    root = Path(str(journal.get("unitDirectory") or ""))
+    if not root.is_absolute():
+        raise SystemdUserError("systemd transaction unit directory is unsafe")
+    records = journal.get("units") if isinstance(journal.get("units"), list) else []
+    if not records:
+        raise SystemdUserError("systemd transaction has no units")
+    for record in records:
+        if not isinstance(record, dict) or not UNIT_NAME_RE.fullmatch(str(record.get("name") or "")):
+            raise SystemdUserError("systemd transaction unit name is unsafe")
+    return root, records
+
+
+def _transaction_has_conflict(journal: dict[str, Any]) -> bool:
+    root, records = _transaction_targets(journal)
+    return any(
+        _resource_hash(root / str(record["name"]))
+        not in {record.get("beforeHash"), record.get("afterHash")}
+        for record in records
+    )
+
+
+def _restore_systemd_transaction(
+    transaction_dir: Path,
+    journal: dict[str, Any],
+    *,
+    runner: Runner,
+) -> None:
+    if _transaction_has_conflict(journal):
+        raise SystemdUserError("systemd transaction recovery found a definition conflict")
+    root, records = _transaction_targets(journal)
+    states: dict[str, dict[str, bool]] = {}
+    for record in records:
+        name = str(record["name"])
+        target = root / name
+        if bool(record.get("beforeExists")):
+            snapshot = transaction_dir / f"{name}.before"
+            if not snapshot.is_file():
+                raise SystemdUserError("systemd transaction snapshot is missing")
+            _atomic_write_bytes(target, snapshot.read_bytes())
+            mode = record.get("beforeMode")
+            if isinstance(mode, int):
+                target.chmod(mode)
+        else:
+            target.unlink(missing_ok=True)
+        prior = record.get("priorState") if isinstance(record.get("priorState"), dict) else {}
+        states[name] = {"enabled": bool(prior.get("enabled")), "active": bool(prior.get("active"))}
+    _run_systemctl(("daemon-reload",), runner=runner)
+    _restore_unit_states(states, runner=runner)
+    restored_states = _snapshot_unit_states(states, runner=runner)
+    if restored_states != states:
+        raise SystemdUserError("systemd transaction could not restore prior runtime state")
+
+
+def _desired_systemd_transaction_matches(journal: dict[str, Any], *, runner: Runner) -> bool:
+    root, records = _transaction_targets(journal)
+    if any(_resource_hash(root / str(record["name"])) != record.get("afterHash") for record in records):
+        return False
+    states = _snapshot_unit_states((str(record["name"]) for record in records), runner=runner)
+    if journal.get("action") == "uninstall":
+        return all(not state["enabled"] and not state["active"] for state in states.values())
+    return all(
+        not bool(record.get("enableNow"))
+        or (states[str(record["name"])]["enabled"] and states[str(record["name"])]["active"])
+        for record in records
+    )
+
+
+def recover_user_unit_transactions(
+    paths: RuntimePaths,
+    *,
+    runner: Runner = subprocess.run,
+) -> list[dict[str, Any]]:
+    """Recover interrupted systemd mutations without guessing across conflicts."""
+
+    root = _systemd_transaction_root(paths)
+    if not root.exists():
+        return []
+    results: list[dict[str, Any]] = []
+    with _systemd_transaction_lock(paths):
+        for transaction_dir in sorted(path for path in root.iterdir() if path.is_dir()):
+            journal = _read_systemd_journal(transaction_dir)
+            if not journal:
+                results.append({"id": transaction_dir.name, "status": "conflict", "phase": "journal-unreadable"})
+                continue
+            if journal.get("status") in {"committed", "compensated"}:
+                continue
+            transaction_id = str(journal.get("id") or transaction_dir.name)
+            try:
+                definition_conflict = _transaction_has_conflict(journal)
+            except Exception:
+                definition_conflict = True
+            if definition_conflict:
+                _advance_systemd_transaction(transaction_dir, journal, "recovery-conflict", status="conflict")
+                results.append({"id": transaction_id, "status": "conflict", "phase": "definition-conflict"})
+                continue
+            settings_before = journal.get("settingsBeforeHash")
+            settings_after = journal.get("settingsAfterHash")
+            settings_hash = _resource_hash(paths.config_dir / "settings.json")
+            if settings_after and settings_hash == settings_after:
+                if _desired_systemd_transaction_matches(journal, runner=runner):
+                    _advance_systemd_transaction(transaction_dir, journal, "recovered-committed", status="committed")
+                    results.append({"id": transaction_id, "status": "committed", "phase": "recovered-committed"})
+                else:
+                    _advance_systemd_transaction(transaction_dir, journal, "desired-state-conflict", status="conflict")
+                    results.append({"id": transaction_id, "status": "conflict", "phase": "desired-state-conflict"})
+                continue
+            if settings_before and settings_hash != settings_before:
+                _advance_systemd_transaction(transaction_dir, journal, "settings-cas-conflict", status="conflict")
+                results.append({"id": transaction_id, "status": "conflict", "phase": "settings-cas-conflict"})
+                continue
+            try:
+                _restore_systemd_transaction(transaction_dir, journal, runner=runner)
+            except Exception:
+                _advance_systemd_transaction(transaction_dir, journal, "recovery-incomplete", status="conflict")
+                results.append({"id": transaction_id, "status": "conflict", "phase": "recovery-incomplete"})
+            else:
+                _advance_systemd_transaction(transaction_dir, journal, "recovered-prior", status="compensated")
+                results.append({"id": transaction_id, "status": "compensated", "phase": "recovered-prior"})
+    return results
+
+
+def finalize_user_unit_transaction(
+    paths: RuntimePaths,
+    transaction_id: str,
+    *,
+    runner: Runner = subprocess.run,
+) -> None:
+    transaction_dir = _systemd_transaction_root(paths) / transaction_id
+    journal = _read_systemd_journal(transaction_dir)
+    if not journal or str(journal.get("id")) != transaction_id:
+        raise SystemdUserError("systemd transaction journal is unavailable")
+    if not _desired_systemd_transaction_matches(journal, runner=runner):
+        raise SystemdUserError("systemd transaction desired state is no longer aligned")
+    _advance_systemd_transaction(transaction_dir, journal, "committed", status="committed")
+
+
+def rollback_user_unit_transaction(
+    paths: RuntimePaths,
+    transaction_id: str,
+    *,
+    runner: Runner = subprocess.run,
+) -> None:
+    transaction_dir = _systemd_transaction_root(paths) / transaction_id
+    journal = _read_systemd_journal(transaction_dir)
+    if not journal or str(journal.get("id")) != transaction_id:
+        raise SystemdUserError("systemd transaction journal is unavailable")
+    _restore_systemd_transaction(transaction_dir, journal, runner=runner)
+    _advance_systemd_transaction(transaction_dir, journal, "compensated", status="compensated")
 
 
 def linger_status(*, runner: Runner = subprocess.run) -> dict:
@@ -397,33 +830,51 @@ def install_user_units(
     *,
     unit_dir: Path | None = None,
     runner: Runner = subprocess.run,
+    restart_active: bool = True,
+    defer_commit: bool = False,
+    transaction_context: dict[str, str] | None = None,
+    recover_transactions: bool = True,
 ) -> dict:
-    if platform.system() != "Linux" and os.environ.get("ACTANARA_INSTALL_TEST_MODE") != "1":
-        raise SystemdUserError("systemd user units are only supported on Linux")
-    selected_units = list(units)
-    if not selected_units or len({unit.name for unit in selected_units}) != len(selected_units):
-        raise SystemdUserError("systemd unit set is empty or duplicated")
+    _require_linux()
+    selected_units = _validated_units(units)
     root = unit_dir or default_user_unit_dir()
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
     root.chmod(0o700)
+    recovery = recover_user_unit_transactions(paths, runner=runner) if recover_transactions else []
+    if any(item.get("status") == "conflict" for item in recovery):
+        raise SystemdUserError("systemd transaction recovery is blocked by a state conflict")
+    prior_content: dict[str, bytes | None] = {}
+    for unit in selected_units:
+        target = root / unit.name
+        state = _unit_file_state(target, expected=unit.content)
+        if state["exists"] and not state["managed"]:
+            raise SystemdUserError(f"refusing to replace an unmanaged systemd unit: {unit.name}")
+        prior_content[unit.name] = _read_optional_bytes(target)
     backup_root = paths.state_dir / "backups" / "systemd" / datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-    written: list[Path] = []
-    backups: dict[Path, Path] = {}
     enabled_names = [unit.name for unit in selected_units if unit.enable_now]
-    prior_states = _snapshot_unit_states(enabled_names, runner=runner)
+    names = [unit.name for unit in selected_units]
+    prior_states = _snapshot_unit_states(names, runner=runner)
+    changed_names = [
+        unit.name
+        for unit in selected_units
+        if prior_content[unit.name] != unit.content.encode("utf-8")
+    ]
+    transaction_dir, journal = _begin_systemd_transaction(
+        paths,
+        action="install",
+        units=selected_units,
+        unit_dir=root,
+        prior_states=prior_states,
+        transaction_context=transaction_context,
+    )
     try:
         for unit in selected_units:
-            if not UNIT_NAME_RE.fullmatch(unit.name):
-                raise SystemdUserError("systemd unit name is unsafe")
             target = root / unit.name
-            if target.is_symlink() or (target.exists() and not target.is_file()):
-                raise SystemdUserError(f"systemd unit target is unsafe: {unit.name}")
             if target.exists():
                 backup_root.mkdir(parents=True, exist_ok=True, mode=0o700)
                 backup = backup_root / unit.name
                 shutil.copy2(target, backup, follow_symlinks=False)
                 backup.chmod(0o600)
-                backups[target] = backup
             descriptor, temporary_name = tempfile.mkstemp(prefix=f".{unit.name}.", dir=root)
             temporary = Path(temporary_name)
             try:
@@ -435,26 +886,42 @@ def install_user_units(
                 os.replace(temporary, target)
             finally:
                 temporary.unlink(missing_ok=True)
-            written.append(target)
+        _advance_systemd_transaction(transaction_dir, journal, "definitions-applied")
+        systemd_transaction_checkpoint("after-definitions-applied", str(journal["id"]))
         _run_systemctl(("daemon-reload",), runner=runner)
         if enabled_names:
             _run_systemctl(("enable", "--now", *enabled_names), runner=runner)
+        restarted_names = [
+            name
+            for name in enabled_names
+            if restart_active and prior_states[name]["active"]
+        ]
+        if restarted_names:
+            _run_systemctl(("restart", *restarted_names), runner=runner)
+        _advance_systemd_transaction(transaction_dir, journal, "external-applied")
+        systemd_transaction_checkpoint("after-external-applied", str(journal["id"]))
         probe = probe_user_units(selected_units, runner=runner)
         if enabled_names and probe.get("actualRegistered") is not True:
             raise SystemdUserError("systemd user units did not become enabled and active")
+        alignment = inspect_user_units(selected_units, unit_dir=root, runner=runner)
+        if alignment.get("definitionsAligned") is not True:
+            raise SystemdUserError("systemd user-unit definitions are not aligned after install")
+        _advance_systemd_transaction(transaction_dir, journal, "external-verified")
+        systemd_transaction_checkpoint("after-external-verified", str(journal["id"]))
+        if not defer_commit:
+            _advance_systemd_transaction(transaction_dir, journal, "committed", status="committed")
     except Exception:
-        for target in reversed(written):
-            backup = backups.get(target)
-            if backup is not None and backup.is_file():
-                shutil.copy2(backup, target, follow_symlinks=False)
-                target.chmod(0o600)
-            else:
-                target.unlink(missing_ok=True)
         try:
-            _run_systemctl(("daemon-reload",), runner=runner)
+            _restore_systemd_transaction(transaction_dir, journal, runner=runner)
         except Exception:
-            pass
-        _restore_unit_states(prior_states, runner=runner)
+            _advance_systemd_transaction(
+                transaction_dir,
+                journal,
+                "compensation-incomplete",
+                status="conflict",
+            )
+        else:
+            _advance_systemd_transaction(transaction_dir, journal, "compensated", status="compensated")
         raise
     return {
         "status": "installed",
@@ -462,8 +929,14 @@ def install_user_units(
         "unitDirectory": str(root),
         "units": [unit.name for unit in selected_units],
         "enabledUnits": [unit.name for unit in selected_units if unit.enable_now],
+        "changedUnits": changed_names,
+        "restartedUnits": restarted_names,
         "backupDirectory": str(backup_root) if backup_root.exists() else None,
         "probe": probe,
+        "alignment": alignment,
+        "transactionId": str(journal["id"]),
+        "transactionStatus": "pending-settings" if defer_commit else "committed",
+        "recoveredTransactions": [item.get("id") for item in recovery],
         "linger": linger_status(runner=runner),
     }
 
@@ -474,61 +947,75 @@ def uninstall_user_units(
     *,
     unit_dir: Path | None = None,
     runner: Runner = subprocess.run,
+    defer_commit: bool = False,
+    transaction_context: dict[str, str] | None = None,
+    recover_transactions: bool = True,
 ) -> dict:
-    if platform.system() != "Linux" and os.environ.get("ACTANARA_INSTALL_TEST_MODE") != "1":
-        raise SystemdUserError("systemd user units are only supported on Linux")
-    selected_units = list(units)
-    if not selected_units or len({unit.name for unit in selected_units}) != len(selected_units):
-        raise SystemdUserError("systemd unit set is empty or duplicated")
+    _require_linux()
+    selected_units = _validated_units(units)
     root = unit_dir or default_user_unit_dir()
+    recovery = recover_user_unit_transactions(paths, runner=runner) if recover_transactions else []
+    if any(item.get("status") == "conflict" for item in recovery):
+        raise SystemdUserError("systemd transaction recovery is blocked by a state conflict")
     names = [unit.name for unit in selected_units]
     targets: list[Path] = []
     backup_root = paths.state_dir / "backups" / "systemd" / (
         datetime.now().strftime("%Y%m%d-%H%M%S-%f") + "-remove"
     )
-    backups: dict[Path, Path] = {}
     for unit in selected_units:
-        if not UNIT_NAME_RE.fullmatch(unit.name):
-            raise SystemdUserError("systemd unit name is unsafe")
         target = root / unit.name
-        if target.is_symlink() or (target.exists() and not target.is_file()):
-            raise SystemdUserError(f"systemd unit target is unsafe: {unit.name}")
-        if not target.exists():
+        state = _unit_file_state(target)
+        if not state["exists"]:
             continue
-        try:
-            with target.open("r", encoding="utf-8") as handle:
-                first_line = handle.readline().rstrip("\r\n")
-        except OSError as exc:
-            raise SystemdUserError(f"systemd unit target is unreadable: {unit.name}") from exc
-        if first_line != MANAGED_UNIT_HEADER:
+        if not state["managed"]:
             raise SystemdUserError(f"refusing to remove an unmanaged systemd unit: {unit.name}")
         targets.append(target)
 
     prior_states = _snapshot_unit_states(names, runner=runner)
+    transaction_dir, journal = _begin_systemd_transaction(
+        paths,
+        action="uninstall",
+        units=selected_units,
+        unit_dir=root,
+        prior_states=prior_states,
+        transaction_context=transaction_context,
+    )
     try:
         for target in targets:
             backup_root.mkdir(parents=True, exist_ok=True, mode=0o700)
             backup = backup_root / target.name
             shutil.copy2(target, backup, follow_symlinks=False)
             backup.chmod(0o600)
-            backups[target] = backup
         _run_systemctl(("disable", "--now", *names), runner=runner, allow_status={0, 1, 3, 4, 5})
         for target in targets:
             target.unlink()
+        _advance_systemd_transaction(transaction_dir, journal, "definitions-removed")
+        systemd_transaction_checkpoint("after-definitions-removed", str(journal["id"]))
         _run_systemctl(("daemon-reload",), runner=runner)
+        _run_systemctl(("reset-failed", *names), runner=runner, allow_status={0, 1, 3, 4, 5})
+        _advance_systemd_transaction(transaction_dir, journal, "external-applied")
+        systemd_transaction_checkpoint("after-external-applied", str(journal["id"]))
         remaining = _snapshot_unit_states(names, runner=runner)
         if any(state["enabled"] or state["active"] for state in remaining.values()):
             raise SystemdUserError("systemd user units remained enabled or active after removal")
+        if any((root / name).exists() for name in names):
+            raise SystemdUserError("systemd user-unit definitions remained after removal")
+        _advance_systemd_transaction(transaction_dir, journal, "external-verified")
+        systemd_transaction_checkpoint("after-external-verified", str(journal["id"]))
+        if not defer_commit:
+            _advance_systemd_transaction(transaction_dir, journal, "committed", status="committed")
     except Exception:
-        for target, backup in backups.items():
-            if backup.is_file():
-                shutil.copy2(backup, target, follow_symlinks=False)
-                target.chmod(0o600)
         try:
-            _run_systemctl(("daemon-reload",), runner=runner)
+            _restore_systemd_transaction(transaction_dir, journal, runner=runner)
         except Exception:
-            pass
-        _restore_unit_states(prior_states, runner=runner)
+            _advance_systemd_transaction(
+                transaction_dir,
+                journal,
+                "compensation-incomplete",
+                status="conflict",
+            )
+        else:
+            _advance_systemd_transaction(transaction_dir, journal, "compensated", status="compensated")
         raise
     return {
         "status": "uninstalled",
@@ -537,6 +1024,9 @@ def uninstall_user_units(
         "units": names,
         "removedUnits": [target.name for target in targets],
         "backupDirectory": str(backup_root) if backup_root.exists() else None,
+        "transactionId": str(journal["id"]),
+        "transactionStatus": "pending-settings" if defer_commit else "committed",
+        "recoveredTransactions": [item.get("id") for item in recovery],
         "probe": {
             "status": "not-registered",
             "actualRegistered": False,

@@ -22,6 +22,12 @@ DASHBOARD_INSTALL_CONFIRMATION = "INSTALL ACTANARA DASHBOARD LAUNCHAGENT"
 DASHBOARD_UNINSTALL_CONFIRMATION = "UNINSTALL ACTANARA DASHBOARD LAUNCHAGENT"
 RAG_INSTALL_CONFIRMATION = "INSTALL ACTANARA RAG LAUNCHAGENT"
 RAG_UNINSTALL_CONFIRMATION = "UNINSTALL ACTANARA RAG LAUNCHAGENT"
+DASHBOARD_START_CONFIRMATION = "START ACTANARA DASHBOARD LAUNCHAGENT"
+DASHBOARD_STOP_CONFIRMATION = "STOP ACTANARA DASHBOARD LAUNCHAGENT"
+DASHBOARD_RESTART_CONFIRMATION = "RESTART ACTANARA DASHBOARD LAUNCHAGENT"
+RAG_START_CONFIRMATION = "START ACTANARA RAG LAUNCHAGENT"
+RAG_STOP_CONFIRMATION = "STOP ACTANARA RAG LAUNCHAGENT"
+RAG_RESTART_CONFIRMATION = "RESTART ACTANARA RAG LAUNCHAGENT"
 
 
 def preview_dashboard_launch_agent(*, probe_runtime: bool = True, launchctl_runner=None) -> dict[str, Any]:
@@ -46,6 +52,46 @@ def install_rag_launch_agent(payload: dict | None = None) -> dict[str, Any]:
 
 def uninstall_rag_launch_agent(payload: dict | None = None) -> dict[str, Any]:
     return _apply("rag", "uninstall", payload)
+
+
+def control_launch_agent(kind: str, action: str, payload: dict | None = None) -> dict[str, Any]:
+    """Control an installed launchd job without changing its plist definition."""
+
+    if action not in {"start", "stop", "restart"}:
+        raise ValueError("unknown LaunchAgent control action")
+    request = payload if isinstance(payload, dict) else {}
+    if request.get("dryRun") is True:
+        return _preview(kind, action=action, probe_runtime=False)
+    required = _confirmation(kind, action)
+    if str(request.get("confirmationText") or "") != required:
+        raise ValueError(f"confirmationText must be exactly: {required}")
+    jobs = _jobs(kind)
+    operation_results: list[dict[str, Any]] = []
+    for job in jobs:
+        label = str(job["label"])
+        plist_path = Path(str(job["plistPath"]))
+        if not plist_path.is_file():
+            raise RuntimeError(f"LaunchAgent plist is not installed for {label}")
+        if action in {"stop", "restart"}:
+            _record_launchctl(
+                operation_results,
+                "bootout",
+                label,
+                plist_path,
+                allow_failure=action == "restart",
+            )
+        if action in {"start", "restart"}:
+            _record_launchctl(operation_results, "bootstrap", label, plist_path)
+            if job.get("kickstart", True):
+                _record_launchctl(operation_results, "kickstart", label, plist_path, allow_failure=True)
+    return {
+        "kind": kind,
+        "action": action,
+        "provider": "launchd",
+        "status": "stopped" if action == "stop" else "running",
+        "jobs": [_job_result(job) for job in jobs],
+        "operationResults": operation_results,
+    }
 
 
 def _preview(
@@ -74,7 +120,13 @@ def _preview(
         "confirmationTextRequired": confirmation,
         "installConfirmationTextRequired": _confirmation(kind, "install"),
         "uninstallConfirmationTextRequired": _confirmation(kind, "uninstall"),
+        "startConfirmationTextRequired": _confirmation(kind, "start"),
+        "stopConfirmationTextRequired": _confirmation(kind, "stop"),
+        "restartConfirmationTextRequired": _confirmation(kind, "restart"),
         **runtime_summary,
+        "definitionsAligned": all(
+            job.get("definition", {}).get("aligned") is True for job in job_previews
+        ),
         "jobs": job_previews,
         "mutationPolicy": {
             "writesLaunchAgents": False,
@@ -223,6 +275,12 @@ def _confirmation(kind: str, action: str) -> str:
         ("dashboard", "uninstall"): DASHBOARD_UNINSTALL_CONFIRMATION,
         ("rag", "install"): RAG_INSTALL_CONFIRMATION,
         ("rag", "uninstall"): RAG_UNINSTALL_CONFIRMATION,
+        ("dashboard", "start"): DASHBOARD_START_CONFIRMATION,
+        ("dashboard", "stop"): DASHBOARD_STOP_CONFIRMATION,
+        ("dashboard", "restart"): DASHBOARD_RESTART_CONFIRMATION,
+        ("rag", "start"): RAG_START_CONFIRMATION,
+        ("rag", "stop"): RAG_STOP_CONFIRMATION,
+        ("rag", "restart"): RAG_RESTART_CONFIRMATION,
     }
     try:
         return values[(kind, action)]
@@ -246,6 +304,7 @@ def _job_preview(
             "plistPath": job["plistPath"],
             "payload": plistlib.dumps(plist, sort_keys=False).decode("utf-8"),
         },
+        "definition": _plist_definition_alignment(Path(str(job["plistPath"])), plist),
     }
     if probe_runtime:
         preview["runtimeStatus"] = _launchd_runtime_status(
@@ -254,6 +313,18 @@ def _job_preview(
             launchctl_runner=launchctl_runner,
         )
     return preview
+
+
+def _plist_definition_alignment(path: Path, expected: dict[str, Any]) -> dict[str, Any]:
+    if not path.exists():
+        return {"exists": False, "aligned": False, "status": "missing"}
+    try:
+        with path.open("rb") as handle:
+            actual = plistlib.load(handle)
+    except (OSError, plistlib.InvalidFileException, ValueError, TypeError):
+        return {"exists": True, "aligned": False, "status": "invalid"}
+    aligned = actual == expected
+    return {"exists": True, "aligned": aligned, "status": "aligned" if aligned else "mismatch"}
 
 
 def _job_result(job: dict[str, Any]) -> dict[str, Any]:

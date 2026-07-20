@@ -193,6 +193,7 @@ class SystemdUserTests(unittest.TestCase):
                 verb = command[2]
                 if verb in {"is-enabled", "is-active"}:
                     name = command[3]
+                    status_calls.setdefault(name, 0)
                     status_calls[name] += 1
                     if status_calls[name] <= 2 and name == timer_names[0]:
                         return subprocess.CompletedProcess(command, 0, "yes\n", "")

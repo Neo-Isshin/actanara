@@ -152,7 +152,7 @@ nova-RAG（可选）→ 外部 Runtime 只读检索
 - 🛠️ **基础工具**：需要 `git`、`curl`，macOS 另需 `zsh`，Linux 使用 POSIX `sh`；无需 `sudo`。
 - 🐍 **Python**：macOS 支持 Python ≥ 3.11，并可安装校验后的托管 Python；当前经审计的 Linux lock 面向 CPython 3.13。
 - 🌐 **网络与磁盘**：安装期间需访问 GitHub、Python 包索引及你的模型服务；启用本地 `nova-RAG` 时首次可能下载模型权重。
-- ⏱️ **Linux 服务**：Dashboard 与调度使用用户级 systemd unit；存在控制终端时，安装器会先询问是否需要退出登录后继续运行，得到明确同意后才发起不含 `sudo` 的 linger 请求。非交互安装默认保持现状，除非明确使用 `--enable-linger` 或 `--require-linger`。
+- ⏱️ **Linux 服务**：Dashboard、调度与可选 RAG 使用用户级 systemd unit；存在控制终端时，安装器会先询问是否需要退出登录后继续运行，得到明确同意后才发起不含 `sudo` 的 linger 请求。非交互安装默认保持现状，除非明确使用 `--enable-linger` 或 `--require-linger`。
 - 🪟 **Windows**：不是受支持的一行安装目标，高级用户仍可从源码运行部分组件。
 
 **当前支持的 Agent Runtime**：🦞 OpenClaw · ✳️ Claude Code · 🤖 Codex · ✨ Gemini CLI · ⚕️ Hermes。实际可采集内容取决于本机是否存在兼容日志与对应路径是否启用；更多 Runtime 与跨平台能力属于后续版本。
