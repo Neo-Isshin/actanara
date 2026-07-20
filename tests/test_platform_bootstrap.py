@@ -39,6 +39,10 @@ class PlatformBootstrapTests(unittest.TestCase):
             "ACTANARA_INSTALL_SOURCE_ROOT": str(source),
             "ACTANARA_TEST_ADAPTER_LOG": str(log),
         }
+        if platform == "Darwin":
+            # The fixture adapter is POSIX shell, so exercising Darwin
+            # dispatch must not require zsh to be installed on a Linux host.
+            env["ACTANARA_INSTALL_ZSH"] = "/bin/sh"
         result = subprocess.run(
             ["sh", str(SETUP), *arguments],
             cwd=root,
