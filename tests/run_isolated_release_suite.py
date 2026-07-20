@@ -22,6 +22,16 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_FIXED_NOW = "2026-07-11T12:00:00+00:00"
 DEFAULT_TIMEZONE = "Asia/Hong_Kong"
 REQUIRED_TEST_MODULES = ("fastapi", "uvicorn", "yaml", "croniter", "numpy")
+LINUX_EXCLUDED_TEST_MODULES = frozenset(
+    {
+        "test_installer_full_upgrade",
+        "test_installer_v2",
+        "test_scheduler_doctor",
+        "test_scheduler_handoff",
+        "test_update_bootstrap_safety",
+        "test_update_transaction",
+    }
+)
 INHERITED_RUNTIME_ENV = (
     "DIARY_OUTPUT_DIR",
     "ACTANARA_DATA_DB_PATH",
@@ -50,6 +60,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--timezone", default=DEFAULT_TIMEZONE, help="Process timezone; Runtime-specific tests may override it.")
     parser.add_argument("--pattern", default="test_*.py", help="unittest discovery pattern.")
     parser.add_argument("--verbosity", type=int, choices=(1, 2), default=1)
+    parser.add_argument(
+        "--platform-scope",
+        choices=("all", "linux"),
+        default="all",
+        help="Run every test, or exclude explicitly macOS-only installer/launchd modules.",
+    )
     return parser
 
 
@@ -144,6 +160,8 @@ def _bootstrap_disposable_venv(args: argparse.Namespace) -> int:
             args.pattern,
             "--verbosity",
             str(args.verbosity),
+            "--platform-scope",
+            args.platform_scope,
         ]
         return subprocess.run(command, cwd=ROOT, env=install_env, check=False).returncode
 
@@ -176,6 +194,32 @@ def _assert_test_dependencies() -> None:
         raise RuntimeError(
             "isolated release interpreter is missing dev-test modules: " + ", ".join(missing)
         )
+
+
+def _iter_test_cases(suite: unittest.TestSuite):
+    for item in suite:
+        if isinstance(item, unittest.TestSuite):
+            yield from _iter_test_cases(item)
+        else:
+            yield item
+
+
+def _platform_suite(
+    suite: unittest.TestSuite,
+    *,
+    scope: str,
+) -> tuple[unittest.TestSuite, int]:
+    if scope == "all":
+        return suite, 0
+    selected = unittest.TestSuite()
+    excluded = 0
+    for case in _iter_test_cases(suite):
+        module = str(case.__class__.__module__).rsplit(".", 1)[-1]
+        if module in LINUX_EXCLUDED_TEST_MODULES:
+            excluded += 1
+        else:
+            selected.addTest(case)
+    return selected, excluded
 
 
 @contextmanager
@@ -245,12 +289,21 @@ def _run_isolated(args: argparse.Namespace) -> int:
         with ExitStack() as stack:
             stack.enter_context(patch.object(nova_time, "business_now", side_effect=fixed_business_now))
             stack.enter_context(patch.object(dashboard_tz, "hkt_now", return_value=fixed_dashboard_now))
-            suite = unittest.defaultTestLoader.discover(str(ROOT / "tests"), pattern=args.pattern)
+            discovered = unittest.defaultTestLoader.discover(str(ROOT / "tests"), pattern=args.pattern)
+            suite, excluded = _platform_suite(discovered, scope=args.platform_scope)
+            if args.platform_scope == "linux":
+                print(
+                    "ISOLATED_RELEASE_SCOPE "
+                    f"scope=linux excluded={excluded} "
+                    f"modules={','.join(sorted(LINUX_EXCLUDED_TEST_MODULES))}",
+                    flush=True,
+                )
             result = unittest.TextTestRunner(verbosity=args.verbosity).run(suite)
         print(
             "ISOLATED_RELEASE_RESULT "
             f"run={result.testsRun} failures={len(result.failures)} "
-            f"errors={len(result.errors)} skipped={len(result.skipped)}",
+            f"errors={len(result.errors)} skipped={len(result.skipped)} "
+            f"scope={args.platform_scope} excluded={excluded}",
             flush=True,
         )
         return 0 if result.wasSuccessful() else 1

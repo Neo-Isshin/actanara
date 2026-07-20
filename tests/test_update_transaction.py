@@ -916,7 +916,7 @@ print -r -- "$reserved"
 "$PYTHON" "$HELPER" rollback --state "$journal"
 '''
             result = subprocess.run(
-                ["/bin/zsh", "-c", script],
+                [shutil.which("zsh") or "/bin/zsh", "-c", script],
                 env={
                     **os.environ,
                     "PYTHON": sys.executable,

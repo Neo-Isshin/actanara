@@ -16,7 +16,7 @@ os.environ["ACTANARA_SECRET_BACKEND"] = "memory"
 
 from data_foundation.paths import initialize_home
 from data_foundation.scheduler_preview import preview_system_timer
-from data_foundation.settings import write_settings
+from data_foundation.settings import read_settings, write_settings
 from data_foundation import settings_status
 
 
@@ -85,9 +85,14 @@ class SchedulerDoctorTests(unittest.TestCase):
         return paths
 
     def _launchd_preview(self, paths, fake_home: Path, runner):
+        timezone = str(read_settings(paths)["schedule"]["timezone"])
         with (
             patch("data_foundation.scheduler_preview.platform.system", return_value="Darwin"),
             patch("data_foundation.scheduler_preview.os.getuid", return_value=501),
+            patch(
+                "data_foundation.scheduler_preview.detect_system_timezone_authority",
+                return_value=timezone,
+            ),
         ):
             return preview_system_timer(
                 paths,

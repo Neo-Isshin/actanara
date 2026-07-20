@@ -77,7 +77,7 @@ class InstallerV2Tests(unittest.TestCase):
 
     def _write_stateful_fake_launchctl(self, path: Path) -> None:
         path.write_text(
-            """#!/bin/zsh
+            """#!/usr/bin/env zsh
 set -eu
 command_name="${1:-}"
 print -r -- "$*" >> "$ACTANARA_TEST_LAUNCHCTL_CALLS"
@@ -269,7 +269,7 @@ esac
             separators=(",", ":"),
         )
         python.write_text(
-            "#!/bin/zsh\n"
+            "#!/usr/bin/env zsh\n"
             "set -eu\n"
             f"if [[ \"${{1:-}}\" == \"-I\" && \"${{2:-}}\" == \"-B\" && \"${{3:-}}\" == \"-c\" && \"${{4:-}}\" == *\"importlib.metadata\"* ]]; then\n"
             f"  print -r -- {json.dumps(live_payload)}\n"
@@ -319,7 +319,7 @@ esac
     def _write_fake_python(self, path: Path, log_path: Path) -> None:
         locked_distributions = self._locked_distribution_probe_payload()
         path.write_text(
-            f"""#!/bin/zsh
+            f"""#!/usr/bin/env zsh
 set -eu
 print -r -- "$0 $*" >> "{log_path}"
 if [[ "${{1:-}}" == */dependency_contract.py ]]; then
@@ -380,7 +380,7 @@ exit 0
 
     def _write_fake_python_with_dependency_remediation(self, path: Path, log_path: Path, marker_path: Path) -> None:
         path.write_text(
-            f"""#!/bin/zsh
+            f"""#!/usr/bin/env zsh
 set -eu
 print -r -- "$0 $*" >> "{log_path}"
 if [[ "${{1:-}}" == "-m" && "${{2:-}}" == "venv" ]]; then
@@ -431,7 +431,7 @@ exit 0
     def _write_fake_versioned_python(self, path: Path, version: str) -> None:
         major, minor, patch = version.split(".")
         path.write_text(
-            f"""#!/bin/zsh
+            f"""#!/usr/bin/env zsh
 set -eu
 if [[ "${{1:-}}" == "-" ]]; then
   print -r -- "{version}"
@@ -904,7 +904,7 @@ exit 1
             calls = root / "launchctl-calls.log"
             fake_launchctl = root / "launchctl"
             fake_launchctl.write_text(
-                '#!/bin/zsh\nprint -r -- "$*" >> "$ACTANARA_TEST_LAUNCHCTL_CALLS"\n',
+                '#!/usr/bin/env zsh\nprint -r -- "$*" >> "$ACTANARA_TEST_LAUNCHCTL_CALLS"\n',
                 encoding="utf-8",
             )
             fake_launchctl.chmod(0o755)
@@ -1098,7 +1098,7 @@ exit 1
                     venv_pointer.symlink_to(expected_venv_raw)
                 legacy_python = legacy_root / "bin" / "python"
                 legacy_python.parent.mkdir(parents=True, exist_ok=True)
-                legacy_python.write_text("#!/bin/zsh\nexit 0\n", encoding="utf-8")
+                legacy_python.write_text("#!/usr/bin/env zsh\nexit 0\n", encoding="utf-8")
                 legacy_python.chmod(0o755)
                 settings = runtime / "config" / "settings.json"
                 settings.parent.mkdir(parents=True, exist_ok=True)
@@ -1306,7 +1306,7 @@ exit 1
                 if failure_kind == "term":
                     hook = root / "update-hook"
                     hook.write_text(
-                        "#!/bin/zsh\n"
+                        "#!/usr/bin/env zsh\n"
                         f'if [[ "$1" == "{phase}" ]]; then kill -TERM "$PPID"; fi\n',
                         encoding="utf-8",
                     )
@@ -1319,7 +1319,7 @@ exit 1
                     hook = root / "update-hook"
                     hook_reached = root / "update-hook-reached"
                     hook.write_text(
-                        "#!/bin/zsh\n"
+                        "#!/usr/bin/env zsh\n"
                         f'if [[ "$1" == "{phase}" ]]; then print -r -- "$1" > "{hook_reached}"; kill -KILL "$PPID"; fi\n',
                         encoding="utf-8",
                     )
@@ -1331,7 +1331,7 @@ exit 1
                 elif failure_kind == "conflict":
                     hook = root / "update-hook"
                     hook.write_text(
-                        "#!/bin/zsh\n"
+                        "#!/usr/bin/env zsh\n"
                         f'if [[ "$1" == "{phase}" ]]; then '
                         f'print -r -- \'{{"concurrent":"operator-change"}}\' > "{settings}"; '
                         "exit 97; fi\n",
@@ -4836,7 +4836,7 @@ exit 1
                 "MANIFEST.in": "include LICENSE\n",
                 "LICENSE": "fixture\n",
                 "config.py": "# fixture\n",
-                "install/install.sh": "#!/bin/zsh\nexit 0\n",
+                "install/install.sh": "#!/usr/bin/env zsh\nexit 0\n",
                 "advanced/placeholder.txt": "advanced\n",
                 "src/placeholder.txt": "src\n",
             }
@@ -4945,7 +4945,7 @@ exit 1
                 "LICENSE": "fixture\n",
                 "config.py": "# fixture\n",
                 "install/install.sh": (
-                    "#!/bin/zsh\n"
+                    "#!/usr/bin/env zsh\n"
                     "set -eu\n"
                     "print -r -- \"$@\" > \"${ACTANARA_TEST_INSTALLER_LOG:?}\"\n"
                 ),

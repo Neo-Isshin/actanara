@@ -934,7 +934,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
     def _write_outer_hook(self, fixture: dict[str, object], *, phase: str, kind: str) -> Path:
         hook = Path(fixture["root"]) / f"outer-hook-{phase}-{kind}"
         hook.write_text(
-            "#!/bin/zsh\n"
+            "#!/usr/bin/env zsh\n"
             f'if [[ "$1" == {phase!r} ]]; then\n'
             f'  print -r -- "$1" > {str(fixture["marker"])!r}\n'
             + ('  kill -TERM "$PPID"\n' if kind == "term" else '  kill -KILL "$PPID"\n')
@@ -1398,7 +1398,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                 late_path = Path(fixture["runtime"]) / "app" / "venvs" / f"{phase}-orphan-late-write"
                 owner_hook = Path(fixture["root"]) / f"{phase}-owner-hook"
                 owner_hook.write_text(
-                    "#!/bin/zsh\n"
+                    "#!/usr/bin/env zsh\n"
                     f'if [[ "$1" == "prior-captured" ]]; then print -r -- "$PPID" > {str(owner_pid_path)!r}; fi\n',
                     encoding="utf-8",
                 )

@@ -71,6 +71,14 @@ class _LaunchdVector:
 
 
 class SchedulerHandoffTests(unittest.TestCase):
+    def setUp(self):
+        platform_patcher = patch(
+            "data_foundation.scheduler_preview.platform.system",
+            return_value="Darwin",
+        )
+        platform_patcher.start()
+        self.addCleanup(platform_patcher.stop)
+
     def _runtime(self, root: Path):
         paths = initialize_home(root / "Actanara", legacy_diary_root=root / "Diary")
         write_settings(

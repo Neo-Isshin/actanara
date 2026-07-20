@@ -590,7 +590,7 @@ class ActanaraCliTests(unittest.TestCase):
             source_root = Path(tmp) / "source"
             bootstrap = source_root / "install" / "bootstrap.sh"
             bootstrap.parent.mkdir(parents=True)
-            bootstrap.write_text("#!/bin/zsh\n", encoding="utf-8")
+            bootstrap.write_text("#!/usr/bin/env zsh\n", encoding="utf-8")
             with (
                 patch.object(cli, "_paths_from_args", return_value=candidate_paths),
                 patch.object(cli, "read_settings", return_value={}),
@@ -819,7 +819,7 @@ class ActanaraCliTests(unittest.TestCase):
             source_root = Path(tmp) / "source checkout"
             bootstrap = source_root / "install" / "bootstrap.sh"
             bootstrap.parent.mkdir(parents=True)
-            bootstrap.write_text("#!/bin/zsh\n", encoding="utf-8")
+            bootstrap.write_text("#!/usr/bin/env zsh\n", encoding="utf-8")
             with (
                 patch.object(cli, "_paths_from_args", return_value=candidate_paths) as paths_from_args,
                 patch.object(
@@ -1019,7 +1019,7 @@ class ActanaraCliTests(unittest.TestCase):
             runtime = Path(tmp) / "runtime"
             bootstrap = runtime / "app" / "source" / "install" / "bootstrap.sh"
             bootstrap.parent.mkdir(parents=True)
-            bootstrap.write_text("#!/bin/zsh\n", encoding="utf-8")
+            bootstrap.write_text("#!/usr/bin/env zsh\n", encoding="utf-8")
             args = cli._parser().parse_args(["update", "--dry-run"])
             with patch.object(cli, "ROOT", Path(tmp) / "installed" / "lib" / "python3.12"):
                 command = cli._update_bootstrap_command(args, runtime)
@@ -1819,7 +1819,11 @@ class ActanaraCliTests(unittest.TestCase):
             root = Path(tmp)
             runtime = root / "Actanara"
             fake_home = root / "FakeHome"
-            with redirect_stdout(io.StringIO()) as output:
+            with (
+                patch("data_foundation.settings.default_timer_provider", return_value="launchd"),
+                patch("data_foundation.scheduler_preview.platform.system", return_value="Darwin"),
+                redirect_stdout(io.StringIO()) as output,
+            ):
                 code = cli.main(
                     [
                         "onboarding",

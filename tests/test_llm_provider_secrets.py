@@ -330,6 +330,7 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
         secure_store.assert_called_once_with("actanara", "test-account", secret)
         run.assert_not_called()
 
+    @unittest.skipUnless(sys.platform == "darwin", "macOS Keychain PTY behavior")
     def test_macos_keychain_store_uses_tty_prompt_without_secret_argv(self):
         expected = "synthetic-pty-value"
         with tempfile.TemporaryDirectory() as tmp:
@@ -355,6 +356,7 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
                 timeout_seconds=5,
             )
 
+    @unittest.skipUnless(sys.platform == "darwin", "macOS Keychain PTY behavior")
     def test_macos_keychain_store_confirms_retype_prompt_without_secret_argv(self):
         expected = "synthetic-pty-confirmed-value"
         with tempfile.TemporaryDirectory() as tmp:
@@ -381,6 +383,7 @@ class LlmProviderSecretIsolationTests(unittest.TestCase):
                 timeout_seconds=5,
             )
 
+    @unittest.skipUnless(sys.platform == "darwin", "macOS Keychain PTY behavior")
     def test_macos_keychain_store_sanitizes_child_failure_and_timeout(self):
         secret = "synthetic-" + "pty-failure-value"
         fixtures = {

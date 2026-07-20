@@ -2,6 +2,8 @@ import tomllib
 import unittest
 from pathlib import Path
 
+from tests.run_isolated_release_suite import LINUX_EXCLUDED_TEST_MODULES
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -79,6 +81,19 @@ class ReleaseTestHarnessTests(unittest.TestCase):
         self.assertIn("ACTANARA_TEST_ZSH_FUNCTION_PATH", fixture)
         self.assertIn("module_path=", fixture)
         self.assertIn("fpath=", fixture)
+
+    def test_linux_scope_excludes_only_macos_installer_upgrade_and_launchd_modules(self):
+        self.assertEqual(
+            LINUX_EXCLUDED_TEST_MODULES,
+            {
+                "test_installer_full_upgrade",
+                "test_installer_v2",
+                "test_scheduler_doctor",
+                "test_scheduler_handoff",
+                "test_update_bootstrap_safety",
+                "test_update_transaction",
+            },
+        )
 
 
 if __name__ == "__main__":
