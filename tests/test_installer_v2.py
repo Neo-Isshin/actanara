@@ -788,7 +788,7 @@ exit 1
             "~/.actanara/bin/actanara",
             "--upgrade",
             "https://github.com/Neo-Isshin/actanara",
-            "https://raw.githubusercontent.com/Neo-Isshin/actanara/main/install/bootstrap.sh",
+            "https://raw.githubusercontent.com/Neo-Isshin/actanara/main/install/setup.sh",
         ):
             with self.subTest(token=token):
                 self.assertIn(token, runbook)

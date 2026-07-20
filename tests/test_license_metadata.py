@@ -50,10 +50,10 @@ class LicenseMetadataTests(unittest.TestCase):
                 self.assertIn("GPL-3.0-or-later", content)
                 self.assertIn("](LICENSE)", content)
 
-    def test_public_entrypoints_use_the_main_bootstrap_channel(self):
+    def test_public_entrypoints_use_the_shared_main_setup_channel(self):
         install_command = (
             "curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/actanara/"
-            "main/install/bootstrap.sh | zsh"
+            "main/install/setup.sh | sh"
         )
         obsolete_release_command = (
             "https://github.com/Neo-Isshin/actanara/"

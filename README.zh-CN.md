@@ -62,12 +62,24 @@ Actanara 打通这些壁垒：让 Claude Code 完成的工作能被 Codex 找到
 ## 安装 Actanara
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/actanara/main/install/bootstrap.sh | zsh
+curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/actanara/main/install/setup.sh | sh
 ```
 
-面向本地 macOS 环境，无需 `sudo`。同一条命令既可全新安装，也能在不丢失数据的前提下刷新已有 Runtime。安装器会把当前官方 `main` 解析为精确 commit 再固定安装，因此可复现、可审计。第一次了解 Actanara？可以先体验[在线 Dashboard Demo](https://neo-isshin.github.io/actanara/dashboard-demo/)，再决定是否安装。
+这是 macOS 与 Linux 共用的公开入口，无需 `sudo`。它先把官方 `main`
+解析为精确 commit，再分派到对应平台适配器。macOS 保持原有的引导式
+全新安装与更新行为；Linux 第一阶段只接受全新 Runtime，发现必须升级的
+已有状态时会保守失败。第一次了解 Actanara？可以先体验
+[在线 Dashboard Demo](https://neo-isshin.github.io/actanara/dashboard-demo/)，再决定是否安装。
 
-安装器写入的具体路径、Shell profile 与 LaunchAgent 注册方式见<a href="docs/local-operations-runbook.zh-CN.md">中文本地操作 Runbook</a>。
+稳定 CLI shim 为 `~/.actanara/bin/actanara`，默认还会建立
+`~/.local/bin/actanara` 链接。macOS 可用 `--no-shell-path` 或
+`--shell-path-file /path/to/profile` 控制受管理的 profile 区块；Linux 的
+`--no-shell-path` 只禁止 user-bin 链接，安装器不会编辑 Shell profile。
+高级源码选择使用 `--source-root PATH` 或精确 `--ref <full-commit-sha>`；
+离线操作必须明确选择其中一种来源。
+
+安装器写入路径以及 launchd/systemd 注册边界见
+<a href="docs/local-operations-runbook.zh-CN.md">中文本地操作 Runbook</a>。
 
 ## 🎥 快速开始
 
@@ -135,11 +147,13 @@ nova-RAG（可选）→ 外部 Runtime 只读检索
 
 ## 💻 支持范围
 
-- 🍎 **macOS 一等支持**：引导式安装、Dashboard 服务和托管调度默认使用用户级 `LaunchAgent`。
-- 🛠️ **基础工具**：需要 `zsh`、`git`、`curl`，无需 `sudo`。
-- 🐍 **Python ≥ 3.11**：缺失兼容 Python 时，安装器会自动下载并校验托管 Python。
+- 🍎 **macOS 保持一等支持**：引导式安装、更新、本地 nova-RAG、Dashboard 服务和托管调度继续使用原有用户级 `LaunchAgent` 行为。
+- 🐧 **Linux 第一阶段边界更窄**：已为 Debian 类 `systemd --user` 主机启用 x86_64 与 arm64 锁目标的全新安装；升级/修复和本地 Embedding RAG 仍需分别通过发布门禁。
+- 🛠️ **基础工具**：需要 `git`、`curl`，macOS 另需 `zsh`，Linux 使用 POSIX `sh`；无需 `sudo`。
+- 🐍 **Python**：macOS 支持 Python ≥ 3.11，并可安装校验后的托管 Python；当前经审计的 Linux lock 面向 CPython 3.13。
 - 🌐 **网络与磁盘**：安装期间需访问 GitHub、Python 包索引及你的模型服务；启用本地 `nova-RAG` 时首次可能下载模型权重。
-- 🐧 **Linux / Windows**：非一行安装的一等目标，高级用户可从源码运行部分组件。
+- ⏱️ **Linux 服务**：Dashboard 与调度使用用户级 systemd unit；安装器只报告 linger 状态，绝不会自动启用 linger。
+- 🪟 **Windows**：不是受支持的一行安装目标，高级用户仍可从源码运行部分组件。
 
 **当前支持的 Agent Runtime**：🦞 OpenClaw · ✳️ Claude Code · 🤖 Codex · ✨ Gemini CLI · ⚕️ Hermes。实际可采集内容取决于本机是否存在兼容日志与对应路径是否启用；更多 Runtime 与跨平台能力属于后续版本。
 

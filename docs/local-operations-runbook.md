@@ -8,7 +8,7 @@
 **English** · [简体中文](local-operations-runbook.zh-CN.md) · [Back to the English README](../README.md)
 
 Status: Public operator guide<br>
-Scope: Actanara · Local macOS runtime
+Scope: Actanara · Local macOS and Linux runtime
 
 ## 1. Purpose
 
@@ -20,19 +20,19 @@ In this guide, an **agent runtime** means an AI tool environment with its own se
 
 - GitHub is the only public release and installation source. Private development archives are not part of the public installation path.
 - Published tags, Releases, and artifacts remain immutable.
-- The public one-liner fetches the bootstrap from `main`, then resolves official `origin/main` to an exact full source commit.
+- The public one-liner fetches the POSIX setup entrypoint from `main`, then resolves official `origin/main` to an exact full source commit and selects the platform adapter from that commit.
 - `v1.0.0` has been withdrawn and remains available for audit only. It should not be installed or recommended.
 
 > [!IMPORTANT]
-> The selected source commit carries the exact Runtime dependency lock for supported Python ABIs and macOS architectures. Each installation transaction is pinned to that resolved commit.
+> The selected source commit carries the exact Runtime dependency lock for supported Python ABIs, platforms, and architectures. Each installation transaction is pinned to that resolved commit.
 
 ## 3. Pre-install Checks
 
 Confirm the following:
 
-- 🍎 You are using macOS;
-- 🛠️ `zsh`, `git`, and `curl` are available on `PATH`;
-- 🐍 Python `>=3.11` is required. On supported Apple Silicon and Intel Macs, the installer can download and verify a managed Python when no compatible version is present;
+- 🍎 On macOS, `zsh`, `git`, and `curl` are available on `PATH`;
+- 🐧 On Linux, POSIX `sh`, `git`, `curl`, CPython 3.13, and a working `systemctl --user` manager are available;
+- 🐍 On supported Apple Silicon and Intel Macs, Python `>=3.11` is required and the installer can download and verify a managed Python when no compatible version is present;
 - 🌐 GitHub, the Python package index, and the selected LLM / embedding provider are reachable;
 - 💾 Enough local storage is available for the runtime, Dashboard, and optional local-embedding dependencies;
 - 🔐 Provider API keys are ready, but have not been written to shell history, a README, or an ordinary configuration file.
@@ -41,35 +41,42 @@ Check the base tools:
 
 ```bash
 command -v zsh
+command -v sh
 command -v git
 command -v curl
 python3 --version 2>/dev/null || true
+systemctl --user is-system-running 2>/dev/null || true
 ```
 
-The installer detects supported agent-runtime paths and asks the operator which tools to connect during the guided setup.
+macOS provides the existing guided setup. Linux phase 1 is non-interactive and
+fresh-install-only: existing-Runtime upgrades/repairs and local-embedding RAG
+remain gated. The Linux installer supports separate x86_64 and arm64 lock
+targets without maintaining separate application implementations.
 
 ## 4. Install or Refresh from the Latest Main Commit
 
 Use the public one-liner:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/actanara/main/install/bootstrap.sh | zsh
+curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/actanara/main/install/setup.sh | sh
 ```
 
 The command keeps source selection exact while hiding source plumbing from the user:
 
-1. GitHub serves the maintained bootstrap from `main`;
-2. The bootstrap fetches the official repository;
-3. It resolves official `origin/main` to a full commit;
-4. It installs that detached commit.
+1. GitHub serves the maintained POSIX setup entrypoint from `main`;
+2. The entrypoint resolves official `origin/main` to a full commit;
+3. It fetches the macOS or Linux adapter from that exact commit;
+4. The adapter installs the same detached commit.
 
 > [!NOTE]
 > The entrypoint follows `main`, but each run records and installs one exact commit rather than a moving symbolic ref.
 
 > [!WARNING]
-> The same command supports new and existing Runtimes. Current installations are updated in place. Older layouts require confirmation before managed code and dependencies are rebuilt; user Settings, databases, secrets, logs, and generated assets remain in place.
+> On macOS the same command supports new and existing Runtimes and preserves
+> user Settings, databases, secrets, logs, and generated assets. Linux phase 1
+> accepts a fresh Runtime only and fails closed when upgrade state is detected.
 
-The installation wizard covers, in order:
+The macOS installation wizard covers, in order:
 
 1. Interface language and Pipeline language;
 2. External agent-runtime paths;
@@ -77,6 +84,10 @@ The installation wizard covers, in order:
 4. Whether to enable `nova-RAG`;
 5. Local or cloud embedding configuration;
 6. macOS Dashboard and scheduler services.
+
+Linux uses non-interactive defaults unless options are passed after `--`.
+Dashboard and scheduler services are installed as user-level systemd units.
+The installer reads linger status for diagnostics but never enables linger.
 
 The public installer locale uses `zh-CN` or `en-US`; the runtime's internal Pipeline profile uses `zh` or `en`. Users normally select a language in the installation wizard and should not manually mix values from these two groups.
 
@@ -88,9 +99,10 @@ The public installer locale uses `zh-CN` or `en-US`; the runtime's internal Pipe
 | `~/.actanara` | Runtime, virtual environment, settings, database, logs, secrets, and generated assets |
 | `~/.config/actanara/location.json` | Active runtime pointer |
 | `~/.local/bin/actanara` | User-facing CLI entry on `PATH` |
-| `~/.zprofile` | Marked `PATH` block; disable during installation with `--no-shell-path` |
-| `~/Desktop/Actanara` | Desktop shortcut to the diary directory, created by default |
-| `~/Library/LaunchAgents/` | Dashboard, Scheduler, and optional RAG services |
+| `~/.zprofile` | macOS only: marked `PATH` block; disable with `--no-shell-path` |
+| `~/Desktop/Actanara` | macOS only: desktop shortcut to the diary directory, created by default |
+| `~/Library/LaunchAgents/` | macOS only: Dashboard, Scheduler, and optional RAG services |
+| `~/.config/systemd/user/` | Linux only: Dashboard, Scheduler, and optional RAG user units |
 
 Provider keys are stored in `$ACTANARA_HOME/state/secrets`. The secrets directory uses mode `0700`, and each secret file uses mode `0600`.
 
@@ -275,6 +287,11 @@ The external-runtime contract allows only health checks, statistics, contract re
 
 ## 13. Updates
 
+> [!IMPORTANT]
+> This update transaction is currently supported on macOS. Linux phase 1 is
+> fresh-install-only; use a new Runtime path rather than applying these commands
+> to an existing Linux Runtime.
+
 View the update plan:
 
 ```bash
@@ -346,7 +363,8 @@ Troubleshoot in this order:
 2. Does the Dashboard URL and port match the installation summary?
 3. Does the LLM Provider test pass?
 4. Does `$ACTANARA_HOME/state/secrets` use mode `0700`, with secret files using `0600`?
-5. Do the Pipeline and LaunchAgents use the same `ACTANARA_HOME`?
+5. Do the Pipeline and the platform service manager (LaunchAgents on macOS or
+   systemd user units on Linux) use the same `ACTANARA_HOME`?
 6. Do external-tool paths exist, and are they enabled?
 7. Is the Scheduler duplicated, missing, or failing?
 8. Are the RAG Server and active index ready?
@@ -367,7 +385,7 @@ When filing an Issue, include commands, necessary output, log paths, the runtime
 
 Actanara does not currently include a product-level one-command uninstaller. Do not remove only `~/.actanara`, because this can leave behind:
 
-- macOS LaunchAgents;
+- macOS LaunchAgents or Linux systemd user units;
 - The `~/.local/bin/actanara` CLI shim;
 - The runtime location pointer;
 - The marked `PATH` block in `~/.zprofile`;

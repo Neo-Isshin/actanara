@@ -14,7 +14,10 @@ canonical public install and update authority.
 
 ## Requirements
 
-- macOS with `zsh`, `git`, and Python 3.11 or newer;
+- macOS with `zsh`, or Linux with POSIX `sh` and a user-level systemd manager;
+- `git` and `curl` on either platform;
+- Python 3.11 or newer on macOS; the audited Linux lock currently targets
+  CPython 3.13;
 - network access to GitHub and Python package indexes during installation;
 - a local user account that can create files under its home directory;
 - an LLM provider endpoint and credential if diary generation will call an
@@ -30,34 +33,35 @@ in `~/.config/actanara/location.json`.
 Run the public installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/actanara/main/install/bootstrap.sh | zsh
+curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/actanara/main/install/setup.sh | sh
 ```
 
-GitHub serves the maintained bootstrap from `main`. The launcher resolves the
-official `origin/main` to a full commit, checks out that exact commit in a
-detached source cache, and invokes the installer.
+GitHub serves the maintained POSIX entrypoint from `main`. It resolves official
+`origin/main` to a full commit, downloads the platform adapter from that exact
+commit, then invokes the existing macOS installer or the Linux installer.
 
-The hosted bootstrap supports both new and existing Runtimes. It updates a
-current installation in place, or asks before rebuilding managed code and
-dependencies for an older layout. User Settings and data remain in place.
+On macOS, the hosted entrypoint supports both new and existing Runtimes and
+retains the established update/repair transaction. Linux phase 1 supports a
+fresh Runtime only; it refuses upgrade, repair, and source-only modes instead of
+risking existing state. User Settings and data on macOS remain in place.
 
 ## Install from a checkout
 
 To inspect the plan without writes:
 
 ```bash
-zsh install/bootstrap.sh --dry-run
+sh install/setup.sh --dry-run
 ```
 
 To install from the current checkout:
 
 ```bash
-zsh install/bootstrap.sh
+sh install/setup.sh
 ```
 
 `pyproject.toml` is the direct dependency/profile contract, while
 `install/runtime-dependencies.lock.json` is the exact Runtime resolution
-authority for every supported Python ABI and macOS architecture. Fresh installs
+authority for every supported Python ABI, platform, and architecture. Fresh installs
 and candidate-venv rebuilds use the same wheel-only, SHA-256-verified lock.
 `requirements-release.txt` locks release build tooling only and is not a
 Runtime dependency lock. The ordinary installation includes Base-Pipeline,
@@ -67,14 +71,16 @@ opt-in and are never part of the default production profile.
 Useful non-interactive controls include:
 
 ```bash
-zsh install/bootstrap.sh -- --no-wizard
-zsh install/bootstrap.sh -- --enable-rag
-zsh install/bootstrap.sh -- --no-scheduler
-zsh install/bootstrap.sh -- --no-dashboard-server
-zsh install/bootstrap.sh -- --runtime /path/to/runtime
-zsh install/bootstrap.sh -- --no-shell-path
-zsh install/bootstrap.sh -- --shell-path-file /path/to/profile
+sh install/setup.sh -- --enable-rag
+sh install/setup.sh -- --no-scheduler
+sh install/setup.sh -- --no-dashboard-server
+sh install/setup.sh -- --runtime /path/to/runtime
+sh install/setup.sh -- --no-shell-path
 ```
+
+The guided `--no-wizard` and `--shell-path-file /path/to/profile` controls are
+macOS-only. Linux does not edit a shell profile; without `--no-shell-path` it
+creates only the `~/.local/bin/actanara` link.
 
 The installer performs a preflight before changing the Runtime. It verifies
 paths, Python compatibility, source cleanliness, port policy, collision guards,
@@ -82,8 +88,8 @@ and the selected dependency groups. A failed preflight stops the transaction.
 
 ## Guided choices
 
-The interactive installer asks only for choices needed by the selected product
-profile:
+The macOS interactive installer asks only for choices needed by the selected
+product profile:
 
 - interface language (`zh-CN` or `en-US`);
 - whether to enable nova-RAG;
@@ -118,9 +124,13 @@ actanara model show
 actanara config show
 ```
 
-The installer also runs its post-install doctor before declaring success. Any
+The macOS installer also runs its post-install doctor before declaring success. Any
 blocking result keeps the previous active source and venv available for
 recovery.
+
+The Linux installer explicitly initializes Settings and all SQLite migrations,
+then registers requested Dashboard and scheduler units with `systemctl --user`.
+It reports `loginctl` linger state but never changes it automatically.
 
 ## Dashboard and nova-RAG
 
@@ -128,8 +138,9 @@ The Dashboard normally listens on loopback. Port `3036` is preferred, with
 safe fallback ports when it is occupied. The installer prints the selected URL
 in its completion summary.
 
-When nova-RAG local mode is enabled, its service normally uses loopback port
-`3037`. External Agent integrations must use the read-only API described in
+When nova-RAG local mode is enabled on macOS, its service normally uses loopback
+port `3037`. Linux phase 1 gates local embedding and accepts cloud/server RAG
+only. External Agent integrations must use the read-only API described in
 [rag-external-agent-contract.md](rag-external-agent-contract.md).
 
 Actanara does not expose these services to a public network by default. Keep
@@ -166,6 +177,16 @@ zsh install/install.sh --upgrade --runtime /path/to/runtime --source-root "$PWD"
 
 For offline, pinned-commit, or forced-rebuild updates, see the
 [Local Operations Runbook](local-operations-runbook.md#13-updates).
+
+Offline updates must select an immutable source explicitly:
+
+```bash
+actanara update --apply --offline --ref <full-commit-sha>
+actanara update --apply --offline --source-root /path/to/source
+```
+
+The update workflow above is currently macOS-only. Linux phase 1 requires a new
+Runtime path until its separate upgrade and rollback gates are complete.
 
 ## Backup and recovery
 

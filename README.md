@@ -62,12 +62,27 @@ Actanara breaks down those barriers: work completed in Claude Code can be found 
 ## Install Actanara
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/actanara/main/install/bootstrap.sh | zsh
+curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/actanara/main/install/setup.sh | sh
 ```
 
-Targets local macOS environments, requires no `sudo`. The same command installs a new Runtime or refreshes an existing one without discarding your data. The installer resolves the current official `main` to an exact commit and pins the installation to it, so every install is reproducible and auditable. New here? You can explore the [interactive Dashboard demo](https://neo-isshin.github.io/actanara/dashboard-demo/) before installing.
+This is the shared macOS/Linux entrypoint and requires no `sudo`. It resolves
+the current official `main` to an exact commit before dispatching to the
+platform adapter. macOS keeps its guided fresh-install and update behavior;
+Linux phase 1 accepts a fresh Runtime only and fails closed if existing Runtime
+state would require an upgrade. New here? You can explore the
+[interactive Dashboard demo](https://neo-isshin.github.io/actanara/dashboard-demo/)
+before installing.
 
-For the exact write locations, shell-profile handling, and LaunchAgent registration, see the [Local Operations Runbook](docs/local-operations-runbook.md).
+The stable Runtime shim is `~/.actanara/bin/actanara`; installation also links
+`~/.local/bin/actanara` by default. On macOS, `--no-shell-path` and
+`--shell-path-file /path/to/profile` control the managed profile block. On
+Linux, `--no-shell-path` suppresses the user-bin link and no shell profile is
+edited. Advanced source selection uses `--source-root PATH` or an exact `--ref
+<full-commit-sha>`; offline operation must explicitly select one of those
+sources.
+
+For the exact write locations and launchd/systemd registration boundaries, see
+the [Local Operations Runbook](docs/local-operations-runbook.md).
 
 ## 🎥 Quick Start
 
@@ -135,11 +150,13 @@ nova-RAG (optional) → Read-only Retrieval for External Runtimes
 
 ## 💻 Support and Prerequisites
 
-- 🍎 **macOS is the first-class target:** Guided installation, Dashboard services, and managed scheduling use user-level `LaunchAgent` services by default.
-- 🛠️ **Base tools:** Requires `zsh`, `git`, and `curl`; no `sudo`.
-- 🐍 **Python ≥ 3.11:** On supported Macs the installer downloads and verifies a managed Python when no compatible version is present.
+- 🍎 **macOS remains first-class:** Guided installation, updates, local nova-RAG, Dashboard services, and managed scheduling retain their existing user-level `LaunchAgent` behavior.
+- 🐧 **Linux phase 1 is deliberately narrower:** Fresh installs on Debian-class `systemd --user` hosts are enabled for x86_64 and arm64 lock targets. Upgrade/repair and local-embedding RAG remain gated until their independent release gates pass.
+- 🛠️ **Base tools:** Requires `git` and `curl`, plus `zsh` on macOS or POSIX `sh` on Linux; no `sudo`.
+- 🐍 **Python:** macOS supports Python ≥ 3.11 and can install a verified managed Python; the audited Linux lock currently targets CPython 3.13.
 - 🌐 **Network and storage:** Installation needs access to GitHub, the Python package index, and your model services; the first local `nova-RAG` run may download model weights.
-- 🐧 **Linux and Windows:** Not first-class targets for the one-liner; advanced users can run some components from source.
+- ⏱️ **Linux services:** Dashboard and scheduling use user-level systemd units. The installer reports linger status but never enables linger automatically.
+- 🪟 **Windows:** Not a supported one-line target; some components can still be run from source by advanced users.
 
 **Currently supported agent runtimes:** 🦞 OpenClaw · ✳️ Claude Code · 🤖 Codex · ✨ Gemini CLI · ⚕️ Hermes. What can be collected depends on whether compatible logs exist locally and whether their paths are enabled; additional runtimes and broader cross-platform support are planned for future releases.
 

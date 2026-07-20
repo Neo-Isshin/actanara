@@ -618,7 +618,7 @@
         <article class="feature-card">
           <div class="feature-icon">06</div>
           <h3>安装与运维边界</h3>
-          <p>bootstrap/install 流程支持 dry-run、运行时目录初始化、依赖分组、macOS 调度注册、doctor 检查和回滚视角。</p>
+          <p>setup/install 流程支持 dry-run、运行时目录初始化、依赖分组，以及 macOS launchd 或 Linux systemd user 调度边界。</p>
         </article>
       </div>
     </section>
@@ -660,11 +660,11 @@
       <div class="split">
         <div class="terminal" aria-label="Quick start terminal">
           <div class="terminal-head"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span>quick-start</span></div>
-          <pre><code>zsh install/bootstrap.sh --dry-run
+          <pre><code>sh install/setup.sh --dry-run
 
-zsh install/bootstrap.sh
+sh install/setup.sh
 
-<span id="install-command">curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/actanara/main/install/bootstrap.sh | zsh</span></code></pre>
+<span id="install-command">curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/actanara/main/install/setup.sh | sh</span></code></pre>
         </div>
         <div class="panel">
           <h3>发布与安全保证</h3>
@@ -672,7 +672,7 @@ zsh install/bootstrap.sh
             <li>外挂式非侵入：不替代用户现有 AI 工具，只在旁侧收拢活动并沉淀资产。</li>
             <li>用户专属资产：记忆、任务、经验、总结、报表和检索索引都落在用户控制的本地 runtime。</li>
             <li>生产干净边界：不包含历史工作区日志、缓存、数据库、secret 或冻结脚本。</li>
-            <li>统一安装入口：one-liner 可全新安装或刷新已有 Runtime，并将每次安装固定到官方 main 的精确 commit。</li>
+            <li>统一安装入口：同一 one-liner 自动选择 macOS 或 Linux 适配器，并将每次安装固定到官方 main 的精确 commit；Linux 第一阶段仅支持全新 Runtime。</li>
             <li>可审计运维：Foundation repair、scheduler、settings 和 RAG skill registration 都有计划或记录边界。</li>
             <li>外部 agent 安全接口：RAG external namespace 只读，拒绝写入、索引、服务生命周期等 mutation。</li>
           </ul>

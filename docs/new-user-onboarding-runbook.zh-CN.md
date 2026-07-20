@@ -8,13 +8,16 @@
 **简体中文（当前）** · [English](new-user-onboarding-runbook.md) · [返回中文 README](../README.zh-CN.md)
 
 状态：公开新用户安装指南<br>
-适用范围：Actanara · macOS 本地 Runtime
+适用范围：Actanara · macOS 与 Linux 本地 Runtime
 
 本指南覆盖全新安装、首次健康检查与受支持的更新。[`Neo-Isshin/actanara`](https://github.com/Neo-Isshin/actanara) 的 GitHub Releases 是公开安装与更新的权威来源。
 
 ## 环境要求
 
-- macOS，已安装 `zsh`、`git` 和 Python 3.11 或更新版本；
+- macOS 使用 `zsh`，Linux 使用 POSIX `sh` 与用户级 systemd manager；
+- 两个平台都需要 `git` 与 `curl`；
+- macOS 需要 Python 3.11 或更新版本；当前经审计的 Linux lock 面向
+  CPython 3.13；
 - 安装期间可访问 GitHub 与 Python 包索引；
 - 一个可在自己 home 目录下创建文件的本地用户账号；
 - 如果日记生成会调用外部 Provider，需要 LLM Provider 的 Endpoint 与凭据。
@@ -26,46 +29,52 @@
 运行公开安装器：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/actanara/main/install/bootstrap.sh | zsh
+curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/actanara/main/install/setup.sh | sh
 ```
 
-GitHub 从 `main` 提供持续维护的 bootstrap。启动器把官方 `origin/main` 解析为完整 commit，在 detached 源码缓存中检出该精确 commit，再调用安装器。
+GitHub 从 `main` 提供持续维护的 POSIX 入口。它把官方 `origin/main`
+解析为完整 commit，从同一 commit 获取平台适配器，再调用既有 macOS
+安装器或 Linux 安装器。
 
-托管的 bootstrap 同时支持新建和已有 Runtime：当前安装会原位更新；旧布局会先询问，再重建托管源码与依赖。用户 Settings 与数据保持不变。
+macOS 入口同时支持新建和已有 Runtime，并保留原有更新/修复事务。Linux
+第一阶段只支持全新 Runtime；遇到 upgrade、repair 或 source-only 会保守
+拒绝，不会冒险改动已有状态。macOS 用户 Settings 与数据保持不变。
 
 ## 从本地 checkout 安装
 
 只预览计划、不写入：
 
 ```bash
-zsh install/bootstrap.sh --dry-run
+sh install/setup.sh --dry-run
 ```
 
 从当前 checkout 安装：
 
 ```bash
-zsh install/bootstrap.sh
+sh install/setup.sh
 ```
 
-`pyproject.toml` 是直接的依赖/profile 合约，而 `install/runtime-dependencies.lock.json` 是每个受支持 Python ABI 与 macOS 架构的精确 Runtime 解析权威。全新安装与候选 venv 重建都使用同一份 wheel-only、SHA-256 校验的 lock。`requirements-release.txt` 只锁定发布构建工具，不是 Runtime 依赖锁。常规安装包含 Base-Pipeline、Dashboard 和 Nova-Task；nova-RAG 是可选的。开发者测试依赖按需启用，从不属于默认生产 profile。
+`pyproject.toml` 是直接的依赖/profile 合约，而 `install/runtime-dependencies.lock.json` 是每个受支持 Python ABI、平台与架构的精确 Runtime 解析权威。全新安装与候选 venv 重建都使用同一份 wheel-only、SHA-256 校验的 lock。`requirements-release.txt` 只锁定发布构建工具，不是 Runtime 依赖锁。常规安装包含 Base-Pipeline、Dashboard 和 Nova-Task；nova-RAG 是可选的。开发者测试依赖按需启用，从不属于默认生产 profile。
 
 常用的非交互控制参数：
 
 ```bash
-zsh install/bootstrap.sh -- --no-wizard
-zsh install/bootstrap.sh -- --enable-rag
-zsh install/bootstrap.sh -- --no-scheduler
-zsh install/bootstrap.sh -- --no-dashboard-server
-zsh install/bootstrap.sh -- --runtime /path/to/runtime
-zsh install/bootstrap.sh -- --no-shell-path
-zsh install/bootstrap.sh -- --shell-path-file /path/to/profile
+sh install/setup.sh -- --enable-rag
+sh install/setup.sh -- --no-scheduler
+sh install/setup.sh -- --no-dashboard-server
+sh install/setup.sh -- --runtime /path/to/runtime
+sh install/setup.sh -- --no-shell-path
 ```
+
+引导式 `--no-wizard` 与 `--shell-path-file /path/to/profile` 仅适用于
+macOS。Linux 不编辑 Shell profile；不加 `--no-shell-path` 时只创建
+`~/.local/bin/actanara` 链接。
 
 安装器在改动 Runtime 前会执行 preflight：校验路径、Python 兼容性、源码洁净度、端口策略、冲突检查和所选依赖组。preflight 失败会终止事务。
 
 ## 引导式选择
 
-交互式安装器只会询问所选产品 profile 需要的选项：
+macOS 交互式安装器只会询问所选产品 profile 需要的选项：
 
 - 界面语言（`zh-CN` 或 `en-US`）；
 - 是否启用 nova-RAG；
@@ -95,13 +104,19 @@ actanara model show
 actanara config show
 ```
 
-安装器在宣布成功前还会运行 post-install doctor。任何阻断性结果都会保留前一个可用源码与 venv 以便恢复。
+macOS 安装器在宣布成功前还会运行 post-install doctor。任何阻断性结果都会保留前一个可用源码与 venv 以便恢复。
+
+Linux 安装器会显式初始化 Settings 与全部 SQLite migration，再用
+`systemctl --user` 注册所选 Dashboard 和调度 unit。它只报告 `loginctl`
+linger 状态，绝不会自动修改。
 
 ## Dashboard 与 nova-RAG
 
 Dashboard 通常监听 loopback。优先使用端口 `3036`，被占用时安全回退到其他端口。安装器在完成摘要中打印选中的 URL。
 
-启用 nova-RAG 本地模式时，其服务通常使用 loopback 端口 `3037`。外部 Agent 集成必须使用 [rag-external-agent-contract.md](rag-external-agent-contract.md) 描述的只读 API。
+macOS 启用 nova-RAG 本地模式时，其服务通常使用 loopback 端口 `3037`。
+Linux 第一阶段禁止本地 Embedding，只接受 cloud/server RAG。外部 Agent
+集成必须使用 [rag-external-agent-contract.md](rag-external-agent-contract.md) 描述的只读 API。
 
 Actanara 默认不把这些服务暴露到公网。除非你单独配置了经过认证的私有网络访问，否则请保持 loopback 绑定。
 
@@ -128,6 +143,16 @@ zsh install/install.sh --upgrade --runtime /path/to/runtime --source-root "$PWD"
 ```
 
 离线、指定 commit 或强制重建更新，见[中文本地操作 Runbook](local-operations-runbook.zh-CN.md) 第 13 节「更新」。
+
+离线更新必须显式选择不可变来源：
+
+```bash
+actanara update --apply --offline --ref <full-commit-sha>
+actanara update --apply --offline --source-root /path/to/source
+```
+
+以上更新流程目前仅适用于 macOS。Linux 第一阶段必须使用新的 Runtime
+路径，直至独立的升级与回滚门禁完成。
 
 ## 备份与恢复
 
