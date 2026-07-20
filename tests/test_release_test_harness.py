@@ -70,6 +70,16 @@ class ReleaseTestHarnessTests(unittest.TestCase):
         self.assertIn('patch.object(nova_time, "business_now"', runner)
         self.assertIn('patch.object(dashboard_tz, "hkt_now"', runner)
 
+    def test_unpacked_linux_zsh_fixture_is_explicitly_opt_in(self):
+        fixture = (ROOT / "tests" / "fixtures" / "linux-zsh" / ".zshenv").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("ACTANARA_TEST_ZSH_MODULE_PATH", fixture)
+        self.assertIn("ACTANARA_TEST_ZSH_FUNCTION_PATH", fixture)
+        self.assertIn("module_path=", fixture)
+        self.assertIn("fpath=", fixture)
+
 
 if __name__ == "__main__":
     unittest.main()
