@@ -19,6 +19,12 @@ import config
 from .paths import RuntimePaths, load_paths
 from .platform_support import default_timer_provider
 from .settings import read_settings
+from .systemd_user import (
+    SystemdUserError,
+    default_user_unit_dir,
+    probe_user_units,
+    scheduler_units,
+)
 from .time import (
     SCHEDULER_SYSTEM_TIMEZONE_UNKNOWN_ISSUE_CODE,
     SCHEDULER_TIMEZONE_MISMATCH_ISSUE_CODE,
@@ -35,6 +41,7 @@ def preview_system_timer(
     launch_agent_home: Path | None = None,
     probe_runtime: bool = False,
     launchctl_runner=None,
+    systemctl_runner=None,
 ) -> dict[str, Any]:
     """Return the read-only system timer plan for the selected runtime."""
     runtime_paths = paths or load_paths()
@@ -44,7 +51,16 @@ def preview_system_timer(
     provider = timer.get("provider", default_timer_provider())
     desired_state = _scheduler_desired_state(schedule, timer)
     if provider == "systemd":
-        return {**desired_state, **_systemd_timer_preview(schedule, timer)}
+        return {
+            **desired_state,
+            **_systemd_timer_preview(
+                schedule,
+                timer,
+                runtime_paths,
+                probe_runtime=probe_runtime,
+                systemctl_runner=systemctl_runner,
+            ),
+        }
     if provider == "cron":
         return {**desired_state, **_cron_timer_preview(schedule, timer)}
     if provider != "launchd":
@@ -567,14 +583,52 @@ def _launchd_jobs(schedule: dict[str, Any], timer: dict[str, Any], paths: Runtim
     ]
 
 
-def _systemd_timer_preview(schedule: dict[str, Any], timer: dict[str, Any]) -> dict[str, Any]:
-    jobs = _linux_timer_jobs(schedule, timer)
+def _systemd_timer_preview(
+    schedule: dict[str, Any],
+    timer: dict[str, Any],
+    paths: RuntimePaths,
+    *,
+    probe_runtime: bool,
+    systemctl_runner=None,
+) -> dict[str, Any]:
+    jobs = _linux_timer_jobs(schedule, timer, paths)
+    units = scheduler_units(paths, schedule, timer)
+    unit_root = default_user_unit_dir()
+    configured_registered = bool(timer.get("registered"))
+    runtime_probe = {
+        "status": "not-probed",
+        "actualRegistered": None,
+        "units": [unit.name for unit in units if unit.enable_now],
+    }
+    if probe_runtime:
+        try:
+            runtime_probe = probe_user_units(
+                units,
+                **({"runner": systemctl_runner} if systemctl_runner is not None else {}),
+            )
+        except SystemdUserError:
+            runtime_probe = {
+                "status": "unknown",
+                "actualRegistered": None,
+                "units": [unit.name for unit in units if unit.enable_now],
+            }
+    actual_registered = runtime_probe.get("actualRegistered")
     return {
         "provider": "systemd",
         "supported": platform.system() == "Linux",
         "registrationImplemented": False,
-        "registered": bool(timer.get("registered")),
-        "binary": shutil.which("systemctl"),
+        "installerRegistrationImplemented": platform.system() == "Linux",
+        "registered": configured_registered if actual_registered is None else bool(actual_registered),
+        "configuredRegistered": configured_registered,
+        "actualRegistered": actual_registered,
+        "registrationSource": "systemd-probe" if actual_registered is not None else "settings",
+        "registrationMismatch": (
+            configured_registered != bool(actual_registered)
+            if actual_registered is not None
+            else False
+        ),
+        "runtimeProbe": {"enabled": probe_runtime, **runtime_probe},
+        "binary": os.environ.get("ACTANARA_INSTALL_SYSTEMCTL") or shutil.which("systemctl"),
         "jobs": [
             {
                 "kind": job["kind"],
@@ -582,6 +636,8 @@ def _systemd_timer_preview(schedule: dict[str, Any], timer: dict[str, Any]) -> d
                 "timerName": job["timerName"],
                 "time": job["time"],
                 "command": job["command"],
+                "unitPath": str(unit_root / job["unitName"]),
+                "timerPath": str(unit_root / job["timerName"]),
             }
             for job in jobs
         ],
@@ -595,7 +651,7 @@ def _systemd_timer_preview(schedule: dict[str, Any], timer: dict[str, Any]) -> d
             "Move generated unit files into $ACTANARA_HOME/state/backups/systemd.",
             "Mark schedule.systemTimer.registered=false in settings.json.",
         ],
-        "note": "Read-only preview only; Dashboard registration is not implemented for Linux in this batch.",
+        "note": "The Linux installer can register these units; Dashboard handoff remains read-only.",
     }
 
 
@@ -629,10 +685,16 @@ def _cron_timer_preview(schedule: dict[str, Any], timer: dict[str, Any]) -> dict
     }
 
 
-def _linux_timer_jobs(schedule: dict[str, Any], timer: dict[str, Any]) -> list[dict[str, Any]]:
+def _linux_timer_jobs(
+    schedule: dict[str, Any],
+    timer: dict[str, Any],
+    paths: RuntimePaths | None = None,
+) -> list[dict[str, Any]]:
     base_label = str(timer.get("label") or "actanara.daily").strip() or "actanara.daily"
-    py = sys.executable
-    workspace = str(config.WORKSPACE_DIR)
+    runtime_paths = paths or load_paths()
+    py = str(runtime_paths.home / ".venv" / "bin" / "python")
+    workspace_path = runtime_paths.home / "app" / "source"
+    workspace = str(workspace_path)
     pipeline_hour, pipeline_minute, pipeline_time = _parse_time(schedule.get("dailyPipelineTime"), "04:00")
     aggregation_hour, aggregation_minute, aggregation_time = _parse_time(schedule.get("dashboardAggregationTime"), "04:30")
     return [
@@ -643,7 +705,7 @@ def _linux_timer_jobs(schedule: dict[str, Any], timer: dict[str, Any]) -> list[d
             "hour": pipeline_hour,
             "minute": pipeline_minute,
             "time": pipeline_time,
-            "command": f"{py} {config.WORKSPACE_DIR / 'advanced' / 'pipeline' / 'run_daily_pipeline.py'}",
+            "command": f"{py} {workspace_path / 'advanced' / 'pipeline' / 'run_daily_pipeline.py'}",
             "workingDirectory": workspace,
         },
         {
@@ -653,7 +715,7 @@ def _linux_timer_jobs(schedule: dict[str, Any], timer: dict[str, Any]) -> list[d
             "hour": aggregation_hour,
             "minute": aggregation_minute,
             "time": aggregation_time,
-            "command": f"{py} {config.WORKSPACE_DIR / 'advanced' / 'pipeline' / 'run_dashboard_foundation_refresh.py'}",
+            "command": f"{py} {workspace_path / 'advanced' / 'pipeline' / 'run_dashboard_foundation_refresh.py'}",
             "workingDirectory": workspace,
         },
     ]

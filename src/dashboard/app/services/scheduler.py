@@ -98,12 +98,14 @@ def preview_system_timer(
     probe_runtime: bool = True,
     launch_agent_home: Path | None = None,
     launchctl_runner=None,
+    systemctl_runner=None,
 ) -> dict:
     return _preview_system_timer(
         paths or load_paths(),
         launch_agent_home=launch_agent_home,
         probe_runtime=probe_runtime,
         launchctl_runner=launchctl_runner,
+        systemctl_runner=systemctl_runner,
     )
 
 

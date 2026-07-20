@@ -29,6 +29,7 @@ INHERITED_RUNTIME_ENV = (
     "ACTANARA_INSTALL_REF",
     "ACTANARA_INSTALL_RUNTIME",
     "ACTANARA_INSTALL_SOURCE_ROOT",
+    "ACTANARA_INSTALL_SYSTEMCTL",
     "ACTANARA_RUNTIME_ROOT",
     "TARGET_TIMEZONE",
     "TASK_DB_PATH",
@@ -129,6 +130,17 @@ def _write_fake_launchctl(path: Path) -> None:
     path.chmod(0o755)
 
 
+def _write_fake_systemctl(path: Path) -> None:
+    path.write_text(
+        "#!/bin/sh\n"
+        "# A release test must never reach the real per-user systemd manager.\n"
+        "case \"${2:-}\" in is-enabled|is-active) exit 4 ;; esac\n"
+        "exit 77\n",
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+
+
 def _assert_test_dependencies() -> None:
     missing = [name for name in REQUIRED_TEST_MODULES if importlib.util.find_spec(name) is None]
     if missing:
@@ -161,6 +173,7 @@ def _run_isolated(args: argparse.Namespace) -> int:
         fake_bin.mkdir(parents=True)
         home.mkdir(parents=True)
         _write_fake_launchctl(fake_bin / "launchctl")
+        _write_fake_systemctl(fake_bin / "systemctl")
 
         isolated_env = {
             "HOME": str(home),
@@ -169,6 +182,7 @@ def _run_isolated(args: argparse.Namespace) -> int:
             "ACTANARA_SECRET_BACKEND": "memory",
             "ACTANARA_RUN_REAL_LAUNCHD_TESTS": "0",
             "ACTANARA_INSTALL_LAUNCHCTL": str(fake_bin / "launchctl"),
+            "ACTANARA_INSTALL_SYSTEMCTL": str(fake_bin / "systemctl"),
             "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
             "PYTHONDONTWRITEBYTECODE": "1",
             "TZ": args.timezone,

@@ -61,6 +61,7 @@ class ReleaseTestHarnessTests(unittest.TestCase):
         self.assertIn('"ACTANARA_SECRET_BACKEND": "memory"', runner)
         self.assertIn('"ACTANARA_RUN_REAL_LAUNCHD_TESTS": "0"', runner)
         self.assertIn('"ACTANARA_INSTALL_LAUNCHCTL": str(fake_bin / "launchctl")', runner)
+        self.assertIn('"ACTANARA_INSTALL_SYSTEMCTL": str(fake_bin / "systemctl")', runner)
         self.assertIn('"TARGET_TIMEZONE"', runner)
         self.assertIn('patch.object(nova_time, "business_now"', runner)
         self.assertIn('patch.object(dashboard_tz, "hkt_now"', runner)

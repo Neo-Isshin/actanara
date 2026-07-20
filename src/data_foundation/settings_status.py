@@ -1436,7 +1436,7 @@ def _resource_profile(paths: RuntimePaths, dashboard: dict[str, Any], settings: 
             "port": dashboard.get("port"),
             "expectedResidentProcesses": 1,
             "schedulerLoop": "in-process; wakes every 60 seconds when Dashboard is running",
-            "systemDaemon": "optional launchd service/watchdog on macOS; Linux provider not implemented",
+            "systemDaemon": "launchd user services on macOS; systemd user services on Linux",
             "resourceClass": "low",
         },
         "rag": rag_profile,

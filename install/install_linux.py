@@ -460,6 +460,117 @@ write_settings({
     _run([str(plan.runtime / ".venv" / "bin" / "python"), "-c", script], env=env)
 
 
+def _initialize_database(plan: InstallPlan) -> Path:
+    database = plan.runtime / "data" / "actanara_data.sqlite3"
+    env = {
+        **os.environ,
+        "ACTANARA_HOME": str(plan.runtime),
+        "PYTHONPATH": os.pathsep.join(
+            (
+                str(plan.runtime / "app" / "source"),
+                str(plan.runtime / "app" / "source" / "src"),
+            )
+        ),
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+    script = """
+from pathlib import Path
+from data_foundation.db import migrate
+from data_foundation.paths import runtime_paths_for_home
+runtime = Path(__import__('os').environ['ACTANARA_HOME'])
+migrate(runtime_paths_for_home(runtime))
+"""
+    _run([str(plan.runtime / ".venv" / "bin" / "python"), "-c", script], env=env)
+    if not database.is_file():
+        raise LinuxInstallError("database migration completed without creating the Runtime database")
+    database.chmod(0o600)
+    return database
+
+
+def _install_systemd_user_services(plan: InstallPlan) -> dict:
+    from data_foundation.paths import runtime_paths_for_home
+    from data_foundation.settings import read_settings, write_settings
+    from data_foundation.systemd_user import (
+        SystemdUserError,
+        dashboard_unit,
+        install_user_units,
+        rag_unit,
+        scheduler_units,
+    )
+
+    paths = runtime_paths_for_home(plan.runtime)
+    settings = read_settings(paths, redact_secrets=False, persist_defaults=False)
+    schedule = settings.get("schedule") if isinstance(settings.get("schedule"), dict) else {}
+    timer = schedule.get("systemTimer") if isinstance(schedule.get("systemTimer"), dict) else {}
+    dashboard = settings.get("dashboard") if isinstance(settings.get("dashboard"), dict) else {}
+    units = []
+    scheduler_names: list[str] = []
+    if plan.scheduler:
+        scheduler_specs = scheduler_units(paths, schedule, timer)
+        units.extend(scheduler_specs)
+        scheduler_names = [unit.name for unit in scheduler_specs]
+    if plan.dashboard_service:
+        units.append(dashboard_unit(paths, dashboard))
+    if plan.rag_enabled:
+        units.append(rag_unit(paths))
+    if not units:
+        return {
+            "status": "not-requested",
+            "provider": "systemd-user",
+            "units": [],
+            "linger": {"status": "not-probed", "enabled": None, "changed": False},
+        }
+    try:
+        result = install_user_units(paths, units)
+    except SystemdUserError as exc:
+        raise LinuxInstallError(str(exc)) from exc
+
+    now = datetime.now().astimezone().isoformat()
+    update: dict = {}
+    if plan.scheduler:
+        update["schedule"] = {
+            "enabled": True,
+            "mode": "system",
+            "systemTimer": {
+                "provider": "systemd",
+                "label": str(timer.get("label") or "actanara.daily"),
+                "registered": True,
+                "registrationManagedBy": "linux-installer",
+                "registeredAt": now,
+                "jobs": scheduler_names,
+                "lastAction": "install",
+                "lastActionStatus": "success",
+                "lastError": None,
+                "lastErrorAt": None,
+                "stale": False,
+                "reinstallRequired": False,
+            },
+        }
+    if plan.dashboard_service:
+        update.setdefault("dashboard", {})["systemdUser"] = {
+            "registered": True,
+            "registrationManagedBy": "linux-installer",
+            "registeredAt": now,
+            "units": ["actanara-dashboard.service"],
+        }
+    if plan.rag_enabled:
+        rag = settings.get("rag") if isinstance(settings.get("rag"), dict) else {}
+        server = rag.get("server") if isinstance(rag.get("server"), dict) else {}
+        update["rag"] = {
+            "server": {
+                **server,
+                "systemdUser": {
+                    "registered": True,
+                    "registrationManagedBy": "linux-installer",
+                    "registeredAt": now,
+                    "units": ["actanara-rag-server.service"],
+                },
+            }
+        }
+    write_settings(update, paths)
+    return result
+
+
 def _install(plan: InstallPlan, selection: dependency_contract.ContractSelection, args: argparse.Namespace) -> dict:
     release_id, commit = _source_identity(plan.source_root)
     release_target = plan.runtime / "app" / "releases" / release_id
@@ -514,6 +625,8 @@ def _install(plan: InstallPlan, selection: dependency_contract.ContractSelection
         (plan.runtime / ".venv").symlink_to(Path("app") / "venvs" / release_id)
         _write_cli_shim(plan.runtime)
         _configure_runtime(plan)
+        database = _initialize_database(plan)
+        systemd_result = _install_systemd_user_services(plan)
         if not args.no_shell_path:
             user_bin = Path.home() / ".local" / "bin"
             _secure_directory(user_bin)
@@ -529,10 +642,17 @@ def _install(plan: InstallPlan, selection: dependency_contract.ContractSelection
         "architecture": selection.lock_environment["architecture"],
         "environmentId": selection.environment_id,
         "runtime": str(plan.runtime),
+        "database": str(database),
+        "databaseInitialized": True,
         "profiles": list(plan.profiles),
         "schedulerProvider": "systemd",
-        "schedulerRegistration": "pending",
-        "dashboardServiceRegistration": "pending" if plan.dashboard_service else "disabled",
+        "schedulerRegistration": (
+            "registered" if plan.scheduler else "disabled"
+        ),
+        "dashboardServiceRegistration": (
+            "registered" if plan.dashboard_service else "disabled"
+        ),
+        "systemdUser": systemd_result,
     }
 
 
