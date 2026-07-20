@@ -225,6 +225,43 @@ class DashboardStaticContractTests(unittest.TestCase):
                 self.assertNotIn(legacy_dashboard_brand, html + script + tasks)
                 self.assertNotIn(legacy_task_title, tasks)
 
+    def test_dashboard_banners_reuse_readme_asset_without_distortion(self):
+        readme_banner = ROOT / "docs" / "assets" / "banner.png"
+        expected_bytes = readme_banner.read_bytes()
+        self.assertEqual(expected_bytes[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(
+            (
+                int.from_bytes(expected_bytes[16:20], "big"),
+                int.from_bytes(expected_bytes[20:24], "big"),
+            ),
+            (1378, 313),
+        )
+
+        surfaces = {
+            "runtime": (
+                ROOT / "src" / "dashboard" / "app" / "static",
+                "/static/banner.png",
+            ),
+            "static-demo": (ROOT / "docs" / "dashboard-demo", "banner.png"),
+        }
+        for name, (base, source) in surfaces.items():
+            with self.subTest(surface=name):
+                html = (base / "index.html").read_text(encoding="utf-8")
+                css = (base / "css" / "style.css").read_text(encoding="utf-8")
+                self.assertEqual((base / "banner.png").read_bytes(), expected_bytes)
+                self.assertEqual(html.count(f'src="{source}"'), 2)
+                self.assertEqual(html.count('width="1378" height="313"'), 2)
+
+                sidebar = css.split(".sidebar-brand-banner {", 1)[1].split("}", 1)[0]
+                welcome = css.split(".dashboard-welcome-banner {", 1)[1].split("}", 1)[0]
+                self.assertIn("width: 156px", sidebar)
+                self.assertIn("max-height: 44px", sidebar)
+                self.assertIn("height: auto", sidebar)
+                self.assertIn("object-fit: contain", sidebar)
+                self.assertIn("width: min(780px, 82vw)", welcome)
+                self.assertIn("height: auto", welcome)
+                self.assertIn("object-fit: contain", welcome)
+
     def test_dashboard_sse_status_aggregates_transport_and_source_health(self):
         scripts = {
             "runtime": ROOT / "src" / "dashboard" / "app" / "static" / "js" / "app.js",
@@ -736,8 +773,8 @@ class DashboardStaticContractTests(unittest.TestCase):
         self.assertIn('id="page-home" class="page active"', html)
         self.assertIn('id="page-overview" class="page"', html)
         self.assertIn("sidebar-brand-banner", html)
-        self.assertIn(">ACTANARA</", html)
-        self.assertNotIn("/static/img/banner.png", html)
+        self.assertNotIn(">ACTANARA</", html)
+        self.assertEqual(html.count('src="/static/banner.png"'), 2)
         self.assertIn("ragExternalSources", script)
         self.assertIn("previewRagExternalSources", script)
         self.assertIn("/api/rag/external-sources/plan", script)
