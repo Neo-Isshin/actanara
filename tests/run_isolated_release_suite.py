@@ -76,8 +76,6 @@ def _bootstrap_disposable_venv(args: argparse.Namespace) -> int:
             build_source / "src",
             ignore=shutil.ignore_patterns("*.egg-info", "__pycache__", "*.pyc", "*.pyo"),
         )
-        subprocess.run([sys.executable, "-m", "venv", str(venv)], check=True)
-        child_python = venv / "bin" / "python"
         install_env = {
             **os.environ,
             "HOME": str(build_home),
@@ -89,6 +87,37 @@ def _bootstrap_disposable_venv(args: argparse.Namespace) -> int:
         }
         for name in INHERITED_RUNTIME_ENV:
             install_env.pop(name, None)
+        subprocess.run(
+            [sys.executable, "-m", "venv", "--without-pip", str(venv)],
+            env=install_env,
+            check=True,
+        )
+        child_python = venv / "bin" / "python"
+        ensurepip = subprocess.run(
+            [str(child_python), "-I", "-m", "ensurepip", "--upgrade"],
+            cwd=ROOT,
+            env=install_env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if ensurepip.returncode != 0:
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-I",
+                    "-m",
+                    "pip",
+                    "--python",
+                    str(venv),
+                    "install",
+                    "--disable-pip-version-check",
+                    "pip==26.1.2",
+                ],
+                cwd=ROOT,
+                env=install_env,
+                check=True,
+            )
         subprocess.run(
             [
                 str(child_python),
