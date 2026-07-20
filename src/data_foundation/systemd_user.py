@@ -39,6 +39,18 @@ def _quote(value: str) -> str:
     return '"' + text.replace("%", "%%").replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def _path_value(value: Path) -> str:
+    text = str(value)
+    if not value.is_absolute():
+        raise SystemdUserError("systemd working directory must be absolute")
+    if any(character in text for character in "\0\r\n") or text.endswith("\\"):
+        raise SystemdUserError("systemd working directory contains an unsafe character")
+    # WorkingDirectory= is a scalar path directive, not an ExecStart-style
+    # argument list. Quoting the value makes the quotes part of the path on
+    # systemd 257, so preserve the scalar and escape only specifier markers.
+    return text.replace("%", "%%")
+
+
 def _unit_name(value: str, suffix: str) -> str:
     base = str(value or "actanara").strip()
     if not UNIT_NAME_RE.fullmatch(base):
@@ -70,7 +82,7 @@ def _service_unit(
         "",
         "[Service]",
         "Type=simple" if restart else "Type=oneshot",
-        f"WorkingDirectory={_quote(str(working_directory))}",
+        f"WorkingDirectory={_path_value(working_directory)}",
         *_environment_lines(environment),
         f"ExecStart={command_line}",
     ]
@@ -246,7 +258,13 @@ def _run_systemctl(
     result = runner(command, text=True, capture_output=True, check=False, timeout=30)
     allowed = allow_status if allow_status is not None else {0}
     if result.returncode not in allowed:
-        raise SystemdUserError(f"systemctl --user failed with status {result.returncode}")
+        detail = (result.stderr or result.stdout or "").strip().replace("\n", " ")
+        if len(detail) > 500:
+            detail = detail[:497] + "..."
+        suffix = f": {detail}" if detail else ""
+        raise SystemdUserError(
+            f"systemctl --user failed with status {result.returncode}{suffix}"
+        )
     return result
 
 

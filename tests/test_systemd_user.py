@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from data_foundation.paths import initialize_home
+from data_foundation.paths import initialize_home, runtime_paths_for_home
 from data_foundation.scheduler_preview import preview_system_timer
 from data_foundation.settings import write_settings
 from data_foundation.systemd_user import (
@@ -71,6 +71,43 @@ class SystemdUserTests(unittest.TestCase):
         self.assertNotIn("/bin/zsh", dashboard.content)
         self.assertEqual(rag.name, "actanara-rag-server.service")
         self.assertIn("rag_server_launch_agent.py", rag.content)
+
+    def test_working_directory_is_an_unquoted_scalar_path(self):
+        paths = runtime_paths_for_home(Path("/tmp/Actanara path%prod"))
+        dashboard = dashboard_unit(paths, {"host": "127.0.0.1", "port": 3036})
+
+        self.assertIn(
+            "WorkingDirectory=/tmp/Actanara path%%prod/app/source",
+            dashboard.content,
+        )
+        self.assertNotIn('WorkingDirectory="', dashboard.content)
+
+    def test_systemctl_failure_includes_the_available_diagnostic(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = self._runtime(root)
+            unit_dir = root / "units"
+            unit_dir.mkdir()
+            unit = dashboard_unit(paths, {"host": "127.0.0.1", "port": 3036})
+
+            def runner(command, **kwargs):
+                if command[2] == "is-enabled":
+                    return subprocess.CompletedProcess(command, 4, "", "")
+                if command[2] == "is-active":
+                    return subprocess.CompletedProcess(command, 4, "", "")
+                if command[2] == "enable":
+                    return subprocess.CompletedProcess(command, 1, "", "unit rejected\n")
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            with (
+                patch("data_foundation.systemd_user.platform.system", return_value="Linux"),
+                patch(
+                    "data_foundation.systemd_user._systemctl_binary",
+                    return_value="/usr/bin/systemctl",
+                ),
+                self.assertRaisesRegex(SystemdUserError, "unit rejected"),
+            ):
+                install_user_units(paths, [unit], unit_dir=unit_dir, runner=runner)
 
     def test_install_writes_private_units_and_uses_only_systemctl_user(self):
         with tempfile.TemporaryDirectory() as tmp:
