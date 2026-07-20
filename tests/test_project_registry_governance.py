@@ -16,6 +16,7 @@ from data_foundation.db import migrate, seed_projects
 from data_foundation.db import connect
 from data_foundation.paths import initialize_home
 from data_foundation.project_registry import (
+    _looks_transient,
     confirm_project_candidate,
     discover_project_candidates,
     project_registry_status,
@@ -27,6 +28,14 @@ FASTAPI_AVAILABLE = importlib.util.find_spec("fastapi") is not None
 
 
 class ProjectRegistryGovernanceTests(unittest.TestCase):
+    def test_transient_filter_ignores_system_temp_anchor_but_rejects_nested_transients(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+
+            self.assertFalse(_looks_transient(project))
+            self.assertTrue(_looks_transient(project / "node_modules" / "package"))
+            self.assertTrue(_looks_transient(project / ".venv" / "bin"))
+
     def test_readonly_status_reports_registry_and_seeded_db_projects(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

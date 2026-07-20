@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -344,7 +345,13 @@ def _under_any(path: Path, roots: list[Path]) -> bool:
 
 def _looks_transient(path: Path) -> bool:
     transient = {"node_modules", ".venv", "venv", "dist", "build", "__pycache__", ".cache", "tmp", "temp"}
-    return any(part in transient for part in path.parts)
+    absolute = path.expanduser().absolute()
+    temporary_root = Path(tempfile.gettempdir()).expanduser().absolute()
+    try:
+        candidate_parts = absolute.relative_to(temporary_root).parts
+    except ValueError:
+        candidate_parts = absolute.parts
+    return any(part in transient for part in candidate_parts)
 
 
 def _candidate_id(root: str) -> str:

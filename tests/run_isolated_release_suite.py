@@ -243,8 +243,10 @@ def _run_isolated(args: argparse.Namespace) -> int:
         actanara_home = home / ".actanara"
         location_file = home / ".config" / "actanara" / "location.json"
         fake_bin = root / "bin"
+        temporary_root = root / "temporary"
         fake_bin.mkdir(parents=True)
         home.mkdir(parents=True)
+        temporary_root.mkdir()
         _write_fake_launchctl(fake_bin / "launchctl")
         _write_fake_systemctl(fake_bin / "systemctl")
 
@@ -254,8 +256,12 @@ def _run_isolated(args: argparse.Namespace) -> int:
             "ACTANARA_LOCATION_FILE": str(location_file),
             "ACTANARA_SECRET_BACKEND": "memory",
             "ACTANARA_RUN_REAL_LAUNCHD_TESTS": "0",
+            "ACTANARA_RUN_REAL_SYSTEMD_TESTS": "0",
             "ACTANARA_INSTALL_LAUNCHCTL": str(fake_bin / "launchctl"),
             "ACTANARA_INSTALL_SYSTEMCTL": str(fake_bin / "systemctl"),
+            "TMPDIR": str(temporary_root),
+            "TMP": str(temporary_root),
+            "TEMP": str(temporary_root),
             "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
             "PYTHONDONTWRITEBYTECODE": "1",
             "TZ": args.timezone,
@@ -287,6 +293,7 @@ def _run_isolated(args: argparse.Namespace) -> int:
             flush=True,
         )
         with ExitStack() as stack:
+            stack.enter_context(patch.object(tempfile, "tempdir", str(temporary_root)))
             stack.enter_context(patch.object(nova_time, "business_now", side_effect=fixed_business_now))
             stack.enter_context(patch.object(dashboard_tz, "hkt_now", return_value=fixed_dashboard_now))
             discovered = unittest.defaultTestLoader.discover(str(ROOT / "tests"), pattern=args.pattern)
