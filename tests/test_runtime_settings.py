@@ -207,6 +207,22 @@ def _v2_runtime_source_manifest(source_locator: dict[str, object]) -> dict[str, 
 
 
 class RuntimeSettingsTests(unittest.TestCase):
+    def setUp(self):
+        # This legacy integration module defines the macOS/launchd contract.
+        # Linux-specific behavior is covered by test_systemd_user and explicit
+        # per-test platform overrides below, so keep these tests deterministic
+        # when the same release suite runs on a Debian host.
+        patchers = (
+            patch("data_foundation.platform_support.platform.system", return_value="Darwin"),
+            patch("data_foundation.settings.platform.system", return_value="Darwin"),
+            patch("data_foundation.scheduler_preview.platform.system", return_value="Darwin"),
+            patch("data_foundation.settings_status.platform.system", return_value="Darwin"),
+            patch("data_foundation.onboarding_plan.platform.system", return_value="Darwin"),
+        )
+        for patcher in patchers:
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
     def test_config_does_not_auto_load_workspace_dotenv(self):
         with tempfile.TemporaryDirectory() as tmp:
             runtime = Path(tmp) / ".actanara"
