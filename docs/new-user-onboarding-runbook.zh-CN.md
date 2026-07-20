@@ -68,7 +68,10 @@ sh install/setup.sh -- --no-shell-path
 
 引导式 `--no-wizard` 与 `--shell-path-file /path/to/profile` 仅适用于
 macOS。Linux 不编辑 Shell profile；不加 `--no-shell-path` 时只创建
-`~/.local/bin/actanara` 链接。
+`~/.local/bin/actanara` 链接。选择 Linux 托管服务时，交互安装会询问是否
+需要退出登录后继续运行。`--enable-linger` 明确允许发起不含 `sudo` 的
+`loginctl` 请求，`--require-linger` 会在 Runtime 写入前要求 linger 已启用，
+`--no-linger-prompt` 保持现状；`--yes` 永远不代表 linger 授权。
 
 安装器在改动 Runtime 前会执行 preflight：校验路径、Python 兼容性、源码洁净度、端口策略、冲突检查和所选依赖组。preflight 失败会终止事务。
 
@@ -107,8 +110,10 @@ actanara config show
 macOS 安装器在宣布成功前还会运行 post-install doctor。任何阻断性结果都会保留前一个可用源码与 venv 以便恢复。
 
 Linux 安装器会显式初始化 Settings 与全部 SQLite migration，再用
-`systemctl --user` 注册所选 Dashboard 和调度 unit。它只报告 `loginctl`
-linger 状态，绝不会自动修改。
+`systemctl --user` 注册所选 Dashboard 和调度 unit。只有得到明确授权后
+才会修改 linger，并且绝不调用 `sudo`。若主机要求管理员权限，请单独执行
+`sudo loginctl enable-linger "$USER"` 后重试。卸载 Actanara 时不会关闭
+linger，因为其他用户服务也可能依赖它。
 
 ## Dashboard 与 nova-RAG
 

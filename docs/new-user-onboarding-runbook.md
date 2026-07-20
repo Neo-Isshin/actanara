@@ -80,7 +80,12 @@ sh install/setup.sh -- --no-shell-path
 
 The guided `--no-wizard` and `--shell-path-file /path/to/profile` controls are
 macOS-only. Linux does not edit a shell profile; without `--no-shell-path` it
-creates only the `~/.local/bin/actanara` link.
+creates only the `~/.local/bin/actanara` link. When managed Linux services are
+selected, an interactive install asks whether they should continue after
+logout. `--enable-linger` explicitly permits a no-`sudo` `loginctl` request,
+`--require-linger` fails before Runtime writes unless it is already enabled,
+and `--no-linger-prompt` preserves the current state. `--yes` never grants
+linger authorization.
 
 The installer performs a preflight before changing the Runtime. It verifies
 paths, Python compatibility, source cleanliness, port policy, collision guards,
@@ -130,7 +135,10 @@ recovery.
 
 The Linux installer explicitly initializes Settings and all SQLite migrations,
 then registers requested Dashboard and scheduler units with `systemctl --user`.
-It reports `loginctl` linger state but never changes it automatically.
+It changes linger only after explicit authorization and never calls `sudo`. If
+the host requires administrator authorization, run
+`sudo loginctl enable-linger "$USER"` separately and retry. Actanara never
+disables linger during uninstall because other user services may depend on it.
 
 ## Dashboard and nova-RAG
 

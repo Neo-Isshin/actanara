@@ -17,6 +17,7 @@ from data_foundation.settings_status import actanara_settings_status
 from data_foundation.systemd_user import (
     SystemdUserError,
     dashboard_unit,
+    enable_linger,
     install_user_units,
     linger_status,
     rag_unit,
@@ -229,6 +230,49 @@ class SystemdUserTests(unittest.TestCase):
         self.assertEqual(result["status"], "disabled")
         self.assertFalse(result["enabled"])
         self.assertFalse(result["changed"])
+
+    def test_enable_linger_targets_current_user_without_sudo_and_verifies_state(self):
+        commands = []
+        probes = iter(("no\n", "yes\n"))
+
+        def runner(command, **kwargs):
+            commands.append(command)
+            if command[1] == "show-user":
+                return subprocess.CompletedProcess(command, 0, next(probes), "")
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        with (
+            patch("data_foundation.systemd_user.platform.system", return_value="Linux"),
+            patch("data_foundation.systemd_user.shutil.which", return_value="/usr/bin/loginctl"),
+        ):
+            result = enable_linger(runner=runner)
+
+        self.assertTrue(result["enabled"])
+        self.assertTrue(result["changed"])
+        self.assertEqual(result["action"], "enabled")
+        self.assertEqual(
+            commands[1],
+            ["/usr/bin/loginctl", "enable-linger", str(os.getuid())],
+        )
+        self.assertFalse(any("sudo" in item for command in commands for item in command))
+
+    def test_enable_linger_reports_authorization_failure_without_sudo_fallback(self):
+        commands = []
+
+        def runner(command, **kwargs):
+            commands.append(command)
+            if command[1] == "show-user":
+                return subprocess.CompletedProcess(command, 0, "no\n", "")
+            return subprocess.CompletedProcess(command, 1, "", "access denied\n")
+
+        with (
+            patch("data_foundation.systemd_user.platform.system", return_value="Linux"),
+            patch("data_foundation.systemd_user.shutil.which", return_value="/usr/bin/loginctl"),
+            self.assertRaisesRegex(SystemdUserError, "access denied"),
+        ):
+            enable_linger(runner=runner)
+
+        self.assertFalse(any("sudo" in item for command in commands for item in command))
 
     def test_uninstall_removes_only_managed_units_and_stops_all_jobs(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -33,6 +33,7 @@ class LinuxInstallerTests(unittest.TestCase):
         self.assertTrue(plan.scheduler)
         self.assertFalse(plan.rag_enabled)
         self.assertEqual(plan.rag_embedding_mode, "cloud")
+        self.assertEqual(plan.linger_policy, "prompt")
 
     def test_rag_and_dev_test_profiles_share_linux_installer_code(self):
         args = self._args("--enable-rag", "--enable-dev-test")
@@ -95,6 +96,129 @@ class LinuxInstallerTests(unittest.TestCase):
             install_linux._preflight_linux_services(plan)
 
         run.assert_not_called()
+
+    def test_cli_only_install_does_not_probe_or_change_linger(self):
+        args = self._args("--no-scheduler", "--no-dashboard-server")
+        plan = install_linux.build_plan(args)
+        with patch("data_foundation.systemd_user.linger_status") as linger_status:
+            result = install_linux._prepare_linger(plan)
+
+        self.assertEqual(result["action"], "not-required")
+        self.assertFalse(result["sudoInvoked"])
+        linger_status.assert_not_called()
+
+    def test_default_linger_prompt_preserves_state_when_declined(self):
+        args = self._args()
+        plan = install_linux.build_plan(args)
+        with (
+            patch(
+                "data_foundation.systemd_user.linger_status",
+                return_value={"status": "disabled", "enabled": False, "changed": False},
+            ),
+            patch.object(install_linux, "_prompt_enable_linger", return_value=False),
+            patch("data_foundation.systemd_user.enable_linger") as enable_linger,
+        ):
+            result = install_linux._prepare_linger(plan)
+
+        self.assertEqual(result["action"], "declined")
+        self.assertEqual(result["requestedPolicy"], "prompt")
+        self.assertFalse(result["sudoInvoked"])
+        enable_linger.assert_not_called()
+
+    def test_default_linger_prompt_enables_only_after_explicit_acceptance(self):
+        args = self._args()
+        plan = install_linux.build_plan(args)
+        with (
+            patch(
+                "data_foundation.systemd_user.linger_status",
+                return_value={"status": "disabled", "enabled": False, "changed": False},
+            ),
+            patch.object(install_linux, "_prompt_enable_linger", return_value=True),
+            patch(
+                "data_foundation.systemd_user.enable_linger",
+                return_value={
+                    "status": "enabled",
+                    "enabled": True,
+                    "changed": True,
+                    "action": "enabled",
+                    "authorization": "explicit-user-choice",
+                },
+            ) as enable_linger,
+        ):
+            result = install_linux._prepare_linger(plan)
+
+        self.assertTrue(result["enabled"])
+        self.assertTrue(result["changed"])
+        self.assertEqual(result["requestedPolicy"], "prompt")
+        self.assertFalse(result["sudoInvoked"])
+        enable_linger.assert_called_once_with()
+
+    def test_noninteractive_default_preserves_linger(self):
+        args = self._args()
+        plan = install_linux.build_plan(args)
+        with (
+            patch(
+                "data_foundation.systemd_user.linger_status",
+                return_value={"status": "disabled", "enabled": False, "changed": False},
+            ),
+            patch.object(install_linux, "_prompt_enable_linger", return_value=None),
+            patch("data_foundation.systemd_user.enable_linger") as enable_linger,
+        ):
+            result = install_linux._prepare_linger(plan)
+
+        self.assertEqual(result["action"], "non-interactive-preserved")
+        enable_linger.assert_not_called()
+
+    def test_explicit_enable_linger_does_not_depend_on_yes_or_prompt(self):
+        args = self._args("--enable-linger", "--yes")
+        plan = install_linux.build_plan(args)
+        with (
+            patch(
+                "data_foundation.systemd_user.linger_status",
+                return_value={"status": "disabled", "enabled": False, "changed": False},
+            ),
+            patch.object(install_linux, "_prompt_enable_linger") as prompt,
+            patch(
+                "data_foundation.systemd_user.enable_linger",
+                return_value={"status": "enabled", "enabled": True, "changed": True},
+            ) as enable_linger,
+        ):
+            result = install_linux._prepare_linger(plan)
+
+        self.assertEqual(plan.linger_policy, "enable")
+        self.assertTrue(result["enabled"])
+        prompt.assert_not_called()
+        enable_linger.assert_called_once_with()
+
+    def test_require_linger_fails_before_install_when_not_enabled(self):
+        args = self._args("--require-linger")
+        plan = install_linux.build_plan(args)
+        with (
+            patch(
+                "data_foundation.systemd_user.linger_status",
+                return_value={"status": "disabled", "enabled": False, "changed": False},
+            ),
+            self.assertRaisesRegex(install_linux.LinuxInstallError, "linger is required"),
+        ):
+            install_linux._prepare_linger(plan)
+
+    def test_dry_run_never_prompts_or_changes_linger(self):
+        args = self._args("--dry-run", "--enable-linger")
+        plan = install_linux.build_plan(args)
+        with (
+            patch(
+                "data_foundation.systemd_user.linger_status",
+                return_value={"status": "disabled", "enabled": False, "changed": False},
+            ),
+            patch.object(install_linux, "_prompt_enable_linger") as prompt,
+            patch("data_foundation.systemd_user.enable_linger") as enable_linger,
+        ):
+            result = install_linux._prepare_linger(plan)
+
+        self.assertEqual(result["action"], "planned-enable")
+        self.assertTrue(result["wouldChange"])
+        prompt.assert_not_called()
+        enable_linger.assert_not_called()
 
     def test_dry_run_reports_exact_targets_without_writing_runtime(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -337,7 +337,57 @@ def linger_status(*, runner: Runner = subprocess.run) -> dict:
         "status": "enabled" if enabled is True else "disabled" if enabled is False else "unknown",
         "enabled": enabled,
         "changed": False,
-        "note": "Actanara never enables linger automatically.",
+        "note": "Actanara changes linger only after explicit user authorization.",
+    }
+
+
+def enable_linger(*, runner: Runner = subprocess.run) -> dict:
+    """Enable linger for the current user without invoking sudo.
+
+    Linger is shared user-level host state rather than an Actanara-owned
+    resource.  Callers must obtain explicit operator authorization before
+    crossing this boundary, and uninstall workflows must never disable it.
+    """
+
+    if platform.system() != "Linux" and os.environ.get("ACTANARA_INSTALL_TEST_MODE") != "1":
+        raise SystemdUserError("systemd linger is only supported on Linux")
+    loginctl = shutil.which("loginctl")
+    if not loginctl:
+        raise SystemdUserError("loginctl is unavailable; linger could not be enabled")
+    before = linger_status(runner=runner)
+    if before.get("enabled") is True:
+        return {
+            **before,
+            "action": "already-enabled",
+            "authorization": "explicit-user-choice",
+        }
+    command = [loginctl, "enable-linger", str(os.getuid())]
+    try:
+        result = runner(
+            command,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise SystemdUserError("loginctl could not request linger for the current user") from exc
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip().replace("\n", " ")
+        if len(detail) > 500:
+            detail = detail[:497] + "..."
+        suffix = f": {detail}" if detail else ""
+        raise SystemdUserError(
+            f"loginctl enable-linger failed with status {result.returncode}{suffix}"
+        )
+    after = linger_status(runner=runner)
+    if after.get("enabled") is not True:
+        raise SystemdUserError("loginctl returned success but linger is not enabled")
+    return {
+        **after,
+        "changed": True,
+        "action": "enabled",
+        "authorization": "explicit-user-choice",
     }
 
 

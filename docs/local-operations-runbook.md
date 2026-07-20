@@ -87,7 +87,9 @@ The macOS installation wizard covers, in order:
 
 Linux uses non-interactive defaults unless options are passed after `--`.
 Dashboard and scheduler services are installed as user-level systemd units.
-The installer reads linger status for diagnostics but never enables linger.
+With a controlling terminal, the installer asks before requesting linger for
+the current user. It never invokes `sudo`; non-interactive installs preserve
+the current state unless `--enable-linger` or `--require-linger` is explicit.
 
 The public installer locale uses `zh-CN` or `en-US`; the runtime's internal Pipeline profile uses `zh` or `en`. Users normally select a language in the installation wizard and should not manually mix values from these two groups.
 

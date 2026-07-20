@@ -90,6 +90,7 @@ class InstallPlan:
     scheduler: bool
     rag_enabled: bool
     rag_embedding_mode: str
+    linger_policy: str
     dev_test: bool
     offline: bool
     dry_run: bool
@@ -108,6 +109,22 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-scheduler", action="store_true")
     parser.add_argument("--enable-rag", action="store_true")
     parser.add_argument("--rag-embedding-mode", choices=("local", "cloud"), default="cloud")
+    linger = parser.add_mutually_exclusive_group()
+    linger.add_argument(
+        "--enable-linger",
+        action="store_true",
+        help="Explicitly allow a no-sudo loginctl request for always-on user services.",
+    )
+    linger.add_argument(
+        "--require-linger",
+        action="store_true",
+        help="Fail before Runtime writes unless linger is already enabled.",
+    )
+    linger.add_argument(
+        "--no-linger-prompt",
+        action="store_true",
+        help="Preserve the current linger state without prompting.",
+    )
     parser.add_argument("--enable-dev-test", action="store_true")
     parser.add_argument("--no-shell-path", action="store_true")
     parser.add_argument("--offline", action="store_true")
@@ -132,6 +149,15 @@ def build_plan(args: argparse.Namespace) -> InstallPlan:
         profiles.add("rag-server")
     if args.enable_dev_test:
         profiles.add("dev-test")
+    linger_policy = (
+        "enable"
+        if args.enable_linger
+        else "require"
+        if args.require_linger
+        else "preserve"
+        if args.no_linger_prompt
+        else "prompt"
+    )
     return InstallPlan(
         source_root=source_root,
         runtime=runtime,
@@ -144,10 +170,96 @@ def build_plan(args: argparse.Namespace) -> InstallPlan:
         scheduler=not args.no_scheduler,
         rag_enabled=args.enable_rag,
         rag_embedding_mode=args.rag_embedding_mode,
+        linger_policy=linger_policy,
         dev_test=args.enable_dev_test,
         offline=bool(args.offline or _env_flag("ACTANARA_INSTALL_OFFLINE")),
         dry_run=bool(args.dry_run or _env_flag("ACTANARA_INSTALL_DRY_RUN")),
     )
+
+
+def _managed_services_requested(plan: InstallPlan) -> bool:
+    return bool(plan.scheduler or plan.dashboard_service or plan.rag_enabled)
+
+
+def _prompt_enable_linger(language: str) -> bool | None:
+    if language == "zh-CN":
+        prompt = (
+            "是否允许 Actanara 在你退出登录后继续运行 Dashboard 和定时任务？\n"
+            "这会为当前 Linux 用户启用 systemd linger，可能持续使用少量 CPU、内存和网络。"
+            " [y/N] "
+        )
+    else:
+        prompt = (
+            "Keep Actanara Dashboard and scheduled jobs running after you log out?\n"
+            "This enables systemd linger for the current Linux user and may continue using a small amount "
+            "of CPU, memory, and network. [y/N] "
+        )
+    try:
+        with open("/dev/tty", "r+", encoding="utf-8", buffering=1) as terminal:
+            terminal.write(prompt)
+            answer = terminal.readline()
+    except OSError:
+        return None
+    return answer.strip().lower() in {"y", "yes"}
+
+
+def _prepare_linger(plan: InstallPlan) -> dict:
+    from data_foundation.systemd_user import SystemdUserError, enable_linger, linger_status
+
+    if not _managed_services_requested(plan):
+        return {
+            "status": "not-required",
+            "enabled": None,
+            "changed": False,
+            "action": "not-required",
+            "requestedPolicy": plan.linger_policy,
+            "sudoInvoked": False,
+        }
+    current = linger_status()
+    base = {
+        **current,
+        "requestedPolicy": plan.linger_policy,
+        "sudoInvoked": False,
+    }
+    if current.get("enabled") is True:
+        return {**base, "action": "already-enabled"}
+    if plan.linger_policy == "require":
+        raise LinuxInstallError(
+            "linger is required but is not enabled; run `sudo loginctl enable-linger \"$USER\"` "
+            "and retry"
+        )
+    if plan.linger_policy == "preserve":
+        return {
+            **base,
+            "action": "preserved",
+            "manualCommand": 'sudo loginctl enable-linger "$USER"',
+        }
+    if plan.dry_run:
+        return {
+            **base,
+            "action": "planned-enable" if plan.linger_policy == "enable" else "would-prompt",
+            "wouldChange": plan.linger_policy == "enable",
+        }
+    if plan.linger_policy == "prompt":
+        accepted = _prompt_enable_linger(plan.language)
+        if accepted is not True:
+            return {
+                **base,
+                "action": "declined" if accepted is False else "non-interactive-preserved",
+                "manualCommand": 'sudo loginctl enable-linger "$USER"',
+            }
+    try:
+        enabled = enable_linger()
+    except SystemdUserError as exc:
+        raise LinuxInstallError(
+            f"{exc}; Actanara did not invoke sudo. Run `sudo loginctl enable-linger \"$USER\"` "
+            "and retry, or use --no-linger-prompt to keep session-only services"
+        ) from exc
+    return {
+        **enabled,
+        "requestedPolicy": plan.linger_policy,
+        "sudoInvoked": False,
+    }
 
 
 def _preflight_linux_services(plan: InstallPlan) -> None:
@@ -625,7 +737,13 @@ def _install_systemd_user_services(plan: InstallPlan) -> dict:
     return result
 
 
-def _install(plan: InstallPlan, selection: dependency_contract.ContractSelection, args: argparse.Namespace) -> dict:
+def _install(
+    plan: InstallPlan,
+    selection: dependency_contract.ContractSelection,
+    args: argparse.Namespace,
+    *,
+    linger: dict | None = None,
+) -> dict:
     release_id, commit = _source_identity(plan.source_root)
     release_target = plan.runtime / "app" / "releases" / release_id
     venv_target = plan.runtime / "app" / "venvs" / release_id
@@ -643,6 +761,7 @@ def _install(plan: InstallPlan, selection: dependency_contract.ContractSelection
             "releaseTarget": str(release_target),
             "venvTarget": str(venv_target),
             "schedulerProvider": "systemd",
+            "linger": linger,
             "writes": False,
         }
 
@@ -706,6 +825,7 @@ def _install(plan: InstallPlan, selection: dependency_contract.ContractSelection
         "dashboardServiceRegistration": (
             "registered" if plan.dashboard_service else "disabled"
         ),
+        "linger": linger,
         "systemdUser": systemd_result,
     }
 
@@ -715,7 +835,8 @@ def main(argv: list[str] | None = None) -> int:
         args = _parser().parse_args(argv)
         plan = build_plan(args)
         selection = _validate_plan(plan, args)
-        payload = _install(plan, selection, args)
+        linger = _prepare_linger(plan)
+        payload = _install(plan, selection, args, linger=linger)
         print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
         return 0
     except LinuxInstallError as exc:

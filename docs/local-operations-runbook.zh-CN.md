@@ -85,8 +85,9 @@ macOS 安装向导会依次处理：
 6. macOS Dashboard 与调度服务。
 
 Linux 使用非交互默认值，也可在 `--` 后传入选项。Dashboard 与调度服务
-安装为用户级 systemd unit。安装器只读取 linger 状态用于诊断，绝不会
-自动启用 linger。
+安装为用户级 systemd unit。存在控制终端时，安装器会在请求当前用户的
+linger 前明确询问，且绝不调用 `sudo`；非交互安装默认保持现状，除非明确
+使用 `--enable-linger` 或 `--require-linger`。
 
 公开安装 locale 使用 `zh-CN` 或 `en-US`；Runtime 内部 Pipeline profile 使用 `zh` 或 `en`。用户通常只需在安装向导中选择语言，不应手工混写这两组值。
 
