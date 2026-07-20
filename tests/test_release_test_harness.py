@@ -54,6 +54,8 @@ class ReleaseTestHarnessTests(unittest.TestCase):
         self.assertIn('"PYTHONNOUSERSITE": "1"', runner)
         self.assertIn('for name in INHERITED_RUNTIME_ENV', runner)
         self.assertIn('TemporaryDirectory(prefix="actanara-release-runtime-")', runner)
+        self.assertIn("previous = os.umask(0o077)", runner)
+        self.assertIn("os.umask(previous)", runner)
         self.assertIn('"ACTANARA_HOME": str(actanara_home)', runner)
         self.assertIn('"ACTANARA_LOCATION_FILE": str(location_file)', runner)
         self.assertIn('"ACTANARA_SECRET_BACKEND": "memory"', runner)

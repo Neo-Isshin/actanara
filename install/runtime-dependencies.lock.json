@@ -6,6 +6,420 @@
     "wheelsOnly": true
   },
   "environments": {
+    "linux-cpython313-arm64": {
+      "abi": "cpython-313-aarch64-linux-gnu",
+      "architecture": "arm64",
+      "implementation": "cpython",
+      "minimumMacOS": null,
+      "packages": [
+        {
+          "filename": "annotated_doc-0.0.4-py3-none-any.whl",
+          "name": "annotated-doc",
+          "sha256": "571ac1dc6991c450b25a9c2d84a3705e2ae7a53467b5d111c24fa8baabbed320",
+          "url": "https://files.pythonhosted.org/packages/1e/d3/26bf1008eb3d2daa8ef4cacc7f3bfdc11818d111f7e2d0201bc6e3b49d45/annotated_doc-0.0.4-py3-none-any.whl",
+          "version": "0.0.4"
+        },
+        {
+          "filename": "annotated_types-0.7.0-py3-none-any.whl",
+          "name": "annotated-types",
+          "sha256": "1f02e8b43a8fbbc3f3e0d4f0f4bfc8131bcb4eebe8849b8e5c773f3a1c582a53",
+          "url": "https://files.pythonhosted.org/packages/78/b6/6307fbef88d9b5ee7421e68d78a9f162e0da4900bc5f5793f6d3d0e34fb8/annotated_types-0.7.0-py3-none-any.whl",
+          "version": "0.7.0"
+        },
+        {
+          "filename": "anyio-4.14.2-py3-none-any.whl",
+          "name": "anyio",
+          "sha256": "9f505dda5ac9f0c8309b5e8bd445a8c2bf7246f3ce950121e45ea15bc41d1494",
+          "url": "https://files.pythonhosted.org/packages/da/35/f2287558c17e29fafc8ef3daf819bb9834061cfa43bff8014f7df7f63bdc/anyio-4.14.2-py3-none-any.whl",
+          "version": "4.14.2"
+        },
+        {
+          "filename": "click-8.4.2-py3-none-any.whl",
+          "name": "click",
+          "sha256": "e6f9f66136c816745b9d65817da91d61d957fb16e02e4dcd0552553c5a197b76",
+          "url": "https://files.pythonhosted.org/packages/fb/e2/79c688af8b210d232694e31e59da9f6ec747bae31c3f5946e4e9b98860d5/click-8.4.2-py3-none-any.whl",
+          "version": "8.4.2"
+        },
+        {
+          "filename": "croniter-6.2.4-py3-none-any.whl",
+          "name": "croniter",
+          "sha256": "8ef3d544107a5c05a150a2d78f8bf5a8eb9c5c4d93405a736b824109574e3f4d",
+          "url": "https://files.pythonhosted.org/packages/cd/ba/d678e5bd329646ca51d3c92addbc77804e86d21f4b6b6a027218e6abb010/croniter-6.2.4-py3-none-any.whl",
+          "version": "6.2.4"
+        },
+        {
+          "filename": "fastapi-0.139.2-py3-none-any.whl",
+          "name": "fastapi",
+          "sha256": "b9ad015a835173d59865e2f5d8296fbc2b317bf56a2ba1a5bfbdd03de2fd4b1c",
+          "url": "https://files.pythonhosted.org/packages/5f/c7/cb03251d9dfb177246a9809a76f189d21df32dbd4a845951881d11323b7f/fastapi-0.139.2-py3-none-any.whl",
+          "version": "0.139.2"
+        },
+        {
+          "filename": "h11-0.16.0-py3-none-any.whl",
+          "name": "h11",
+          "sha256": "63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86",
+          "url": "https://files.pythonhosted.org/packages/04/4b/29cac41a4d98d144bf5f6d33995617b185d14b22401f75ca86f384e87ff1/h11-0.16.0-py3-none-any.whl",
+          "version": "0.16.0"
+        },
+        {
+          "filename": "idna-3.18-py3-none-any.whl",
+          "name": "idna",
+          "sha256": "7f952cbe720b688055e3f87de14f5c3e5fdaa8bc3928985c4077ca689de849a2",
+          "url": "https://files.pythonhosted.org/packages/1e/5e/d4e9f1a599fb8e573b7b87160658329fbf28d19eac2718f51fc3def3aa5a/idna-3.18-py3-none-any.whl",
+          "version": "3.18"
+        },
+        {
+          "filename": "numpy-2.5.1-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
+          "name": "numpy",
+          "sha256": "1c6759f538fb912fc46de0a6b1758ccf7b57bc7c7ebebc23974fdac3de8db0cd",
+          "url": "https://files.pythonhosted.org/packages/2e/20/1ee6614d64332a1bba6411f38e68cb79eec1b2459e20a623777c5c5492a2/numpy-2.5.1-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
+          "version": "2.5.1"
+        },
+        {
+          "filename": "pydantic-2.13.4-py3-none-any.whl",
+          "name": "pydantic",
+          "sha256": "45a282cde31d808236fd7ea9d919b128653c8b38b393d1c4ab335c62924d9aba",
+          "url": "https://files.pythonhosted.org/packages/fd/7b/122376b1fd3c62c1ed9dc80c931ace4844b3c55407b6fb2d199377c9736f/pydantic-2.13.4-py3-none-any.whl",
+          "version": "2.13.4"
+        },
+        {
+          "filename": "pydantic_core-2.46.4-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+          "name": "pydantic-core",
+          "sha256": "f027324c56cd5406ca49c124b0db10e56c69064fec039acc571c29020cc87c76",
+          "url": "https://files.pythonhosted.org/packages/03/d5/fd02da45b659668b05923b17ba3a0100a0a3d5541e3bd8fcc4ecb711309e/pydantic_core-2.46.4-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+          "version": "2.46.4"
+        },
+        {
+          "filename": "pypdf-6.14.2-py3-none-any.whl",
+          "name": "pypdf",
+          "sha256": "3f07891af76dc002657e04993ab9b4de81de29f9013b9761d0b7968bff12e946",
+          "url": "https://files.pythonhosted.org/packages/49/e6/136aa8993a2ae7214e0b0ef2edaa0d2e08d1d4e4982635b08a835ff31ec8/pypdf-6.14.2-py3-none-any.whl",
+          "version": "6.14.2"
+        },
+        {
+          "filename": "python_dateutil-2.9.0.post0-py2.py3-none-any.whl",
+          "name": "python-dateutil",
+          "sha256": "a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427",
+          "url": "https://files.pythonhosted.org/packages/ec/57/56b9bcc3c9c6a792fcbaf139543cee77261f3651ca9da0c93f5c1221264b/python_dateutil-2.9.0.post0-py2.py3-none-any.whl",
+          "version": "2.9.0.post0"
+        },
+        {
+          "filename": "pyyaml-6.0.3-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl",
+          "name": "pyyaml",
+          "sha256": "ee2922902c45ae8ccada2c5b501ab86c36525b883eff4255313a253a3160861c",
+          "url": "https://files.pythonhosted.org/packages/50/31/b20f376d3f810b9b2371e72ef5adb33879b25edb7a6d072cb7ca0c486398/pyyaml-6.0.3-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl",
+          "version": "6.0.3"
+        },
+        {
+          "filename": "six-1.17.0-py2.py3-none-any.whl",
+          "name": "six",
+          "sha256": "4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274",
+          "url": "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl",
+          "version": "1.17.0"
+        },
+        {
+          "filename": "starlette-1.3.1-py3-none-any.whl",
+          "name": "starlette",
+          "sha256": "c7372aae11c3c3f26a42df7bd626cec2f47d03483d261d369516a615a53714c6",
+          "url": "https://files.pythonhosted.org/packages/ec/bb/2799cc2ede3ed41131f8975621e7213dfc7ef4acbbaadfa440f32500c370/starlette-1.3.1-py3-none-any.whl",
+          "version": "1.3.1"
+        },
+        {
+          "filename": "typing_extensions-4.16.0-py3-none-any.whl",
+          "name": "typing-extensions",
+          "sha256": "481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8",
+          "url": "https://files.pythonhosted.org/packages/49/d3/b8441a820a491ddfc024b0b0cf0393375b75ea13866d9c66727e54c2fc80/typing_extensions-4.16.0-py3-none-any.whl",
+          "version": "4.16.0"
+        },
+        {
+          "filename": "typing_inspection-0.4.2-py3-none-any.whl",
+          "name": "typing-inspection",
+          "sha256": "4ed1cacbdc298c220f1bd249ed5287caa16f34d44ef4e9c3d0cbad5b521545e7",
+          "url": "https://files.pythonhosted.org/packages/dc/9b/47798a6c91d8bdb567fe2698fe81e0c6b7cb7ef4d13da4114b41d239f65d/typing_inspection-0.4.2-py3-none-any.whl",
+          "version": "0.4.2"
+        },
+        {
+          "filename": "uvicorn-0.51.0-py3-none-any.whl",
+          "name": "uvicorn",
+          "sha256": "5d38af6cd620f2ae3849fb44fd4879e0890aa1febe8d47eb355fb45d93fe6a5b",
+          "url": "https://files.pythonhosted.org/packages/45/ec/dbb7e5a6b91f86bfb9eb7d2988a2730907b6a729875b949c7f022e8b88fa/uvicorn-0.51.0-py3-none-any.whl",
+          "version": "0.51.0"
+        }
+      ],
+      "platformFamily": "linux",
+      "profilePackages": {
+        "dashboard": [
+          "annotated-doc",
+          "annotated-types",
+          "anyio",
+          "click",
+          "croniter",
+          "fastapi",
+          "h11",
+          "idna",
+          "pydantic",
+          "pydantic-core",
+          "python-dateutil",
+          "pyyaml",
+          "six",
+          "starlette",
+          "typing-extensions",
+          "typing-inspection",
+          "uvicorn"
+        ],
+        "dev-test": [
+          "annotated-doc",
+          "annotated-types",
+          "anyio",
+          "click",
+          "croniter",
+          "fastapi",
+          "h11",
+          "idna",
+          "numpy",
+          "pydantic",
+          "pydantic-core",
+          "pypdf",
+          "python-dateutil",
+          "pyyaml",
+          "six",
+          "starlette",
+          "typing-extensions",
+          "typing-inspection",
+          "uvicorn"
+        ],
+        "rag-server": [
+          "annotated-doc",
+          "annotated-types",
+          "anyio",
+          "click",
+          "fastapi",
+          "h11",
+          "idna",
+          "numpy",
+          "pydantic",
+          "pydantic-core",
+          "pypdf",
+          "starlette",
+          "typing-extensions",
+          "typing-inspection",
+          "uvicorn"
+        ]
+      },
+      "pythonMajorMinor": "3.13",
+      "supportedProfiles": [
+        "dashboard",
+        "dev-test",
+        "rag-server"
+      ]
+    },
+    "linux-cpython313-x86-64": {
+      "abi": "cpython-313-x86_64-linux-gnu",
+      "architecture": "x86_64",
+      "implementation": "cpython",
+      "minimumMacOS": null,
+      "packages": [
+        {
+          "filename": "annotated_doc-0.0.4-py3-none-any.whl",
+          "name": "annotated-doc",
+          "sha256": "571ac1dc6991c450b25a9c2d84a3705e2ae7a53467b5d111c24fa8baabbed320",
+          "url": "https://files.pythonhosted.org/packages/1e/d3/26bf1008eb3d2daa8ef4cacc7f3bfdc11818d111f7e2d0201bc6e3b49d45/annotated_doc-0.0.4-py3-none-any.whl",
+          "version": "0.0.4"
+        },
+        {
+          "filename": "annotated_types-0.7.0-py3-none-any.whl",
+          "name": "annotated-types",
+          "sha256": "1f02e8b43a8fbbc3f3e0d4f0f4bfc8131bcb4eebe8849b8e5c773f3a1c582a53",
+          "url": "https://files.pythonhosted.org/packages/78/b6/6307fbef88d9b5ee7421e68d78a9f162e0da4900bc5f5793f6d3d0e34fb8/annotated_types-0.7.0-py3-none-any.whl",
+          "version": "0.7.0"
+        },
+        {
+          "filename": "anyio-4.14.2-py3-none-any.whl",
+          "name": "anyio",
+          "sha256": "9f505dda5ac9f0c8309b5e8bd445a8c2bf7246f3ce950121e45ea15bc41d1494",
+          "url": "https://files.pythonhosted.org/packages/da/35/f2287558c17e29fafc8ef3daf819bb9834061cfa43bff8014f7df7f63bdc/anyio-4.14.2-py3-none-any.whl",
+          "version": "4.14.2"
+        },
+        {
+          "filename": "click-8.4.2-py3-none-any.whl",
+          "name": "click",
+          "sha256": "e6f9f66136c816745b9d65817da91d61d957fb16e02e4dcd0552553c5a197b76",
+          "url": "https://files.pythonhosted.org/packages/fb/e2/79c688af8b210d232694e31e59da9f6ec747bae31c3f5946e4e9b98860d5/click-8.4.2-py3-none-any.whl",
+          "version": "8.4.2"
+        },
+        {
+          "filename": "croniter-6.2.4-py3-none-any.whl",
+          "name": "croniter",
+          "sha256": "8ef3d544107a5c05a150a2d78f8bf5a8eb9c5c4d93405a736b824109574e3f4d",
+          "url": "https://files.pythonhosted.org/packages/cd/ba/d678e5bd329646ca51d3c92addbc77804e86d21f4b6b6a027218e6abb010/croniter-6.2.4-py3-none-any.whl",
+          "version": "6.2.4"
+        },
+        {
+          "filename": "fastapi-0.139.2-py3-none-any.whl",
+          "name": "fastapi",
+          "sha256": "b9ad015a835173d59865e2f5d8296fbc2b317bf56a2ba1a5bfbdd03de2fd4b1c",
+          "url": "https://files.pythonhosted.org/packages/5f/c7/cb03251d9dfb177246a9809a76f189d21df32dbd4a845951881d11323b7f/fastapi-0.139.2-py3-none-any.whl",
+          "version": "0.139.2"
+        },
+        {
+          "filename": "h11-0.16.0-py3-none-any.whl",
+          "name": "h11",
+          "sha256": "63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86",
+          "url": "https://files.pythonhosted.org/packages/04/4b/29cac41a4d98d144bf5f6d33995617b185d14b22401f75ca86f384e87ff1/h11-0.16.0-py3-none-any.whl",
+          "version": "0.16.0"
+        },
+        {
+          "filename": "idna-3.18-py3-none-any.whl",
+          "name": "idna",
+          "sha256": "7f952cbe720b688055e3f87de14f5c3e5fdaa8bc3928985c4077ca689de849a2",
+          "url": "https://files.pythonhosted.org/packages/1e/5e/d4e9f1a599fb8e573b7b87160658329fbf28d19eac2718f51fc3def3aa5a/idna-3.18-py3-none-any.whl",
+          "version": "3.18"
+        },
+        {
+          "filename": "numpy-2.5.1-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+          "name": "numpy",
+          "sha256": "9726558e8db4a5bf7929a70ae50f63abda4daf0efe810e3bfbab95976f75fc1a",
+          "url": "https://files.pythonhosted.org/packages/ed/a7/2bcd3fdbb87804755c35b729bf8709d62025c5f4cfd7d5b2415997097515/numpy-2.5.1-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+          "version": "2.5.1"
+        },
+        {
+          "filename": "pydantic-2.13.4-py3-none-any.whl",
+          "name": "pydantic",
+          "sha256": "45a282cde31d808236fd7ea9d919b128653c8b38b393d1c4ab335c62924d9aba",
+          "url": "https://files.pythonhosted.org/packages/fd/7b/122376b1fd3c62c1ed9dc80c931ace4844b3c55407b6fb2d199377c9736f/pydantic-2.13.4-py3-none-any.whl",
+          "version": "2.13.4"
+        },
+        {
+          "filename": "pydantic_core-2.46.4-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+          "name": "pydantic-core",
+          "sha256": "9551187363ffc0de2a00b2e47c25aeaeb1020b69b668762966df15fc5659dd5a",
+          "url": "https://files.pythonhosted.org/packages/07/f8/41db9de19d7987d6b04715a02b3b40aea467000275d9d758ffaa31af7d50/pydantic_core-2.46.4-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+          "version": "2.46.4"
+        },
+        {
+          "filename": "pypdf-6.14.2-py3-none-any.whl",
+          "name": "pypdf",
+          "sha256": "3f07891af76dc002657e04993ab9b4de81de29f9013b9761d0b7968bff12e946",
+          "url": "https://files.pythonhosted.org/packages/49/e6/136aa8993a2ae7214e0b0ef2edaa0d2e08d1d4e4982635b08a835ff31ec8/pypdf-6.14.2-py3-none-any.whl",
+          "version": "6.14.2"
+        },
+        {
+          "filename": "python_dateutil-2.9.0.post0-py2.py3-none-any.whl",
+          "name": "python-dateutil",
+          "sha256": "a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427",
+          "url": "https://files.pythonhosted.org/packages/ec/57/56b9bcc3c9c6a792fcbaf139543cee77261f3651ca9da0c93f5c1221264b/python_dateutil-2.9.0.post0-py2.py3-none-any.whl",
+          "version": "2.9.0.post0"
+        },
+        {
+          "filename": "pyyaml-6.0.3-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl",
+          "name": "pyyaml",
+          "sha256": "0f29edc409a6392443abf94b9cf89ce99889a1dd5376d94316ae5145dfedd5d6",
+          "url": "https://files.pythonhosted.org/packages/74/27/e5b8f34d02d9995b80abcef563ea1f8b56d20134d8f4e5e81733b1feceb2/pyyaml-6.0.3-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl",
+          "version": "6.0.3"
+        },
+        {
+          "filename": "six-1.17.0-py2.py3-none-any.whl",
+          "name": "six",
+          "sha256": "4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274",
+          "url": "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl",
+          "version": "1.17.0"
+        },
+        {
+          "filename": "starlette-1.3.1-py3-none-any.whl",
+          "name": "starlette",
+          "sha256": "c7372aae11c3c3f26a42df7bd626cec2f47d03483d261d369516a615a53714c6",
+          "url": "https://files.pythonhosted.org/packages/ec/bb/2799cc2ede3ed41131f8975621e7213dfc7ef4acbbaadfa440f32500c370/starlette-1.3.1-py3-none-any.whl",
+          "version": "1.3.1"
+        },
+        {
+          "filename": "typing_extensions-4.16.0-py3-none-any.whl",
+          "name": "typing-extensions",
+          "sha256": "481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8",
+          "url": "https://files.pythonhosted.org/packages/49/d3/b8441a820a491ddfc024b0b0cf0393375b75ea13866d9c66727e54c2fc80/typing_extensions-4.16.0-py3-none-any.whl",
+          "version": "4.16.0"
+        },
+        {
+          "filename": "typing_inspection-0.4.2-py3-none-any.whl",
+          "name": "typing-inspection",
+          "sha256": "4ed1cacbdc298c220f1bd249ed5287caa16f34d44ef4e9c3d0cbad5b521545e7",
+          "url": "https://files.pythonhosted.org/packages/dc/9b/47798a6c91d8bdb567fe2698fe81e0c6b7cb7ef4d13da4114b41d239f65d/typing_inspection-0.4.2-py3-none-any.whl",
+          "version": "0.4.2"
+        },
+        {
+          "filename": "uvicorn-0.51.0-py3-none-any.whl",
+          "name": "uvicorn",
+          "sha256": "5d38af6cd620f2ae3849fb44fd4879e0890aa1febe8d47eb355fb45d93fe6a5b",
+          "url": "https://files.pythonhosted.org/packages/45/ec/dbb7e5a6b91f86bfb9eb7d2988a2730907b6a729875b949c7f022e8b88fa/uvicorn-0.51.0-py3-none-any.whl",
+          "version": "0.51.0"
+        }
+      ],
+      "platformFamily": "linux",
+      "profilePackages": {
+        "dashboard": [
+          "annotated-doc",
+          "annotated-types",
+          "anyio",
+          "click",
+          "croniter",
+          "fastapi",
+          "h11",
+          "idna",
+          "pydantic",
+          "pydantic-core",
+          "python-dateutil",
+          "pyyaml",
+          "six",
+          "starlette",
+          "typing-extensions",
+          "typing-inspection",
+          "uvicorn"
+        ],
+        "dev-test": [
+          "annotated-doc",
+          "annotated-types",
+          "anyio",
+          "click",
+          "croniter",
+          "fastapi",
+          "h11",
+          "idna",
+          "numpy",
+          "pydantic",
+          "pydantic-core",
+          "pypdf",
+          "python-dateutil",
+          "pyyaml",
+          "six",
+          "starlette",
+          "typing-extensions",
+          "typing-inspection",
+          "uvicorn"
+        ],
+        "rag-server": [
+          "annotated-doc",
+          "annotated-types",
+          "anyio",
+          "click",
+          "fastapi",
+          "h11",
+          "idna",
+          "numpy",
+          "pydantic",
+          "pydantic-core",
+          "pypdf",
+          "starlette",
+          "typing-extensions",
+          "typing-inspection",
+          "uvicorn"
+        ]
+      },
+      "pythonMajorMinor": "3.13",
+      "supportedProfiles": [
+        "dashboard",
+        "dev-test",
+        "rag-server"
+      ]
+    },
     "macos-cpython311-arm64": {
       "abi": "cpython-311-darwin",
       "architecture": "arm64",

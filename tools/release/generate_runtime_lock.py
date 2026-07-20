@@ -28,7 +28,7 @@ except ModuleNotFoundError:  # The test/runtime interpreter still has pip's vend
 
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-ENVIRONMENT_FIELDS = 7
+ENVIRONMENT_FIELDS = 8
 UNLOCKED_MARKER_VARIABLES = frozenset(
     {
         "implementation_version",
@@ -161,21 +161,35 @@ def _locked_artifact_record(package: dict[str, Any]) -> dict[str, str]:
     }
 
 
-def _marker_environment(python_mm: str, architecture: str) -> dict[str, str]:
+def _marker_environment(
+    python_mm: str,
+    architecture: str,
+    platform_family: str,
+) -> dict[str, str]:
     environment = default_environment()
+    if platform_family == "macos":
+        marker_machine = architecture
+        marker_system = "Darwin"
+        marker_sys_platform = "darwin"
+    elif platform_family == "linux":
+        marker_machine = "aarch64" if architecture == "arm64" else architecture
+        marker_system = "Linux"
+        marker_sys_platform = "linux"
+    else:  # The environment parser rejects this before marker evaluation.
+        raise LockGenerationError(f"unsupported platform family: {platform_family}")
     environment.update(
         {
             "implementation_name": "cpython",
             "implementation_version": f"{python_mm}.0",
             "os_name": "posix",
-            "platform_machine": architecture,
+            "platform_machine": marker_machine,
             "platform_python_implementation": "CPython",
             "platform_release": "",
-            "platform_system": "Darwin",
+            "platform_system": marker_system,
             "platform_version": "",
             "python_full_version": f"{python_mm}.0",
             "python_version": python_mm,
-            "sys_platform": "darwin",
+            "sys_platform": marker_sys_platform,
             "extra": "",
         }
     )
@@ -241,10 +255,11 @@ def _profile_dependency_closure(
     *,
     python_mm: str,
     architecture: str,
+    platform_family: str,
     environment_id: str,
     profile: str,
 ) -> list[str]:
-    marker_environment = _marker_environment(python_mm, architecture)
+    marker_environment = _marker_environment(python_mm, architecture, platform_family)
     selected_extras: dict[str, set[str]] = {}
     processed_extras: dict[str, frozenset[str]] = {}
     pending: list[str] = []
@@ -294,24 +309,51 @@ def _parse_assignment(value: str, *, label: str) -> tuple[str, Path]:
     return name, Path(raw_path).expanduser().resolve(strict=True)
 
 
-def _parse_environment(value: str) -> tuple[str, Path, str, str, str, str, list[str]]:
+def _parse_environment(
+    value: str,
+) -> tuple[str, Path, str, str, str, str, str | None, list[str]]:
     fields = value.split("|")
     if len(fields) != ENVIRONMENT_FIELDS:
         raise LockGenerationError(
-            "--environment must use ID|REPORT|PYTHON_MAJOR_MINOR|ABI|ARCH|MIN_MACOS|PROFILES"
+            "--environment must use "
+            "ID|REPORT|PYTHON_MAJOR_MINOR|ABI|PLATFORM_FAMILY|ARCH|MIN_MACOS_OR_DASH|PROFILES"
         )
-    environment_id, raw_report, python_mm, abi, architecture, minimum_macos, raw_profiles = fields
+    (
+        environment_id,
+        raw_report,
+        python_mm,
+        abi,
+        platform_family,
+        architecture,
+        minimum_macos,
+        raw_profiles,
+    ) = fields
     if not NAME_RE.fullmatch(environment_id):
         raise LockGenerationError(f"invalid environment id: {environment_id!r}")
     if not re.fullmatch(r"3\.(?:11|12|13|14)", python_mm):
         raise LockGenerationError(f"unsupported Python lock version: {python_mm!r}")
-    expected_abi = f"cpython-{python_mm.replace('.', '')}-darwin"
+    python_tag = python_mm.replace(".", "")
+    if platform_family == "macos":
+        expected_abi = f"cpython-{python_tag}-darwin"
+    elif platform_family == "linux":
+        abi_machine = "aarch64" if architecture == "arm64" else architecture
+        expected_abi = f"cpython-{python_tag}-{abi_machine}-linux-gnu"
+    else:
+        raise LockGenerationError(f"unsupported platform family: {platform_family}")
     if abi != expected_abi:
         raise LockGenerationError(f"environment ABI must be {expected_abi}: {environment_id}")
     if architecture not in {"arm64", "x86_64"}:
         raise LockGenerationError(f"unsupported lock architecture: {architecture}")
-    if not re.fullmatch(r"[0-9]+\.[0-9]+", minimum_macos):
-        raise LockGenerationError(f"invalid minimum macOS version: {minimum_macos}")
+    if platform_family == "macos":
+        if not re.fullmatch(r"[0-9]+\.[0-9]+", minimum_macos):
+            raise LockGenerationError(f"invalid minimum macOS version: {minimum_macos}")
+        parsed_minimum_macos: str | None = minimum_macos
+    else:
+        if minimum_macos != "-":
+            raise LockGenerationError(
+                f"Linux environment minimum macOS field must be '-': {environment_id}"
+            )
+        parsed_minimum_macos = None
     profiles = sorted(set(filter(None, raw_profiles.split(","))))
     if not profiles:
         raise LockGenerationError(f"environment has no supported profiles: {environment_id}")
@@ -320,8 +362,9 @@ def _parse_environment(value: str) -> tuple[str, Path, str, str, str, str, list[
         Path(raw_report).expanduser().resolve(strict=True),
         python_mm,
         abi,
+        platform_family,
         architecture,
-        minimum_macos,
+        parsed_minimum_macos,
         profiles,
     )
 
@@ -391,6 +434,7 @@ def build_lock(args: argparse.Namespace) -> dict[str, Any]:
             report_path,
             python_mm,
             abi,
+            platform_family,
             architecture,
             minimum_macos,
             supported_profiles,
@@ -407,6 +451,7 @@ def build_lock(args: argparse.Namespace) -> dict[str, Any]:
                 profiles[profile]["directRequirements"],
                 python_mm=python_mm,
                 architecture=architecture,
+                platform_family=platform_family,
                 environment_id=environment_id,
                 profile=profile,
             )
@@ -443,7 +488,7 @@ def build_lock(args: argparse.Namespace) -> dict[str, Any]:
             "implementation": "cpython",
             "pythonMajorMinor": python_mm,
             "abi": abi,
-            "platformFamily": "macos",
+            "platformFamily": platform_family,
             "architecture": architecture,
             "minimumMacOS": minimum_macos,
             "supportedProfiles": supported_profiles,
@@ -453,7 +498,7 @@ def build_lock(args: argparse.Namespace) -> dict[str, Any]:
 
     if len(resolver_versions) != 1:
         raise LockGenerationError("all audited pip reports must use the same resolver version")
-    return {
+    generated = {
         "schemaVersion": 1,
         "product": "actanara",
         "artifactPolicy": {
@@ -470,6 +515,74 @@ def build_lock(args: argparse.Namespace) -> dict[str, Any]:
         "profiles": profiles,
         "environments": environments,
     }
+    base_lock = getattr(args, "base_lock", None)
+    if base_lock:
+        generated = merge_base_lock(
+            generated,
+            Path(base_lock).expanduser().resolve(strict=True),
+        )
+    return generated
+
+
+def merge_base_lock(generated: dict[str, Any], base_path: Path) -> dict[str, Any]:
+    """Merge newly audited targets into an existing lock without rewriting them."""
+    base = _load_json(base_path)
+    expected_root_fields = {
+        "schemaVersion",
+        "product",
+        "artifactPolicy",
+        "resolver",
+        "profiles",
+        "environments",
+    }
+    if set(base) != expected_root_fields:
+        raise LockGenerationError("base lock has an unsupported root schema")
+    for field in ("schemaVersion", "product", "artifactPolicy", "resolver"):
+        if base.get(field) != generated.get(field):
+            raise LockGenerationError(f"base lock {field} does not match generated evidence")
+    base_profiles = base.get("profiles")
+    base_environments = base.get("environments")
+    if not isinstance(base_profiles, dict) or not isinstance(base_environments, dict):
+        raise LockGenerationError("base lock profile or environment catalog is invalid")
+    if set(base_profiles) != set(generated["profiles"]):
+        raise LockGenerationError("base lock profiles do not match generated evidence")
+
+    merged_profiles: dict[str, Any] = {}
+    for profile in sorted(generated["profiles"]):
+        existing = base_profiles.get(profile)
+        candidate = generated["profiles"][profile]
+        if not isinstance(existing, dict) or set(existing) != {"directRequirements", "packages"}:
+            raise LockGenerationError(f"base lock profile is invalid: {profile}")
+        if existing.get("directRequirements") != candidate.get("directRequirements"):
+            raise LockGenerationError(
+                f"base lock direct requirements changed for profile: {profile}"
+            )
+        existing_packages = existing.get("packages")
+        candidate_packages = candidate.get("packages")
+        if (
+            not isinstance(existing_packages, list)
+            or existing_packages != sorted(set(existing_packages))
+            or not all(isinstance(item, str) for item in existing_packages)
+        ):
+            raise LockGenerationError(f"base lock profile package audit is invalid: {profile}")
+        merged_profiles[profile] = {
+            "directRequirements": list(candidate["directRequirements"]),
+            "packages": sorted(set(existing_packages) | set(candidate_packages)),
+        }
+
+    merged_environments = dict(base_environments)
+    for environment_id, candidate in generated["environments"].items():
+        existing = merged_environments.get(environment_id)
+        if existing is not None and existing != candidate:
+            raise LockGenerationError(
+                f"base lock contains conflicting environment evidence: {environment_id}"
+            )
+        merged_environments[environment_id] = candidate
+    return {
+        **generated,
+        "profiles": merged_profiles,
+        "environments": dict(sorted(merged_environments.items())),
+    }
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -477,6 +590,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--pyproject", required=True)
     parser.add_argument("--profile-report", action="append", default=[], required=True)
     parser.add_argument("--environment", action="append", default=[], required=True)
+    parser.add_argument(
+        "--base-lock",
+        help="Existing compatible lock whose audited environments should be preserved.",
+    )
     parser.add_argument("--output", required=True)
     return parser
 

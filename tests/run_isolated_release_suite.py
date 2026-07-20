@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import argparse
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from datetime import datetime, timezone
 import importlib.util
 import os
@@ -137,13 +137,22 @@ def _assert_test_dependencies() -> None:
         )
 
 
+@contextmanager
+def _restrictive_test_umask():
+    previous = os.umask(0o077)
+    try:
+        yield
+    finally:
+        os.umask(previous)
+
+
 def _run_isolated(args: argparse.Namespace) -> int:
     fixed_utc = datetime.fromisoformat(args.fixed_now)
     if fixed_utc.tzinfo is None:
         raise ValueError("--fixed-now must include a UTC offset")
     fixed_utc = fixed_utc.astimezone(timezone.utc)
 
-    with tempfile.TemporaryDirectory(prefix="actanara-release-runtime-") as raw_root:
+    with _restrictive_test_umask(), tempfile.TemporaryDirectory(prefix="actanara-release-runtime-") as raw_root:
         root = Path(raw_root)
         home = root / "Home"
         actanara_home = home / ".actanara"

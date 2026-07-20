@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import unquote, urlsplit
 
+from install import dependency_contract
 from tools.release import generate_runtime_lock as lock_generator
 
 
@@ -154,15 +155,31 @@ class RuntimeDependencyLockTests(unittest.TestCase):
             for python in ("3.11", "3.12", "3.13", "3.14")
             for suffix in ("arm64", "x86-64")
         }
+        expected_environments.update(
+            {"linux-cpython313-arm64", "linux-cpython313-x86-64"}
+        )
         self.assertEqual(set(self.lock["environments"]), expected_environments)
         for environment_id, environment in self.lock["environments"].items():
             with self.subTest(environment=environment_id):
                 python_mm = environment["pythonMajorMinor"]
                 self.assertEqual(environment["implementation"], "cpython")
-                self.assertEqual(environment["abi"], f"cpython-{python_mm.replace('.', '')}-darwin")
-                self.assertEqual(environment["platformFamily"], "macos")
                 self.assertIn(environment["architecture"], {"arm64", "x86_64"})
-                self.assertRegex(environment["minimumMacOS"], r"^[0-9]+\.[0-9]+$")
+                if environment["platformFamily"] == "macos":
+                    self.assertEqual(
+                        environment["abi"],
+                        f"cpython-{python_mm.replace('.', '')}-darwin",
+                    )
+                    self.assertRegex(environment["minimumMacOS"], r"^[0-9]+\.[0-9]+$")
+                else:
+                    self.assertEqual(environment["platformFamily"], "linux")
+                    abi_machine = (
+                        "aarch64" if environment["architecture"] == "arm64" else "x86_64"
+                    )
+                    self.assertEqual(
+                        environment["abi"],
+                        f"cpython-{python_mm.replace('.', '')}-{abi_machine}-linux-gnu",
+                    )
+                    self.assertIsNone(environment["minimumMacOS"])
                 supported = environment["supportedProfiles"]
                 closures = environment["profilePackages"]
                 self.assertEqual(supported, sorted(set(supported)))
@@ -183,21 +200,55 @@ class RuntimeDependencyLockTests(unittest.TestCase):
                     assigned.update(actual)
                 self.assertEqual(assigned, environment_packages)
 
-    def test_cpython313_and_314_x86_64_explicitly_exclude_rag_local(self):
+    def test_audited_phase_one_environments_explicitly_exclude_rag_local(self):
         expected_supported = ["dashboard", "dev-test", "rag-server"]
-        for python in ("313", "314"):
-            environment_id = f"macos-cpython{python}-x86-64"
+        excluded = {
+            "linux-cpython313-arm64",
+            "linux-cpython313-x86-64",
+            "macos-cpython313-x86-64",
+            "macos-cpython314-x86-64",
+        }
+        for environment_id in sorted(excluded):
             environment = self.lock["environments"][environment_id]
             with self.subTest(environment=environment_id):
-                self.assertEqual(environment["architecture"], "x86_64")
                 self.assertEqual(environment["supportedProfiles"], expected_supported)
                 self.assertNotIn("rag-local", environment["profilePackages"])
         for environment_id, environment in self.lock["environments"].items():
-            if environment_id not in {
-                "macos-cpython313-x86-64",
-                "macos-cpython314-x86-64",
-            }:
+            if environment_id not in excluded:
                 self.assertIn("rag-local", environment["supportedProfiles"], environment_id)
+
+    def test_checked_in_lock_selects_linux_x64_and_arm64_by_runtime_probe(self):
+        probes = (
+            ("x86_64", "cpython-313-x86_64-linux-gnu", "linux-cpython313-x86-64"),
+            ("arm64", "cpython-313-aarch64-linux-gnu", "linux-cpython313-arm64"),
+        )
+        for architecture, abi, expected_environment in probes:
+            probe = {
+                "implementation": "cpython",
+                "pythonMajorMinor": "3.13",
+                "abi": abi,
+                "platformFamily": "linux",
+                "architecture": architecture,
+                "macOSVersion": None,
+            }
+            probe["environmentId"] = dependency_contract._environment_id(probe)
+            with self.subTest(architecture=architecture):
+                selection = dependency_contract.load_contract_selection(
+                    LOCK_PATH,
+                    PYPROJECT_PATH,
+                    ["dashboard", "rag-server"],
+                    environment_probe=probe,
+                )
+                self.assertEqual(selection.environment_id, expected_environment)
+                self.assertEqual(selection.lock_environment["platformFamily"], "linux")
+                with self.assertRaises(dependency_contract.ContractError) as unsupported:
+                    dependency_contract.load_contract_selection(
+                        LOCK_PATH,
+                        PYPROJECT_PATH,
+                        ["rag-local"],
+                        environment_probe=probe,
+                    )
+                self.assertEqual(unsupported.exception.code, "unsupported-profile")
 
     def test_generator_output_is_byte_deterministic_across_input_order(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -219,8 +270,8 @@ class RuntimeDependencyLockTests(unittest.TestCase):
             _write_report(arm, environment_records)
             _write_report(x86, environment_records)
             environments = [
-                f"fixture-arm64|{arm}|3.11|cpython-311-darwin|arm64|14.0|alpha,beta",
-                f"fixture-x86-64|{x86}|3.11|cpython-311-darwin|x86_64|14.0|alpha,beta",
+                f"fixture-arm64|{arm}|3.11|cpython-311-darwin|macos|arm64|14.0|alpha,beta",
+                f"fixture-x86-64|{x86}|3.11|cpython-311-darwin|macos|x86_64|14.0|alpha,beta",
             ]
             first = root / "first.json"
             second = root / "second.json"
@@ -258,6 +309,75 @@ class RuntimeDependencyLockTests(unittest.TestCase):
                 ["fixture-arm64", "fixture-x86-64"],
             )
 
+    def test_generator_can_preserve_compatible_audited_base_environments(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            pyproject = root / "pyproject.toml"
+            _write_fixture_pyproject(pyproject, {"core": ["alpha>=1"]})
+            profile = root / "profile.json"
+            mac_report = root / "mac.json"
+            linux_report = root / "linux.json"
+            output = root / "base.json"
+            records = [_wheel_record("alpha")]
+            _write_report(profile, records)
+            _write_report(mac_report, records)
+            _write_report(linux_report, records)
+            base_args = argparse.Namespace(
+                pyproject=str(pyproject),
+                profile_report=[f"core={profile}"],
+                environment=[
+                    f"fixture-mac|{mac_report}|3.11|cpython-311-darwin|macos|arm64|14.0|core"
+                ],
+                base_lock=None,
+                output=str(output),
+            )
+            base = lock_generator.build_lock(base_args)
+            output.write_text(
+                json.dumps(base, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            linux_args = argparse.Namespace(
+                pyproject=str(pyproject),
+                profile_report=[f"core={profile}"],
+                environment=[
+                    f"fixture-linux|{linux_report}|3.11|"
+                    "cpython-311-x86_64-linux-gnu|linux|x86_64|-|core"
+                ],
+                base_lock=str(output),
+                output=str(output),
+            )
+
+            merged = lock_generator.build_lock(linux_args)
+
+        self.assertEqual(
+            list(merged["environments"]),
+            ["fixture-linux", "fixture-mac"],
+        )
+        self.assertEqual(merged["environments"]["fixture-mac"], base["environments"]["fixture-mac"])
+
+    def test_generator_rejects_conflicting_base_environment_evidence(self):
+        generated = {
+            "schemaVersion": 1,
+            "product": "actanara",
+            "artifactPolicy": {"wheelsOnly": True},
+            "resolver": {"name": "pip"},
+            "profiles": {"core": {"directRequirements": ["alpha>=1"], "packages": ["alpha"]}},
+            "environments": {"fixture": {"architecture": "arm64"}},
+        }
+        base = {
+            **generated,
+            "environments": {"fixture": {"architecture": "x86_64"}},
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "base.json"
+            path.write_text(json.dumps(base), encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                lock_generator.LockGenerationError,
+                "conflicting environment evidence",
+            ):
+                lock_generator.merge_base_lock(generated, path)
+
     def test_generator_fails_closed_for_missing_or_tampered_report_evidence(self):
         cases = {}
         valid = _wheel_record("alpha")
@@ -287,7 +407,7 @@ class RuntimeDependencyLockTests(unittest.TestCase):
                 _write_report(profile, records)
                 _write_report(environment, [_wheel_record("alpha")])
                 environment_spec = (
-                    f"fixture|{environment}|3.11|cpython-311-darwin|arm64|14.0|core"
+                    f"fixture|{environment}|3.11|cpython-311-darwin|macos|arm64|14.0|core"
                 )
                 with patch.object(
                     sys,
@@ -311,7 +431,7 @@ class RuntimeDependencyLockTests(unittest.TestCase):
                 _generator_argv(
                     pyproject,
                     [("core", missing)],
-                    [f"fixture|{missing}|3.11|cpython-311-darwin|arm64|14.0|core"],
+                    [f"fixture|{missing}|3.11|cpython-311-darwin|macos|arm64|14.0|core"],
                     output,
                 ),
             ), redirect_stderr(io.StringIO()) as error:
@@ -343,7 +463,7 @@ class RuntimeDependencyLockTests(unittest.TestCase):
                     pyproject=str(pyproject),
                     profile_report=[f"core={profile}"],
                     environment=[
-                        f"fixture|{environment}|3.11|cpython-311-darwin|arm64|14.0|core"
+                        f"fixture|{environment}|3.11|cpython-311-darwin|macos|arm64|14.0|core"
                     ],
                     output=str(output),
                 )
@@ -373,7 +493,7 @@ class RuntimeDependencyLockTests(unittest.TestCase):
                 pyproject=str(pyproject),
                 profile_report=[f"core={profile}"],
                 environment=[
-                    f"fixture|{environment}|3.11|cpython-311-darwin|arm64|14.0|core"
+                    f"fixture|{environment}|3.11|cpython-311-darwin|macos|arm64|14.0|core"
                 ],
                 output=str(output),
             )
@@ -396,6 +516,57 @@ class RuntimeDependencyLockTests(unittest.TestCase):
                 [package["name"] for package in target["packages"]],
                 ["alpha", "beta"],
             )
+
+    def test_generator_models_linux_abi_and_marker_environment_explicitly(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            pyproject = root / "pyproject.toml"
+            _write_fixture_pyproject(pyproject, {"core": ["alpha>=1"]})
+            profile = root / "profile.json"
+            environment = root / "linux.json"
+            output = root / "lock.json"
+            records = [
+                _wheel_record(
+                    "alpha",
+                    requires_dist=["linux-helper>=1; sys_platform == 'linux'"],
+                ),
+                _wheel_record("linux-helper", requires_dist=[]),
+            ]
+            _write_report(profile, records)
+            _write_report(environment, records)
+            args = argparse.Namespace(
+                pyproject=str(pyproject),
+                profile_report=[f"core={profile}"],
+                environment=[
+                    f"linux-cpython313-x86-64|{environment}|3.13|"
+                    "cpython-313-x86_64-linux-gnu|linux|x86_64|-|core"
+                ],
+                output=str(output),
+            )
+
+            generated = lock_generator.build_lock(args)
+
+        target = generated["environments"]["linux-cpython313-x86-64"]
+        self.assertEqual(target["platformFamily"], "linux")
+        self.assertEqual(target["architecture"], "x86_64")
+        self.assertEqual(target["abi"], "cpython-313-x86_64-linux-gnu")
+        self.assertIsNone(target["minimumMacOS"])
+        self.assertEqual(target["profilePackages"]["core"], ["alpha", "linux-helper"])
+
+    def test_generator_rejects_macos_minimum_version_on_linux(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            report = Path(temporary) / "linux.json"
+            _write_report(report, [_wheel_record("alpha")])
+            spec = (
+                f"linux-cpython313-arm64|{report}|3.13|"
+                "cpython-313-aarch64-linux-gnu|linux|arm64|14.0|core"
+            )
+
+            with self.assertRaisesRegex(
+                lock_generator.LockGenerationError,
+                "minimum macOS field must be '-'",
+            ):
+                lock_generator._parse_environment(spec)
 
     def test_marker_evaluation_supports_legacy_pip_vendored_packaging(self):
         class LegacyMarker:
