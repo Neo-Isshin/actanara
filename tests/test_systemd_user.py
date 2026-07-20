@@ -4,7 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,6 +20,7 @@ from data_foundation.systemd_user import (
     linger_status,
     rag_unit,
     scheduler_units,
+    uninstall_user_units,
 )
 
 
@@ -190,6 +191,115 @@ class SystemdUserTests(unittest.TestCase):
         self.assertEqual(result["status"], "disabled")
         self.assertFalse(result["enabled"])
         self.assertFalse(result["changed"])
+
+    def test_uninstall_removes_only_managed_units_and_stops_all_jobs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = self._runtime(root)
+            unit_dir = root / "units"
+            unit_dir.mkdir()
+            units = scheduler_units(
+                paths,
+                {"timezone": "UTC", "dailyPipelineTime": "04:00", "dashboardAggregationTime": "04:30"},
+                {"label": "actanara.test"},
+            )
+            states = {unit.name: {"enabled": unit.enable_now, "active": True} for unit in units}
+            commands = []
+            for unit in units:
+                (unit_dir / unit.name).write_text(unit.content, encoding="utf-8")
+
+            def runner(command, **kwargs):
+                commands.append(command)
+                verb = command[2]
+                if verb == "is-enabled":
+                    return subprocess.CompletedProcess(command, 0 if states[command[3]]["enabled"] else 4, "", "")
+                if verb == "is-active":
+                    return subprocess.CompletedProcess(command, 0 if states[command[3]]["active"] else 4, "", "")
+                if verb == "disable":
+                    for name in command[4:]:
+                        states[name] = {"enabled": False, "active": False}
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            with (
+                patch("data_foundation.systemd_user.platform.system", return_value="Linux"),
+                patch("data_foundation.systemd_user._systemctl_binary", return_value="/usr/bin/systemctl"),
+                patch("data_foundation.systemd_user.shutil.which", return_value=None),
+            ):
+                result = uninstall_user_units(paths, units, unit_dir=unit_dir, runner=runner)
+
+            remaining = [unit.name for unit in units if (unit_dir / unit.name).exists()]
+
+        self.assertEqual(result["status"], "uninstalled")
+        self.assertFalse(result["probe"]["actualRegistered"])
+        self.assertEqual(set(result["removedUnits"]), {unit.name for unit in units})
+        self.assertEqual(remaining, [])
+        self.assertTrue(any(command[2:4] == ["disable", "--now"] for command in commands))
+
+    def test_uninstall_refuses_an_unmanaged_unit_without_systemctl_mutation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = self._runtime(root)
+            unit_dir = root / "units"
+            unit_dir.mkdir()
+            unit = dashboard_unit(paths, {"host": "127.0.0.1", "port": 3036})
+            target = unit_dir / unit.name
+            target.write_text("[Unit]\nDescription=operator owned\n", encoding="utf-8")
+            runner = Mock()
+
+            with (
+                patch("data_foundation.systemd_user.platform.system", return_value="Linux"),
+                self.assertRaisesRegex(SystemdUserError, "unmanaged systemd unit"),
+            ):
+                uninstall_user_units(paths, [unit], unit_dir=unit_dir, runner=runner)
+
+            content = target.read_text(encoding="utf-8")
+
+        self.assertEqual(content, "[Unit]\nDescription=operator owned\n")
+        runner.assert_not_called()
+
+    def test_uninstall_failure_restores_unit_files_and_prior_states(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = self._runtime(root)
+            unit_dir = root / "units"
+            unit_dir.mkdir()
+            unit = dashboard_unit(paths, {"host": "127.0.0.1", "port": 3036})
+            target = unit_dir / unit.name
+            target.write_text(unit.content, encoding="utf-8")
+            states = {unit.name: {"enabled": True, "active": True}}
+            commands = []
+            daemon_reloads = 0
+
+            def runner(command, **kwargs):
+                nonlocal daemon_reloads
+                commands.append(command)
+                verb = command[2]
+                if verb == "is-enabled":
+                    return subprocess.CompletedProcess(command, 0 if states[command[3]]["enabled"] else 4, "", "")
+                if verb == "is-active":
+                    return subprocess.CompletedProcess(command, 0 if states[command[3]]["active"] else 4, "", "")
+                if verb == "disable":
+                    states[unit.name] = {"enabled": False, "active": False}
+                if verb == "daemon-reload":
+                    daemon_reloads += 1
+                    if daemon_reloads == 1:
+                        return subprocess.CompletedProcess(command, 9, "", "failed")
+                if verb == "enable":
+                    states[unit.name] = {"enabled": True, "active": "--now" in command}
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            with (
+                patch("data_foundation.systemd_user.platform.system", return_value="Linux"),
+                patch("data_foundation.systemd_user._systemctl_binary", return_value="/usr/bin/systemctl"),
+                self.assertRaises(SystemdUserError),
+            ):
+                uninstall_user_units(paths, [unit], unit_dir=unit_dir, runner=runner)
+
+            restored = target.read_text(encoding="utf-8")
+
+        self.assertEqual(restored, unit.content)
+        self.assertEqual(states[unit.name], {"enabled": True, "active": True})
+        self.assertTrue(any(command[2:] == ["enable", "--now", unit.name] for command in commands))
 
     def test_scheduler_preview_probes_systemd_without_mutating_units(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -17,6 +17,7 @@ from .paths import RuntimePaths
 
 
 UNIT_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.@-]{0,126}$")
+MANAGED_UNIT_HEADER = "# Managed by Actanara. Do not edit by hand."
 Runner = Callable[..., subprocess.CompletedProcess[str]]
 
 
@@ -62,6 +63,7 @@ def _service_unit(
 ) -> str:
     command_line = " ".join(_quote(item) for item in command)
     lines = [
+        MANAGED_UNIT_HEADER,
         "[Unit]",
         f"Description={description}",
         "After=network.target",
@@ -85,6 +87,7 @@ def _timer_unit(*, description: str, service_name: str, time_of_day: str, timezo
         raise SystemdUserError("systemd timer timezone is unsafe")
     return "\n".join(
         (
+            MANAGED_UNIT_HEADER,
             "[Unit]",
             f"Description={description}",
             "",
@@ -393,5 +396,86 @@ def install_user_units(
         "enabledUnits": [unit.name for unit in selected_units if unit.enable_now],
         "backupDirectory": str(backup_root) if backup_root.exists() else None,
         "probe": probe,
+        "linger": linger_status(runner=runner),
+    }
+
+
+def uninstall_user_units(
+    paths: RuntimePaths,
+    units: Iterable[UserUnit],
+    *,
+    unit_dir: Path | None = None,
+    runner: Runner = subprocess.run,
+) -> dict:
+    if platform.system() != "Linux" and os.environ.get("ACTANARA_INSTALL_TEST_MODE") != "1":
+        raise SystemdUserError("systemd user units are only supported on Linux")
+    selected_units = list(units)
+    if not selected_units or len({unit.name for unit in selected_units}) != len(selected_units):
+        raise SystemdUserError("systemd unit set is empty or duplicated")
+    root = unit_dir or default_user_unit_dir()
+    names = [unit.name for unit in selected_units]
+    targets: list[Path] = []
+    backup_root = paths.state_dir / "backups" / "systemd" / (
+        datetime.now().strftime("%Y%m%d-%H%M%S-%f") + "-remove"
+    )
+    backups: dict[Path, Path] = {}
+    for unit in selected_units:
+        if not UNIT_NAME_RE.fullmatch(unit.name):
+            raise SystemdUserError("systemd unit name is unsafe")
+        target = root / unit.name
+        if target.is_symlink() or (target.exists() and not target.is_file()):
+            raise SystemdUserError(f"systemd unit target is unsafe: {unit.name}")
+        if not target.exists():
+            continue
+        try:
+            with target.open("r", encoding="utf-8") as handle:
+                first_line = handle.readline().rstrip("\r\n")
+        except OSError as exc:
+            raise SystemdUserError(f"systemd unit target is unreadable: {unit.name}") from exc
+        if first_line != MANAGED_UNIT_HEADER:
+            raise SystemdUserError(f"refusing to remove an unmanaged systemd unit: {unit.name}")
+        targets.append(target)
+
+    prior_states = _snapshot_unit_states(names, runner=runner)
+    try:
+        for target in targets:
+            backup_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+            backup = backup_root / target.name
+            shutil.copy2(target, backup, follow_symlinks=False)
+            backup.chmod(0o600)
+            backups[target] = backup
+        _run_systemctl(("disable", "--now", *names), runner=runner, allow_status={0, 1, 3, 4, 5})
+        for target in targets:
+            target.unlink()
+        _run_systemctl(("daemon-reload",), runner=runner)
+        remaining = _snapshot_unit_states(names, runner=runner)
+        if any(state["enabled"] or state["active"] for state in remaining.values()):
+            raise SystemdUserError("systemd user units remained enabled or active after removal")
+    except Exception:
+        for target, backup in backups.items():
+            if backup.is_file():
+                shutil.copy2(backup, target, follow_symlinks=False)
+                target.chmod(0o600)
+        try:
+            _run_systemctl(("daemon-reload",), runner=runner)
+        except Exception:
+            pass
+        _restore_unit_states(prior_states, runner=runner)
+        raise
+    return {
+        "status": "uninstalled",
+        "provider": "systemd-user",
+        "unitDirectory": str(root),
+        "units": names,
+        "removedUnits": [target.name for target in targets],
+        "backupDirectory": str(backup_root) if backup_root.exists() else None,
+        "probe": {
+            "status": "not-registered",
+            "actualRegistered": False,
+            "units": [
+                {"name": name, **remaining[name]}
+                for name in names
+            ],
+        },
         "linger": linger_status(runner=runner),
     }
