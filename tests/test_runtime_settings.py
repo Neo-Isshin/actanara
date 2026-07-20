@@ -2730,7 +2730,9 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertEqual(rag["installSpec"], ".[rag-local]")
 
     def test_onboarding_one_liner_dry_run_reports_v1_apply_contract(self):
-        payload = onboarding_one_liner_dry_run(["dashboard", "nova-rag"])
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
+            payload = onboarding_one_liner_dry_run(["dashboard", "nova-rag"], paths)
         text = format_onboarding_one_liner_dry_run(payload)
         raw_json = dump_onboarding_one_liner_dry_run_json(payload)
 
@@ -2875,7 +2877,9 @@ class RuntimeSettingsTests(unittest.TestCase):
                 encoding="utf-8"
             )
         )
-        payload = onboarding_one_liner_dry_run()
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
+            payload = onboarding_one_liner_dry_run(paths=paths)
 
         self.assertEqual(payload["schemaVersion"], fixture["schemaVersion"])
         self.assertEqual(payload["profileModel"], fixture["profileModel"])
