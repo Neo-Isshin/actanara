@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -24,6 +25,9 @@ from .paths import RuntimePaths
 UNIT_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.@-]{0,126}$")
 MANAGED_UNIT_HEADER = "# Managed by Actanara. Do not edit by hand."
 Runner = Callable[..., subprocess.CompletedProcess[str]]
+SYSTEMD_STATE_SETTLE_ATTEMPTS = 10
+SYSTEMD_STATE_STABLE_SAMPLES = 3
+SYSTEMD_STATE_SETTLE_INTERVAL_SECONDS = 0.1
 
 
 class SystemdUserError(RuntimeError):
@@ -301,6 +305,29 @@ def probe_user_units(units: Iterable[UserUnit], *, runner: Runner = subprocess.r
     }
 
 
+def _wait_for_registered_user_units(
+    units: Iterable[UserUnit],
+    *,
+    runner: Runner,
+) -> dict[str, Any]:
+    """Require enabled units to remain active across a bounded settle window."""
+
+    selected_units = tuple(units)
+    stable_samples = 0
+    probe: dict[str, Any] = {}
+    for attempt in range(SYSTEMD_STATE_SETTLE_ATTEMPTS):
+        probe = probe_user_units(selected_units, runner=runner)
+        if probe.get("actualRegistered") is True:
+            stable_samples += 1
+            if stable_samples >= SYSTEMD_STATE_STABLE_SAMPLES:
+                return probe
+        else:
+            stable_samples = 0
+        if attempt + 1 < SYSTEMD_STATE_SETTLE_ATTEMPTS:
+            time.sleep(SYSTEMD_STATE_SETTLE_INTERVAL_SECONDS)
+    return probe
+
+
 def inspect_user_units(
     units: Iterable[UserUnit],
     *,
@@ -397,8 +424,12 @@ def control_user_units(
                 f"systemd unit definition must be reconciled before {action}: {unit.name}"
             )
     _run_systemctl((action, *names), runner=runner)
-    states = _snapshot_unit_states(names, runner=runner)
     expected_active = action != "stop"
+    states = _wait_for_active_unit_states(
+        names,
+        expected_active=expected_active,
+        runner=runner,
+    )
     if any(state["active"] is not expected_active for state in states.values()):
         raise SystemdUserError(f"systemd user units did not reach the requested {action} state")
     return {
@@ -418,6 +449,28 @@ def _snapshot_unit_states(names: Iterable[str], *, runner: Runner) -> dict[str, 
         enabled = _run_systemctl(("is-enabled", name), runner=runner, allow_status={0, 1, 3, 4})
         active = _run_systemctl(("is-active", name), runner=runner, allow_status={0, 1, 3, 4})
         states[name] = {"enabled": enabled.returncode == 0, "active": active.returncode == 0}
+    return states
+
+
+def _wait_for_active_unit_states(
+    names: Iterable[str],
+    *,
+    expected_active: bool,
+    runner: Runner,
+) -> dict[str, dict[str, bool]]:
+    selected_names = tuple(names)
+    stable_samples = 0
+    states: dict[str, dict[str, bool]] = {}
+    for attempt in range(SYSTEMD_STATE_SETTLE_ATTEMPTS):
+        states = _snapshot_unit_states(selected_names, runner=runner)
+        if all(state["active"] is expected_active for state in states.values()):
+            stable_samples += 1
+            if stable_samples >= SYSTEMD_STATE_STABLE_SAMPLES:
+                return states
+        else:
+            stable_samples = 0
+        if attempt + 1 < SYSTEMD_STATE_SETTLE_ATTEMPTS:
+            time.sleep(SYSTEMD_STATE_SETTLE_INTERVAL_SECONDS)
     return states
 
 
@@ -900,7 +953,7 @@ def install_user_units(
             _run_systemctl(("restart", *restarted_names), runner=runner)
         _advance_systemd_transaction(transaction_dir, journal, "external-applied")
         systemd_transaction_checkpoint("after-external-applied", str(journal["id"]))
-        probe = probe_user_units(selected_units, runner=runner)
+        probe = _wait_for_registered_user_units(selected_units, runner=runner)
         if enabled_names and probe.get("actualRegistered") is not True:
             raise SystemdUserError("systemd user units did not become enabled and active")
         alignment = inspect_user_units(selected_units, unit_dir=root, runner=runner)

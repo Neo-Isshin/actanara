@@ -218,6 +218,56 @@ class SystemdUserTests(unittest.TestCase):
         )
         self.assertEqual(units_present_after_rollback, [])
 
+    def test_install_compensates_when_service_exits_during_stability_window(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = self._runtime(root)
+            unit_dir = root / "units"
+            unit_dir.mkdir()
+            unit = dashboard_unit(paths, {"host": "127.0.0.1", "port": 3036})
+            enabled = False
+            active_probes = 0
+            commands = []
+
+            def runner(command, **kwargs):
+                nonlocal enabled, active_probes
+                commands.append(command)
+                verb = command[2]
+                if verb == "is-enabled":
+                    return subprocess.CompletedProcess(command, 0 if enabled else 4, "", "")
+                if verb == "is-active":
+                    if not enabled:
+                        return subprocess.CompletedProcess(command, 4, "", "")
+                    active_probes += 1
+                    return subprocess.CompletedProcess(
+                        command,
+                        0 if active_probes == 1 else 4,
+                        "",
+                        "",
+                    )
+                if verb == "enable":
+                    enabled = True
+                if verb == "disable":
+                    enabled = False
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            with (
+                patch("data_foundation.systemd_user.platform.system", return_value="Linux"),
+                patch(
+                    "data_foundation.systemd_user._systemctl_binary",
+                    return_value="/usr/bin/systemctl",
+                ),
+                patch("data_foundation.systemd_user.time.sleep"),
+                self.assertRaisesRegex(SystemdUserError, "did not become enabled and active"),
+            ):
+                install_user_units(paths, [unit], unit_dir=unit_dir, runner=runner)
+
+            definition_exists = (unit_dir / unit.name).exists()
+
+        self.assertFalse(definition_exists)
+        self.assertFalse(enabled)
+        self.assertTrue(any(command[2:4] == ["disable", "--now"] for command in commands))
+
     def test_linger_probe_is_diagnostic_only(self):
         def runner(command, **kwargs):
             return subprocess.CompletedProcess(command, 0, "no\n", "")
