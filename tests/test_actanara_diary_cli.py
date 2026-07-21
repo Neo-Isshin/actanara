@@ -592,6 +592,7 @@ class ActanaraCliTests(unittest.TestCase):
             bootstrap.parent.mkdir(parents=True)
             bootstrap.write_text("#!/usr/bin/env zsh\n", encoding="utf-8")
             with (
+                patch.object(cli.platform, "system", return_value="Darwin"),
                 patch.object(cli, "_paths_from_args", return_value=candidate_paths),
                 patch.object(cli, "read_settings", return_value={}),
                 patch.object(cli.shutil, "which", return_value="/bin/zsh"),
@@ -844,6 +845,7 @@ class ActanaraCliTests(unittest.TestCase):
             bootstrap.parent.mkdir(parents=True)
             bootstrap.write_text("#!/usr/bin/env zsh\n", encoding="utf-8")
             with (
+                patch.object(cli.platform, "system", return_value="Darwin"),
                 patch.object(cli, "_paths_from_args", return_value=candidate_paths) as paths_from_args,
                 patch.object(
                     cli,
@@ -1044,7 +1046,10 @@ class ActanaraCliTests(unittest.TestCase):
             bootstrap.parent.mkdir(parents=True)
             bootstrap.write_text("#!/usr/bin/env zsh\n", encoding="utf-8")
             args = cli._parser().parse_args(["update", "--dry-run"])
-            with patch.object(cli, "ROOT", Path(tmp) / "installed" / "lib" / "python3.12"):
+            with (
+                patch.object(cli.platform, "system", return_value="Darwin"),
+                patch.object(cli, "ROOT", Path(tmp) / "installed" / "lib" / "python3.12"),
+            ):
                 command = cli._update_bootstrap_command(args, runtime)
 
         self.assertEqual(command[1], str(bootstrap))
