@@ -4,6 +4,43 @@ All notable public changes to Actanara are documented here.
 
 ## Unreleased
 
+## [1.3.0] - 2026-07-21
+
+### Added
+
+- Add a shared macOS and Linux setup entrypoint plus a fresh-install Linux
+  adapter for Debian 13 x86_64 with CPython 3.13 and exact, hash-verified
+  Runtime dependencies.
+- Add managed systemd user services for Dashboard and optional nova-RAG, and
+  managed systemd service/timer pairs for the daily pipeline and Dashboard
+  aggregation scheduler.
+- Add a platform-neutral service manager with preview, status, install/update,
+  uninstall, start, stop, restart, definition-alignment, transactional
+  compensation, and interrupted-operation recovery contracts.
+- Add explicit Linux linger controls with interactive confirmation,
+  `--enable-linger`, `--require-linger`, and `--no-linger-prompt` policies.
+
+### Changed
+
+- Make Dashboard Startup, Scheduler, and RAG service controls select launchd on
+  macOS and systemd user services on Linux without exposing LaunchAgent-only
+  language or APIs on Linux.
+- Reuse the same managed systemd unit generators and lifecycle transactions in
+  the installer and Dashboard so settings changes safely reconcile service
+  definitions.
+- Split isolated release gates by platform while retaining the complete macOS
+  regression suite and adding Linux-specific release validation.
+
+### Security and compatibility
+
+- Never invoke `sudo`, never change linger without explicit authorization, and
+  never disable linger during uninstall.
+- Refuse to overwrite or remove systemd units that do not carry the Actanara
+  management marker, and compensate failed or interrupted managed-unit writes.
+- Preserve the existing macOS launchd transactions and verified behavior. Linux
+  support in this release is the x86_64 fresh-install Core boundary; upgrade,
+  repair, and local-embedding expansion remain outside that boundary.
+
 ## [1.2.0] - 2026-07-19
 
 ### Added
@@ -167,6 +204,7 @@ managed background services executing an older concrete source directory.
 - Runtime secrets remain in the Runtime-local private secret store and are
   excluded from source and release artifacts.
 
+[1.3.0]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.3.0
 [1.2.0]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.2.0
 [1.1.0]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.1.0
 [1.0.2]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.0.2
