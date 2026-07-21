@@ -4,6 +4,8 @@ All notable public changes to Actanara are documented here.
 
 ## Unreleased
 
+## [1.4.0] - 2026-07-21
+
 ### Added
 
 - Enable audited Linux x86_64 and arm64 local-embedding nova-RAG installs with
@@ -232,6 +234,7 @@ managed background services executing an older concrete source directory.
 - Runtime secrets remain in the Runtime-local private secret store and are
   excluded from source and release artifacts.
 
+[1.4.0]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.4.0
 [1.3.0]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.3.0
 [1.2.0]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.2.0
 [1.1.0]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.1.0
