@@ -48,8 +48,8 @@ python3 --version 2>/dev/null || true
 systemctl --user is-system-running 2>/dev/null || true
 ```
 
-macOS 保留现有引导式设置。Linux 第一阶段为非交互式全新安装：已有
-Runtime 升级/修复与本地 Embedding RAG 仍然禁止。Linux 的 x86_64 与
+macOS 保留现有引导式设置。Linux 仍为非交互式全新安装：已有
+Runtime 升级/修复仍然禁止，但支持 cloud 与 CPU-only 本地 Embedding RAG。Linux 的 x86_64 与
 arm64 使用独立锁目标，但不维护两套应用实现。
 
 ## 4. 从 main 最新 commit 安装或刷新

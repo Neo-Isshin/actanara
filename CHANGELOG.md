@@ -4,6 +4,12 @@ All notable public changes to Actanara are documented here.
 
 ## Unreleased
 
+### Added
+
+- Enable audited Linux x86_64 and arm64 local-embedding nova-RAG installs with
+  hash-pinned official PyTorch CPU wheels and the shared local embedding
+  settings contract.
+
 ## [1.3.0] - 2026-07-21
 
 ### Added

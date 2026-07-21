@@ -141,7 +141,17 @@ class RuntimeDependencyLockTests(unittest.TestCase):
                     self.assertRegex(record["sha256"], SHA256_RE)
                     parsed = urlsplit(record["url"])
                     self.assertEqual(parsed.scheme, "https")
-                    self.assertEqual(parsed.hostname, "files.pythonhosted.org")
+                    self.assertIn(
+                        parsed.hostname,
+                        {
+                            "files.pythonhosted.org",
+                            "download.pytorch.org",
+                            "download-r2.pytorch.org",
+                        },
+                    )
+                    if parsed.hostname != "files.pythonhosted.org":
+                        self.assertEqual(record["name"], "torch")
+                        self.assertTrue(parsed.path.startswith("/whl/cpu/"))
                     self.assertFalse(parsed.query)
                     self.assertFalse(parsed.fragment)
                     self.assertEqual(unquote(Path(parsed.path).name), record["filename"])
@@ -200,11 +210,9 @@ class RuntimeDependencyLockTests(unittest.TestCase):
                     assigned.update(actual)
                 self.assertEqual(assigned, environment_packages)
 
-    def test_audited_phase_one_environments_explicitly_exclude_rag_local(self):
+    def test_audited_linux_environments_include_rag_local(self):
         expected_supported = ["dashboard", "dev-test", "rag-server"]
         excluded = {
-            "linux-cpython313-arm64",
-            "linux-cpython313-x86-64",
             "macos-cpython313-x86-64",
             "macos-cpython314-x86-64",
         }
@@ -236,19 +244,12 @@ class RuntimeDependencyLockTests(unittest.TestCase):
                 selection = dependency_contract.load_contract_selection(
                     LOCK_PATH,
                     PYPROJECT_PATH,
-                    ["dashboard", "rag-server"],
+                    ["dashboard", "rag-local", "rag-server"],
                     environment_probe=probe,
                 )
                 self.assertEqual(selection.environment_id, expected_environment)
                 self.assertEqual(selection.lock_environment["platformFamily"], "linux")
-                with self.assertRaises(dependency_contract.ContractError) as unsupported:
-                    dependency_contract.load_contract_selection(
-                        LOCK_PATH,
-                        PYPROJECT_PATH,
-                        ["rag-local"],
-                        environment_probe=probe,
-                    )
-                self.assertEqual(unsupported.exception.code, "unsupported-profile")
+                self.assertIn("rag-local", selection.profiles)
 
     def test_generator_output_is_byte_deterministic_across_input_order(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -378,6 +379,54 @@ class RuntimeDependencyLockTests(unittest.TestCase):
             ):
                 lock_generator.merge_base_lock(generated, path)
 
+    def test_generator_replaces_base_environment_only_with_explicit_authorization(self):
+        generated = {
+            "schemaVersion": 1,
+            "product": "actanara",
+            "artifactPolicy": {"wheelsOnly": True},
+            "resolver": {"name": "pip"},
+            "profiles": {"core": {"directRequirements": ["alpha>=1"], "packages": ["alpha"]}},
+            "environments": {"fixture": {"architecture": "arm64"}},
+        }
+        base = {
+            **generated,
+            "environments": {"fixture": {"architecture": "x86_64"}},
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "base.json"
+            path.write_text(json.dumps(base), encoding="utf-8")
+
+            merged = lock_generator.merge_base_lock(
+                generated,
+                path,
+                replace_environments=frozenset({"fixture"}),
+            )
+
+        self.assertEqual(merged["environments"]["fixture"], {"architecture": "arm64"})
+
+    def test_generator_rejects_unknown_replacement_authorization(self):
+        generated = {
+            "schemaVersion": 1,
+            "product": "actanara",
+            "artifactPolicy": {"wheelsOnly": True},
+            "resolver": {"name": "pip"},
+            "profiles": {"core": {"directRequirements": ["alpha>=1"], "packages": ["alpha"]}},
+            "environments": {"fixture": {"architecture": "arm64"}},
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "base.json"
+            path.write_text(json.dumps(generated), encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                lock_generator.LockGenerationError,
+                "was not generated",
+            ):
+                lock_generator.merge_base_lock(
+                    generated,
+                    path,
+                    replace_environments=frozenset({"typo"}),
+                )
+
     def test_generator_fails_closed_for_missing_or_tampered_report_evidence(self):
         cases = {}
         valid = _wheel_record("alpha")
@@ -387,6 +436,11 @@ class RuntimeDependencyLockTests(unittest.TestCase):
         wrong_host = json.loads(json.dumps(valid))
         wrong_host["download_info"]["url"] = "https://example.invalid/alpha-1.0-py3-none-any.whl"
         cases["untrusted-url"] = [wrong_host]
+        pytorch_non_torch = json.loads(json.dumps(valid))
+        pytorch_non_torch["download_info"]["url"] = (
+            "https://download-r2.pytorch.org/whl/cpu/alpha-1.0-py3-none-any.whl"
+        )
+        cases["pytorch-host-non-torch"] = [pytorch_non_torch]
         insecure_url = json.loads(json.dumps(valid))
         insecure_url["download_info"]["url"] = "http://files.pythonhosted.org/alpha-1.0-py3-none-any.whl"
         cases["insecure-url"] = [insecure_url]

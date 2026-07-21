@@ -147,6 +147,8 @@ def build_plan(args: argparse.Namespace) -> InstallPlan:
     profiles = {"dashboard"}
     if args.enable_rag:
         profiles.add("rag-server")
+        if args.rag_embedding_mode == "local":
+            profiles.add("rag-local")
     if args.enable_dev_test:
         profiles.add("dev-test")
     linger_policy = (
@@ -318,10 +320,6 @@ def _validate_plan(plan: InstallPlan, args: argparse.Namespace) -> dependency_co
         raise LinuxInstallError("the Linux installer can only run on Linux")
     if args.upgrade or args.repair_existing or args.source_only:
         raise LinuxInstallError("Linux upgrades are not enabled yet; use a fresh Runtime path")
-    if plan.rag_enabled and plan.rag_embedding_mode == "local":
-        raise LinuxInstallError(
-            "Linux phase 1 supports cloud/server RAG; local embedding wheels remain gated"
-        )
     if not 1 <= plan.dashboard_port <= 65535:
         raise LinuxInstallError("dashboard port must be between 1 and 65535")
     if plan.dashboard_host not in {"127.0.0.1", "localhost", "::1"}:
@@ -554,6 +552,58 @@ def _write_cli_shim(runtime: Path) -> None:
     shim.chmod(0o755)
 
 
+def _runtime_settings_update(plan: InstallPlan) -> dict:
+    source = plan.runtime / "app" / "source"
+    embedding: dict[str, object] = {
+        "mode": plan.rag_embedding_mode,
+        "provider": plan.rag_embedding_mode,
+    }
+    if plan.rag_embedding_mode == "local":
+        embedding.update(
+            {
+                "providerId": "local",
+                "model": "intfloat/multilingual-e5-small",
+                "dimension": 384,
+                "device": "auto",
+            }
+        )
+    return {
+        "general": {
+            "workspaceRoot": str(source),
+            "tmpWorkspace": str(plan.runtime / "state" / "tmp"),
+        },
+        "schedule": {
+            "systemTimer": {
+                "provider": "systemd",
+                "label": "actanara.daily",
+                "registered": False,
+            }
+        },
+        "dashboard": {
+            "host": plan.dashboard_host,
+            "port": plan.dashboard_port,
+            "projectRoot": str(source),
+            "pythonExecutable": str(plan.runtime / ".venv" / "bin" / "python"),
+            "appDir": str(source / "src" / "dashboard"),
+            "server": {"enabled": plan.dashboard_service},
+        },
+        "pipeline": {
+            "pythonExecutable": str(plan.runtime / ".venv" / "bin" / "python"),
+            "workingDirectory": str(source),
+        },
+        "features": {
+            "rag": plan.rag_enabled,
+            "embeddingServer": False,
+        },
+        "rag": {
+            "enabled": plan.rag_enabled,
+            "mode": "v2" if plan.rag_enabled else "disabled",
+            "embedding": embedding,
+            "server": {"enabled": plan.rag_enabled},
+        },
+    }
+
+
 def _configure_runtime(plan: InstallPlan) -> None:
     env = {
         **os.environ,
@@ -586,42 +636,18 @@ def _configure_runtime(plan: InstallPlan) -> None:
         env=env,
     )
     script = """
+import json
 from pathlib import Path
 from data_foundation.paths import runtime_paths_for_home
 from data_foundation.settings import write_settings
 runtime = Path(__import__('os').environ['ACTANARA_HOME'])
-source = runtime / 'app' / 'source'
-write_settings({
-    'general': {'workspaceRoot': str(source), 'tmpWorkspace': str(runtime / 'state' / 'tmp')},
-    'schedule': {'systemTimer': {'provider': 'systemd', 'label': 'actanara.daily', 'registered': False}},
-    'dashboard': {
-        'host': __import__('os').environ['ACTANARA_DASHBOARD_HOST'],
-        'port': int(__import__('os').environ['ACTANARA_DASHBOARD_PORT']),
-        'projectRoot': str(source),
-        'pythonExecutable': str(runtime / '.venv' / 'bin' / 'python'),
-        'appDir': str(source / 'src' / 'dashboard'),
-        'server': {'enabled': __import__('os').environ['ACTANARA_DASHBOARD_SERVICE'] == '1'},
-    },
-    'pipeline': {'pythonExecutable': str(runtime / '.venv' / 'bin' / 'python'), 'workingDirectory': str(source)},
-    'features': {
-        'rag': __import__('os').environ['ACTANARA_RAG_ENABLED'] == '1',
-        'embeddingServer': False,
-    },
-    'rag': {
-        'enabled': __import__('os').environ['ACTANARA_RAG_ENABLED'] == '1',
-        'mode': 'v2' if __import__('os').environ['ACTANARA_RAG_ENABLED'] == '1' else 'disabled',
-        'embedding': {'mode': 'cloud', 'provider': 'cloud'},
-        'server': {'enabled': __import__('os').environ['ACTANARA_RAG_ENABLED'] == '1'},
-    },
-}, runtime_paths_for_home(runtime))
+update = json.loads(__import__('os').environ['ACTANARA_RUNTIME_SETTINGS_UPDATE'])
+write_settings(update, runtime_paths_for_home(runtime))
 """
-    env.update(
-        {
-            "ACTANARA_DASHBOARD_HOST": plan.dashboard_host,
-            "ACTANARA_DASHBOARD_PORT": str(plan.dashboard_port),
-            "ACTANARA_DASHBOARD_SERVICE": "1" if plan.dashboard_service else "0",
-            "ACTANARA_RAG_ENABLED": "1" if plan.rag_enabled else "0",
-        }
+    env["ACTANARA_RUNTIME_SETTINGS_UPDATE"] = json.dumps(
+        _runtime_settings_update(plan),
+        ensure_ascii=False,
+        sort_keys=True,
     )
     _run([str(plan.runtime / ".venv" / "bin" / "python"), "-c", script], env=env)
 

@@ -151,7 +151,7 @@ nova-RAG (optional) → Read-only Retrieval for External Runtimes
 ## 💻 Support and Prerequisites
 
 - 🍎 **macOS remains first-class:** Guided installation, updates, local nova-RAG, Dashboard services, and managed scheduling retain their existing user-level `LaunchAgent` behavior.
-- 🐧 **Linux phase 1 is deliberately narrower:** Fresh installs on Debian-class `systemd --user` hosts are enabled for x86_64 and arm64 lock targets. Upgrade/repair and local-embedding RAG remain gated until their independent release gates pass.
+- 🐧 **Linux remains deliberately narrower:** Fresh installs on Debian-class `systemd --user` hosts are enabled for x86_64 and arm64 lock targets, including cloud or CPU-only local-embedding RAG. Upgrade/repair remains gated until its independent release gate passes.
 - 🛠️ **Base tools:** Requires `git` and `curl`, plus `zsh` on macOS or POSIX `sh` on Linux; no `sudo`.
 - 🐍 **Python:** macOS supports Python ≥ 3.11 and can install a verified managed Python; the audited Linux lock currently targets CPython 3.13.
 - 🌐 **Network and storage:** Installation needs access to GitHub, the Python package index, and your model services; the first local `nova-RAG` run may download model weights.

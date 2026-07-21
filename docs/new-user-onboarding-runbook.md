@@ -146,9 +146,9 @@ The Dashboard normally listens on loopback. Port `3036` is preferred, with
 safe fallback ports when it is occupied. The installer prints the selected URL
 in its completion summary.
 
-When nova-RAG local mode is enabled on macOS, its service normally uses loopback
-port `3037`. Linux phase 1 gates local embedding and accepts cloud/server RAG
-only. External Agent integrations must use the read-only API described in
+When nova-RAG local mode is enabled, its service normally uses loopback port
+`3037`. Linux uses an audited CPU-only PyTorch wheel for local embeddings;
+cloud/server RAG remains available. External Agent integrations must use the read-only API described in
 [rag-external-agent-contract.md](rag-external-agent-contract.md).
 
 Actanara does not expose these services to a public network by default. Keep

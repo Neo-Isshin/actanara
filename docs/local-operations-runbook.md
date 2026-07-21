@@ -48,9 +48,9 @@ python3 --version 2>/dev/null || true
 systemctl --user is-system-running 2>/dev/null || true
 ```
 
-macOS provides the existing guided setup. Linux phase 1 is non-interactive and
-fresh-install-only: existing-Runtime upgrades/repairs and local-embedding RAG
-remain gated. The Linux installer supports separate x86_64 and arm64 lock
+macOS provides the existing guided setup. Linux is non-interactive and
+fresh-install-only: existing-Runtime upgrades/repairs remain gated, while
+cloud and CPU-only local-embedding RAG are supported. The Linux installer supports separate x86_64 and arm64 lock
 targets without maintaining separate application implementations.
 
 ## 4. Install or Refresh from the Latest Main Commit

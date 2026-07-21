@@ -119,8 +119,8 @@ linger，因为其他用户服务也可能依赖它。
 
 Dashboard 通常监听 loopback。优先使用端口 `3036`，被占用时安全回退到其他端口。安装器在完成摘要中打印选中的 URL。
 
-macOS 启用 nova-RAG 本地模式时，其服务通常使用 loopback 端口 `3037`。
-Linux 第一阶段禁止本地 Embedding，只接受 cloud/server RAG。外部 Agent
+启用 nova-RAG 本地模式时，其服务通常使用 loopback 端口 `3037`。
+Linux 本地 Embedding 使用经过审计的 CPU-only PyTorch wheel，同时仍支持 cloud/server RAG。外部 Agent
 集成必须使用 [rag-external-agent-contract.md](rag-external-agent-contract.md) 描述的只读 API。
 
 Actanara 默认不把这些服务暴露到公网。除非你单独配置了经过认证的私有网络访问，否则请保持 loopback 绑定。

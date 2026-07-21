@@ -41,7 +41,7 @@ class LinuxInstallerTests(unittest.TestCase):
 
         self.assertEqual(plan.profiles, ("dashboard", "dev-test", "rag-server"))
 
-    def test_local_rag_is_explicitly_gated_in_linux_phase_one(self):
+    def test_local_rag_selects_both_server_and_local_dependency_profiles(self):
         with tempfile.TemporaryDirectory() as tmp:
             args = self._args(
                 "--runtime",
@@ -51,11 +51,32 @@ class LinuxInstallerTests(unittest.TestCase):
                 "local",
             )
             plan = install_linux.build_plan(args)
-            with (
-                patch.dict(os.environ, {"ACTANARA_INSTALL_TEST_MODE": "1"}),
-                self.assertRaisesRegex(install_linux.LinuxInstallError, "local embedding wheels remain gated"),
-            ):
-                install_linux._validate_plan(plan, args)
+            self.assertEqual(plan.profiles, ("dashboard", "rag-local", "rag-server"))
+
+            update = install_linux._runtime_settings_update(plan)
+
+            self.assertEqual(
+                update["rag"]["embedding"],
+                {
+                    "mode": "local",
+                    "provider": "local",
+                    "providerId": "local",
+                    "model": "intfloat/multilingual-e5-small",
+                    "dimension": 384,
+                    "device": "auto",
+                },
+            )
+
+    def test_cloud_rag_configuration_does_not_claim_local_model_runtime(self):
+        args = self._args("--enable-rag", "--rag-embedding-mode", "cloud")
+        plan = install_linux.build_plan(args)
+
+        update = install_linux._runtime_settings_update(plan)
+
+        self.assertEqual(
+            update["rag"]["embedding"],
+            {"mode": "cloud", "provider": "cloud"},
+        )
 
     def test_linux_service_preflight_requires_a_working_user_manager(self):
         args = self._args()
