@@ -592,6 +592,7 @@ class ActanaraCliTests(unittest.TestCase):
             bootstrap.parent.mkdir(parents=True)
             bootstrap.write_text("#!/usr/bin/env zsh\n", encoding="utf-8")
             with (
+                patch.object(cli.platform, "system", return_value="Darwin"),
                 patch.object(cli, "_paths_from_args", return_value=candidate_paths),
                 patch.object(cli, "read_settings", return_value={}),
                 patch.object(cli.shutil, "which", return_value="/bin/zsh"),
@@ -661,6 +662,29 @@ class ActanaraCliTests(unittest.TestCase):
         self.assertIn("--force-rebuild", installer_args)
         self.assertIn("--result-json", installer_args)
         self.assertNotIn("--source-only", installer_args)
+
+    def test_linux_update_uses_posix_adapter_and_active_runtime_python(self):
+        cli = _load_cli_module()
+        runtime = Path("/tmp/actanara-linux-runtime")
+        with (
+            patch.object(cli.platform, "system", return_value="Linux"),
+            patch.object(cli.shutil, "which", side_effect=lambda name: "/bin/sh" if name == "sh" else None),
+            patch.object(cli, "read_settings", return_value={}),
+        ):
+            args = cli._parser().parse_args(
+                ["update", "--source-only", "--source-root", str(ROOT)]
+            )
+            command = cli._update_bootstrap_command(args, runtime)
+
+        separator = command.index("--")
+        self.assertEqual(command[0], "/bin/sh")
+        self.assertEqual(Path(command[1]).name, "bootstrap-linux.sh")
+        self.assertEqual(
+            command[command.index("--python") + 1],
+            str(runtime / ".venv" / "bin" / "python"),
+        )
+        self.assertIn("--source-only", command[separator + 1 :])
+        self.assertIn("--result-json", command[separator + 1 :])
 
     def test_update_source_only_and_force_rebuild_are_mutually_exclusive(self):
         cli = _load_cli_module()
@@ -821,6 +845,7 @@ class ActanaraCliTests(unittest.TestCase):
             bootstrap.parent.mkdir(parents=True)
             bootstrap.write_text("#!/usr/bin/env zsh\n", encoding="utf-8")
             with (
+                patch.object(cli.platform, "system", return_value="Darwin"),
                 patch.object(cli, "_paths_from_args", return_value=candidate_paths) as paths_from_args,
                 patch.object(
                     cli,
@@ -1021,7 +1046,10 @@ class ActanaraCliTests(unittest.TestCase):
             bootstrap.parent.mkdir(parents=True)
             bootstrap.write_text("#!/usr/bin/env zsh\n", encoding="utf-8")
             args = cli._parser().parse_args(["update", "--dry-run"])
-            with patch.object(cli, "ROOT", Path(tmp) / "installed" / "lib" / "python3.12"):
+            with (
+                patch.object(cli.platform, "system", return_value="Darwin"),
+                patch.object(cli, "ROOT", Path(tmp) / "installed" / "lib" / "python3.12"),
+            ):
                 command = cli._update_bootstrap_command(args, runtime)
 
         self.assertEqual(command[1], str(bootstrap))

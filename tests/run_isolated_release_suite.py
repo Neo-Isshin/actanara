@@ -215,7 +215,11 @@ def _platform_suite(
     excluded = 0
     for case in _iter_test_cases(suite):
         module = str(case.__class__.__module__).rsplit(".", 1)[-1]
-        if module in LINUX_EXCLUDED_TEST_MODULES:
+        method = str(getattr(case, "_testMethodName", ""))
+        linux_transaction_case = (
+            module == "test_update_transaction" and method.startswith("test_linux_")
+        )
+        if module in LINUX_EXCLUDED_TEST_MODULES and not linux_transaction_case:
             excluded += 1
         else:
             selected.addTest(case)

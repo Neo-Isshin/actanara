@@ -37,8 +37,9 @@ GitHub 从 `main` 提供持续维护的 POSIX 入口。它把官方 `origin/main
 安装器或 Linux 安装器。
 
 macOS 入口同时支持新建和已有 Runtime，并保留原有更新/修复事务。Linux
-第一阶段只支持全新 Runtime；遇到 upgrade、repair 或 source-only 会保守
-拒绝，不会冒险改动已有状态。macOS 用户 Settings 与数据保持不变。
+支持全新安装、仅源码刷新、自动或强制按锁重建 venv，以及经明确确认的
+repair。两个平台都会保留用户 Settings 与数据；Linux 还会逐个保持受管理
+systemd unit 原有 enabled/active 状态。
 
 ## 从本地 checkout 安装
 
@@ -119,8 +120,8 @@ linger，因为其他用户服务也可能依赖它。
 
 Dashboard 通常监听 loopback。优先使用端口 `3036`，被占用时安全回退到其他端口。安装器在完成摘要中打印选中的 URL。
 
-macOS 启用 nova-RAG 本地模式时，其服务通常使用 loopback 端口 `3037`。
-Linux 第一阶段禁止本地 Embedding，只接受 cloud/server RAG。外部 Agent
+启用 nova-RAG 本地模式时，其服务通常使用 loopback 端口 `3037`。
+Linux 本地 Embedding 使用经过审计的 CPU-only PyTorch wheel，同时仍支持 cloud/server RAG。外部 Agent
 集成必须使用 [rag-external-agent-contract.md](rag-external-agent-contract.md) 描述的只读 API。
 
 Actanara 默认不把这些服务暴露到公网。除非你单独配置了经过认证的私有网络访问，否则请保持 loopback 绑定。
@@ -156,8 +157,17 @@ actanara update --apply --offline --ref <full-commit-sha>
 actanara update --apply --offline --source-root /path/to/source
 ```
 
-以上更新流程目前仅适用于 macOS。Linux 第一阶段必须使用新的 Runtime
-路径，直至独立的升级与回滚门禁完成。
+以上更新流程会在 macOS 选择 launchd、在 Linux 选择 systemd user service。
+Linux 常规更新要求 Actanara 管理的定义已经对齐；inventory 漂移时会在停止
+服务前失败。对于可信但损坏的 Linux Runtime，可从选定源码 checkout 执行需
+明确确认的 repair：
+
+```bash
+sh install/setup.sh --source-root "$PWD" -- \
+  --runtime /path/to/runtime --repair-existing --yes --no-linger-prompt
+```
+
+repair 不调用 `sudo`、不改变 linger，并拒绝非 Actanara 管理的 unit 定义。
 
 ## 备份与恢复
 

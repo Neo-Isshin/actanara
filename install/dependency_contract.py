@@ -45,6 +45,10 @@ PYTHON_VERSION_RE = re.compile(r"[0-9]+\.[0-9]+\Z")
 MACOS_VERSION_RE = re.compile(r"[0-9]+(?:\.[0-9]+){0,2}\Z")
 DIRECT_DEPENDENCY_NAME_RE = re.compile(r"\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
 WHEEL_FILENAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+!-]{0,239}\.whl\Z")
+PYPI_ARTIFACT_HOST = "files.pythonhosted.org"
+PYTORCH_CPU_ARTIFACT_HOSTS = frozenset(
+    {"download.pytorch.org", "download-r2.pytorch.org"}
+)
 
 LOCK_ROOT_FIELDS = {
     "schemaVersion",
@@ -1211,9 +1215,17 @@ def _parse_lock(path: Path) -> tuple[dict[str, Any], bytes]:
             except ValueError as exc:
                 raise _error("invalid-lock", "runtime lock wheel URL is invalid") from exc
             url_filename = unquote(parsed_url.path.rsplit("/", 1)[-1])
+            trusted_pytorch_cpu = (
+                name == "torch"
+                and parsed_url.hostname in PYTORCH_CPU_ARTIFACT_HOSTS
+                and parsed_url.path.startswith("/whl/cpu/")
+            )
             if (
                 parsed_url.scheme != "https"
-                or parsed_url.hostname != "files.pythonhosted.org"
+                or not (
+                    parsed_url.hostname == PYPI_ARTIFACT_HOST
+                    or trusted_pytorch_cpu
+                )
                 or parsed_url.username is not None
                 or parsed_url.password is not None
                 or port is not None
@@ -1223,7 +1235,7 @@ def _parse_lock(path: Path) -> tuple[dict[str, Any], bytes]:
             ):
                 raise _error(
                     "invalid-lock",
-                    "runtime lock wheel URL must be an exact files.pythonhosted.org HTTPS artifact",
+                    "runtime lock wheel URL must be an approved exact HTTPS artifact",
                 )
             filenames.add(filename)
             package_order.append(name)

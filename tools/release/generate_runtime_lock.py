@@ -29,6 +29,10 @@ except ModuleNotFoundError:  # The test/runtime interpreter still has pip's vend
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 ENVIRONMENT_FIELDS = 8
+PYPI_ARTIFACT_HOST = "files.pythonhosted.org"
+PYTORCH_CPU_ARTIFACT_HOSTS = frozenset(
+    {"download.pytorch.org", "download-r2.pytorch.org"}
+)
 UNLOCKED_MARKER_VARIABLES = frozenset(
     {
         "implementation_version",
@@ -114,16 +118,25 @@ def _report_packages(path: Path) -> tuple[str, dict[str, dict[str, Any]]]:
             port = parsed.port
         except ValueError as exc:
             raise LockGenerationError(f"locked artifact URL is invalid: {name}") from exc
+        trusted_pytorch_cpu = (
+            name == "torch"
+            and parsed.hostname in PYTORCH_CPU_ARTIFACT_HOSTS
+            and parsed.path.startswith("/whl/cpu/")
+        )
         if (
             parsed.scheme != "https"
-            or parsed.hostname != "files.pythonhosted.org"
+            or not (
+                parsed.hostname == PYPI_ARTIFACT_HOST or trusted_pytorch_cpu
+            )
             or parsed.username is not None
             or parsed.password is not None
             or port is not None
             or parsed.query
             or parsed.fragment
         ):
-            raise LockGenerationError(f"locked artifact must use files.pythonhosted.org HTTPS: {name}")
+            raise LockGenerationError(
+                f"locked artifact must use an approved exact HTTPS wheel source: {name}"
+            )
         filename = unquote(Path(parsed.path).name)
         if not filename.endswith(".whl") or "/" in filename or "\\" in filename:
             raise LockGenerationError(f"locked artifact is not a safe wheel filename: {filename!r}")
@@ -520,12 +533,20 @@ def build_lock(args: argparse.Namespace) -> dict[str, Any]:
         generated = merge_base_lock(
             generated,
             Path(base_lock).expanduser().resolve(strict=True),
+            replace_environments=frozenset(
+                getattr(args, "replace_environment", ()) or ()
+            ),
         )
     return generated
 
 
-def merge_base_lock(generated: dict[str, Any], base_path: Path) -> dict[str, Any]:
-    """Merge newly audited targets into an existing lock without rewriting them."""
+def merge_base_lock(
+    generated: dict[str, Any],
+    base_path: Path,
+    *,
+    replace_environments: frozenset[str] = frozenset(),
+) -> dict[str, Any]:
+    """Merge audited targets, replacing base evidence only when explicitly authorized."""
     base = _load_json(base_path)
     expected_root_fields = {
         "schemaVersion",
@@ -546,6 +567,18 @@ def merge_base_lock(generated: dict[str, Any], base_path: Path) -> dict[str, Any
         raise LockGenerationError("base lock profile or environment catalog is invalid")
     if set(base_profiles) != set(generated["profiles"]):
         raise LockGenerationError("base lock profiles do not match generated evidence")
+    unknown_generated = sorted(replace_environments - set(generated["environments"]))
+    if unknown_generated:
+        raise LockGenerationError(
+            "replacement environment was not generated in this invocation: "
+            + ", ".join(unknown_generated)
+        )
+    unknown_base = sorted(replace_environments - set(base_environments))
+    if unknown_base:
+        raise LockGenerationError(
+            "replacement environment is absent from the base lock: "
+            + ", ".join(unknown_base)
+        )
 
     merged_profiles: dict[str, Any] = {}
     for profile in sorted(generated["profiles"]):
@@ -573,7 +606,11 @@ def merge_base_lock(generated: dict[str, Any], base_path: Path) -> dict[str, Any
     merged_environments = dict(base_environments)
     for environment_id, candidate in generated["environments"].items():
         existing = merged_environments.get(environment_id)
-        if existing is not None and existing != candidate:
+        if (
+            existing is not None
+            and existing != candidate
+            and environment_id not in replace_environments
+        ):
             raise LockGenerationError(
                 f"base lock contains conflicting environment evidence: {environment_id}"
             )
@@ -593,6 +630,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--base-lock",
         help="Existing compatible lock whose audited environments should be preserved.",
+    )
+    parser.add_argument(
+        "--replace-environment",
+        action="append",
+        default=[],
+        help=(
+            "Environment ID whose base evidence may be replaced by evidence generated "
+            "in this invocation. Repeat for each intentional replacement."
+        ),
     )
     parser.add_argument("--output", required=True)
     return parser

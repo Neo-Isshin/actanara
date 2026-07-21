@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import platform
 import re
 import shutil
 import subprocess
@@ -996,8 +997,13 @@ def _update_run(args: argparse.Namespace) -> int:
 def _update_bootstrap_command(args: argparse.Namespace, runtime_home: Path) -> list[str]:
     _validate_update_source_selection(args)
     bootstrap = _update_bootstrap_path(args, runtime_home)
-    zsh = shutil.which("zsh") or "/bin/zsh"
-    command = [zsh, str(bootstrap)]
+    linux = platform.system() == "Linux"
+    shell = (
+        shutil.which("sh") or "/bin/sh"
+        if linux
+        else shutil.which("zsh") or "/bin/zsh"
+    )
+    command = [shell, str(bootstrap)]
     if args.dry_run:
         command.append("--dry-run")
     if args.offline:
@@ -1010,6 +1016,8 @@ def _update_bootstrap_command(args: argparse.Namespace, runtime_home: Path) -> l
         command.extend(["--ref", str(args.ref)])
     if args.cache_root:
         command.extend(["--cache-root", str(Path(args.cache_root).expanduser())])
+    if linux:
+        command.extend(["--python", str(runtime_home / ".venv" / "bin" / "python")])
     command.append("--")
     if args.source_only:
         command.append("--source-only")
@@ -1220,15 +1228,16 @@ def _write_update_human_result(payload: dict, returncode: int) -> None:
 
 
 def _update_bootstrap_path(args: argparse.Namespace, runtime_home: Path) -> Path:
+    bootstrap_name = "bootstrap-linux.sh" if platform.system() == "Linux" else "bootstrap.sh"
     if args.source_root:
-        source_bootstrap = Path(args.source_root).expanduser() / "install" / "bootstrap.sh"
+        source_bootstrap = Path(args.source_root).expanduser() / "install" / bootstrap_name
         if source_bootstrap.is_file():
             return source_bootstrap
         raise FileNotFoundError(f"installer bootstrap not found under --source-root: {source_bootstrap}")
-    checkout_bootstrap = ROOT / "install" / "bootstrap.sh"
+    checkout_bootstrap = ROOT / "install" / bootstrap_name
     if checkout_bootstrap.is_file():
         return checkout_bootstrap
-    runtime_bootstrap = runtime_home.expanduser() / "app" / "source" / "install" / "bootstrap.sh"
+    runtime_bootstrap = runtime_home.expanduser() / "app" / "source" / "install" / bootstrap_name
     if runtime_bootstrap.is_file():
         return runtime_bootstrap
     raise FileNotFoundError(

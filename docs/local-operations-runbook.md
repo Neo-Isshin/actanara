@@ -48,10 +48,11 @@ python3 --version 2>/dev/null || true
 systemctl --user is-system-running 2>/dev/null || true
 ```
 
-macOS provides the existing guided setup. Linux phase 1 is non-interactive and
-fresh-install-only: existing-Runtime upgrades/repairs and local-embedding RAG
-remain gated. The Linux installer supports separate x86_64 and arm64 lock
-targets without maintaining separate application implementations.
+macOS provides the existing guided setup. Linux is non-interactive and supports
+fresh install, guarded updates/repairs, and cloud or CPU-only local-embedding
+RAG. The Linux installer supports separate x86_64 and arm64 lock targets without
+maintaining separate application implementations; the guarded update/repair
+release gate is verified on Debian x86_64 with CPython 3.13.
 
 ## 4. Install or Refresh from the Latest Main Commit
 
@@ -72,9 +73,10 @@ The command keeps source selection exact while hiding source plumbing from the u
 > The entrypoint follows `main`, but each run records and installs one exact commit rather than a moving symbolic ref.
 
 > [!WARNING]
-> On macOS the same command supports new and existing Runtimes and preserves
-> user Settings, databases, secrets, logs, and generated assets. Linux phase 1
-> accepts a fresh Runtime only and fails closed when upgrade state is detected.
+> On both platforms the same command supports new and existing Runtimes and
+> preserves user Settings, databases, secrets, logs, and generated assets.
+> Linux fails closed before service stop when managed systemd definitions or
+> dependency-profile evidence do not match the selected Runtime.
 
 The macOS installation wizard covers, in order:
 
@@ -290,9 +292,10 @@ The external-runtime contract allows only health checks, statistics, contract re
 ## 13. Updates
 
 > [!IMPORTANT]
-> This update transaction is currently supported on macOS. Linux phase 1 is
-> fresh-install-only; use a new Runtime path rather than applying these commands
-> to an existing Linux Runtime.
+> macOS retains its existing launchd transaction. Linux uses the same update
+> command through its POSIX adapter, preserves exact systemd enabled/active
+> state, and refuses definition drift before service stop. Use confirmed repair
+> rather than a standard update when a trusted Linux Runtime is damaged.
 
 View the update plan:
 
@@ -330,6 +333,16 @@ actanara update --apply --offline --source-root /path/to/source  # local checkou
 actanara update --apply --source-only                            # require venv reuse or fail closed
 actanara update --apply --force-rebuild                          # require a new locked candidate venv
 ```
+
+Repair a trusted Linux Runtime from a selected checkout:
+
+```bash
+sh install/setup.sh --source-root /path/to/source -- \
+  --runtime /path/to/runtime --repair-existing --yes --no-linger-prompt
+```
+
+Linux repair reconciles only Actanara-managed unit files. It never invokes
+`sudo`, changes linger, or removes an operator-owned unit.
 
 Offline mode accepts only a full commit already present in the installer cache or
 a local `--source-root`; it never resolves `latest`.

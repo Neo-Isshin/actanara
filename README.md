@@ -68,8 +68,10 @@ curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/actanara/main/install/se
 This is the shared macOS/Linux entrypoint and requires no `sudo`. It resolves
 the current official `main` to an exact commit before dispatching to the
 platform adapter. macOS keeps its guided fresh-install and update behavior;
-Linux phase 1 accepts a fresh Runtime only and fails closed if existing Runtime
-state would require an upgrade. New here? You can explore the
+Linux supports guarded fresh install, source-only refresh, locked dependency
+upgrade, and confirmed repair of an existing Runtime. Linux update
+transactions preserve the prior systemd user-unit state and fail closed on
+definition drift or non-Actanara units. New here? You can explore the
 [interactive Dashboard demo](https://neo-isshin.github.io/actanara/dashboard-demo/)
 before installing.
 
@@ -151,7 +153,7 @@ nova-RAG (optional) → Read-only Retrieval for External Runtimes
 ## 💻 Support and Prerequisites
 
 - 🍎 **macOS remains first-class:** Guided installation, updates, local nova-RAG, Dashboard services, and managed scheduling retain their existing user-level `LaunchAgent` behavior.
-- 🐧 **Linux phase 1 is deliberately narrower:** Fresh installs on Debian-class `systemd --user` hosts are enabled for x86_64 and arm64 lock targets. Upgrade/repair and local-embedding RAG remain gated until their independent release gates pass.
+- 🐧 **Linux has an explicit Core boundary:** Fresh installs are available for Debian-class `systemd --user` hosts on x86_64 and arm64 lock targets, including cloud or CPU-only local-embedding RAG. Guarded upgrade/repair is release-gated on Debian x86_64 with CPython 3.13; the guided wizard and managed-Python bootstrap remain macOS-only.
 - 🛠️ **Base tools:** Requires `git` and `curl`, plus `zsh` on macOS or POSIX `sh` on Linux; no `sudo`.
 - 🐍 **Python:** macOS supports Python ≥ 3.11 and can install a verified managed Python; the audited Linux lock currently targets CPython 3.13.
 - 🌐 **Network and storage:** Installation needs access to GitHub, the Python package index, and your model services; the first local `nova-RAG` run may download model weights.
@@ -248,6 +250,12 @@ actanara update --apply
 ```
 
 When dependencies are unchanged the updater reuses the venv; otherwise it rebuilds from the hashed lock. Details on venv reuse, `--source-only/--force-rebuild/--offline`, source acquisition, and commit pinning are in the Runbook's *Update* section. Actanara does not yet ship a one-command uninstaller—do not remove only `~/.actanara`; see the Runbook's *Uninstall boundary* section.
+
+On Linux, ordinary updates require aligned Actanara-managed systemd definitions
+and preserve each unit's prior enabled/active state. If trusted Runtime
+configuration or managed definitions have drifted, use the explicitly confirmed
+repair path described in the Runbook; repair never adopts or removes an
+operator-owned unit.
 
 ## 📋 Nova-Task: A Graph of Real Work
 

@@ -74,6 +74,25 @@ class SystemdUserTests(unittest.TestCase):
         self.assertEqual(rag.name, "actanara-rag-server.service")
         self.assertIn("rag_server_launch_agent.py", rag.content)
 
+    def test_dashboard_and_rag_units_honor_valid_persisted_unit_names(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self._runtime(Path(tmp))
+            dashboard = dashboard_unit(
+                paths,
+                {
+                    "host": "127.0.0.1",
+                    "port": 3036,
+                    "systemdUser": {"units": ["actanara-test-dashboard.service"]},
+                },
+            )
+            rag = rag_unit(
+                paths,
+                {"systemdUser": {"units": ["actanara-test-rag.service"]}},
+            )
+
+        self.assertEqual(dashboard.name, "actanara-test-dashboard.service")
+        self.assertEqual(rag.name, "actanara-test-rag.service")
+
     def test_working_directory_is_an_unquoted_scalar_path(self):
         paths = runtime_paths_for_home(Path("/tmp/Actanara path%prod"))
         dashboard = dashboard_unit(paths, {"host": "127.0.0.1", "port": 3036})
@@ -548,6 +567,12 @@ class SystemdUserTests(unittest.TestCase):
         self.assertTrue(dashboard_status["unitFilesPresent"])
         self.assertEqual(checks["systemd-registration:dashboard"]["status"], "ok")
         self.assertEqual(checks["scheduler-provider"]["status"], "ok")
+        self.assertNotIn("read-only/unimplemented", checks["scheduler-provider"]["message"])
+        self.assertNotIn("macOS", checks["scheduler-timezone-boundary"]["message"])
+        self.assertIn("runtime-source-systemd-alignment", checks)
+        self.assertNotIn("runtime-source-launchagent-alignment", checks)
+        self.assertIn("systemdUnits", payload["runtimeSource"])
+        self.assertNotIn("launchAgents", payload["runtimeSource"])
         self.assertEqual(checks["scheduler-job:daily-pipeline"]["status"], "ok")
         self.assertEqual(checks["scheduler-job:dashboard-aggregation"]["status"], "ok")
         self.assertEqual(payload["summary"]["status"], "ok")

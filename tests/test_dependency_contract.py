@@ -973,6 +973,17 @@ class DependencyContractSelectionTests(unittest.TestCase):
                 )
             self.assertEqual(url.exception.code, "invalid-lock")
 
+            payload = _lock_payload()
+            payload["environments"]["fixture-arm"]["packages"][0]["url"] = (
+                "https://download-r2.pytorch.org/whl/cpu/alpha-1.5-py3-none-any.whl"
+            )
+            lock, pyproject = _write_fixture(root, payload)
+            with self.assertRaises(contract.ContractError) as non_torch:
+                contract.load_contract_selection(
+                    lock, pyproject, ["dashboard"], environment_probe=_probe()
+                )
+            self.assertEqual(non_torch.exception.code, "invalid-lock")
+
     def test_hashed_requirements_are_complete_pinned_and_deterministic(self):
         with tempfile.TemporaryDirectory() as temporary:
             selection = _selection(Path(temporary))

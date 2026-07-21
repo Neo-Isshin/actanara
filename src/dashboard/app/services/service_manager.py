@@ -174,7 +174,9 @@ class PlatformServiceManager:
         if kind == "dashboard":
             dashboard = settings.get("dashboard") if isinstance(settings.get("dashboard"), dict) else {}
             return [dashboard_unit(self.paths, dashboard)]
-        return [rag_unit(self.paths)]
+        rag = settings.get("rag") if isinstance(settings.get("rag"), dict) else {}
+        server = rag.get("server") if isinstance(rag.get("server"), dict) else {}
+        return [rag_unit(self.paths, server)]
 
     def _configured_registration(self, kind: str) -> dict[str, Any]:
         settings = read_settings(self.paths, redact_secrets=True, persist_defaults=False)

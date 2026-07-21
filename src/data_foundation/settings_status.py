@@ -83,6 +83,7 @@ def _doctor_check_profile(check_id: str) -> str:
         or check_id.startswith("systemd-registration")
         or check_id.startswith("scheduler-")
         or check_id == "runtime-source-launchagent-alignment"
+        or check_id == "runtime-source-systemd-alignment"
     ):
         return "scheduler"
     if check_id.startswith("external-tool") or check_id.startswith("llm-") or check_id == "settings-hardcode-audit":
@@ -339,13 +340,31 @@ def _doctor_checks(
             if runtime_source.get("sourceCheckoutDirty")
             else "source checkout is clean",
         ),
-        _check(
-            "runtime-source-launchagent-alignment",
-            not bool(runtime_source.get("launchAgentMismatches")),
-            "warn",
-            str(runtime_source.get("launchAgentMessage") or "runtime source LaunchAgent alignment is unavailable"),
-        ),
     ]
+    if platform.system() == "Linux":
+        checks.append(
+            _check(
+                "runtime-source-systemd-alignment",
+                not bool(runtime_source.get("serviceDefinitionMismatches")),
+                "warn",
+                str(
+                    runtime_source.get("serviceDefinitionMessage")
+                    or "Runtime source systemd user-unit alignment is unavailable"
+                ),
+            )
+        )
+    else:
+        checks.append(
+            _check(
+                "runtime-source-launchagent-alignment",
+                not bool(runtime_source.get("launchAgentMismatches")),
+                "warn",
+                str(
+                    runtime_source.get("launchAgentMessage")
+                    or "runtime source LaunchAgent alignment is unavailable"
+                ),
+            )
+        )
     rag_resource = resource_profile.get("rag") if isinstance(resource_profile.get("rag"), dict) else {}
     rag_network = rag_resource.get("networkBoundary") if isinstance(rag_resource.get("networkBoundary"), dict) else {}
     checks.append(
@@ -611,12 +630,26 @@ def _scheduler_doctor_checks(status: dict[str, Any]) -> list[dict[str, Any]]:
     registration_implemented = bool(status.get("registrationImplemented"))
     supported = bool(status.get("supported"))
     provider_ok = (not desired_registered) or (registration_implemented and supported)
-    provider_message = (
-        f"scheduler provider {provider} supports the desired system registration"
-        if provider_ok and desired_registered
-        else f"scheduler provider {provider} is read-only/unimplemented; system jobs are expected absent"
-        if provider_ok
-        else f"scheduler provider {provider} cannot implement the desired system registration"
+    if provider_ok and desired_registered:
+        provider_message = (
+            f"scheduler provider {provider} supports the desired system registration"
+        )
+    elif provider_ok and registration_implemented:
+        provider_message = (
+            f"scheduler provider {provider} is available; system jobs are intentionally absent"
+        )
+    elif provider_ok:
+        provider_message = (
+            f"scheduler provider {provider} is not used; system jobs are expected absent"
+        )
+    else:
+        provider_message = (
+            f"scheduler provider {provider} cannot implement the desired system registration"
+        )
+    timezone_ok_message = (
+        "scheduler timezone matches the macOS system timezone"
+        if platform.system() == "Darwin"
+        else "scheduler timezone is valid for the current platform service manager"
     )
     checks = [
         _check("scheduler-provider", provider_ok, "warn", provider_message),
@@ -625,7 +658,7 @@ def _scheduler_doctor_checks(status: dict[str, Any]) -> list[dict[str, Any]]:
             (status.get("timezoneBoundary") or {}).get("status") != "blocked",
             "error",
             (
-                "scheduler timezone matches the macOS system timezone"
+                timezone_ok_message
                 if (status.get("timezoneBoundary") or {}).get("status") != "blocked"
                 else f"Blocked: {(status.get('timezoneBoundary') or {}).get('issueCode') or 'scheduler-timezone-boundary'}"
             ),
@@ -761,7 +794,7 @@ def _service_registration(
                         if isinstance(rag_server.get("systemdUser"), dict)
                         else {}
                     ),
-                    expected_units=[rag_unit(paths)],
+                    expected_units=[rag_unit(paths, rag_server)],
                 ),
             ],
         }
@@ -1308,7 +1341,10 @@ def _runtime_source_provenance(paths: RuntimePaths, dashboard: dict[str, Any], s
         "message": "runtime source manifest is missing",
     }
     if not manifest_path.exists():
-        return {**payload, **_launch_agent_source_alignment(dashboard, settings, project_root)}
+        return {
+            **payload,
+            **_runtime_service_source_alignment(paths, dashboard, settings, project_root),
+        }
     try:
         manifest_bytes = manifest_path.read_bytes()
         manifest = json.loads(manifest_bytes)
@@ -1319,7 +1355,7 @@ def _runtime_source_provenance(paths: RuntimePaths, dashboard: dict[str, Any], s
             "manifestExists": True,
             "sourceLocator": {"kind": "invalid", "available": False, "issue": "manifest-unreadable"},
             "message": "runtime source manifest is invalid",
-            **_launch_agent_source_alignment(dashboard, settings, project_root),
+            **_runtime_service_source_alignment(paths, dashboard, settings, project_root),
         }
     if not isinstance(manifest, dict):
         return {
@@ -1328,7 +1364,7 @@ def _runtime_source_provenance(paths: RuntimePaths, dashboard: dict[str, Any], s
             "manifestExists": True,
             "sourceLocator": {"kind": "invalid", "available": False, "issue": "manifest-not-object"},
             "message": "runtime source manifest is invalid",
-            **_launch_agent_source_alignment(dashboard, settings, project_root),
+            **_runtime_service_source_alignment(paths, dashboard, settings, project_root),
         }
     source_root, locator = _runtime_source_locator(manifest)
     if manifest.get("schemaVersion") == 2 and not _valid_v2_runtime_source_manifest(manifest):
@@ -1347,7 +1383,7 @@ def _runtime_source_provenance(paths: RuntimePaths, dashboard: dict[str, Any], s
             "stale": None,
             "freshness": "unknown",
             "message": "runtime source manifest v2 failed exact schema validation",
-            **_launch_agent_source_alignment(dashboard, settings, project_root),
+            **_runtime_service_source_alignment(paths, dashboard, settings, project_root),
         }
     payload.update(
         {
@@ -1369,7 +1405,7 @@ def _runtime_source_provenance(paths: RuntimePaths, dashboard: dict[str, Any], s
             "stale": None,
             "freshness": "unknown",
             "message": "runtime source manifest is present; source freshness is unknown",
-            **_launch_agent_source_alignment(dashboard, settings, project_root),
+            **_runtime_service_source_alignment(paths, dashboard, settings, project_root),
         }
     try:
         current_commit = _git_value(source_root, "rev-parse", "HEAD")
@@ -1381,7 +1417,7 @@ def _runtime_source_provenance(paths: RuntimePaths, dashboard: dict[str, Any], s
             "stale": None,
             "freshness": "unknown",
             "message": "runtime source manifest is present; git freshness check is unavailable",
-            **_launch_agent_source_alignment(dashboard, settings, project_root),
+            **_runtime_service_source_alignment(paths, dashboard, settings, project_root),
         }
     commit_matches = current_commit == copied_commit
     stale_reasons: list[str] = []
@@ -1409,7 +1445,7 @@ def _runtime_source_provenance(paths: RuntimePaths, dashboard: dict[str, Any], s
         "currentGit": {"commit": current_commit, "dirty": current_dirty},
         "recommendedActions": _runtime_source_recommended_actions() if stale else [],
         "message": message,
-        **_launch_agent_source_alignment(dashboard, settings, project_root),
+        **_runtime_service_source_alignment(paths, dashboard, settings, project_root),
     }
 
 
@@ -1418,18 +1454,32 @@ def _git_value(root: Path, *args: str) -> str:
 
 
 def _runtime_source_recommended_actions() -> list[dict[str, Any]]:
+    if platform.system() == "Linux":
+        source_only_command = (
+            "actanara update --apply --source-only --source-root <source-root>"
+        )
+        upgrade_command = "actanara update --apply --source-root <source-root>"
+    else:
+        source_only_command = (
+            "zsh <source-root>/install/install.sh --runtime <runtime-home> "
+            "--source-root <source-root> --source-only --yes"
+        )
+        upgrade_command = (
+            "zsh <source-root>/install/install.sh --runtime <runtime-home> "
+            "--source-root <source-root> --upgrade --yes"
+        )
     return [
         {
             "id": "sync-runtime-source",
             "label": "Sync runtime source snapshot only",
-            "command": "zsh <source-root>/install/install.sh --runtime <runtime-home> --source-root <source-root> --source-only --yes",
+            "command": source_only_command,
             "changes": ["runtime-source-snapshot"],
             "safeForServiceCodeValidation": True,
         },
         {
             "id": "upgrade-runtime",
             "label": "Run full installer upgrade",
-            "command": "zsh <source-root>/install/install.sh --runtime <runtime-home> --source-root <source-root> --upgrade --yes",
+            "command": upgrade_command,
             "changes": ["runtime-source-snapshot", "dependencies", "settings", "service-registration"],
             "safeForServiceCodeValidation": True,
         },
@@ -1462,6 +1512,98 @@ def _launch_program_source_references(arguments: list[str]) -> list[str]:
                 references.append(candidate)
             index += 1
     return references
+
+
+def _runtime_service_source_alignment(
+    paths: RuntimePaths,
+    dashboard: dict[str, Any],
+    settings: dict[str, Any],
+    project_root: Path,
+) -> dict[str, Any]:
+    if platform.system() == "Linux":
+        return _systemd_user_source_alignment(paths, dashboard, settings)
+    launchd = _launch_agent_source_alignment(dashboard, settings, project_root)
+    return {
+        **launchd,
+        "serviceDefinitionMismatches": launchd["launchAgentMismatches"],
+        "serviceDefinitionMessage": launchd["launchAgentMessage"],
+    }
+
+
+def _systemd_user_source_alignment(
+    paths: RuntimePaths,
+    dashboard: dict[str, Any],
+    settings: dict[str, Any],
+) -> dict[str, Any]:
+    from .systemd_user import (
+        MANAGED_UNIT_HEADER,
+        dashboard_unit,
+        default_user_unit_dir,
+        rag_unit,
+    )
+
+    rag = settings.get("rag") if isinstance(settings.get("rag"), dict) else {}
+    rag_server = rag.get("server") if isinstance(rag.get("server"), dict) else {}
+    expected_units = (dashboard_unit(paths, dashboard), rag_unit(paths, rag_server))
+    unit_root = default_user_unit_dir()
+    units: list[dict[str, Any]] = []
+    mismatches: list[dict[str, Any]] = []
+    for unit in expected_units:
+        target = unit_root / unit.name
+        entry: dict[str, Any] = {
+            "name": unit.name,
+            "path": str(target),
+            "exists": target.exists() or target.is_symlink(),
+            "aligned": None,
+        }
+        if not entry["exists"]:
+            entry["status"] = "missing"
+            units.append(entry)
+            continue
+        try:
+            content = target.read_text(encoding="utf-8")
+            metadata = target.stat(follow_symlinks=False)
+        except (OSError, UnicodeError):
+            content = ""
+            metadata = None
+        managed = bool(
+            content.splitlines()
+            and content.splitlines()[0] == MANAGED_UNIT_HEADER
+        )
+        aligned = bool(
+            metadata is not None
+            and not target.is_symlink()
+            and managed
+            and content == unit.content
+        )
+        entry.update(
+            {
+                "managed": managed,
+                "aligned": aligned,
+                "status": "aligned" if aligned else "mismatch",
+            }
+        )
+        units.append(entry)
+        if not aligned:
+            mismatches.append(entry)
+    message = (
+        "managed systemd user-unit definitions point at the deployed Runtime source"
+        if not mismatches
+        else "managed systemd user-unit definitions are stale; use safe reconcile or repair"
+    )
+    return {
+        "systemdUnits": units,
+        "systemdUnitMismatches": [
+            {"name": item.get("name"), "status": item.get("status")}
+            for item in mismatches
+        ],
+        "serviceDefinitionMismatches": [
+            {"name": item.get("name"), "status": item.get("status")}
+            for item in mismatches
+        ],
+        "serviceDefinitionMessage": message,
+        "postSyncReloadCommand": "actanara dashboard restart",
+    }
 
 
 def _launch_agent_source_alignment(dashboard: dict[str, Any], settings: dict[str, Any], project_root: Path) -> dict[str, Any]:

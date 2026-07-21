@@ -41,9 +41,10 @@ GitHub serves the maintained POSIX entrypoint from `main`. It resolves official
 commit, then invokes the existing macOS installer or the Linux installer.
 
 On macOS, the hosted entrypoint supports both new and existing Runtimes and
-retains the established update/repair transaction. Linux phase 1 supports a
-fresh Runtime only; it refuses upgrade, repair, and source-only modes instead of
-risking existing state. User Settings and data on macOS remain in place.
+retains the established update/repair transaction. Linux supports fresh install,
+source-only refresh, automatic or forced locked-venv upgrade, and explicitly
+confirmed repair. Both platforms preserve user Settings and data; Linux also
+preserves each managed systemd unit's prior enabled/active state.
 
 ## Install from a checkout
 
@@ -146,9 +147,9 @@ The Dashboard normally listens on loopback. Port `3036` is preferred, with
 safe fallback ports when it is occupied. The installer prints the selected URL
 in its completion summary.
 
-When nova-RAG local mode is enabled on macOS, its service normally uses loopback
-port `3037`. Linux phase 1 gates local embedding and accepts cloud/server RAG
-only. External Agent integrations must use the read-only API described in
+When nova-RAG local mode is enabled, its service normally uses loopback port
+`3037`. Linux uses an audited CPU-only PyTorch wheel for local embeddings;
+cloud/server RAG remains available. External Agent integrations must use the read-only API described in
 [rag-external-agent-contract.md](rag-external-agent-contract.md).
 
 Actanara does not expose these services to a public network by default. Keep
@@ -193,8 +194,19 @@ actanara update --apply --offline --ref <full-commit-sha>
 actanara update --apply --offline --source-root /path/to/source
 ```
 
-The update workflow above is currently macOS-only. Linux phase 1 requires a new
-Runtime path until its separate upgrade and rollback gates are complete.
+The update workflow above selects launchd on macOS and systemd user services on
+Linux. A standard Linux update requires aligned Actanara-managed definitions and
+fails before service stop if the inventory has drifted. For a trusted but
+damaged Linux Runtime, run the explicitly confirmed repair from a selected
+source checkout:
+
+```bash
+sh install/setup.sh --source-root "$PWD" -- \
+  --runtime /path/to/runtime --repair-existing --yes --no-linger-prompt
+```
+
+Repair never calls `sudo`, never changes linger, and refuses non-Actanara unit
+definitions.
 
 ## Backup and recovery
 

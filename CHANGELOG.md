@@ -4,6 +4,36 @@ All notable public changes to Actanara are documented here.
 
 ## Unreleased
 
+## [1.4.0] - 2026-07-21
+
+### Added
+
+- Enable audited Linux x86_64 and arm64 local-embedding nova-RAG installs with
+  hash-pinned official PyTorch CPU wheels and the shared local embedding
+  settings contract.
+- Add guarded Linux Runtime source-only refresh, automatic or forced locked-venv
+  upgrade, and explicitly confirmed repair with durable rollback/recovery
+  journals.
+
+### Changed
+
+- Route `actanara update` through the POSIX Linux adapter on Linux while
+  retaining the existing zsh/macOS transaction and result contract.
+- Preserve each managed systemd user unit's exact enabled/active state across
+  standard updates, bind aligned definition hashes before service stop, and
+  report bounded post-update Doctor evidence.
+- Replace Linux Doctor LaunchAgent and macOS-timezone residuals with systemd
+  definition alignment and platform-neutral scheduler status.
+
+### Security and compatibility
+
+- Standard Linux updates reject stale, missing, modified, or non-Actanara unit
+  definitions before service stop; confirmed repair may reconcile only units
+  carrying the Actanara management marker.
+- Linux update, repair, failure compensation, and interrupted recovery are
+  release-gated on Debian 13 x86_64 with CPython 3.13. No Linux update path
+  invokes `sudo` or silently changes linger.
+
 ## [1.3.0] - 2026-07-21
 
 ### Added
@@ -204,6 +234,7 @@ managed background services executing an older concrete source directory.
 - Runtime secrets remain in the Runtime-local private secret store and are
   excluded from source and release artifacts.
 
+[1.4.0]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.4.0
 [1.3.0]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.3.0
 [1.2.0]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.2.0
 [1.1.0]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.1.0

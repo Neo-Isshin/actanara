@@ -67,8 +67,9 @@ curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/actanara/main/install/se
 
 这是 macOS 与 Linux 共用的公开入口，无需 `sudo`。它先把官方 `main`
 解析为精确 commit，再分派到对应平台适配器。macOS 保持原有的引导式
-全新安装与更新行为；Linux 第一阶段只接受全新 Runtime，发现必须升级的
-已有状态时会保守失败。第一次了解 Actanara？可以先体验
+全新安装与更新行为；Linux 支持受保护的全新安装、仅源码刷新、按锁升级，
+以及经明确确认的已有 Runtime 修复。Linux 更新事务会保持原有 systemd
+user unit 状态，遇到定义漂移或非 Actanara unit 时保守失败。第一次了解 Actanara？可以先体验
 [在线 Dashboard Demo](https://neo-isshin.github.io/actanara/dashboard-demo/)，再决定是否安装。
 
 稳定 CLI shim 为 `~/.actanara/bin/actanara`，默认还会建立
@@ -148,7 +149,7 @@ nova-RAG（可选）→ 外部 Runtime 只读检索
 ## 💻 支持范围
 
 - 🍎 **macOS 保持一等支持**：引导式安装、更新、本地 nova-RAG、Dashboard 服务和托管调度继续使用原有用户级 `LaunchAgent` 行为。
-- 🐧 **Linux 第一阶段边界更窄**：已为 Debian 类 `systemd --user` 主机启用 x86_64 与 arm64 锁目标的全新安装；升级/修复和本地 Embedding RAG 仍需分别通过发布门禁。
+- 🐧 **Linux Core 边界明确**：Debian 类 `systemd --user` 主机的 x86_64 与 arm64 锁目标支持全新安装及 cloud/CPU-only 本地 Embedding RAG；受保护升级/修复已在 Debian x86_64、CPython 3.13 上通过发布门禁，引导式向导与托管 Python bootstrap 仍仅属于 macOS。
 - 🛠️ **基础工具**：需要 `git`、`curl`，macOS 另需 `zsh`，Linux 使用 POSIX `sh`；无需 `sudo`。
 - 🐍 **Python**：macOS 支持 Python ≥ 3.11，并可安装校验后的托管 Python；当前经审计的 Linux lock 面向 CPython 3.13。
 - 🌐 **网络与磁盘**：安装期间需访问 GitHub、Python 包索引及你的模型服务；启用本地 `nova-RAG` 时首次可能下载模型权重。
@@ -245,6 +246,10 @@ actanara update --apply
 ```
 
 更新器在依赖一致时复用 venv、否则从带 hash 的 lock 重建；venv 复用、`--source-only/--force-rebuild/--offline`、源码获取与 commit 固定等细节，见 Runbook 的「更新」一节。Actanara 暂未提供一键卸载器，请勿直接删除 `~/.actanara`，正确卸载步骤见 Runbook「卸载边界」一节。
+
+Linux 常规更新要求 Actanara 管理的 systemd 定义已对齐，并逐个保持 unit
+原有 enabled/active 状态。若可信 Runtime 配置或受管理定义发生漂移，请按
+Runbook 使用需明确确认的 repair；repair 不会接管或删除用户自有 unit。
 
 ## 📋 Nova-Task：真实工作图谱
 

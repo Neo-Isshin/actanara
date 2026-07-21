@@ -48,9 +48,10 @@ python3 --version 2>/dev/null || true
 systemctl --user is-system-running 2>/dev/null || true
 ```
 
-macOS 保留现有引导式设置。Linux 第一阶段为非交互式全新安装：已有
-Runtime 升级/修复与本地 Embedding RAG 仍然禁止。Linux 的 x86_64 与
-arm64 使用独立锁目标，但不维护两套应用实现。
+macOS 保留现有引导式设置。Linux 使用非交互模式，支持全新安装、受保护的
+更新/修复，以及 cloud 或 CPU-only 本地 Embedding RAG。Linux 的 x86_64 与
+arm64 使用独立锁目标，但不维护两套应用实现；受保护更新/修复门禁已在
+Debian x86_64、CPython 3.13 上验证。
 
 ## 4. 从 main 最新 commit 安装或刷新
 
@@ -71,9 +72,9 @@ curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/actanara/main/install/se
 > 公开入口会跟随 `main`，但每次执行都会记录并安装一个精确 commit，而不是移动中的符号引用。
 
 > [!WARNING]
-> macOS 上同一条命令支持全新和已有 Runtime，并保留用户 Settings、
-> 数据库、密钥、日志和生成资产。Linux 第一阶段只接受全新 Runtime，
-> 检测到升级状态时会保守失败。
+> 两个平台上的同一条命令都支持全新和已有 Runtime，并保留用户 Settings、
+> 数据库、密钥、日志和生成资产。Linux 在受管理 systemd 定义或依赖 profile
+> 证据与所选 Runtime 不一致时，会在停止服务前保守失败。
 
 macOS 安装向导会依次处理：
 
@@ -288,8 +289,9 @@ POST /api/rag/external/search
 ## 13. 更新
 
 > [!IMPORTANT]
-> 本节更新事务目前仅支持 macOS。Linux 第一阶段只能全新安装；请使用新的
-> Runtime 路径，不要对已有 Linux Runtime 执行以下命令。
+> macOS 保留既有 launchd 事务。Linux 通过 POSIX 适配器使用同一更新命令，
+> 精确保留 systemd enabled/active 状态，并在停止服务前拒绝定义漂移。可信
+> Linux Runtime 损坏时应使用需确认的 repair，而不是常规 update。
 
 查看更新计划：
 
@@ -321,6 +323,16 @@ actanara update --apply --offline --source-root /path/to/source  # 使用本地 
 actanara update --apply --source-only                            # 必须复用 venv，否则 fail closed
 actanara update --apply --force-rebuild                          # 必须创建按锁构建的新 candidate venv
 ```
+
+从选定 checkout 修复可信 Linux Runtime：
+
+```bash
+sh install/setup.sh --source-root /path/to/source -- \
+  --runtime /path/to/runtime --repair-existing --yes --no-linger-prompt
+```
+
+Linux repair 只 reconcile Actanara 管理的 unit 文件；不会调用 `sudo`、改变
+linger 或删除用户自有 unit。
 
 离线模式只接受已存在于 installer 缓存中的完整 commit 或本地 `--source-root`，绝不解析 `latest`。
 
