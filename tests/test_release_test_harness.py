@@ -2,7 +2,7 @@ import tomllib
 import unittest
 from pathlib import Path
 
-from tests.run_isolated_release_suite import LINUX_EXCLUDED_TEST_MODULES
+from tests.run_isolated_release_suite import LINUX_EXCLUDED_TEST_MODULES, _platform_suite
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -97,6 +97,31 @@ class ReleaseTestHarnessTests(unittest.TestCase):
                 "test_update_transaction",
             },
         )
+
+    def test_linux_scope_includes_explicit_linux_update_transaction_cases(self):
+        case_type = type(
+            "FixtureUpdateTransactionTests",
+            (unittest.TestCase,),
+            {
+                "__module__": "tests.test_update_transaction",
+                "test_linux_systemd_recovery": lambda self: None,
+                "test_launchd_recovery": lambda self: None,
+            },
+        )
+        selected, excluded = _platform_suite(
+            unittest.TestSuite(
+                (
+                    case_type("test_linux_systemd_recovery"),
+                    case_type("test_launchd_recovery"),
+                )
+            ),
+            scope="linux",
+        )
+
+        selected_ids = [case.id() for case in selected]
+        self.assertEqual(len(selected_ids), 1)
+        self.assertIn("test_linux_systemd_recovery", selected_ids[0])
+        self.assertEqual(excluded, 1)
 
 
 if __name__ == "__main__":

@@ -662,6 +662,29 @@ class ActanaraCliTests(unittest.TestCase):
         self.assertIn("--result-json", installer_args)
         self.assertNotIn("--source-only", installer_args)
 
+    def test_linux_update_uses_posix_adapter_and_active_runtime_python(self):
+        cli = _load_cli_module()
+        runtime = Path("/tmp/actanara-linux-runtime")
+        with (
+            patch.object(cli.platform, "system", return_value="Linux"),
+            patch.object(cli.shutil, "which", side_effect=lambda name: "/bin/sh" if name == "sh" else None),
+            patch.object(cli, "read_settings", return_value={}),
+        ):
+            args = cli._parser().parse_args(
+                ["update", "--source-only", "--source-root", str(ROOT)]
+            )
+            command = cli._update_bootstrap_command(args, runtime)
+
+        separator = command.index("--")
+        self.assertEqual(command[0], "/bin/sh")
+        self.assertEqual(Path(command[1]).name, "bootstrap-linux.sh")
+        self.assertEqual(
+            command[command.index("--python") + 1],
+            str(runtime / ".venv" / "bin" / "python"),
+        )
+        self.assertIn("--source-only", command[separator + 1 :])
+        self.assertIn("--result-json", command[separator + 1 :])
+
     def test_update_source_only_and_force_rebuild_are_mutually_exclusive(self):
         cli = _load_cli_module()
         with redirect_stderr(io.StringIO()) as error, self.assertRaises(SystemExit) as raised:

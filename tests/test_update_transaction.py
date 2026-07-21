@@ -455,6 +455,51 @@ class UpdateTransactionTests(unittest.TestCase):
         )
         path.chmod(0o755)
 
+    def _write_stateful_fake_systemctl(
+        self,
+        path: Path,
+        *,
+        state_path: Path,
+        calls_path: Path,
+    ) -> None:
+        path.write_text(
+            f"#!{sys.executable}\n"
+            "import json\n"
+            "import os\n"
+            "import sys\n"
+            "from pathlib import Path\n"
+            f"state_path = Path({str(state_path)!r})\n"
+            f"calls_path = Path({str(calls_path)!r})\n"
+            "args = sys.argv[1:]\n"
+            "if args and args[0] == '--user':\n"
+            "    args = args[1:]\n"
+            "with calls_path.open('a', encoding='utf-8') as handle:\n"
+            "    handle.write(' '.join(args) + '\\n')\n"
+            "state = json.loads(state_path.read_text(encoding='utf-8'))\n"
+            "command = args[0]\n"
+            "name = args[1] if len(args) > 1 else ''\n"
+            "unit = state.get('units', {}).get(name, {'enabled': 'not-found', 'active': 'not-found'})\n"
+            "if command == 'is-enabled':\n"
+            "    print(unit.get('enabled', 'not-found'))\n"
+            "    raise SystemExit(0 if unit.get('enabled') in {'enabled', 'enabled-runtime', 'static', 'indirect'} else (4 if unit.get('enabled') == 'not-found' else 1))\n"
+            "if command == 'is-active':\n"
+            "    print(unit.get('active', 'not-found'))\n"
+            "    raise SystemExit(0 if unit.get('active') == 'active' else (4 if unit.get('active') == 'not-found' else 3))\n"
+            "if command in {'start', 'stop'}:\n"
+            "    failure_key = 'failStart' if command == 'start' else 'failStop'\n"
+            "    if name in state.get(failure_key, []):\n"
+            "        raise SystemExit(1)\n"
+            "    unit['active'] = 'active' if command == 'start' else 'inactive'\n"
+            "    state.setdefault('units', {})[name] = unit\n"
+            "    temporary = state_path.with_suffix('.tmp')\n"
+            "    temporary.write_text(json.dumps(state, sort_keys=True) + '\\n', encoding='utf-8')\n"
+            "    os.replace(temporary, state_path)\n"
+            "    raise SystemExit(0)\n"
+            "raise SystemExit(0)\n",
+            encoding="utf-8",
+        )
+        path.chmod(0o755)
+
     def _write_dashboard_binding_plist(
         self,
         path: Path,
@@ -532,6 +577,9 @@ class UpdateTransactionTests(unittest.TestCase):
         mode: str,
         platform: str = "Linux",
         launchctl: str = "/usr/bin/true",
+        systemctl: str = "",
+        systemd_units: tuple[str, ...] = (),
+        expected_systemd_hashes: dict[str, str] | None = None,
         uid: int = 0,
     ) -> subprocess.CompletedProcess[str]:
         return self._run(
@@ -554,6 +602,13 @@ class UpdateTransactionTests(unittest.TestCase):
             platform,
             "--launchctl",
             launchctl,
+            *(["--systemctl", systemctl] if systemctl else []),
+            *(argument for name in systemd_units for argument in ("--systemd-unit", name)),
+            *(
+                argument
+                for name, digest in (expected_systemd_hashes or {}).items()
+                for argument in ("--expected-systemd-unit-sha256", f"{name}={digest}")
+            ),
             "--uid",
             str(uid),
             check=False,
@@ -566,6 +621,8 @@ class UpdateTransactionTests(unittest.TestCase):
         owner_pid: int,
         platform: str = "Linux",
         launchctl: str = "/usr/bin/true",
+        systemctl: str = "",
+        systemd_units: tuple[str, ...] = (),
         uid: int = 0,
         materialize_candidates: bool = True,
         mode: str = "upgrade",
@@ -615,6 +672,8 @@ class UpdateTransactionTests(unittest.TestCase):
             platform,
             "--launchctl",
             launchctl,
+            *(["--systemctl", systemctl] if systemctl else []),
+            *(argument for name in systemd_units for argument in ("--systemd-unit", name)),
             "--uid",
             str(uid),
         )
@@ -800,6 +859,237 @@ class UpdateTransactionTests(unittest.TestCase):
             self.assertFalse(
                 (fixture["runtime"] / "app" / ".update-transaction.lock").exists()
             )
+
+    def test_linux_begin_rejects_nonmanaged_or_missing_active_systemd_unit(self):
+        for definition in ("operator-owned\n", None):
+            with self.subTest(definition=definition), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                fixture = self._fixture(root)
+                unit_root = fixture["home"] / ".config" / "systemd" / "user"
+                unit_root.mkdir(parents=True)
+                unit_name = "actanara-dashboard.service"
+                if definition is not None:
+                    (unit_root / unit_name).write_text(definition, encoding="utf-8")
+                state_path = root / "systemctl-state.json"
+                state_path.write_text(
+                    json.dumps(
+                        {
+                            "units": {
+                                unit_name: {"enabled": "enabled", "active": "active"}
+                            }
+                        }
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                fake = root / "systemctl"
+                self._write_stateful_fake_systemctl(
+                    fake,
+                    state_path=state_path,
+                    calls_path=root / "systemctl-calls.log",
+                )
+
+                result = self._begin_only_result(
+                    fixture,
+                    mode="upgrade",
+                    systemctl=str(fake),
+                    systemd_units=(unit_name,),
+                )
+
+                self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+                self.assertFalse(
+                    (fixture["runtime"] / "app" / ".update-transaction.lock").exists()
+                )
+                self.assertIn(
+                    "non-Actanara" if definition is not None else "unmanaged definition",
+                    result.stderr,
+                )
+
+    def test_linux_systemd_state_vector_survives_forward_update(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._fixture(root)
+            unit_root = fixture["home"] / ".config" / "systemd" / "user"
+            unit_root.mkdir(parents=True)
+            units = (
+                "actanara-dashboard.service",
+                "actanara.daily-pipeline.timer",
+            )
+            for name in units:
+                (unit_root / name).write_text(
+                    "# Managed by Actanara. Do not edit by hand.\n[Unit]\n",
+                    encoding="utf-8",
+                )
+            state_path = root / "systemctl-state.json"
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "units": {
+                            units[0]: {"enabled": "enabled", "active": "active"},
+                            units[1]: {"enabled": "disabled", "active": "inactive"},
+                        }
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            calls = root / "systemctl-calls.log"
+            fake = root / "systemctl"
+            self._write_stateful_fake_systemctl(fake, state_path=state_path, calls_path=calls)
+            journal = self._begin(
+                fixture,
+                owner_pid=os.getpid(),
+                systemctl=str(fake),
+                systemd_units=units,
+            )
+
+            self._prepare_and_promote(fixture, journal)
+            self._run("restore-services", "--state", str(journal))
+            self._run("verify", "--state", str(journal))
+            self._run("commit", "--state", str(journal))
+
+            current = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                current["units"],
+                {
+                    units[0]: {"enabled": "enabled", "active": "active"},
+                    units[1]: {"enabled": "disabled", "active": "inactive"},
+                },
+            )
+            call_lines = calls.read_text(encoding="utf-8").splitlines()
+            self.assertIn("stop actanara-dashboard.service", call_lines)
+            self.assertIn("start actanara-dashboard.service", call_lines)
+            self.assertNotIn("stop actanara.daily-pipeline.timer", call_lines)
+            self.assertNotIn("start actanara.daily-pipeline.timer", call_lines)
+            self.assertEqual(json.loads(journal.read_text(encoding="utf-8"))["status"], "committed")
+
+    def test_linux_begin_rejects_definition_hash_race_before_service_stop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._fixture(root)
+            unit_root = fixture["home"] / ".config" / "systemd" / "user"
+            unit_root.mkdir(parents=True)
+            name = "actanara-dashboard.service"
+            (unit_root / name).write_text(
+                "# Managed by Actanara. Do not edit by hand.\n[Unit]\n",
+                encoding="utf-8",
+            )
+            state_path = root / "systemctl-state.json"
+            state_path.write_text(
+                json.dumps(
+                    {"units": {name: {"enabled": "enabled", "active": "active"}}}
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            fake = root / "systemctl"
+            self._write_stateful_fake_systemctl(
+                fake,
+                state_path=state_path,
+                calls_path=root / "systemctl-calls.log",
+            )
+
+            result = self._begin_only_result(
+                fixture,
+                mode="upgrade",
+                systemctl=str(fake),
+                systemd_units=(name,),
+                expected_systemd_hashes={name: "0" * 64},
+            )
+
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            self.assertIn("does not match the update contract", result.stderr)
+            self.assertFalse(
+                (fixture["runtime"] / "app" / ".update-transaction.lock").exists()
+            )
+
+    def test_linux_systemd_restore_failure_compensates_to_prior_runtime(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._fixture(root)
+            unit_root = fixture["home"] / ".config" / "systemd" / "user"
+            unit_root.mkdir(parents=True)
+            name = "actanara-dashboard.service"
+            (unit_root / name).write_text(
+                "# Managed by Actanara. Do not edit by hand.\n[Unit]\n",
+                encoding="utf-8",
+            )
+            state_path = root / "systemctl-state.json"
+            state_path.write_text(
+                json.dumps(
+                    {"units": {name: {"enabled": "enabled", "active": "active"}}}
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            fake = root / "systemctl"
+            self._write_stateful_fake_systemctl(
+                fake,
+                state_path=state_path,
+                calls_path=root / "systemctl-calls.log",
+            )
+            journal = self._begin(
+                fixture,
+                owner_pid=os.getpid(),
+                systemctl=str(fake),
+                systemd_units=(name,),
+            )
+            self._prepare_and_promote(fixture, journal)
+            failed = json.loads(state_path.read_text(encoding="utf-8"))
+            failed["failStart"] = [name]
+            state_path.write_text(json.dumps(failed) + "\n", encoding="utf-8")
+
+            result = self._run("restore-services", "--state", str(journal), check=False)
+            self.assertEqual(result.returncode, 70, result.stdout + result.stderr)
+            failed.pop("failStart")
+            state_path.write_text(json.dumps(failed) + "\n", encoding="utf-8")
+            self._run("rollback", "--state", str(journal))
+
+            current = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(current["units"][name], {"enabled": "enabled", "active": "active"})
+            self.assertEqual(os.readlink(fixture["runtime"] / "app" / "source"), "releases/old")
+            self.assertEqual(json.loads(journal.read_text(encoding="utf-8"))["status"], "rolled-back")
+
+    def test_linux_stale_transaction_recovery_restores_systemd_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._fixture(root)
+            unit_root = fixture["home"] / ".config" / "systemd" / "user"
+            unit_root.mkdir(parents=True)
+            name = "actanara-dashboard.service"
+            (unit_root / name).write_text(
+                "# Managed by Actanara. Do not edit by hand.\n[Unit]\n",
+                encoding="utf-8",
+            )
+            state_path = root / "systemctl-state.json"
+            state_path.write_text(
+                json.dumps(
+                    {"units": {name: {"enabled": "enabled", "active": "active"}}}
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            fake = root / "systemctl"
+            self._write_stateful_fake_systemctl(
+                fake,
+                state_path=state_path,
+                calls_path=root / "systemctl-calls.log",
+            )
+            journal = self._begin(
+                fixture,
+                owner_pid=os.getpid(),
+                systemctl=str(fake),
+                systemd_units=(name,),
+            )
+            self._prepare_and_promote(fixture, journal)
+            self._mark_transaction_owner_dead(journal)
+
+            self._run("recover", "--runtime", str(fixture["runtime"]))
+
+            current = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(current["units"][name]["active"], "active")
+            self.assertEqual(os.readlink(fixture["runtime"] / "app" / "source"), "releases/old")
+            self.assertEqual(json.loads(journal.read_text(encoding="utf-8"))["status"], "rolled-back")
 
     def test_begin_rejects_stale_dependency_profile_settings_evidence(self):
         with tempfile.TemporaryDirectory() as tmp:

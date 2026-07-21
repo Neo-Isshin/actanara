@@ -67,6 +67,150 @@ class LinuxInstallerTests(unittest.TestCase):
                 },
             )
 
+    def test_upgrade_inherits_runtime_profiles_services_and_preserves_linger(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime = Path(tmp) / "runtime"
+            (runtime / "config").mkdir(parents=True)
+            settings = {
+                "schemaVersion": 1,
+                "features": {"rag": True},
+                "rag": {
+                    "enabled": True,
+                    "embedding": {"mode": "local", "provider": "local"},
+                    "server": {"enabled": False},
+                },
+                "dashboard": {
+                    "host": "127.0.0.1",
+                    "port": 43123,
+                    "server": {"enabled": True},
+                },
+                "schedule": {
+                    "enabled": True,
+                    "systemTimer": {"provider": "systemd", "registered": True},
+                },
+            }
+            settings_path = runtime / "config" / "settings.json"
+            settings_path.write_text(json.dumps(settings) + "\n", encoding="utf-8")
+            settings_path.chmod(0o600)
+            args = self._args("--runtime", str(runtime), "--upgrade")
+            inherited = {
+                "profiles": ["dashboard", "dev-test", "rag-local", "rag-server"],
+                "rag": {"enabled": True, "embeddingMode": "local"},
+                "evidence": {
+                    "settingsSha256": "a" * 64,
+                    "activeVenvTarget": str(runtime / "app" / "venvs" / "old"),
+                    "activeMarkerStatus": "trusted",
+                    "activeMarkerSha256": "b" * 64,
+                },
+            }
+            with patch.object(
+                install_linux.dependency_contract,
+                "runtime_dependency_profiles",
+                return_value=inherited,
+            ):
+                plan = install_linux.build_plan(args)
+
+            self.assertEqual(plan.update_mode, "upgrade")
+            self.assertEqual(plan.profiles, tuple(inherited["profiles"]))
+            self.assertEqual(plan.dashboard_port, 43123)
+            self.assertTrue(plan.dashboard_service)
+            self.assertTrue(plan.scheduler)
+            self.assertFalse(plan.rag_enabled)
+            self.assertEqual(plan.rag_embedding_mode, "local")
+            self.assertEqual(plan.linger_policy, "preserve")
+
+    def test_upgrade_rejects_runtime_setting_changes_disguised_as_flags(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime = Path(tmp) / "runtime"
+            (runtime / "config").mkdir(parents=True)
+            settings_path = runtime / "config" / "settings.json"
+            settings_path.write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "features": {"rag": False},
+                        "rag": {"enabled": False},
+                        "dashboard": {
+                            "host": "127.0.0.1",
+                            "port": 3036,
+                            "server": {"enabled": True},
+                        },
+                        "schedule": {"enabled": False},
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            settings_path.chmod(0o600)
+            args = self._args(
+                "--runtime",
+                str(runtime),
+                "--upgrade",
+                "--dashboard-port",
+                "4040",
+            )
+            inherited = {
+                "profiles": ["dashboard"],
+                "rag": {"enabled": False, "embeddingMode": None},
+                "evidence": {
+                    "settingsSha256": "a" * 64,
+                    "activeVenvTarget": str(runtime / ".venv"),
+                    "activeMarkerStatus": "missing",
+                    "activeMarkerSha256": None,
+                },
+            }
+            with (
+                patch.object(
+                    install_linux.dependency_contract,
+                    "runtime_dependency_profiles",
+                    return_value=inherited,
+                ),
+                self.assertRaisesRegex(install_linux.LinuxInstallError, "--dashboard-port"),
+            ):
+                install_linux.build_plan(args)
+
+    def test_repair_requires_explicit_yes_and_conflicts_with_upgrade(self):
+        with self.assertRaisesRegex(install_linux.LinuxInstallError, "requires --yes"):
+            install_linux.build_plan(self._args("--repair-existing"))
+        with self.assertRaisesRegex(install_linux.LinuxInstallError, "cannot be combined"):
+            install_linux.build_plan(self._args("--repair-existing", "--upgrade", "--yes"))
+
+    def test_force_rebuild_requires_upgrade_and_conflicts_with_source_only(self):
+        with self.assertRaisesRegex(install_linux.LinuxInstallError, "requires --upgrade"):
+            install_linux._requested_update_mode(self._args("--force-rebuild"))
+        with self.assertRaisesRegex(install_linux.LinuxInstallError, "mutually exclusive"):
+            install_linux._requested_update_mode(
+                self._args("--source-only", "--force-rebuild")
+            )
+        self.assertEqual(
+            install_linux._requested_update_mode(
+                self._args("--upgrade", "--force-rebuild")
+            ),
+            "upgrade",
+        )
+
+    def test_force_rebuild_selects_locked_candidate_dependency_plan(self):
+        plan = SimpleNamespace(
+            update_mode="upgrade",
+            force_rebuild=True,
+            runtime=Path("/tmp/actanara-update-fixture"),
+            offline=False,
+        )
+        ready = {
+            "status": "ready",
+            "updateMode": "rebuild-candidate-venv",
+            "reason": "explicit-force-rebuild",
+        }
+        with patch.object(
+            install_linux.dependency_contract,
+            "plan_update",
+            return_value=(ready, 0),
+        ) as planner:
+            result = install_linux._dependency_update_plan(plan, object())
+
+        self.assertEqual(result, ready)
+        self.assertEqual(planner.call_args.kwargs["mode"], "force-rebuild")
+
     def test_cloud_rag_configuration_does_not_claim_local_model_runtime(self):
         args = self._args("--enable-rag", "--rag-embedding-mode", "cloud")
         plan = install_linux.build_plan(args)
@@ -375,6 +519,136 @@ class LinuxInstallerTests(unittest.TestCase):
         self.assertEqual(commands[0][1]["ACTANARA_HOME"], str(runtime))
         self.assertIn(str(runtime / "app" / "source" / "src"), commands[0][1]["PYTHONPATH"])
         self.assertEqual(database_mode, 0o600)
+
+    def test_standard_update_rejects_stale_or_drifted_systemd_definitions(self):
+        plan = SimpleNamespace(runtime=Path("/tmp/actanara-update-fixture"))
+        desired = [SimpleNamespace(name="actanara-dashboard.service", content="managed\n")]
+
+        with self.assertRaisesRegex(install_linux.LinuxInstallError, "inventory is stale"):
+            install_linux._validate_existing_systemd_units_for_update(
+                plan,
+                desired,
+                ("actanara-dashboard.service", "actanara-stale.service"),
+            )
+
+        with (
+            patch(
+                "data_foundation.systemd_user.inspect_user_units",
+                return_value={
+                    "definitionsPresent": True,
+                    "definitionsManaged": True,
+                    "definitionsAligned": False,
+                },
+            ),
+            self.assertRaisesRegex(install_linux.LinuxInstallError, "have drifted"),
+        ):
+            install_linux._validate_existing_systemd_units_for_update(
+                plan,
+                desired,
+                ("actanara-dashboard.service",),
+            )
+
+    def test_update_alignment_accepts_a_deliberately_stopped_managed_service(self):
+        plan = SimpleNamespace(runtime=Path("/tmp/actanara-update-fixture"))
+        inspection = {
+            "definitionsPresent": True,
+            "definitionsManaged": True,
+            "definitionsAligned": True,
+            "actualEnabled": True,
+            "actualActive": False,
+            "actualRegistered": False,
+        }
+        with (
+            patch.object(
+                install_linux,
+                "_desired_systemd_units",
+                return_value=[SimpleNamespace(name="actanara-dashboard.service")],
+            ),
+            patch(
+                "data_foundation.systemd_user.inspect_user_units",
+                return_value=inspection,
+            ),
+        ):
+            result = install_linux._verify_updated_systemd_units(plan, {})
+
+        self.assertEqual(result, inspection)
+
+    def test_update_health_checks_only_services_active_before_the_transaction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = SimpleNamespace(
+                runtime=Path(tmp) / "runtime",
+                dashboard_service=True,
+                rag_enabled=False,
+            )
+            settings = {
+                "dashboard": {
+                    "host": "127.0.0.1",
+                    "port": 65534,
+                    "systemdUser": {"units": ["actanara-test-dashboard.service"]},
+                }
+            }
+            with patch.object(install_linux.http.client, "HTTPConnection") as connection:
+                install_linux._wait_for_update_service_health(
+                    plan,
+                    settings,
+                    active_units=set(),
+                )
+
+        connection.assert_not_called()
+
+    def test_update_doctor_is_captured_as_bounded_machine_readable_evidence(self):
+        plan = SimpleNamespace(runtime=Path("/tmp/actanara-update-fixture"))
+        completed = subprocess.CompletedProcess(
+            [],
+            0,
+            json.dumps(
+                {
+                    "doctorProfile": "installer",
+                    "summary": {
+                        "status": "warn",
+                        "errors": 0,
+                        "warnings": 1,
+                        "checks": 6,
+                    },
+                }
+            ),
+            "",
+        )
+        with patch.object(install_linux.subprocess, "run", return_value=completed) as run:
+            result = install_linux._run_update_doctor(plan)
+
+        self.assertEqual(
+            result,
+            {
+                "profile": "installer",
+                "status": "warn",
+                "errors": 0,
+                "warnings": 1,
+                "checks": 6,
+            },
+        )
+        self.assertTrue(run.call_args.kwargs["capture_output"])
+
+    def test_linux_result_envelope_matches_platform_neutral_update_cli_contract(self):
+        envelope = install_linux._result_envelope(
+            payload={
+                "status": "updated",
+                "updateMode": "source-only",
+                "dependenciesInstalled": False,
+                "reusesRuntimeVenv": True,
+                "reason": "dependency-fingerprint-match",
+                "systemdUser": {"units": [{"name": "actanara-dashboard.service"}]},
+            },
+            requested_mode="source-only",
+        )
+
+        self.assertEqual(envelope["status"], "completed")
+        self.assertEqual(envelope["updateMode"], "source-only")
+        self.assertTrue(envelope["sourceUpdated"])
+        self.assertTrue(envelope["reusesRuntimeVenv"])
+        self.assertTrue(envelope["servicesStopped"])
+        self.assertTrue(envelope["stateCertain"])
+        self.assertEqual(len(envelope), 14)
 
 
 if __name__ == "__main__":

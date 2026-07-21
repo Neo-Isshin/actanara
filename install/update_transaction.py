@@ -136,6 +136,36 @@ DEPENDENCY_VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.!+_-]{0,127}$")
 DEPENDENCY_PYTHON_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+$")
 DEPENDENCY_MACOS_VERSION_RE = re.compile(r"^[0-9]+(?:\.[0-9]+){0,2}$")
 DEPENDENCY_DISTRIBUTION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+SYSTEMD_UNIT_NAME_RE = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9_.@-]{0,126}\.(?:service|timer)$"
+)
+SYSTEMD_MANAGED_UNIT_HEADER = "# Managed by Actanara. Do not edit by hand."
+SYSTEMD_ENABLED_STATES = {
+    "enabled",
+    "enabled-runtime",
+    "linked",
+    "linked-runtime",
+    "alias",
+    "static",
+    "indirect",
+    "generated",
+    "transient",
+    "disabled",
+    "masked",
+    "masked-runtime",
+    "not-found",
+}
+SYSTEMD_ACTIVE_STATES = {
+    "active",
+    "reloading",
+    "inactive",
+    "failed",
+    "activating",
+    "deactivating",
+    "maintenance",
+    "not-found",
+    "unknown",
+}
 
 
 class TransactionError(RuntimeError):
@@ -436,6 +466,95 @@ def _read_repair_configuration_pending(path: Path) -> tuple[bytes, os.stat_resul
         os.close(descriptor)
 
 
+def _systemd_unit_root(home: Path) -> Path:
+    return home / ".config" / "systemd" / "user"
+
+
+def _validate_systemd_journal_bindings(state: dict[str, Any]) -> None:
+    """Keep every Linux service target inside the selected user's unit root."""
+
+    units = state.get("systemdUnits", [])
+    if state.get("platform") != "Linux":
+        if units:
+            raise TransactionError("non-Linux update journal contains systemd units")
+        return
+    home = Path(str(state.get("home") or ""))
+    root = Path(str(state.get("systemdUnitRoot") or ""))
+    if not home.is_absolute() or root != _systemd_unit_root(home):
+        raise TransactionError("systemd user-unit root escaped the selected HOME")
+    if root.exists() and (
+        root.is_symlink()
+        or not root.is_dir()
+        or root.resolve(strict=False) != root
+        or not _is_within(root, home)
+    ):
+        raise TransactionError("systemd user-unit root is unsafe")
+    if not units and not state.get("systemctl") and state.get("systemctlIdentity") is None:
+        # Backward-compatible helper-only transaction with no service surface.
+        return
+    binary = Path(str(state.get("systemctl") or ""))
+    identity = state.get("systemctlIdentity")
+    if (
+        not binary.is_absolute()
+        or not isinstance(identity, dict)
+        or set(identity) != {"path", "device", "inode"}
+        or Path(str(identity.get("path") or "")) != binary
+    ):
+        raise TransactionError("systemctl binding is invalid")
+    try:
+        metadata = binary.stat(follow_symlinks=False)
+    except OSError as exc:
+        raise TransactionError("bound systemctl executable is unavailable") from exc
+    if (
+        binary.is_symlink()
+        or not stat.S_ISREG(metadata.st_mode)
+        or not os.access(binary, os.X_OK)
+        or metadata.st_dev != identity.get("device")
+        or metadata.st_ino != identity.get("inode")
+    ):
+        raise TransactionError("bound systemctl executable identity changed")
+    if not isinstance(units, list):
+        raise TransactionError("systemd unit inventory is invalid")
+    records = state.get("files") or []
+    seen: set[str] = set()
+    for unit in units:
+        if not isinstance(unit, dict):
+            raise TransactionError("systemd unit inventory is invalid")
+        name = str(unit.get("name") or "")
+        path = Path(str(unit.get("unitPath") or ""))
+        if (
+            not SYSTEMD_UNIT_NAME_RE.fullmatch(name)
+            or name in seen
+            or path != root / name
+            or not isinstance(unit.get("definitionExisted"), bool)
+            or str(unit.get("enableState") or "") not in SYSTEMD_ENABLED_STATES
+            or str(unit.get("activeState") or "") not in SYSTEMD_ACTIVE_STATES
+            or not isinstance(unit.get("active"), bool)
+            or unit.get("active") != (unit.get("activeState") == "active")
+        ):
+            raise TransactionError("systemd unit inventory binding is invalid")
+        matches = [
+            item
+            for item in records
+            if item.get("key") == "managed-systemd-unit"
+            and item.get("path") == str(path.absolute())
+        ]
+        if len(matches) != 1:
+            raise TransactionError("systemd unit has no unique durable definition snapshot")
+        if matches[0].get("kind") not in {"missing", "file"}:
+            raise TransactionError("systemd unit definition snapshot is unsafe")
+        if unit["definitionExisted"] != (matches[0].get("kind") == "file"):
+            raise TransactionError("systemd unit definition evidence is inconsistent")
+        expected_definition_sha256 = unit.get("expectedDefinitionSha256")
+        if expected_definition_sha256 is not None and (
+            not isinstance(expected_definition_sha256, str)
+            or not SHA256_RE.fullmatch(expected_definition_sha256)
+            or matches[0].get("sha256") != expected_definition_sha256
+        ):
+            raise TransactionError("systemd unit definition contract is inconsistent")
+        seen.add(name)
+
+
 def _load_state(path: Path) -> dict[str, Any]:
     if path.is_symlink():
         raise TransactionError("update transaction journal must not be a symlink")
@@ -561,6 +680,8 @@ def _load_state(path: Path) -> dict[str, Any]:
         backup = item.get("backupPath") if isinstance(item, dict) else None
         if backup and not _is_within(Path(str(backup)), path.parent / "backups"):
             raise TransactionError("update transaction file backup escaped its transaction directory")
+    if not state.get("legacySchemaVersion"):
+        _validate_systemd_journal_bindings(state)
     expected_artifacts = {
         "source": runtime / "app" / "releases" / tx_id,
         "source-temp": runtime / "app" / "releases" / f".tmp-{tx_id}",
@@ -2703,6 +2824,99 @@ def _wait_for_service_state(
         time.sleep(0.1)
 
 
+def _bound_executable(value: str, *, label: str) -> tuple[str, dict[str, Any]]:
+    raw = Path(str(value or ""))
+    if not raw.is_absolute() or any(character in str(raw) for character in "\0\r\n\t"):
+        raise TransactionError(f"{label} executable path is invalid")
+    try:
+        resolved = raw.resolve(strict=True)
+        metadata = resolved.stat(follow_symlinks=False)
+    except OSError as exc:
+        raise TransactionError(f"{label} executable is unavailable") from exc
+    if not stat.S_ISREG(metadata.st_mode) or not os.access(resolved, os.X_OK):
+        raise TransactionError(f"{label} executable is unavailable")
+    return str(resolved), {
+        "path": str(resolved),
+        "device": metadata.st_dev,
+        "inode": metadata.st_ino,
+    }
+
+
+def _run_systemctl(
+    state: dict[str, Any],
+    *args: str,
+    allowed: set[int] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    _validate_systemd_journal_bindings(state)
+    try:
+        result = subprocess.run(
+            [state["systemctl"], "--user", *args],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        operation = args[0] if args else "operation"
+        raise TransactionError(f"systemctl --user {operation} failed") from exc
+    expected = allowed if allowed is not None else {0}
+    if result.returncode not in expected:
+        operation = args[0] if args else "operation"
+        raise TransactionError(
+            f"systemctl --user {operation} failed for a managed unit (exit {result.returncode})"
+        )
+    return result
+
+
+def _systemd_probe_state(state: dict[str, Any], name: str) -> tuple[str, str]:
+    enabled_result = _run_systemctl(
+        state,
+        "is-enabled",
+        name,
+        allowed={0, 1, 3, 4},
+    )
+    active_result = _run_systemctl(
+        state,
+        "is-active",
+        name,
+        allowed={0, 1, 3, 4},
+    )
+    enabled = (enabled_result.stdout or "").strip().splitlines()
+    active = (active_result.stdout or "").strip().splitlines()
+    enabled_state = enabled[-1].strip().lower() if enabled else "not-found"
+    active_state = active[-1].strip().lower() if active else "not-found"
+    if enabled_state not in SYSTEMD_ENABLED_STATES:
+        raise TransactionError(f"systemctl returned an unknown enable state for {name}")
+    if active_state not in SYSTEMD_ACTIVE_STATES:
+        raise TransactionError(f"systemctl returned an unknown active state for {name}")
+    return enabled_state, active_state
+
+
+def _wait_for_systemd_active_state(
+    state: dict[str, Any],
+    name: str,
+    *,
+    expected_active: bool,
+) -> tuple[str, str]:
+    deadline = time.monotonic() + _service_state_timeout_seconds()
+    stable = 0
+    latest = ("not-found", "not-found")
+    while True:
+        latest = _systemd_probe_state(state, name)
+        matches = (latest[1] == "active") == expected_active and latest[1] not in {
+            "activating",
+            "deactivating",
+            "reloading",
+        }
+        stable = stable + 1 if matches else 0
+        if stable >= 3:
+            return latest
+        if time.monotonic() >= deadline:
+            return latest
+        time.sleep(0.1)
+
+
 def _candidate_full_source_commit(state: dict[str, Any]) -> str | None:
     pointer = state.get("source") if isinstance(state.get("source"), dict) else {}
     candidate = Path(str(pointer.get("candidateTarget") or ""))
@@ -3119,6 +3333,42 @@ def _file_matches_snapshot(item: dict[str, Any]) -> bool:
     return False
 
 
+def _verify_systemd_definition_bindings(state: dict[str, Any]) -> None:
+    _validate_systemd_journal_bindings(state)
+    if state.get("platform") != "Linux":
+        return
+    records = state.get("files") or []
+    for unit in state.get("systemdUnits") or []:
+        path = Path(unit["unitPath"])
+        matches = [
+            item
+            for item in records
+            if item.get("key") == "managed-systemd-unit"
+            and item.get("path") == str(path.absolute())
+        ]
+        if len(matches) != 1 or not _file_matches_snapshot(matches[0]):
+            raise TransactionError(
+                f"managed systemd unit definition changed concurrently: {unit['name']}"
+            )
+        if path.is_file():
+            try:
+                first_line = path.read_text(encoding="utf-8").splitlines()[0]
+            except (OSError, UnicodeDecodeError, IndexError) as exc:
+                raise TransactionError(
+                    f"managed systemd unit definition is unreadable: {unit['name']}"
+                ) from exc
+            metadata = path.stat(follow_symlinks=False)
+            if (
+                first_line != SYSTEMD_MANAGED_UNIT_HEADER
+                or path.is_symlink()
+                or metadata.st_nlink != 1
+                or metadata.st_uid != os.getuid()
+            ):
+                raise TransactionError(
+                    f"managed systemd unit definition provenance changed: {unit['name']}"
+                )
+
+
 def _verify_critical_control_state(state: dict[str, Any]) -> None:
     records = state.get("files") or []
     for key in ("settings", "runtime-manifest"):
@@ -3133,6 +3383,7 @@ def _verify_critical_control_state(state: dict[str, Any]) -> None:
     if not venv_state.get("promotionStarted"):
         _verify_dependency_profile_binding(state)
     runtime = Path(state["runtime"])
+    _verify_systemd_definition_bindings(state)
     by_path = {str(item.get("path") or ""): item for item in records}
     for service in state.get("services") or []:
         plist = Path(service["plistPath"])
@@ -3851,6 +4102,17 @@ def begin(args: argparse.Namespace) -> int:
         raise TransactionError("update Runtime or HOME is unavailable") from exc
     if not SAFE_TX_ID_RE.fullmatch(args.tx_id) or args.tx_id in {".", ".."}:
         raise TransactionError("update transaction id contains unsafe characters")
+    expected_systemd_hashes: dict[str, str] = {}
+    for value in args.expected_systemd_unit_sha256:
+        name, separator, expected_sha256 = str(value).partition("=")
+        if (
+            separator != "="
+            or not SYSTEMD_UNIT_NAME_RE.fullmatch(name)
+            or not SHA256_RE.fullmatch(expected_sha256)
+            or name in expected_systemd_hashes
+        ):
+            raise TransactionError("expected systemd unit definition hash is invalid")
+        expected_systemd_hashes[name] = expected_sha256
     active_profile_evidence_values = (
         args.expected_active_venv_target,
         args.expected_active_marker_status,
@@ -3936,7 +4198,28 @@ def begin(args: argparse.Namespace) -> int:
         tx_dir_identity = (tx_metadata.st_dev, tx_metadata.st_ino)
         state_path = tx_dir / "journal.json"
         command_lock_identity = _create_transaction_command_lock(tx_dir)
+        if args.platform not in {"Darwin", "Linux"}:
+            raise TransactionError("update transaction platform is unsupported")
         launchctl = args.launchctl
+        systemctl = ""
+        systemctl_identity: dict[str, Any] | None = None
+        if args.platform == "Darwin":
+            if not launchctl:
+                raise TransactionError("launchctl is required for a macOS update transaction")
+            if args.systemd_unit or expected_systemd_hashes:
+                raise TransactionError("macOS update transaction cannot contain systemd units")
+        else:
+            if not set(expected_systemd_hashes).issubset(set(args.systemd_unit)):
+                raise TransactionError(
+                    "expected systemd definition hash has no managed unit binding"
+                )
+            if args.systemd_unit:
+                systemctl, systemctl_identity = _bound_executable(
+                    args.systemctl,
+                    label="systemctl",
+                )
+            elif args.systemctl:
+                raise TransactionError("systemctl was provided without a managed unit inventory")
         domain = f"gui/{args.uid}"
         artifact_paths = {
             "source": runtime / "app" / "releases" / tx_id,
@@ -3963,6 +4246,10 @@ def begin(args: argparse.Namespace) -> int:
             "platform": args.platform,
             "launchctl": launchctl,
             "domain": domain,
+            "systemctl": systemctl,
+            "systemctlIdentity": systemctl_identity,
+            "systemdUnitRoot": str(_systemd_unit_root(home)),
+            "systemdUnits": [],
             "lockPath": str(lock),
             "commandLockIdentity": command_lock_identity,
             "source": _pointer_state(source_pointer),
@@ -4197,6 +4484,89 @@ def begin(args: argparse.Namespace) -> int:
                         "state": launch_state,
                     }
                 )
+        elif args.systemd_unit:
+            unit_root = _systemd_unit_root(home)
+            if (
+                unit_root.exists()
+                and (
+                    unit_root.is_symlink()
+                    or not unit_root.is_dir()
+                    or unit_root.resolve(strict=False) != unit_root
+                    or not _is_within(unit_root, home)
+                )
+            ):
+                raise TransactionError("systemd user-unit root is unsafe")
+            names = list(args.systemd_unit)
+            if len(names) != len(set(names)):
+                raise TransactionError("managed systemd unit inventory contains duplicates")
+            for name in names:
+                if not SYSTEMD_UNIT_NAME_RE.fullmatch(name):
+                    raise TransactionError("managed systemd unit name is unsafe")
+                unit_path = unit_root / name
+                if unit_path.is_symlink() or (
+                    unit_path.exists() and not unit_path.is_file()
+                ):
+                    raise TransactionError(f"managed systemd unit definition is unsafe: {name}")
+                if unit_path.is_file():
+                    try:
+                        lines = unit_path.read_text(encoding="utf-8").splitlines()
+                        first_line = lines[0] if lines else ""
+                        metadata = unit_path.stat(follow_symlinks=False)
+                    except (OSError, UnicodeDecodeError) as exc:
+                        raise TransactionError(
+                            f"managed systemd unit definition is unreadable: {name}"
+                        ) from exc
+                    if (
+                        first_line != SYSTEMD_MANAGED_UNIT_HEADER
+                        or metadata.st_nlink != 1
+                        or metadata.st_uid != os.getuid()
+                    ):
+                        raise TransactionError(
+                            f"refusing non-Actanara systemd unit definition: {name}"
+                        )
+                expected_definition_sha256 = expected_systemd_hashes.get(name)
+                if expected_definition_sha256 is not None and (
+                    not unit_path.is_file()
+                    or _sha256(unit_path) != expected_definition_sha256
+                ):
+                    raise TransactionError(
+                        f"managed systemd unit definition does not match the update contract: {name}"
+                    )
+                _snapshot_path(
+                    state_path,
+                    state,
+                    "managed-systemd-unit",
+                    unit_path,
+                )
+                record = {
+                    "name": name,
+                    "unitPath": str(unit_path.absolute()),
+                    "definitionExisted": unit_path.is_file(),
+                    "expectedDefinitionSha256": expected_definition_sha256,
+                    "enableState": "not-found",
+                    "activeState": "not-found",
+                    "active": False,
+                    "stoppedByTransaction": False,
+                }
+                state["systemdUnits"].append(record)
+                enable_state, active_state = _systemd_probe_state(state, name)
+                record["enableState"] = enable_state
+                record["activeState"] = active_state
+                record["active"] = active_state == "active"
+                if not record["definitionExisted"] and (
+                    enable_state != "not-found" or active_state not in {"not-found", "inactive"}
+                ):
+                    raise TransactionError(
+                        f"systemd reports an unmanaged definition for selected unit: {name}"
+                    )
+                if active_state in {"activating", "deactivating", "reloading"}:
+                    raise TransactionError(
+                        f"managed systemd unit state is unstable before update: {name}"
+                    )
+                if args.mode != "repair" and active_state == "failed":
+                    raise TransactionError(
+                        f"managed systemd unit is failed; repair it before upgrade: {name}"
+                    )
         state["services"] = services
         state["settingsSummary"] = settings_summary
         _verify_critical_control_state(state)
@@ -4679,6 +5049,45 @@ def stop_services(args: argparse.Namespace) -> int:
     _verify_critical_control_state(state)
     _verify_recorded_candidate_artifacts(state)
     _verify_live_migration_ledger(state)
+    if state["platform"] == "Linux":
+        units = state.get("systemdUnits") or []
+        if not units:
+            state["status"] = "stopped"
+            _save_state(state_path, state, event="services-stopped")
+            return 0
+        _verify_prior_service_vector(state)
+        state["status"] = "stopping"
+        state["serviceStopInitiated"] = True
+        _save_state(state_path, state, event="services-stopping")
+        _maybe_test_fail("service-stop-initiated")
+        ordered = sorted(units, key=lambda item: (not item["name"].endswith(".timer"), item["name"]))
+        for unit in ordered:
+            if not unit["active"]:
+                continue
+            _run_systemctl(state, "stop", unit["name"])
+            unit["stoppedByTransaction"] = True
+            _save_state(state_path, state, event=f"systemd-unit-stopped:{unit['name']}")
+        for unit in ordered:
+            enable_state, active_state = _wait_for_systemd_active_state(
+                state,
+                unit["name"],
+                expected_active=False,
+            )
+            if enable_state != unit["enableState"]:
+                raise TransactionError(
+                    f"managed systemd unit enable state changed during stop: {unit['name']}"
+                )
+            if active_state == "active":
+                raise TransactionError(
+                    f"managed systemd unit remained active after stop: {unit['name']}"
+                )
+            if not unit["active"] and active_state != unit["activeState"]:
+                raise TransactionError(
+                    f"inactive managed systemd unit state changed during stop: {unit['name']}"
+                )
+        state["status"] = "stopped"
+        _save_state(state_path, state, event="services-stopped")
+        return 0
     if state["platform"] != "Darwin":
         state["status"] = "stopped"
         _save_state(state_path, state, event="services-stopped")
@@ -4749,6 +5158,44 @@ def restore_services(args: argparse.Namespace) -> int:
         _verify_live_migration_ledger(state)
         _verify_recorded_candidate_artifacts(state)
         _verify_service_plist_bindings(state)
+    if state["platform"] == "Linux":
+        units = state.get("systemdUnits") or []
+        ordered = sorted(units, key=lambda item: (item["name"].endswith(".timer"), item["name"]))
+        for unit in ordered:
+            enable_state, active_state = _systemd_probe_state(state, unit["name"])
+            if enable_state != unit["enableState"]:
+                raise TransactionError(
+                    f"managed systemd unit enable state changed before restore: {unit['name']}"
+                )
+            if not unit["active"]:
+                if active_state == "active":
+                    raise TransactionError(
+                        f"managed systemd unit changed concurrently from inactive to active: {unit['name']}"
+                    )
+                continue
+            if active_state != "active":
+                _run_systemctl(state, "start", unit["name"])
+        for unit in ordered:
+            enable_state, active_state = _wait_for_systemd_active_state(
+                state,
+                unit["name"],
+                expected_active=bool(unit["active"]),
+            )
+            if enable_state != unit["enableState"]:
+                raise TransactionError(
+                    f"managed systemd unit enable state was not preserved: {unit['name']}"
+                )
+            if (active_state == "active") != unit["active"]:
+                raise TransactionError(
+                    f"managed systemd unit active state was not restored: {unit['name']}"
+                )
+            if not unit["active"] and active_state != unit["activeState"]:
+                raise TransactionError(
+                    f"inactive managed systemd unit state was not restored: {unit['name']}"
+                )
+        state["status"] = "services-restored"
+        _save_state(state_path, state, event="services-restored")
+        return 0
     if state["platform"] != "Darwin":
         state["status"] = "services-restored"
         _save_state(state_path, state, event="services-restored")
@@ -4854,6 +5301,8 @@ def _service_stop_was_initiated(state: dict[str, Any]) -> bool:
         return explicit
     if any(service.get("stoppedByTransaction") for service in state.get("services") or []):
         return True
+    if any(unit.get("stoppedByTransaction") for unit in state.get("systemdUnits") or []):
+        return True
     phase = str(state.get("phase") or "")
     if phase == "services-stopping" or phase.startswith("service-stopped:"):
         return True
@@ -4878,6 +5327,14 @@ def _service_stop_was_initiated(state: dict[str, Any]) -> bool:
 
 
 def _verify_prior_service_vector(state: dict[str, Any]) -> None:
+    if state.get("platform") == "Linux":
+        for unit in state.get("systemdUnits") or []:
+            enable_state, active_state = _systemd_probe_state(state, unit["name"])
+            if enable_state != unit["enableState"] or active_state != unit["activeState"]:
+                raise TransactionError(
+                    f"managed systemd unit state changed before the update stop boundary: {unit['name']}"
+                )
+        return
     for service in state.get("services") or []:
         loaded, launch_state = _launch_state(
             state["launchctl"],
@@ -5103,6 +5560,32 @@ def rollback_state(state_path: Path, state: dict[str, Any]) -> None:
                     )
             except Exception as exc:
                 errors.append(f"service-bootout:{service['kind']}:{exc}")
+    elif state["platform"] == "Linux" and service_stop_initiated:
+        ordered = sorted(
+            state.get("systemdUnits") or [],
+            key=lambda item: (not item["name"].endswith(".timer"), item["name"]),
+        )
+        for unit in ordered:
+            try:
+                enable_state, active_state = _systemd_probe_state(state, unit["name"])
+                if enable_state != unit["enableState"]:
+                    errors.append(f"systemd-enable-concurrent-change:{unit['name']}")
+                    continue
+                if not unit["active"]:
+                    if active_state != unit["activeState"]:
+                        errors.append(f"systemd-active-concurrent-change:{unit['name']}")
+                    continue
+                if active_state != "inactive":
+                    _run_systemctl(state, "stop", unit["name"])
+                _enabled, stopped_state = _wait_for_systemd_active_state(
+                    state,
+                    unit["name"],
+                    expected_active=False,
+                )
+                if stopped_state == "active":
+                    errors.append(f"systemd-stop:{unit['name']}:unit remained active")
+            except Exception as exc:
+                errors.append(f"systemd-stop:{unit['name']}:{exc}")
     if service_stop_initiated:
         try:
             _verify_live_migration_ledger(state)
@@ -5148,7 +5631,7 @@ def rollback_state(state_path: Path, state: dict[str, Any]) -> None:
                 errors.append(f"file-concurrent-change:{item['key']}")
         except Exception as exc:
             errors.append(f"file:{item['key']}:{exc}")
-    if state["platform"] == "Darwin" and service_stop_initiated and not errors:
+    if state["platform"] in {"Darwin", "Linux"} and service_stop_initiated and not errors:
         try:
             # Reuse the normal state-restoration contract after exact plist restore.
             state["status"] = "rolling-back"
@@ -5158,9 +5641,9 @@ def rollback_state(state_path: Path, state: dict[str, Any]) -> None:
             state = _load_state(state_path)
         except Exception as exc:
             errors.append(f"services:{exc}")
-    elif state["platform"] == "Darwin" and service_stop_initiated:
+    elif state["platform"] in {"Darwin", "Linux"} and service_stop_initiated:
         errors.append("services:not-restored-after-pointer-or-control-state-conflict")
-    elif state["platform"] == "Darwin":
+    elif state["platform"] in {"Darwin", "Linux"}:
         try:
             _verify_prior_service_vector(state)
             _save_state(state_path, state, event="rollback-services-unchanged")
@@ -5220,8 +5703,11 @@ def commit_repair(args: argparse.Namespace) -> int:
     state = _load_state(state_path)
     if state.get("mode") != "repair" or state.get("status") != "promoted":
         raise TransactionError("repair commit requires promoted repair candidates")
+    service_stop_required = state.get("platform") == "Darwin" or (
+        state.get("platform") == "Linux" and bool(state.get("systemdUnits"))
+    )
     if not state.get("mutableStateCaptured") or (
-        state.get("platform") == "Darwin" and not state.get("serviceStopInitiated")
+        service_stop_required and not state.get("serviceStopInitiated")
     ):
         raise TransactionError("repair commit requires captured state and a completed service stop")
     _verify_critical_control_state(state)
@@ -5250,6 +5736,17 @@ def commit_repair(args: argparse.Namespace) -> int:
             if loaded:
                 raise TransactionError(
                     f"legacy managed service restarted before repair commit: {service['label']}"
+                )
+    elif state["platform"] == "Linux":
+        for unit in state.get("systemdUnits") or []:
+            enable_state, active_state = _systemd_probe_state(state, unit["name"])
+            if enable_state != unit["enableState"]:
+                raise TransactionError(
+                    f"managed systemd unit enable state changed before repair commit: {unit['name']}"
+                )
+            if active_state == "active":
+                raise TransactionError(
+                    f"legacy managed systemd unit restarted before repair commit: {unit['name']}"
                 )
 
     pending_records = [
@@ -5413,7 +5910,14 @@ def build_parser() -> argparse.ArgumentParser:
     begin_parser.add_argument("--tx-id", required=True)
     begin_parser.add_argument("--owner-pid", type=int, required=True)
     begin_parser.add_argument("--platform", required=True)
-    begin_parser.add_argument("--launchctl", required=True)
+    begin_parser.add_argument("--launchctl", default="")
+    begin_parser.add_argument("--systemctl", default="")
+    begin_parser.add_argument("--systemd-unit", action="append", default=[])
+    begin_parser.add_argument(
+        "--expected-systemd-unit-sha256",
+        action="append",
+        default=[],
+    )
     begin_parser.add_argument("--uid", required=True)
     begin_parser.set_defaults(func=begin)
 

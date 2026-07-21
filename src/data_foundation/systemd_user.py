@@ -74,6 +74,21 @@ def _unit_name(value: str, suffix: str) -> str:
     return name
 
 
+def _configured_service_unit_name(settings: dict, default: str) -> str:
+    registration = settings.get("systemdUser") if isinstance(settings.get("systemdUser"), dict) else {}
+    configured = registration.get("units") if isinstance(registration.get("units"), list) else []
+    if not configured:
+        return default
+    if (
+        len(configured) != 1
+        or not isinstance(configured[0], str)
+        or not configured[0].endswith(".service")
+        or not UNIT_NAME_RE.fullmatch(configured[0])
+    ):
+        raise SystemdUserError("configured systemd service unit name is unsafe")
+    return configured[0]
+
+
 def _environment_lines(environment: dict[str, str]) -> list[str]:
     return [f"Environment={_quote(f'{key}={value}')}" for key, value in sorted(environment.items())]
 
@@ -200,7 +215,7 @@ def dashboard_unit(paths: RuntimePaths, dashboard: dict) -> UserUnit:
         "REPORT_READ_SOURCE": "foundation",
     }
     return UserUnit(
-        name="actanara-dashboard.service",
+        name=_configured_service_unit_name(dashboard, "actanara-dashboard.service"),
         content=_service_unit(
             description="Actanara Dashboard",
             command=(
@@ -222,7 +237,7 @@ def dashboard_unit(paths: RuntimePaths, dashboard: dict) -> UserUnit:
     )
 
 
-def rag_unit(paths: RuntimePaths) -> UserUnit:
+def rag_unit(paths: RuntimePaths, server: dict | None = None) -> UserUnit:
     source = paths.home / "app" / "source"
     python = paths.home / ".venv" / "bin" / "python"
     environment = {
@@ -231,7 +246,7 @@ def rag_unit(paths: RuntimePaths) -> UserUnit:
         "PYTHONPATH": os.pathsep.join((str(source), str(source / "src"))),
     }
     return UserUnit(
-        name="actanara-rag-server.service",
+        name=_configured_service_unit_name(server or {}, "actanara-rag-server.service"),
         content=_service_unit(
             description="Actanara nova-RAG server",
             command=(
