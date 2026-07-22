@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import platform
 import subprocess
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -19,11 +20,13 @@ from data_foundation.systemd_user import (
     control_user_units,
     dashboard_unit,
     default_user_unit_dir,
+    enqueue_user_unit_action,
     finalize_user_unit_transaction,
     inspect_user_units,
     install_user_units,
     rag_unit,
     rollback_user_unit_transaction,
+    transient_user_action_unit_name,
     uninstall_user_units,
 )
 
@@ -58,11 +61,13 @@ class PlatformServiceManager:
         *,
         paths: RuntimePaths | None = None,
         systemctl_runner=None,
+        systemd_run_runner=None,
         launchctl_runner=None,
         unit_dir: Path | None = None,
     ) -> None:
         self.paths = paths or load_paths()
         self.systemctl_runner = systemctl_runner or subprocess.run
+        self.systemd_run_runner = systemd_run_runner or subprocess.run
         self.launchctl_runner = launchctl_runner
         self.unit_dir = unit_dir
 
@@ -120,6 +125,72 @@ class PlatformServiceManager:
 
     def restart(self, kind: str, payload: dict | None = None) -> dict[str, Any]:
         return self._apply(kind, "restart", payload)
+
+    def enqueue(self, kind: str, action: str, payload: dict | None = None) -> dict[str, Any]:
+        """Accept a Linux action into an independent transient systemd user job."""
+
+        selected = _kind(kind)
+        if action not in {"install", "uninstall", "stop", "restart"}:
+            raise ValueError("asynchronous service action must be install, uninstall, stop, or restart")
+        if self.provider != "systemd-user":
+            raise ServiceManagerError("asynchronous service actions require systemd user")
+        request = payload if isinstance(payload, dict) else {}
+        if request.get("dryRun") is True:
+            return self._apply(selected, action, request)
+        required = _confirmation(selected, action)
+        if str(request.get("confirmationText") or "") != required:
+            raise ValueError(f"confirmationText must be exactly: {required}")
+
+        request_id = uuid.uuid4().hex
+        units = self._units(selected)
+        saved: dict[str, Any] | None = None
+        previous = self._registration_snapshot(selected, units)
+        if action in {"install", "uninstall"}:
+            update = self._registration_update(
+                selected,
+                action,
+                units,
+                status="queued",
+                request_id=request_id,
+            )
+            saved = write_service_manager_settings(
+                update,
+                self.paths,
+                precommit_side_effects=lambda _context: None,
+            )
+        try:
+            job = enqueue_user_unit_action(
+                self.paths,
+                kind=selected,
+                action=action,
+                request_id=request_id,
+                unit_dir=self.unit_dir,
+                runner=self.systemd_run_runner,
+            )
+        except SystemdUserError as exc:
+            if action in {"install", "uninstall"}:
+                self._record_enqueue_failure(
+                    selected,
+                    action,
+                    request_id=request_id,
+                    previous=previous,
+                    error=str(exc),
+                )
+            raise ServiceManagerError(str(exc)) from exc
+        return {
+            "accepted": True,
+            "status": "queued",
+            "kind": selected,
+            "action": action,
+            "provider": "systemd-user",
+            "serviceManager": self.provider,
+            "job": job,
+            **(
+                {"settingsTransaction": saved.get("settingsTransaction")}
+                if isinstance(saved, dict)
+                else {}
+            ),
+        }
 
     def _apply(self, kind: str, action: str, payload: dict | None) -> dict[str, Any]:
         selected = _kind(kind)
@@ -300,8 +371,44 @@ class PlatformServiceManager:
             },
         }
 
-    def _systemd_registration_handoff(self, kind: str, action: str) -> dict[str, Any]:
-        units = self._units(kind)
+    def _registration_snapshot(
+        self,
+        kind: str,
+        units: list[UserUnit],
+    ) -> dict[str, Any]:
+        settings = read_settings(self.paths, redact_secrets=False, persist_defaults=False)
+        if kind == "dashboard":
+            dashboard = settings.get("dashboard") if isinstance(settings.get("dashboard"), dict) else {}
+            server = dashboard.get("server") if isinstance(dashboard.get("server"), dict) else {}
+            registration = dashboard.get("systemdUser")
+        else:
+            rag = settings.get("rag") if isinstance(settings.get("rag"), dict) else {}
+            server = rag.get("server") if isinstance(rag.get("server"), dict) else {}
+            registration = server.get("systemdUser")
+        metadata = registration if isinstance(registration, dict) else {}
+        configured_enabled = server.get("enabled")
+        enabled = (
+            configured_enabled
+            if type(configured_enabled) is bool
+            else bool(metadata.get("registered"))
+        )
+        configured_units = metadata.get("units") if isinstance(metadata.get("units"), list) else []
+        names = [str(name) for name in configured_units if isinstance(name, str)]
+        return {
+            "enabled": enabled,
+            "metadata": dict(metadata),
+            "units": names or [unit.name for unit in units],
+        }
+
+    def _registration_update(
+        self,
+        kind: str,
+        action: str,
+        units: list[UserUnit],
+        *,
+        status: str,
+        request_id: str | None = None,
+    ) -> dict[str, Any]:
         registered = action == "install"
         now = datetime.now().astimezone().isoformat()
         metadata = {
@@ -309,17 +416,92 @@ class PlatformServiceManager:
             "provider": "systemd-user",
             "registrationManagedBy": "dashboard-service-manager",
             "registeredAt" if registered else "unregisteredAt": now,
-            "units": [unit.name for unit in units] if registered else [],
+            # Retain the selected names after uninstall so the detached helper
+            # and later audits address the exact definitions that were removed.
+            "units": [unit.name for unit in units],
             "lastAction": action,
-            "lastActionStatus": "success",
+            "lastActionStatus": status,
             "lastError": None,
             "lastErrorAt": None,
+            "pendingAction": action if status == "queued" else None,
+            "pendingRequestId": request_id if status == "queued" else None,
+            "pendingJobUnit": (
+                transient_user_action_unit_name(kind, action, request_id)
+                if status == "queued" and request_id is not None
+                else None
+            ),
+        }
+        if kind == "dashboard":
+            return {
+                "dashboard": {
+                    "server": {"enabled": registered},
+                    "systemdUser": metadata,
+                }
+            }
+        return {
+            "rag": {
+                "server": {
+                    "enabled": registered,
+                    "systemdUser": metadata,
+                }
+            }
+        }
+
+    def _record_enqueue_failure(
+        self,
+        kind: str,
+        action: str,
+        *,
+        request_id: str,
+        previous: dict[str, Any],
+        error: str,
+    ) -> None:
+        current = self._configured_registration(kind)
+        if (
+            current.get("pendingRequestId") != request_id
+            or current.get("pendingAction") != action
+        ):
+            return
+        metadata = {
+            **previous["metadata"],
+            "registered": bool(previous["metadata"].get("registered")),
+            "provider": "systemd-user",
+            "units": previous["units"],
+            "lastAction": action,
+            "lastActionStatus": "failed",
+            "lastError": error,
+            "lastErrorAt": datetime.now().astimezone().isoformat(),
+            "pendingAction": None,
+            "pendingRequestId": None,
+            "pendingJobUnit": None,
         }
         update = (
-            {"dashboard": {"systemdUser": metadata}}
+            {
+                "dashboard": {
+                    "server": {"enabled": bool(previous["enabled"])},
+                    "systemdUser": metadata,
+                }
+            }
             if kind == "dashboard"
-            else {"rag": {"server": {"systemdUser": metadata}}}
+            else {
+                "rag": {
+                    "server": {
+                        "enabled": bool(previous["enabled"]),
+                        "systemdUser": metadata,
+                    }
+                }
+            }
         )
+        write_service_manager_settings(
+            update,
+            self.paths,
+            precommit_side_effects=lambda _context: None,
+        )
+
+    def _systemd_registration_handoff(self, kind: str, action: str) -> dict[str, Any]:
+        units = self._units(kind)
+        registered = action == "install"
+        update = self._registration_update(kind, action, units, status="success")
         holder: dict[str, Any] = {}
 
         def precommit(context: dict[str, str]):
@@ -407,6 +589,30 @@ def install_service(kind: str, payload: dict | None = None, **kwargs) -> dict[st
 
 def uninstall_service(kind: str, payload: dict | None = None, **kwargs) -> dict[str, Any]:
     return PlatformServiceManager(**kwargs).uninstall(kind, payload)
+
+
+def service_action_requires_async(
+    kind: str,
+    action: str,
+    payload: dict | None = None,
+) -> bool:
+    selected = _kind(kind)
+    request = payload if isinstance(payload, dict) else {}
+    return (
+        platform.system() == "Linux"
+        and selected == "dashboard"
+        and action in {"install", "uninstall", "stop", "restart"}
+        and request.get("dryRun") is not True
+    )
+
+
+def enqueue_service_action(
+    kind: str,
+    action: str,
+    payload: dict | None = None,
+    **kwargs,
+) -> dict[str, Any]:
+    return PlatformServiceManager(**kwargs).enqueue(kind, action, payload)
 
 
 def control_service(kind: str, action: str, payload: dict | None = None, **kwargs) -> dict[str, Any]:

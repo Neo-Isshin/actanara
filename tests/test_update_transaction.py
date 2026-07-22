@@ -16,6 +16,7 @@ import time
 import unittest
 from contextlib import closing
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -962,6 +963,56 @@ class UpdateTransactionTests(unittest.TestCase):
             self.assertNotIn("stop actanara.daily-pipeline.timer", call_lines)
             self.assertNotIn("start actanara.daily-pipeline.timer", call_lines)
             self.assertEqual(json.loads(journal.read_text(encoding="utf-8"))["status"], "committed")
+
+    def test_linux_begin_honors_xdg_config_home_for_systemd_unit_inventory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._fixture(root)
+            config_home = root / "operator-config"
+            unit_root = config_home / "systemd" / "user"
+            unit_root.mkdir(parents=True)
+            name = "actanara-dashboard.service"
+            (unit_root / name).write_text(
+                "# Managed by Actanara. Do not edit by hand.\n[Unit]\n",
+                encoding="utf-8",
+            )
+            state_path = root / "systemctl-state.json"
+            state_path.write_text(
+                json.dumps({"units": {name: {"enabled": "enabled", "active": "active"}}}) + "\n",
+                encoding="utf-8",
+            )
+            fake = root / "systemctl"
+            self._write_stateful_fake_systemctl(
+                fake,
+                state_path=state_path,
+                calls_path=root / "systemctl-calls.log",
+            )
+
+            with patch.dict(os.environ, {"XDG_CONFIG_HOME": str(config_home)}):
+                result = self._begin_only_result(
+                    fixture,
+                    mode="upgrade",
+                    systemctl=str(fake),
+                    systemd_units=(name,),
+                )
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            journal = Path(result.stdout.strip())
+            state = json.loads(journal.read_text(encoding="utf-8"))
+            expected_root = unit_root.resolve(strict=False)
+            self.assertEqual(Path(state["systemdUnitRoot"]), expected_root)
+            self.assertEqual(Path(state["systemdUnits"][0]["unitPath"]), expected_root / name)
+            reserved = self._run(
+                "reserve-artifact",
+                "--state",
+                str(journal),
+                "--kind",
+                "source-temp",
+            )
+            self.assertEqual(
+                Path(reserved.stdout.strip()),
+                fixture["runtime"].resolve() / "app" / "releases" / ".tmp-fixture-tx",
+            )
 
     def test_linux_begin_rejects_definition_hash_race_before_service_stop(self):
         with tempfile.TemporaryDirectory() as tmp:

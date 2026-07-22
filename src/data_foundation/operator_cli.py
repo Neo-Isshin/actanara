@@ -88,6 +88,9 @@ from data_foundation.sqlite_cache_rebuild import (
     plan_sqlite_cache_rebuild,
     rebuild_sqlite_cache,
 )
+from data_foundation.systemd_user import (
+    restart_dashboard_systemd_service,
+)
 from advanced.dashboard.dashboard_launch_agent import (
     dashboard_launch_defaults,
     restart_service as restart_dashboard_service,
@@ -1783,6 +1786,38 @@ def _daily_diary_complete_for_cli(paths, target_date: str) -> bool:
 
 
 def _dashboard_restart(args: argparse.Namespace) -> int:
+    if platform.system() == "Linux":
+        paths = _paths_from_args(args) or load_paths()
+        try:
+            result = restart_dashboard_systemd_service(paths)
+        except Exception as exc:
+            if args.json:
+                sys.stdout.write(
+                    json.dumps(
+                        {
+                            "status": "failed",
+                            "provider": "systemd-user",
+                            "error": str(exc),
+                        },
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    )
+                    + "\n"
+                )
+            else:
+                sys.stderr.write(f"Dashboard restart failed: {exc}\n")
+            return 1
+        if args.json:
+            sys.stdout.write(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+        else:
+            sys.stdout.write(
+                render_cli(
+                    "Dashboard",
+                    fields=(("Status", "Restarted"),),
+                    next_steps=("Open Dashboard and refresh the page",),
+                )
+            )
+        return 0
     defaults = dashboard_launch_defaults()
     label = getattr(args, "label", None) or str(defaults.get("label") or "com.actanara.dashboard")
     code = restart_dashboard_service(label)

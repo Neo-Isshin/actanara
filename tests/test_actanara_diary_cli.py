@@ -325,6 +325,39 @@ class ActanaraCliTests(unittest.TestCase):
         self.assertIn("Actanara · Dashboard", output.getvalue())
         self.assertIn("Restarted", output.getvalue())
 
+    def test_dashboard_restart_uses_systemd_user_boundary_on_linux(self):
+        cli = _load_cli_module()
+        with (
+            patch.object(cli.platform, "system", return_value="Linux"),
+            patch.object(cli, "restart_dashboard_systemd_service", return_value={"status": "running"}) as restart,
+            patch.object(cli, "dashboard_launch_defaults") as defaults,
+            patch.object(cli, "restart_dashboard_service") as launchctl_restart,
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            code = cli.main(["dashboard", "restart", "--runtime", "/tmp/Actanara"])
+
+        self.assertEqual(code, 0)
+        restart.assert_called_once()
+        self.assertEqual(restart.call_args.args[0].home, Path("/tmp/Actanara"))
+        defaults.assert_not_called()
+        launchctl_restart.assert_not_called()
+        self.assertIn("Restarted", output.getvalue())
+
+    def test_dashboard_restart_reports_linux_systemd_failure_without_traceback_or_launchctl(self):
+        cli = _load_cli_module()
+        with (
+            patch.object(cli.platform, "system", return_value="Linux"),
+            patch.object(cli, "restart_dashboard_systemd_service", side_effect=OSError("system bus unavailable")),
+            patch.object(cli, "restart_dashboard_service") as launchctl_restart,
+            redirect_stderr(io.StringIO()) as error,
+        ):
+            code = cli.main(["dashboard", "restart"])
+
+        self.assertEqual(code, 1)
+        launchctl_restart.assert_not_called()
+        self.assertIn("system bus unavailable", error.getvalue())
+        self.assertNotIn("Traceback", error.getvalue())
+
     def test_pipeline_rejects_positional_run_with_date_flag(self):
         cli = _load_cli_module()
         with (
