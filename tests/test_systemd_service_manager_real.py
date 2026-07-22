@@ -150,7 +150,13 @@ class RealSystemdServiceManagerTests(unittest.TestCase):
                     self.assertRaises(_SimulatedCrash),
                 ):
                     install_user_units(paths, [interrupted])
-                recovered = recover_user_unit_transactions(paths)
+                # Raising in-process leaves the journal owner alive, so also
+                # model the dead durable owner that a real process crash leaves.
+                with patch(
+                    "data_foundation.systemd_user._same_systemd_transaction_owner",
+                    return_value=False,
+                ):
+                    recovered = recover_user_unit_transactions(paths)
                 self.assertTrue(any(item.get("status") == "compensated" for item in recovered))
                 self.assertFalse((unit_dir / interrupted.name).exists())
 
