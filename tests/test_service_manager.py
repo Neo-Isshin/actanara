@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -15,11 +16,24 @@ sys.path.insert(0, str(ROOT / "src" / "dashboard"))
 
 from app.services import scheduler, service_manager
 from data_foundation.paths import initialize_home
-from data_foundation.settings import read_settings, write_settings
-from data_foundation.settings_transaction import SettingsTransactionError
+from data_foundation.runtime_mutation import (
+    durable_runtime_mutation_owner,
+    RuntimeMutationBusy,
+    RuntimeMutationUnsafe,
+    require_runtime_mutation_owner,
+    runtime_mutation_guard,
+)
+from data_foundation.settings import read_settings, write_operator_settings, write_settings
+from data_foundation.settings_transaction import (
+    SettingsTransactionError,
+    SettingsTransactionPlan,
+    execute_settings_transaction,
+    recover_settings_transactions,
+)
 from data_foundation import settings_transaction, systemd_user
 from data_foundation.systemd_user import (
     SystemdUserError,
+    control_user_units,
     dashboard_unit,
     install_user_units,
     recover_user_unit_transactions,
@@ -74,6 +88,78 @@ class ServiceManagerTests(unittest.TestCase):
             patch("data_foundation.systemd_user._systemctl_binary", return_value="/usr/bin/systemctl"),
         )
 
+    def test_runtime_mutation_guard_serializes_two_user_runtimes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = root / "runtime-a"
+            second = root / "runtime-b"
+            acquired = threading.Event()
+            release = threading.Event()
+
+            def hold_first_runtime():
+                with runtime_mutation_guard(first):
+                    acquired.set()
+                    release.wait(timeout=5)
+
+            worker = threading.Thread(target=hold_first_runtime)
+            worker.start()
+            self.assertTrue(acquired.wait(timeout=5))
+            try:
+                with self.assertRaises(RuntimeMutationBusy):
+                    with runtime_mutation_guard(second, blocking=False):
+                        pass
+            finally:
+                release.set()
+                worker.join(timeout=5)
+
+        self.assertFalse(worker.is_alive())
+
+    def test_pending_repair_marker_is_a_durable_mutation_owner(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime = Path(tmp) / "runtime"
+            app = runtime / "app"
+            app.mkdir(parents=True)
+            marker = app / ".repair-configuration-pending"
+            marker.write_text("repair-owner\n", encoding="ascii")
+            marker.chmod(0o600)
+
+            self.assertEqual(durable_runtime_mutation_owner(runtime), "repair-owner")
+            require_runtime_mutation_owner(runtime, owner_id="repair-owner")
+            with self.assertRaises(RuntimeMutationBusy):
+                require_runtime_mutation_owner(runtime, owner_id=None)
+            with self.assertRaises(RuntimeMutationBusy):
+                require_runtime_mutation_owner(runtime, owner_id="other-owner")
+
+    def test_pending_repair_owner_validation_fails_closed(self):
+        for defect in ("bad-mode", "symlink", "malformed", "owner-mismatch"):
+            with self.subTest(defect=defect), tempfile.TemporaryDirectory() as tmp:
+                runtime = Path(tmp) / "runtime"
+                app = runtime / "app"
+                app.mkdir(parents=True)
+                marker = app / ".repair-configuration-pending"
+                marker.write_text("repair-owner\n", encoding="ascii")
+                marker.chmod(0o600)
+                if defect == "bad-mode":
+                    marker.chmod(0o644)
+                elif defect == "symlink":
+                    target = app / "marker-target"
+                    marker.rename(target)
+                    marker.symlink_to(target)
+                elif defect == "malformed":
+                    marker.write_text("../escape\n", encoding="ascii")
+                    marker.chmod(0o600)
+                else:
+                    owner = app / "owner.json"
+                    owner.write_text(
+                        json.dumps({"txId": "update-owner"}) + "\n",
+                        encoding="utf-8",
+                    )
+                    owner.chmod(0o600)
+                    os.link(owner, app / ".update-transaction.lock")
+
+                with self.assertRaises(RuntimeMutationUnsafe):
+                    durable_runtime_mutation_owner(runtime)
+
     def test_linux_service_lifecycle_reconciles_definition_and_controls_runtime(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -85,7 +171,12 @@ class ServiceManagerTests(unittest.TestCase):
                 systemctl_runner=runner,
                 unit_dir=unit_dir,
             )
-            with self._linux()[0], self._linux()[1], self._linux()[2]:
+            with (
+                self._linux()[0],
+                self._linux()[1],
+                self._linux()[2],
+                patch("data_foundation.settings.platform.system", return_value="Linux"),
+            ):
                 before = manager.preview("dashboard")
                 installed = manager.install(
                     "dashboard",
@@ -159,6 +250,277 @@ class ServiceManagerTests(unittest.TestCase):
         self.assertFalse(saved["rag"]["server"]["enabled"])
         self.assertFalse(saved["rag"]["server"]["systemdUser"]["registered"])
 
+    def test_linux_settings_write_is_blocked_by_a_durable_update_owner(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self._runtime(Path(tmp))
+            settings_path = paths.config_dir / "settings.json"
+            before = settings_path.read_bytes()
+            (paths.home / "app").mkdir(exist_ok=True)
+            owner = paths.home / "app" / "update-owner.json"
+            owner.write_text(
+                json.dumps({"txId": "update-owner-fixture"}) + "\n",
+                encoding="utf-8",
+            )
+            owner.chmod(0o600)
+            os.link(owner, paths.home / "app" / ".update-transaction.lock")
+
+            with (
+                patch("data_foundation.settings.platform.system", return_value="Linux"),
+                self.assertRaisesRegex(RuntimeError, "transaction is active"),
+            ):
+                write_settings({"dashboard": {"port": 4040}}, paths)
+
+            after = settings_path.read_bytes()
+
+        self.assertEqual(after, before)
+
+    def test_linux_read_does_not_persist_additive_defaults_during_update(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self._runtime(Path(tmp))
+            settings_path = paths.config_dir / "settings.json"
+            raw = json.loads(settings_path.read_text(encoding="utf-8"))
+            raw["dashboard"].pop("port", None)
+            settings_path.write_text(json.dumps(raw) + "\n", encoding="utf-8")
+            before = settings_path.read_bytes()
+            (paths.home / "app").mkdir(exist_ok=True)
+            owner = paths.home / "app" / "update-owner.json"
+            owner.write_text(
+                json.dumps({"txId": "update-owner-fixture"}) + "\n",
+                encoding="utf-8",
+            )
+            owner.chmod(0o600)
+            os.link(owner, paths.home / "app" / ".update-transaction.lock")
+
+            with patch("data_foundation.settings.platform.system", return_value="Linux"):
+                observed = read_settings(paths)
+            after = settings_path.read_bytes()
+
+        self.assertEqual(observed["dashboard"]["port"], 3036)
+        self.assertEqual(after, before)
+
+    def test_next_linux_settings_commit_finalizes_a_crash_after_settings_commit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = self._runtime(root)
+            unit_dir = root / "units"
+            runner = StatefulSystemctl()
+            manager = service_manager.PlatformServiceManager(
+                paths=paths,
+                systemctl_runner=runner,
+                unit_dir=unit_dir,
+            )
+
+            def interrupt(phase, _transaction_id):
+                if phase == "after-finalize":
+                    raise SyntheticSystemdCrash()
+
+            with (
+                patch("app.services.service_manager.platform.system", return_value="Linux"),
+                patch("data_foundation.systemd_user.platform.system", return_value="Linux"),
+                patch("data_foundation.systemd_user._systemctl_binary", return_value="/usr/bin/systemctl"),
+                patch("data_foundation.settings.platform.system", return_value="Linux"),
+                patch.object(
+                    settings_transaction,
+                    "settings_transaction_checkpoint",
+                    side_effect=interrupt,
+                ),
+                self.assertRaises(SyntheticSystemdCrash),
+            ):
+                manager.install(
+                    "dashboard",
+                    {"confirmationText": "INSTALL ACTANARA DASHBOARD SERVICE"},
+                )
+
+            transaction_root = paths.state_dir / "systemd-transactions"
+            journal_path = next(
+                path / "journal.json"
+                for path in transaction_root.iterdir()
+                if path.is_dir()
+            )
+            interrupted = json.loads(journal_path.read_text(encoding="utf-8"))
+            with (
+                patch("data_foundation.systemd_user.platform.system", return_value="Linux"),
+                patch("data_foundation.systemd_user._systemctl_binary", return_value="/usr/bin/systemctl"),
+                patch(
+                    "data_foundation.systemd_user._run_systemctl",
+                    side_effect=lambda arguments, **_kwargs: runner(
+                        ["/usr/bin/systemctl", "--user", *arguments]
+                    ),
+                ),
+                patch("data_foundation.settings.platform.system", return_value="Linux"),
+            ):
+                write_settings({"dashboard": {"port": 4040}}, paths)
+            recovered = json.loads(journal_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(interrupted["status"], "active")
+        self.assertEqual(recovered["status"], "committed")
+
+    def test_settings_recovery_precedes_systemd_after_precommit_crash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = self._runtime(root)
+            unit_dir = root / "units"
+            runner = StatefulSystemctl()
+            manager = service_manager.PlatformServiceManager(
+                paths=paths,
+                systemctl_runner=runner,
+                unit_dir=unit_dir,
+            )
+
+            def interrupt(phase, _transaction_id):
+                if phase == "after-settings-commit":
+                    raise SyntheticSystemdCrash()
+
+            with (
+                patch("app.services.service_manager.platform.system", return_value="Linux"),
+                patch("data_foundation.systemd_user.platform.system", return_value="Linux"),
+                patch("data_foundation.systemd_user._systemctl_binary", return_value="/usr/bin/systemctl"),
+                patch("data_foundation.settings.platform.system", return_value="Linux"),
+                patch.object(
+                    settings_transaction,
+                    "settings_transaction_checkpoint",
+                    side_effect=interrupt,
+                ),
+                self.assertRaises(SyntheticSystemdCrash),
+            ):
+                manager.install(
+                    "dashboard",
+                    {"confirmationText": "INSTALL ACTANARA DASHBOARD SERVICE"},
+                )
+
+            transaction_root = paths.state_dir / "systemd-transactions"
+            journal_path = next(
+                path / "journal.json"
+                for path in transaction_root.iterdir()
+                if path.is_dir()
+            )
+            interrupted = json.loads(journal_path.read_text(encoding="utf-8"))
+            self.assertIsNotNone(interrupted.get("settingsTransactionId"))
+            self.assertTrue(runner.states["actanara-dashboard.service"]["active"])
+
+            with (
+                patch("data_foundation.systemd_user.platform.system", return_value="Linux"),
+                patch("data_foundation.systemd_user._systemctl_binary", return_value="/usr/bin/systemctl"),
+                patch(
+                    "data_foundation.systemd_user._run_systemctl",
+                    side_effect=lambda arguments, **_kwargs: runner(
+                        ["/usr/bin/systemctl", "--user", *arguments]
+                    ),
+                ),
+                patch(
+                    "data_foundation.systemd_user._same_systemd_transaction_owner",
+                    return_value=False,
+                ),
+                patch("data_foundation.settings.platform.system", return_value="Linux"),
+            ):
+                write_settings({"dashboard": {"port": 4040}}, paths)
+
+            recovered = json.loads(journal_path.read_text(encoding="utf-8"))
+            saved = read_settings(paths, persist_defaults=False)
+
+        self.assertEqual(recovered["status"], "compensated")
+        self.assertFalse(runner.states["actanara-dashboard.service"]["enabled"])
+        self.assertFalse(runner.states["actanara-dashboard.service"]["active"])
+        self.assertFalse(
+            saved["dashboard"].get("systemdUser", {}).get("registered", False)
+        )
+        self.assertEqual(saved["dashboard"]["port"], 4040)
+
+    def test_noop_settings_recovery_still_compensates_coupled_systemd(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = self._runtime(root)
+            unit_dir = root / "units"
+            runner = StatefulSystemctl()
+            unit = dashboard_unit(paths, {"host": "127.0.0.1", "port": 3036})
+            settings_before = (paths.config_dir / "settings.json").read_bytes()
+            manifest_before = (paths.config_dir / "runtime.json").read_bytes()
+            holder = {}
+
+            def prepare(_transaction_id, _settings_before, _manifest_before):
+                return SettingsTransactionPlan(
+                    settings_bytes=settings_before,
+                    manifest_bytes=manifest_before,
+                    secret_writes=[],
+                    garbage_collection_candidates=[],
+                )
+
+            def precommit(context):
+                holder["result"] = install_user_units(
+                    paths,
+                    [unit],
+                    unit_dir=unit_dir,
+                    runner=runner,
+                    defer_commit=True,
+                    transaction_context=context,
+                )
+
+            def interrupt(phase, _transaction_id):
+                if phase == "after-settings-commit":
+                    raise SyntheticSystemdCrash()
+
+            with (
+                patch("data_foundation.systemd_user.platform.system", return_value="Linux"),
+                patch(
+                    "data_foundation.systemd_user._systemctl_binary",
+                    return_value="/usr/bin/systemctl",
+                ),
+                patch.object(
+                    settings_transaction,
+                    "settings_transaction_checkpoint",
+                    side_effect=interrupt,
+                ),
+                self.assertRaises(SyntheticSystemdCrash),
+            ):
+                execute_settings_transaction(
+                    paths,
+                    prepare,
+                    precommit_side_effects=precommit,
+                )
+
+            systemd_journal_path = (
+                paths.state_dir
+                / "systemd-transactions"
+                / holder["result"]["transactionId"]
+                / "journal.json"
+            )
+            interrupted = json.loads(
+                systemd_journal_path.read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                interrupted["settingsBeforeHash"],
+                interrupted["settingsAfterHash"],
+            )
+
+            settings_recovery = recover_settings_transactions(paths)
+            with (
+                patch("data_foundation.systemd_user.platform.system", return_value="Linux"),
+                patch(
+                    "data_foundation.systemd_user._systemctl_binary",
+                    return_value="/usr/bin/systemctl",
+                ),
+                patch(
+                    "data_foundation.systemd_user._same_systemd_transaction_owner",
+                    return_value=False,
+                ),
+            ):
+                systemd_recovery = recover_user_unit_transactions(
+                    paths,
+                    runner=runner,
+                )
+            recovered = json.loads(
+                systemd_journal_path.read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(settings_recovery[0]["status"], "compensated")
+        self.assertEqual(systemd_recovery[0]["status"], "compensated")
+        self.assertEqual(recovered["status"], "compensated")
+        self.assertFalse((unit_dir / unit.name).exists())
+        self.assertEqual(
+            runner.states[unit.name],
+            {"enabled": False, "active": False},
+        )
+
     def test_linux_dashboard_self_uninstall_queues_transient_job_after_settings_commit(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -218,6 +580,10 @@ class ServiceManagerTests(unittest.TestCase):
         self.assertIn("--collect", command)
         self.assertIn("--on-active=1s", command)
         self.assertIn("--timer-property=AccuracySec=1s", command)
+        self.assertIn("--property=Restart=on-failure", command)
+        self.assertIn("--property=RestartSec=5s", command)
+        self.assertIn("--property=RestartPreventExitStatus=1", command)
+        self.assertIn("--property=StartLimitIntervalSec=0", command)
         self.assertIn("data_foundation.systemd_user", command)
         self.assertIn("service-action", command)
         self.assertFalse(saved["dashboard"]["server"]["enabled"])
@@ -318,6 +684,56 @@ class ServiceManagerTests(unittest.TestCase):
                 )
 
         self.assertEqual(submitted, [])
+
+    def test_linux_enqueue_rejects_a_stale_unit_render_before_job_submission(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self._runtime(Path(tmp))
+            submitted = []
+            original_writer = service_manager.write_service_manager_settings
+            changed = False
+
+            def change_settings_before_prepare(*args, **kwargs):
+                nonlocal changed
+                if not changed:
+                    changed = True
+                    write_settings({"dashboard": {"port": 4545}}, paths)
+                return original_writer(*args, **kwargs)
+
+            manager = service_manager.PlatformServiceManager(
+                paths=paths,
+                systemd_run_runner=lambda command, **kwargs: (
+                    submitted.append(command)
+                    or subprocess.CompletedProcess(command, 0, "", "")
+                ),
+            )
+            with (
+                self._linux()[0],
+                self._linux()[1],
+                self._linux()[2],
+                patch("data_foundation.settings.platform.system", return_value="Linux"),
+                patch.object(
+                    service_manager,
+                    "write_service_manager_settings",
+                    side_effect=change_settings_before_prepare,
+                ),
+                self.assertRaisesRegex(
+                    service_manager.ServiceManagerError,
+                    "Settings changed while the unit handoff was prepared",
+                ),
+            ):
+                manager.enqueue(
+                    "dashboard",
+                    "install",
+                    {"confirmationText": "INSTALL ACTANARA DASHBOARD SERVICE"},
+                )
+
+            saved = read_settings(paths)
+
+        self.assertEqual(submitted, [])
+        self.assertEqual(saved["dashboard"]["port"], 4545)
+        self.assertIsNone(
+            saved["dashboard"].get("systemdUser", {}).get("pendingRequestId")
+        )
 
     def test_linux_enqueue_submission_failure_restores_previous_desired_state(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -436,7 +852,7 @@ class ServiceManagerTests(unittest.TestCase):
                             "units": previous_units,
                         },
                     )
-                    with self.assertRaisesRegex(SystemdUserError, "synthetic helper failure"):
+                    with self.assertRaisesRegex(SystemdUserError, "compensation=compensated"):
                         systemd_user.execute_queued_user_unit_action(
                             paths,
                             kind="dashboard",
@@ -455,7 +871,7 @@ class ServiceManagerTests(unittest.TestCase):
                 self.assertIs(registration["registered"], previously_registered)
                 self.assertEqual(registration["units"], previous_units)
                 self.assertEqual(registration["lastActionStatus"], "failed")
-                self.assertIn("synthetic helper failure", registration["lastError"])
+                self.assertIn("compensation=compensated", registration["lastError"])
                 self.assertIsNone(registration["pendingAction"])
                 self.assertIsNone(registration["pendingRequestId"])
                 self.assertIsNone(registration["pendingPreviousState"])
@@ -512,7 +928,225 @@ class ServiceManagerTests(unittest.TestCase):
         self.assertIsNone(registration["pendingPreviousState"])
         self.assertEqual(journal["status"], "committed")
         self.assertTrue(journal["settingsBeforeHash"])
-        self.assertEqual(journal["settingsBeforeHash"], journal["settingsAfterHash"])
+        self.assertTrue(journal["settingsAfterHash"])
+        self.assertNotEqual(journal["settingsBeforeHash"], journal["settingsAfterHash"])
+
+    def test_transient_helper_rejects_settings_changed_after_unit_render(self):
+        request_id = "2" * 32
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = self._runtime(root)
+            unit_dir = root / "units"
+            unit_dir.mkdir()
+            write_settings(
+                {
+                    "dashboard": {
+                        "port": 3036,
+                        "server": {"enabled": False},
+                        "systemdUser": {
+                            "registered": False,
+                            "units": [],
+                            "pendingAction": "install",
+                            "pendingRequestId": request_id,
+                            "lastActionStatus": "queued",
+                            "pendingPreviousState": {
+                                "serverEnabled": False,
+                                "registered": False,
+                                "units": [],
+                            },
+                        },
+                    }
+                },
+                paths,
+            )
+            original_record = systemd_user._record_queued_registration_result
+            changed = False
+
+            def change_settings_before_prepare(*args, **kwargs):
+                nonlocal changed
+                if kwargs.get("error") is None and not changed:
+                    changed = True
+                    write_settings({"dashboard": {"port": 4545}}, paths)
+                return original_record(*args, **kwargs)
+
+            runner = StatefulSystemctl()
+            with (
+                self._linux()[1],
+                self._linux()[2],
+                patch("data_foundation.settings.platform.system", return_value="Linux"),
+                patch.object(
+                    systemd_user,
+                    "_record_queued_registration_result",
+                    side_effect=change_settings_before_prepare,
+                ),
+                self.assertRaisesRegex(SystemdUserError, "service action is stale"),
+            ):
+                systemd_user.execute_queued_user_unit_action(
+                    paths,
+                    kind="dashboard",
+                    action="install",
+                    request_id=request_id,
+                    unit_dir=unit_dir,
+                    runner=runner,
+                )
+
+            saved = read_settings(paths)
+
+        self.assertEqual(runner.commands, [])
+        self.assertEqual(saved["dashboard"]["port"], 4545)
+        self.assertEqual(
+            saved["dashboard"]["systemdUser"]["lastActionStatus"],
+            "failed",
+        )
+        self.assertIsNone(
+            saved["dashboard"]["systemdUser"]["pendingRequestId"]
+        )
+
+    def test_transient_helper_defers_while_a_durable_update_owner_remains(self):
+        request_id = "4" * 32
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self._runtime(Path(tmp))
+            write_settings(
+                {
+                    "dashboard": {
+                        "systemdUser": {
+                            "registered": False,
+                            "units": [],
+                            "pendingAction": "install",
+                            "pendingRequestId": request_id,
+                            "lastActionStatus": "queued",
+                            "pendingPreviousState": {
+                                "serverEnabled": False,
+                                "registered": False,
+                                "units": [],
+                            },
+                        }
+                    }
+                },
+                paths,
+            )
+            (paths.home / "app").mkdir(exist_ok=True)
+            owner = paths.home / "app" / "update-owner.json"
+            owner.write_text(
+                json.dumps({"txId": "stale-update-owner"}) + "\n",
+                encoding="utf-8",
+            )
+            owner.chmod(0o600)
+            os.link(owner, paths.home / "app" / ".update-transaction.lock")
+
+            with (
+                self._linux()[1],
+                self.assertRaisesRegex(
+                    systemd_user._QueuedActionRetryable,
+                    "transaction is active",
+                ),
+            ):
+                systemd_user.execute_queued_user_unit_action(
+                    paths,
+                    kind="dashboard",
+                    action="install",
+                    request_id=request_id,
+                    unit_dir=Path(tmp) / "units",
+                    runner=StatefulSystemctl(),
+                )
+            saved = read_settings(paths)
+
+        self.assertEqual(
+            saved["dashboard"]["systemdUser"]["pendingRequestId"],
+            request_id,
+        )
+        self.assertEqual(
+            saved["dashboard"]["systemdUser"]["lastActionStatus"],
+            "queued",
+        )
+
+    def test_transient_helper_reloads_after_runtime_generation_change(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = self._runtime(root)
+            old_source = root / "release-old"
+            current_source = root / "release-current"
+            old_source.mkdir()
+            current_source.mkdir()
+            (paths.home / "app").mkdir(exist_ok=True)
+            source_pointer = paths.home / "app" / "source"
+            source_pointer.symlink_to(current_source)
+
+            with (
+                self._linux()[1],
+                self.assertRaisesRegex(
+                    systemd_user._QueuedHelperReloadRequired,
+                    "reload the current Runtime generation",
+                ),
+            ):
+                systemd_user.execute_queued_user_unit_action(
+                    paths,
+                    kind="dashboard",
+                    action="restart",
+                    request_id="5" * 32,
+                    unit_dir=root / "units",
+                    runner=StatefulSystemctl(),
+                    loaded_source_root=old_source,
+                )
+
+    def test_transient_control_helper_rejects_settings_changed_after_acceptance(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = self._runtime(root)
+            runner = StatefulSystemctl()
+            settings = read_settings(paths, redact_secrets=False)
+            dashboard = settings.get("dashboard", {})
+            accepted_units = [dashboard_unit(paths, dashboard)]
+            expected_unit_sha256 = systemd_user.user_unit_set_sha256(
+                accepted_units
+            )
+            write_settings({"dashboard": {"port": 4545}}, paths)
+
+            with (
+                self._linux()[1],
+                self.assertRaisesRegex(
+                    systemd_user._QueuedActionStale,
+                    "Settings changed after the action was accepted",
+                ),
+            ):
+                systemd_user.execute_queued_user_unit_action(
+                    paths,
+                    kind="dashboard",
+                    action="restart",
+                    request_id="7" * 32,
+                    unit_dir=root / "units",
+                    runner=runner,
+                    expected_unit_sha256=expected_unit_sha256,
+                )
+
+        self.assertEqual(runner.commands, [])
+
+    def test_transient_helper_retryable_exit_requests_systemd_restart(self):
+        argv = [
+            "service-action",
+            "--runtime-home",
+            "/tmp/actanara-retry-fixture",
+            "--kind",
+            "dashboard",
+            "--action",
+            "restart",
+            "--request-id",
+            "6" * 32,
+            "--source-generation",
+            "/tmp/actanara-retry-source",
+            "--expected-unit-sha256",
+            "a" * 64,
+            "--unit-dir",
+            "/tmp/actanara-retry-units",
+        ]
+        with patch.object(
+            systemd_user,
+            "execute_queued_user_unit_action",
+            side_effect=systemd_user._QueuedActionRetryable("update recovery pending"),
+        ):
+            status = systemd_user._service_action_main(argv)
+
+        self.assertEqual(status, 75)
 
     def test_linux_service_settings_failure_compensates_unit_install(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -576,6 +1210,10 @@ class ServiceManagerTests(unittest.TestCase):
             with (
                 patch("data_foundation.systemd_user.platform.system", return_value="Linux"),
                 patch("data_foundation.systemd_user._systemctl_binary", return_value="/usr/bin/systemctl"),
+                patch(
+                    "data_foundation.systemd_user._same_systemd_transaction_owner",
+                    return_value=False,
+                ),
             ):
                 recovered = recover_user_unit_transactions(paths, runner=runner)
                 recovered_again = recover_user_unit_transactions(paths, runner=runner)
@@ -585,6 +1223,90 @@ class ServiceManagerTests(unittest.TestCase):
         self.assertEqual(recovered[0]["status"], "compensated")
         self.assertEqual(recovered_again, [])
         self.assertEqual(runner.states[before_unit.name], {"enabled": True, "active": True})
+
+    def test_systemd_compensation_is_restartable_after_each_owned_mutation(self):
+        checkpoints = (
+            "after-compensation-definition:actanara-dashboard.service",
+            "after-compensation-daemon-reload",
+            "after-compensation-disable",
+            "after-compensation-state:actanara-dashboard.service",
+        )
+        for checkpoint in checkpoints:
+            with self.subTest(checkpoint=checkpoint), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                paths = self._runtime(root)
+                unit_dir = root / "units"
+                unit_dir.mkdir()
+                runner = StatefulSystemctl()
+                unit = dashboard_unit(
+                    paths,
+                    {"host": "127.0.0.1", "port": 3036},
+                )
+
+                def interrupt(phase, _transaction_id):
+                    if phase == checkpoint:
+                        raise SyntheticSystemdCrash()
+
+                with (
+                    patch(
+                        "data_foundation.systemd_user.platform.system",
+                        return_value="Linux",
+                    ),
+                    patch(
+                        "data_foundation.systemd_user._systemctl_binary",
+                        return_value="/usr/bin/systemctl",
+                    ),
+                    patch.object(
+                        systemd_user,
+                        "systemd_transaction_checkpoint",
+                        side_effect=interrupt,
+                    ),
+                    self.assertRaises(SyntheticSystemdCrash),
+                ):
+                    install_user_units(
+                        paths,
+                        [unit],
+                        unit_dir=unit_dir,
+                        runner=runner,
+                        readiness_verifier=lambda: (_ for _ in ()).throw(
+                            RuntimeError("synthetic readiness failure")
+                        ),
+                    )
+
+                journal_path = next(
+                    (paths.state_dir / "systemd-transactions").glob(
+                        "*/journal.json"
+                    )
+                )
+                interrupted = json.loads(journal_path.read_text(encoding="utf-8"))
+                self.assertEqual(interrupted["phase"], "compensation-armed")
+                with (
+                    patch(
+                        "data_foundation.systemd_user.platform.system",
+                        return_value="Linux",
+                    ),
+                    patch(
+                        "data_foundation.systemd_user._systemctl_binary",
+                        return_value="/usr/bin/systemctl",
+                    ),
+                    patch(
+                        "data_foundation.systemd_user._same_systemd_transaction_owner",
+                        return_value=False,
+                    ),
+                ):
+                    recovery = recover_user_unit_transactions(
+                        paths,
+                        runner=runner,
+                    )
+                recovered = json.loads(journal_path.read_text(encoding="utf-8"))
+
+                self.assertEqual(recovery[0]["status"], "compensated")
+                self.assertEqual(recovered["status"], "compensated")
+                self.assertFalse((unit_dir / unit.name).exists())
+                self.assertEqual(
+                    runner.states[unit.name],
+                    {"enabled": False, "active": False},
+                )
 
     def test_systemd_transaction_is_published_only_after_complete_staging(self):
         for failure_kind in ("interruption", "write-failure"):
@@ -741,6 +1463,63 @@ class ServiceManagerTests(unittest.TestCase):
         self.assertTrue(second_definition_exists)
         self.assertTrue(journal_less_exists)
 
+    def test_unscoped_recovery_does_not_compensate_a_live_systemd_owner(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = self._runtime(root)
+            unit_dir = root / "units"
+            unit_dir.mkdir()
+            runner = StatefulSystemctl()
+            unit = dashboard_unit(paths, {"host": "127.0.0.1", "port": 3036})
+            with (
+                patch("data_foundation.systemd_user.platform.system", return_value="Linux"),
+                patch("data_foundation.systemd_user._systemctl_binary", return_value="/usr/bin/systemctl"),
+            ):
+                result = install_user_units(
+                    paths,
+                    [unit],
+                    unit_dir=unit_dir,
+                    runner=runner,
+                    defer_commit=True,
+                    recover_transactions=False,
+                )
+                recovered = recover_user_unit_transactions(paths, runner=runner)
+                command_count = len(runner.commands)
+                with self.assertRaisesRegex(
+                    SystemdUserError,
+                    "active transaction",
+                ):
+                    control_user_units(
+                        paths,
+                        [unit],
+                        "stop",
+                        unit_dir=unit_dir,
+                        runner=runner,
+                    )
+                commands_after_block = runner.commands[command_count:]
+
+            journal_path = (
+                paths.state_dir
+                / "systemd-transactions"
+                / result["transactionId"]
+                / "journal.json"
+            )
+            journal = json.loads(journal_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(
+            recovered,
+            [
+                {
+                    "id": result["transactionId"],
+                    "status": "active",
+                    "phase": "external-verified",
+                }
+            ],
+        )
+        self.assertEqual(journal["status"], "active")
+        self.assertTrue(journal["ownerProcessIdentity"])
+        self.assertEqual(commands_after_block, [])
+
     def test_interrupted_systemd_recovery_preserves_concurrent_definition(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -767,12 +1546,70 @@ class ServiceManagerTests(unittest.TestCase):
             with (
                 patch("data_foundation.systemd_user.platform.system", return_value="Linux"),
                 patch("data_foundation.systemd_user._systemctl_binary", return_value="/usr/bin/systemctl"),
+                patch(
+                    "data_foundation.systemd_user._same_systemd_transaction_owner",
+                    return_value=False,
+                ),
             ):
                 recovered = recover_user_unit_transactions(paths, runner=runner)
             final_content = target.read_text(encoding="utf-8")
 
         self.assertEqual(recovered[0]["status"], "conflict")
         self.assertEqual(final_content, concurrent)
+
+    def test_interrupted_systemd_recovery_preserves_a_third_runtime_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = self._runtime(root)
+            unit_dir = root / "units"
+            unit_dir.mkdir()
+            runner = StatefulSystemctl()
+            unit = dashboard_unit(paths, {"host": "127.0.0.1", "port": 3036})
+            target = unit_dir / unit.name
+
+            def interrupt(phase, _transaction_id):
+                if phase == "after-definitions-applied":
+                    raise SyntheticSystemdCrash()
+
+            with (
+                patch("data_foundation.systemd_user.platform.system", return_value="Linux"),
+                patch("data_foundation.systemd_user._systemctl_binary", return_value="/usr/bin/systemctl"),
+                patch.object(systemd_user, "systemd_transaction_checkpoint", side_effect=interrupt),
+                self.assertRaises(SyntheticSystemdCrash),
+            ):
+                install_user_units(paths, [unit], unit_dir=unit_dir, runner=runner)
+
+            runner.states[unit.name] = {"enabled": False, "active": True}
+            command_count = len(runner.commands)
+            with (
+                patch("data_foundation.systemd_user.platform.system", return_value="Linux"),
+                patch("data_foundation.systemd_user._systemctl_binary", return_value="/usr/bin/systemctl"),
+                patch(
+                    "data_foundation.systemd_user._same_systemd_transaction_owner",
+                    return_value=False,
+                ),
+            ):
+                recovered = recover_user_unit_transactions(paths, runner=runner)
+
+            journal_root = paths.state_dir / "systemd-transactions"
+            journal_path = next(
+                path / "journal.json"
+                for path in journal_root.iterdir()
+                if path.is_dir()
+            )
+            journal = json.loads(journal_path.read_text(encoding="utf-8"))
+            recovery_commands = runner.commands[command_count:]
+            final_content = target.read_text(encoding="utf-8")
+            final_state = dict(runner.states[unit.name])
+
+        self.assertEqual(recovered[0]["phase"], "runtime-state-conflict")
+        self.assertEqual(journal["status"], "conflict")
+        self.assertEqual(final_content, unit.content)
+        self.assertEqual(final_state, {"enabled": False, "active": True})
+        self.assertTrue(recovery_commands)
+        self.assertTrue(
+            all(command[2] in {"is-enabled", "is-active"} for command in recovery_commands)
+        )
 
     def test_install_refuses_unmanaged_definition_before_systemctl_mutation(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -883,6 +1720,101 @@ class ServiceManagerTests(unittest.TestCase):
         self.assertEqual(remaining, [])
         self.assertFalse(saved["schedule"]["systemTimer"]["registered"])
         self.assertFalse(any("sudo" in item for command in runner.commands for item in command))
+
+    def test_linux_scheduler_rejects_settings_changed_after_unit_render(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = self._runtime(root)
+            unit_dir = root / "units"
+            runner = StatefulSystemctl()
+            write_settings(
+                {
+                    "schedule": {
+                        "enabled": False,
+                        "mode": "system",
+                        "timezone": "UTC",
+                        "dailyPipelineTime": "04:00",
+                        "dashboardAggregationTime": "04:30",
+                        "systemTimer": {
+                            "provider": "systemd",
+                            "label": "actanara.stale",
+                            "registered": False,
+                        },
+                    }
+                },
+                paths,
+            )
+            stale_schedule = read_settings(paths, redact_secrets=False)["schedule"]
+            stale_timer = stale_schedule["systemTimer"]
+            write_settings(
+                {"schedule": {"dailyPipelineTime": "05:55"}},
+                paths,
+            )
+
+            with (
+                patch("data_foundation.settings.platform.system", return_value="Linux"),
+                patch("data_foundation.systemd_user.platform.system", return_value="Linux"),
+                patch(
+                    "data_foundation.systemd_user._systemctl_binary",
+                    return_value="/usr/bin/systemctl",
+                ),
+                self.assertRaisesRegex(
+                    RuntimeError,
+                    "scheduler Settings changed while the systemd handoff was prepared",
+                ),
+            ):
+                scheduler._execute_systemd_scheduler_handoff(
+                    paths,
+                    schedule=stale_schedule,
+                    timer=stale_timer,
+                    action="install",
+                    systemctl_runner=runner,
+                    unit_dir=unit_dir,
+                )
+
+            saved = read_settings(paths)
+
+        self.assertEqual(runner.commands, [])
+        self.assertEqual(saved["schedule"]["dailyPipelineTime"], "05:55")
+        self.assertFalse(unit_dir.exists())
+
+    def test_linux_scheduler_rejects_an_active_runtime_update_before_render(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = self._runtime(root)
+            write_settings(
+                {
+                    "schedule": {
+                        "systemTimer": {
+                            "provider": "systemd",
+                            "label": "actanara.blocked",
+                        }
+                    }
+                },
+                paths,
+            )
+            (paths.home / "app").mkdir(exist_ok=True)
+            owner = paths.home / "app" / "update-owner.json"
+            owner.write_text(
+                json.dumps({"txId": "active-update-owner"}) + "\n",
+                encoding="utf-8",
+            )
+            owner.chmod(0o600)
+            os.link(owner, paths.home / "app" / ".update-transaction.lock")
+            runner = StatefulSystemctl()
+
+            with (
+                patch.dict(os.environ, {"ACTANARA_HOME": str(paths.home)}, clear=False),
+                patch("app.services.scheduler.platform.system", return_value="Linux"),
+                self.assertRaisesRegex(RuntimeError, "transaction is active"),
+            ):
+                scheduler.install_system_timer(
+                    {"confirmationText": scheduler.SCHEDULER_INSTALL_CONFIRMATION},
+                    systemctl_runner=runner,
+                    unit_dir=root / "units",
+                )
+
+        self.assertEqual(runner.commands, [])
 
 
 if __name__ == "__main__":

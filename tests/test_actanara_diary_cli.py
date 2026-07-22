@@ -313,6 +313,7 @@ class ActanaraCliTests(unittest.TestCase):
     def test_dashboard_restart_uses_launch_agent_boundary(self):
         cli = _load_cli_module()
         with (
+            patch.object(cli.platform, "system", return_value="Darwin"),
             patch.object(cli, "dashboard_launch_defaults", return_value={"label": "com.actanara.dashboard"}) as defaults,
             patch.object(cli, "restart_dashboard_service", return_value=0) as restart,
             redirect_stdout(io.StringIO()) as output,

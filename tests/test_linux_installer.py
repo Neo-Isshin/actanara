@@ -25,6 +25,13 @@ class LinuxInstallerTests(unittest.TestCase):
             ["--source-root", str(ROOT), "--python", sys.executable, *arguments]
         )
 
+    @staticmethod
+    def _fake_dependency_marker(venv, *_args, **_kwargs):
+        marker = Path(venv) / install_linux.dependency_contract.MARKER_NAME
+        marker.write_text('{"fixture":true}\n', encoding="utf-8")
+        marker.chmod(0o444)
+        return {"status": "written", "path": str(marker)}
+
     def test_default_plan_uses_shared_dashboard_profile_and_systemd_boundary(self):
         args = self._args()
         plan = install_linux.build_plan(args)
@@ -585,12 +592,23 @@ class LinuxInstallerTests(unittest.TestCase):
             "venv-bootstrap-ready",
             "dependencies-ready",
             "source-staged",
+            "release-promotion-armed",
             "release-promoted",
+            "venv-promotion-armed",
             "venv-promoted",
+            "pointers-promotion-armed",
+            "source-pointer-promoted",
             "pointers-published",
+            "runtime-cli-write-armed",
+            "runtime-configuration-armed",
+            "location-write-armed",
             "runtime-configured",
+            "database-migration-armed",
+            "database-migration-running",
             "database-ready",
+            "service-settings-armed",
             "services-ready",
+            "user-shim-promotion-armed",
         )
         for checkpoint in checkpoints:
             with self.subTest(checkpoint=checkpoint), tempfile.TemporaryDirectory() as tmp:
@@ -600,13 +618,15 @@ class LinuxInstallerTests(unittest.TestCase):
                 original_location = b'{"actanaraHome":"/preserved/runtime"}\n'
                 location.write_bytes(original_location)
                 location.chmod(0o600)
-                args = self._args(
+                arguments = [
                     "--runtime",
                     str(runtime),
                     "--no-scheduler",
                     "--no-dashboard-server",
-                    "--no-shell-path",
-                )
+                ]
+                if checkpoint != "user-shim-promotion-armed":
+                    arguments.append("--no-shell-path")
+                args = self._args(*arguments)
                 plan = install_linux.build_plan(args)
                 selection = SimpleNamespace(
                     environment_id="linux-cpython313-x86-64",
@@ -627,23 +647,42 @@ class LinuxInstallerTests(unittest.TestCase):
                     )
                     return {}
 
-                def fake_configure(_plan):
-                    settings = runtime / "config" / "settings.json"
-                    settings.parent.mkdir(parents=True, exist_ok=True)
-                    settings.write_text('{}\n', encoding="utf-8")
-                    location.write_text(
-                        json.dumps({"actanaraHome": str(runtime)}) + "\n",
-                        encoding="utf-8",
-                    )
-
-                def fake_database(_plan):
+                def fake_database(_plan, **_kwargs):
+                    worker_started = _kwargs.get("worker_started")
+                    if worker_started is not None:
+                        worker_started(
+                            {
+                                "pid": 999_999_999,
+                                "processGroup": 999_999_999,
+                                "processIdentity": "proc-start-ticks:fixture",
+                            }
+                        )
                     database = runtime / "data" / "actanara_data.sqlite3"
                     database.parent.mkdir(parents=True, exist_ok=True)
                     database.write_bytes(b"sqlite")
                     return database
 
+                def fake_services(_plan, **kwargs):
+                    started = kwargs.get("settings_transaction_started")
+                    if started is not None:
+                        started(
+                            {
+                                "id": "3" * 32,
+                                "settingsAfterHash": install_linux._fresh_file_hash(
+                                    runtime / "config" / "settings.json"
+                                ),
+                                "runtimeManifestAfterHash": install_linux._fresh_file_hash(
+                                    runtime / "config" / "runtime.json"
+                                ),
+                            }
+                        )
+                    return {"status": "not-requested", "units": []}
+
+                observed_failures = []
+
                 def fail_at(phase, _transaction_id):
                     if phase == checkpoint:
+                        observed_failures.append(phase)
                         raise install_linux.LinuxInstallError(
                             f"synthetic fresh failure at {phase}"
                         )
@@ -662,7 +701,7 @@ class LinuxInstallerTests(unittest.TestCase):
                     patch.object(
                         install_linux.dependency_contract,
                         "write_dependency_marker",
-                        return_value={},
+                        side_effect=self._fake_dependency_marker,
                     ),
                     patch.object(
                         install_linux.dependency_contract,
@@ -678,26 +717,36 @@ class LinuxInstallerTests(unittest.TestCase):
                     )
                     stack.enter_context(patch.object(install_linux, "_seed_venv_pip", side_effect=fake_seed))
                     stack.enter_context(patch.object(install_linux, "_stage_source", side_effect=fake_stage))
-                    stack.enter_context(patch.object(install_linux, "_configure_runtime", side_effect=fake_configure))
                     stack.enter_context(patch.object(install_linux, "_initialize_database", side_effect=fake_database))
                     stack.enter_context(patch.object(
                         install_linux,
                         "_install_systemd_user_services",
-                        return_value={"status": "not-requested", "units": []},
+                        side_effect=fake_services,
                     ))
+                    stack.enter_context(
+                        patch("data_foundation.settings.platform.system", return_value="Linux")
+                    )
+                    stack.enter_context(
+                        patch("data_foundation.systemd_user.platform.system", return_value="Linux")
+                    )
                     stack.enter_context(
                         patch.object(install_linux, "fresh_install_checkpoint", side_effect=fail_at)
                     )
                     stack.enter_context(patch.dict(
                         os.environ,
-                        {"ACTANARA_LOCATION_FILE": str(location)},
+                        {
+                            "ACTANARA_LOCATION_FILE": str(location),
+                            "HOME": str(root / "home"),
+                        },
                         clear=False,
                     ))
                     stack.enter_context(self.assertRaisesRegex(
                         install_linux.LinuxInstallError,
-                        "synthetic fresh failure",
+                        "synthetic fresh failure|settings transaction",
                     ))
                     install_linux._install(plan, selection, args)
+
+                self.assertEqual(observed_failures, [checkpoint])
 
                 releases = runtime / "app" / "releases"
                 venvs = runtime / "app" / "venvs"
@@ -709,6 +758,9 @@ class LinuxInstallerTests(unittest.TestCase):
                 self.assertFalse((runtime / "config" / "runtime.json").exists())
                 self.assertFalse((runtime / "data" / "actanara_data.sqlite3").exists())
                 self.assertEqual(location.read_bytes(), original_location)
+                self.assertFalse(
+                    (root / "home" / ".local" / "bin" / "actanara").exists()
+                )
 
                 retry_dependency_patches = (
                         patch.object(
@@ -724,7 +776,7 @@ class LinuxInstallerTests(unittest.TestCase):
                         patch.object(
                             install_linux.dependency_contract,
                             "write_dependency_marker",
-                            return_value={},
+                            side_effect=self._fake_dependency_marker,
                         ),
                         patch.object(
                             install_linux.dependency_contract,
@@ -740,16 +792,24 @@ class LinuxInstallerTests(unittest.TestCase):
                     )
                     stack.enter_context(patch.object(install_linux, "_seed_venv_pip", side_effect=fake_seed))
                     stack.enter_context(patch.object(install_linux, "_stage_source", side_effect=fake_stage))
-                    stack.enter_context(patch.object(install_linux, "_configure_runtime", side_effect=fake_configure))
                     stack.enter_context(patch.object(install_linux, "_initialize_database", side_effect=fake_database))
                     stack.enter_context(patch.object(
                         install_linux,
                         "_install_systemd_user_services",
-                        return_value={"status": "not-requested", "units": []},
+                        side_effect=fake_services,
                     ))
+                    stack.enter_context(
+                        patch("data_foundation.settings.platform.system", return_value="Linux")
+                    )
+                    stack.enter_context(
+                        patch("data_foundation.systemd_user.platform.system", return_value="Linux")
+                    )
                     stack.enter_context(patch.dict(
                         os.environ,
-                        {"ACTANARA_LOCATION_FILE": str(location)},
+                        {
+                            "ACTANARA_LOCATION_FILE": str(location),
+                            "HOME": str(root / "home"),
+                        },
                         clear=False,
                     ))
                     retry = install_linux._install(plan, selection, args)
@@ -798,13 +858,19 @@ def stage(_plan, candidate, _commit, **_kwargs):
     (candidate / ".actanara-runtime-source.json").write_text("{}\n", encoding="utf-8")
     return {}
 
+def marker(venv, *_args, **_kwargs):
+    path = Path(venv) / install_linux.dependency_contract.MARKER_NAME
+    path.write_text('{"fixture":true}\n', encoding="utf-8")
+    path.chmod(0o444)
+    return {}
+
 with (
     patch.object(install_linux, "_source_identity", return_value=("release", "a" * 40)),
     patch.object(install_linux, "_seed_venv_pip", side_effect=seed),
     patch.object(install_linux, "_stage_source", side_effect=stage),
     patch.object(install_linux.dependency_contract, "materialize_dependency_cache", return_value={"status": "hit"}),
     patch.object(install_linux.dependency_contract, "install_locked_dependencies", return_value={"status": "installed"}),
-    patch.object(install_linux.dependency_contract, "write_dependency_marker", return_value={}),
+    patch.object(install_linux.dependency_contract, "write_dependency_marker", side_effect=marker),
     patch.object(install_linux.dependency_contract, "verify_dependency_marker", return_value={}),
 ):
     install_linux._install(plan, selection, args)
@@ -842,6 +908,324 @@ with (
             self.assertEqual(list((runtime / "app" / "releases").iterdir()), [])
             self.assertEqual(list((runtime / "app" / "venvs").iterdir()), [])
             self.assertEqual(location.read_bytes(), original_location)
+
+    def test_update_recovery_holds_one_guard_across_all_recovery_layers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime = Path(tmp) / "runtime"
+            runtime.mkdir()
+            observed = []
+
+            def transaction_recovery(*_arguments, **_kwargs):
+                from data_foundation.runtime_mutation import (
+                    current_runtime_mutation_guard_fd,
+                )
+
+                observed.append(
+                    ("transaction", current_runtime_mutation_guard_fd())
+                )
+                return subprocess.CompletedProcess([], 0, "", "")
+
+            def settings_recovery(_runtime, *, runtime_guard_held=False):
+                from data_foundation.runtime_mutation import (
+                    current_runtime_mutation_guard_fd,
+                )
+
+                observed.append(
+                    (
+                        "settings",
+                        current_runtime_mutation_guard_fd(),
+                        runtime_guard_held,
+                    )
+                )
+                return []
+
+            def systemd_recovery(
+                _runtime,
+                *,
+                runtime_guard_held=False,
+                owner_id=None,
+            ):
+                from data_foundation.runtime_mutation import (
+                    current_runtime_mutation_guard_fd,
+                )
+
+                observed.append(
+                    (
+                        "systemd",
+                        current_runtime_mutation_guard_fd(),
+                        runtime_guard_held,
+                        owner_id,
+                    )
+                )
+                return []
+
+            with (
+                patch.object(
+                    install_linux,
+                    "_transaction_command",
+                    side_effect=transaction_recovery,
+                ),
+                patch.object(
+                    install_linux,
+                    "_recover_settings_transactions_before_update",
+                    side_effect=settings_recovery,
+                ),
+                patch.object(
+                    install_linux,
+                    "_recover_systemd_transactions_before_update",
+                    side_effect=systemd_recovery,
+                ),
+            ):
+                install_linux._recover_update_runtime(runtime)
+
+        descriptors = [entry[1] for entry in observed]
+        self.assertEqual([entry[0] for entry in observed], ["transaction", "settings", "systemd"])
+        self.assertTrue(all(isinstance(descriptor, int) for descriptor in descriptors))
+        self.assertEqual(len(set(descriptors)), 1)
+        self.assertTrue(observed[1][2])
+        self.assertTrue(observed[2][2])
+        self.assertIsNone(observed[2][3])
+
+    def test_update_dry_run_does_not_recover_or_mutate_runtime(self):
+        runtime = Path("/tmp/actanara-dry-run-recovery-fixture")
+        plan = SimpleNamespace(update_mode="repair")
+        with (
+            patch.object(install_linux, "_recover_update_runtime") as recover,
+            patch.object(install_linux, "build_plan", return_value=plan),
+            patch.object(install_linux, "_validate_plan", return_value=SimpleNamespace()),
+            patch.object(install_linux, "_prepare_linger", return_value={}),
+            patch.object(
+                install_linux,
+                "_update",
+                return_value={
+                    "status": "planned",
+                    "updateMode": "repair",
+                    "writes": False,
+                },
+            ),
+            patch("builtins.print"),
+        ):
+            status = install_linux.main(
+                [
+                    "--runtime",
+                    str(runtime),
+                    "--repair-existing",
+                    "--dry-run",
+                ]
+            )
+
+        self.assertEqual(status, 0)
+        recover.assert_not_called()
+
+    def test_fresh_recovery_refuses_a_matching_live_owner_without_mutation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime = Path(tmp) / "runtime"
+            transaction_id = install_linux._fresh_install_transaction_id()
+            staging = (
+                runtime
+                / "app"
+                / install_linux.FRESH_INSTALL_STAGING_NAME
+                / transaction_id
+            )
+            staging.mkdir(parents=True)
+            payload = install_linux._acquire_fresh_install_lock(
+                runtime,
+                staging,
+                transaction_id,
+            )
+            sentinel = staging / "operator-sentinel"
+            sentinel.write_text("preserve\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                install_linux.LinuxInstallError,
+                "fresh install process is still active",
+            ):
+                install_linux._recover_fresh_install(runtime)
+
+            self.assertEqual(sentinel.read_text(encoding="utf-8"), "preserve\n")
+            self.assertTrue(install_linux._fresh_install_lock_path(runtime).exists())
+            install_linux._release_fresh_install_lock(runtime, staging, payload)
+
+    def test_fresh_rollback_preserves_a_concurrent_location_edit_and_all_resources(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            runtime = root / "runtime"
+            location = root / "location.json"
+            location.write_text('{"actanaraHome":"/prior"}\n', encoding="utf-8")
+            args = self._args(
+                "--runtime",
+                str(runtime),
+                "--no-scheduler",
+                "--no-dashboard-server",
+                "--no-shell-path",
+            )
+            plan = install_linux.build_plan(args)
+            selection = SimpleNamespace(
+                environment_id="linux-cpython313-x86-64",
+                lock_environment={"architecture": "x86_64"},
+            )
+
+            def fake_seed(_plan, candidate):
+                (candidate / "bin").mkdir(parents=True)
+                python = candidate / "bin" / "python"
+                python.write_text("#!/bin/sh\n", encoding="utf-8")
+                python.chmod(0o700)
+                return python
+
+            def fake_stage(_plan, candidate, _commit, **_kwargs):
+                candidate.mkdir(parents=True)
+                (candidate / ".actanara-runtime-source.json").write_text(
+                    '{}\n', encoding="utf-8"
+                )
+                return {}
+
+            def fake_configure(_plan, **_kwargs):
+                (runtime / "config").mkdir(parents=True, exist_ok=True)
+                (runtime / "config" / "settings.json").write_text(
+                    '{}\n', encoding="utf-8"
+                )
+                (runtime / "config" / "runtime.json").write_text(
+                    '{}\n', encoding="utf-8"
+                )
+                location.write_text(
+                    json.dumps({"actanaraHome": str(runtime)}) + "\n",
+                    encoding="utf-8",
+                )
+
+            def conflict_after_configuration(phase, _transaction_id):
+                if phase == "runtime-configured":
+                    location.write_text('{"operator":"concurrent"}\n', encoding="utf-8")
+                    raise install_linux.LinuxInstallError("synthetic concurrent edit")
+
+            with (
+                patch.object(install_linux, "_source_identity", return_value=("release", "a" * 40)),
+                patch.object(install_linux, "_seed_venv_pip", side_effect=fake_seed),
+                patch.object(install_linux, "_stage_source", side_effect=fake_stage),
+                patch.object(install_linux, "_configure_runtime", side_effect=fake_configure),
+                patch.object(install_linux, "fresh_install_checkpoint", side_effect=conflict_after_configuration),
+                patch.object(install_linux.dependency_contract, "materialize_dependency_cache"),
+                patch.object(install_linux.dependency_contract, "install_locked_dependencies"),
+                patch.object(
+                    install_linux.dependency_contract,
+                    "write_dependency_marker",
+                    side_effect=self._fake_dependency_marker,
+                ),
+                patch.object(install_linux.dependency_contract, "verify_dependency_marker"),
+                patch.dict(os.environ, {"ACTANARA_LOCATION_FILE": str(location)}, clear=False),
+                self.assertRaisesRegex(
+                    install_linux.LinuxInstallError,
+                    "recovery is incomplete.*concurrent mutable-file change",
+                ),
+            ):
+                install_linux._install(plan, selection, args)
+
+            self.assertEqual(
+                location.read_text(encoding="utf-8"),
+                '{"operator":"concurrent"}\n',
+            )
+            self.assertTrue((runtime / "app" / "source").is_symlink())
+            self.assertTrue((runtime / ".venv").is_symlink())
+            self.assertTrue(install_linux._fresh_install_lock_path(runtime).exists())
+
+    def test_fresh_commit_journal_is_authoritative_across_ack_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            runtime = root / "runtime"
+            location = root / "location.json"
+            location.write_text('{"actanaraHome":"/prior"}\n', encoding="utf-8")
+            args = self._args(
+                "--runtime",
+                str(runtime),
+                "--no-scheduler",
+                "--no-dashboard-server",
+                "--no-shell-path",
+            )
+            plan = install_linux.build_plan(args)
+            selection = SimpleNamespace(
+                environment_id="linux-cpython313-x86-64",
+                lock_environment={"architecture": "x86_64"},
+            )
+
+            def fake_seed(_plan, candidate):
+                (candidate / "bin").mkdir(parents=True)
+                python = candidate / "bin" / "python"
+                python.write_text("#!/bin/sh\n", encoding="utf-8")
+                python.chmod(0o700)
+                return python
+
+            def fake_stage(_plan, candidate, _commit, **_kwargs):
+                candidate.mkdir(parents=True)
+                (candidate / ".actanara-runtime-source.json").write_text(
+                    '{}\n', encoding="utf-8"
+                )
+                return {}
+
+            def fake_configure(_plan, **_kwargs):
+                (runtime / "config").mkdir(parents=True, exist_ok=True)
+                for name in ("settings.json", "runtime.json"):
+                    (runtime / "config" / name).write_text('{}\n', encoding="utf-8")
+                location.write_text(
+                    json.dumps({"actanaraHome": str(runtime)}) + "\n",
+                    encoding="utf-8",
+                )
+
+            def fake_database(_plan, **_kwargs):
+                worker_started = _kwargs.get("worker_started")
+                if worker_started is not None:
+                    worker_started(
+                        {
+                            "pid": 999_999_999,
+                            "processGroup": 999_999_999,
+                            "processIdentity": "proc-start-ticks:fixture",
+                        }
+                    )
+                database = runtime / "data" / "actanara_data.sqlite3"
+                database.parent.mkdir(parents=True, exist_ok=True)
+                database.write_bytes(b"sqlite")
+                return database
+
+            original_advance = install_linux._advance_fresh_install_journal
+
+            def lose_commit_ack(staging, journal, phase, **updates):
+                original_advance(staging, journal, phase, **updates)
+                if phase == "committed":
+                    raise install_linux.LinuxInstallError("synthetic lost commit ACK")
+
+            with (
+                patch.object(install_linux, "_source_identity", return_value=("release", "a" * 40)),
+                patch.object(install_linux, "_seed_venv_pip", side_effect=fake_seed),
+                patch.object(install_linux, "_stage_source", side_effect=fake_stage),
+                patch.object(install_linux, "_configure_runtime", side_effect=fake_configure),
+                patch.object(install_linux, "_initialize_database", side_effect=fake_database),
+                patch.object(
+                    install_linux,
+                    "_install_systemd_user_services",
+                    return_value={"status": "not-requested", "units": []},
+                ),
+                patch.object(
+                    install_linux,
+                    "_advance_fresh_install_journal",
+                    side_effect=lose_commit_ack,
+                ),
+                patch.object(install_linux.dependency_contract, "materialize_dependency_cache"),
+                patch.object(install_linux.dependency_contract, "install_locked_dependencies"),
+                patch.object(
+                    install_linux.dependency_contract,
+                    "write_dependency_marker",
+                    side_effect=self._fake_dependency_marker,
+                ),
+                patch.object(install_linux.dependency_contract, "verify_dependency_marker"),
+                patch.dict(os.environ, {"ACTANARA_LOCATION_FILE": str(location)}, clear=False),
+            ):
+                result = install_linux._install(plan, selection, args)
+
+            self.assertEqual(result["status"], "installed")
+            self.assertTrue((runtime / "app" / "source").is_symlink())
+            self.assertTrue((runtime / ".venv").is_symlink())
+            self.assertFalse(install_linux._fresh_install_lock_path(runtime).exists())
+            self.assertFalse(
+                (runtime / "app" / install_linux.FRESH_INSTALL_STAGING_NAME).exists()
+            )
 
     def test_candidate_venv_launchers_are_relocated_before_atomic_promotion(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -934,14 +1318,25 @@ with (
                     "linger": {"enabled": False, "changed": False},
                 }
 
-            def fake_settings_handoff(update, _paths, *, precommit_side_effects):
+            def fake_settings_handoff(
+                update,
+                _paths,
+                *,
+                precommit_side_effects,
+                postcommit_side_effects=None,
+                **_kwargs,
+            ):
                 installed["update"] = update
-                precommit_side_effects(
-                    {
-                        "settingsBeforeHash": "before-settings",
-                        "settingsAfterHash": "after-settings",
-                    }
-                )
+                context = {
+                    "id": "1" * 32,
+                    "settingsBeforeHash": "before-settings",
+                    "settingsAfterHash": "after-settings",
+                    "runtimeManifestBeforeHash": "before-manifest",
+                    "runtimeManifestAfterHash": "after-manifest",
+                }
+                precommit_side_effects(context)
+                if postcommit_side_effects is not None:
+                    postcommit_side_effects(context)
                 return {"settingsTransaction": {"status": "committed"}}
 
             with (
@@ -970,6 +1365,150 @@ with (
         self.assertTrue(update["schedule"]["systemTimer"]["registered"])
         self.assertEqual(update["schedule"]["systemTimer"]["provider"], "systemd")
         self.assertNotIn("dashboard", update)
+
+    def test_fresh_unregister_only_settings_arms_the_outer_transaction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime = Path(tmp) / "runtime"
+            args = self._args(
+                "--runtime",
+                str(runtime),
+                "--no-scheduler",
+                "--no-dashboard-server",
+            )
+            plan = install_linux.build_plan(args)
+            settings = {
+                "dashboard": {
+                    "server": {"enabled": True},
+                    "systemdUser": {
+                        "registered": True,
+                        "units": ["actanara-dashboard.service"],
+                    },
+                }
+            }
+            observed = {}
+
+            def fake_settings_handoff(
+                update,
+                _paths,
+                *,
+                precommit_side_effects,
+                **_kwargs,
+            ):
+                observed["update"] = update
+                context = {
+                    "id": "3" * 32,
+                    "settingsBeforeHash": "before-settings",
+                    "settingsAfterHash": "after-settings",
+                    "runtimeManifestBeforeHash": "before-manifest",
+                    "runtimeManifestAfterHash": "after-manifest",
+                }
+                precommit_side_effects(context)
+                return {"settingsTransaction": {"status": "committed"}}
+
+            with (
+                patch("data_foundation.settings.read_settings", return_value=settings),
+                patch.object(
+                    install_linux,
+                    "_systemd_unit_inventory",
+                    return_value=([], ("actanara-dashboard.service",)),
+                ),
+                patch(
+                    "data_foundation.settings.write_linux_installer_handoff_settings",
+                    side_effect=fake_settings_handoff,
+                ),
+            ):
+                result = install_linux._install_systemd_user_services(
+                    plan,
+                    settings_transaction_started=lambda context: observed.update(
+                        {"outerContext": context}
+                    ),
+                    transaction_owner_id="fresh-owner",
+                )
+
+        self.assertEqual(result["status"], "not-requested")
+        self.assertEqual(observed["outerContext"]["id"], "3" * 32)
+        self.assertFalse(observed["update"]["dashboard"]["server"]["enabled"])
+        self.assertFalse(
+            observed["update"]["dashboard"]["systemdUser"]["registered"]
+        )
+
+    def test_fresh_runtime_configuration_commits_rag_and_location_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            runtime = root / "runtime"
+            location = root / "location.json"
+            transaction_id = install_linux._fresh_install_transaction_id()
+            staging = (
+                runtime
+                / "app"
+                / install_linux.FRESH_INSTALL_STAGING_NAME
+                / transaction_id
+            )
+            staging.mkdir(parents=True)
+            lock_payload = install_linux._acquire_fresh_install_lock(
+                runtime,
+                staging,
+                transaction_id,
+            )
+            args = self._args(
+                "--runtime",
+                str(runtime),
+                "--enable-rag",
+                "--rag-embedding-mode",
+                "local",
+                "--no-scheduler",
+                "--no-dashboard-server",
+            )
+            plan = install_linux.build_plan(args)
+            mutable_paths = install_linux._fresh_mutable_paths(runtime, location)
+            journal = {
+                "phase": "runtime-cli-written",
+                "managedMutableHashes": {
+                    key: {
+                        "path": str(path),
+                        "beforeSha256": install_linux.FRESH_MISSING_HASH,
+                        "afterSha256": None,
+                    }
+                    for key, path in mutable_paths.items()
+                },
+            }
+            install_linux._write_fresh_install_journal(staging, journal)
+
+            try:
+                with (
+                    patch.dict(
+                        os.environ,
+                        {"ACTANARA_LOCATION_FILE": str(location)},
+                        clear=False,
+                    ),
+                    patch("data_foundation.settings.platform.system", return_value="Linux"),
+                    patch("data_foundation.systemd_user.platform.system", return_value="Linux"),
+                ):
+                    install_linux._configure_runtime(
+                        plan,
+                        staging=staging,
+                        journal=journal,
+                        transaction_id=transaction_id,
+                    )
+                saved = json.loads(
+                    (runtime / "config" / "settings.json").read_text(
+                        encoding="utf-8"
+                    )
+                )
+                selected = json.loads(location.read_text(encoding="utf-8"))
+            finally:
+                install_linux._release_fresh_install_lock(
+                    runtime,
+                    staging,
+                    lock_payload,
+                )
+
+        self.assertTrue(saved["rag"]["enabled"])
+        self.assertEqual(saved["rag"]["embedding"]["dimension"], 384)
+        self.assertEqual(saved["rag"]["languageProfile"], "zh")
+        self.assertEqual(selected["actanaraHome"], str(runtime))
+        self.assertRegex(journal["configurationSettingsTransactionId"], r"[0-9a-f]{32}")
+        self.assertEqual(journal["phase"], "location-write-armed")
 
     def test_fresh_rag_systemd_install_requires_semantic_readiness_before_settings_commit(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1010,14 +1549,25 @@ with (
                     "readiness": captured["readiness"],
                 }
 
-            def fake_settings_handoff(update, _paths, *, precommit_side_effects):
+            def fake_settings_handoff(
+                update,
+                _paths,
+                *,
+                precommit_side_effects,
+                postcommit_side_effects=None,
+                **_kwargs,
+            ):
                 captured["update"] = update
-                precommit_side_effects(
-                    {
-                        "settingsBeforeHash": "before-settings",
-                        "settingsAfterHash": "after-settings",
-                    }
-                )
+                context = {
+                    "id": "2" * 32,
+                    "settingsBeforeHash": "before-settings",
+                    "settingsAfterHash": "after-settings",
+                    "runtimeManifestBeforeHash": "before-manifest",
+                    "runtimeManifestAfterHash": "after-manifest",
+                }
+                precommit_side_effects(context)
+                if postcommit_side_effects is not None:
+                    postcommit_side_effects(context)
                 return {"settingsTransaction": {"status": "committed"}}
 
             with (
@@ -1065,7 +1615,13 @@ with (
                 "transactionId": "fresh-systemd-transaction",
             }
 
-            def fail_settings_handoff(_update, _paths, *, precommit_side_effects):
+            def fail_settings_handoff(
+                _update,
+                _paths,
+                *,
+                precommit_side_effects,
+                **_kwargs,
+            ):
                 cleanup = precommit_side_effects(
                     {
                         "settingsBeforeHash": "before-settings",
@@ -1144,14 +1700,29 @@ with (
 
             def fake_stage(_plan, candidate, _commit, **_kwargs):
                 candidate.mkdir(parents=True)
+                (candidate / ".actanara-runtime-source.json").write_text(
+                    '{}\n', encoding="utf-8"
+                )
                 return {}
 
-            def fake_configure(_plan):
+            def fake_configure(_plan, **_kwargs):
                 settings = runtime / "config" / "settings.json"
                 settings.parent.mkdir(parents=True, exist_ok=True)
                 settings.write_text('{}\n', encoding="utf-8")
+                (runtime / "config" / "runtime.json").write_text(
+                    '{}\n', encoding="utf-8"
+                )
 
-            def fake_database(_plan):
+            def fake_database(_plan, **_kwargs):
+                worker_started = _kwargs.get("worker_started")
+                if worker_started is not None:
+                    worker_started(
+                        {
+                            "pid": 999_999_999,
+                            "processGroup": 999_999_999,
+                            "processIdentity": "proc-start-ticks:fixture",
+                        }
+                    )
                 database = runtime / "data" / "actanara_data.sqlite3"
                 database.parent.mkdir(parents=True, exist_ok=True)
                 database.write_bytes(b"sqlite")
@@ -1175,7 +1746,11 @@ with (
                 patch.object(install_linux, "_rollback_fresh_service_transaction"),
                 patch.object(install_linux.dependency_contract, "materialize_dependency_cache"),
                 patch.object(install_linux.dependency_contract, "install_locked_dependencies"),
-                patch.object(install_linux.dependency_contract, "write_dependency_marker"),
+                patch.object(
+                    install_linux.dependency_contract,
+                    "write_dependency_marker",
+                    side_effect=self._fake_dependency_marker,
+                ),
                 patch.object(install_linux.dependency_contract, "verify_dependency_marker"),
                 patch.dict(os.environ, {"ACTANARA_LOCATION_FILE": str(location)}, clear=False),
                 self.assertRaisesRegex(install_linux.LinuxInstallError, "post-handoff failure"),
@@ -1269,6 +1844,34 @@ with (
                 desired,
                 ("actanara-dashboard.service",),
             )
+
+    def test_systemd_inventory_requires_an_exact_runtime_environment_binding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config_home = root / "config"
+            unit_root = config_home / "systemd" / "user"
+            unit_root.mkdir(parents=True)
+            unit = unit_root / "actanara-other-runtime.service"
+            unit.write_text(
+                "# Managed by Actanara. Do not edit by hand.\n"
+                "[Service]\n"
+                'Environment="ACTANARA_HOME=/x/actanara-old"\n',
+                encoding="utf-8",
+            )
+            plan = SimpleNamespace(
+                runtime=Path("/x/actanara"),
+                scheduler=False,
+                dashboard_service=False,
+                rag_enabled=False,
+            )
+            with patch.dict(
+                os.environ,
+                {"XDG_CONFIG_HOME": str(config_home)},
+                clear=False,
+            ):
+                _desired, inventory = install_linux._systemd_unit_inventory(plan, {})
+
+        self.assertNotIn(unit.name, inventory)
 
     def test_update_alignment_accepts_a_deliberately_stopped_managed_service(self):
         plan = SimpleNamespace(runtime=Path("/tmp/actanara-update-fixture"))
@@ -1393,6 +1996,375 @@ with (
         )
         self.assertTrue(run.call_args.kwargs["capture_output"])
 
+    def test_committed_repair_clears_pending_marker_only_after_health_and_doctor(self):
+        plan = SimpleNamespace(
+            runtime=Path("/tmp/actanara-repair-fixture"),
+            scheduler=True,
+            dashboard_service=True,
+            rag_enabled=True,
+        )
+        journal = plan.runtime / "app" / "update-transactions" / "fixture" / "journal.json"
+        events = []
+
+        with (
+            patch.object(
+                install_linux.dependency_contract,
+                "migrate_legacy_runtime_settings",
+                side_effect=lambda *_args, **_kwargs: events.append("migrate"),
+            ),
+            patch.object(install_linux, "_write_cli_shim", side_effect=lambda *_args: events.append("shim")),
+            patch.object(
+                install_linux,
+                "_initialize_database",
+                side_effect=lambda *_args: events.append("database") or Path("/tmp/database"),
+            ),
+            patch.object(
+                install_linux,
+                "_read_update_settings",
+                side_effect=lambda *_args: events.append("settings") or {"schemaVersion": 1},
+            ),
+            patch.object(
+                install_linux,
+                "_reconcile_existing_systemd_units",
+                side_effect=lambda *_args, **_kwargs: events.append("systemd") or {"units": []},
+            ) as reconcile,
+            patch.object(
+                install_linux,
+                "_systemd_unit_inventory",
+                return_value=([], ()),
+            ),
+            patch.object(
+                install_linux,
+                "_install_systemd_user_services",
+                side_effect=lambda *_args, **_kwargs: events.append("handoff")
+                or {"status": "installed"},
+            ),
+            patch.object(
+                install_linux,
+                "_wait_for_update_service_health",
+                side_effect=lambda *_args, **_kwargs: events.append("readiness"),
+            ),
+            patch.object(
+                install_linux,
+                "_verify_updated_systemd_units",
+                side_effect=lambda *_args: events.append("verify"),
+            ),
+            patch.object(
+                install_linux,
+                "_run_update_doctor",
+                side_effect=lambda *_args: events.append("doctor") or {"status": "ok"},
+            ),
+            patch.object(
+                install_linux,
+                "_transaction_command",
+                side_effect=lambda *args, **_kwargs: events.append(args[0]),
+            ),
+            patch(
+                "install.update_transaction._load_state",
+                return_value={
+                    "txId": "repair-owner",
+                    "systemdUnits": [
+                        {"name": "actanara-stale-dashboard.service"}
+                    ]
+                },
+            ),
+        ):
+            database, systemd, doctor = install_linux._finish_committed_repair(
+                plan,
+                journal=journal,
+                source_commit="c" * 40,
+            )
+
+        self.assertEqual(database, Path("/tmp/database"))
+        self.assertEqual(
+            systemd,
+            {
+                "units": [],
+                "settingsHandoff": {"status": "installed"},
+                "restoredPriorStateUnits": [],
+            },
+        )
+        self.assertEqual(doctor, {"status": "ok"})
+        self.assertEqual(
+            reconcile.call_args.kwargs["prior_inventory"],
+            ("actanara-stale-dashboard.service",),
+        )
+        self.assertEqual(
+            events,
+            [
+                "migrate",
+                "shim",
+                "database",
+                "settings",
+                "handoff",
+                "settings",
+                "systemd",
+                "readiness",
+                "verify",
+                "doctor",
+                "complete-repair",
+            ],
+        )
+
+    def test_committed_repair_keeps_pending_marker_when_doctor_fails(self):
+        plan = SimpleNamespace(
+            runtime=Path("/tmp/actanara-repair-fixture"),
+            scheduler=False,
+            dashboard_service=False,
+            rag_enabled=False,
+        )
+        completed = []
+        with (
+            patch.object(install_linux.dependency_contract, "migrate_legacy_runtime_settings"),
+            patch.object(install_linux, "_write_cli_shim"),
+            patch.object(install_linux, "_initialize_database", return_value=Path("/tmp/database")),
+            patch.object(install_linux, "_read_update_settings", return_value={}),
+            patch.object(install_linux, "_systemd_unit_inventory", return_value=([], ())),
+            patch.object(install_linux, "_install_systemd_user_services", return_value={}),
+            patch.object(install_linux, "_reconcile_existing_systemd_units", return_value={}),
+            patch.object(install_linux, "_wait_for_update_service_health"),
+            patch.object(install_linux, "_verify_updated_systemd_units"),
+            patch.object(
+                install_linux,
+                "_run_update_doctor",
+                side_effect=install_linux.LinuxInstallError("doctor failed"),
+            ),
+            patch.object(
+                install_linux,
+                "_transaction_command",
+                side_effect=lambda *args, **_kwargs: completed.append(args[0]),
+            ),
+            patch(
+                "install.update_transaction._load_state",
+                return_value={"txId": "repair-owner", "systemdUnits": []},
+            ),
+            self.assertRaisesRegex(install_linux.LinuxInstallError, "doctor failed"),
+        ):
+            install_linux._finish_committed_repair(
+                plan,
+                journal=Path("/tmp/journal.json"),
+                source_commit="d" * 40,
+            )
+
+        self.assertNotIn("complete-repair", completed)
+
+    def test_committed_repair_defers_retained_units_then_restores_prior_vector(self):
+        runtime = Path("/tmp/actanara-repair-vector-fixture")
+        plan = SimpleNamespace(
+            runtime=runtime,
+            scheduler=False,
+            dashboard_service=True,
+            rag_enabled=False,
+        )
+        journal = runtime / "app" / "update-transactions" / "fixture" / "journal.json"
+        retained = SimpleNamespace(
+            name="actanara-dashboard.service",
+            enable_now=True,
+        )
+        new_unit = SimpleNamespace(
+            name="actanara-new.service",
+            enable_now=True,
+        )
+        commands = []
+        with (
+            patch.object(install_linux.dependency_contract, "migrate_legacy_runtime_settings"),
+            patch.object(install_linux, "_write_cli_shim"),
+            patch.object(install_linux, "_initialize_database", return_value=Path("/tmp/database")),
+            patch.object(install_linux, "_read_update_settings", return_value={}),
+            patch.object(
+                install_linux,
+                "_systemd_unit_inventory",
+                return_value=([retained, new_unit], (retained.name, new_unit.name)),
+            ),
+            patch.object(
+                install_linux,
+                "_install_systemd_user_services",
+                return_value={"status": "installed"},
+            ) as install_units,
+            patch.object(
+                install_linux,
+                "_reconcile_existing_systemd_units",
+                return_value={"units": [retained.name, new_unit.name]},
+            ) as reconcile,
+            patch.object(install_linux, "_wait_for_update_service_health") as health,
+            patch.object(install_linux, "_verify_updated_systemd_units"),
+            patch.object(install_linux, "_run_update_doctor", return_value={"status": "ok"}),
+            patch.object(
+                install_linux,
+                "_transaction_command",
+                side_effect=lambda *args, **_kwargs: commands.append(args),
+            ),
+            patch(
+                "install.update_transaction._load_state",
+                return_value={
+                    "txId": "repair-owner",
+                    "systemdUnits": [
+                        {
+                            "name": retained.name,
+                            "definitionExisted": True,
+                            "enableState": "enabled-runtime",
+                            "activeState": "inactive",
+                        }
+                    ],
+                },
+            ),
+        ):
+            install_linux._finish_committed_repair(
+                plan,
+                journal=journal,
+                source_commit="c" * 40,
+            )
+
+        deferred = frozenset({retained.name})
+        self.assertEqual(
+            install_units.call_args.kwargs["deferred_enable_names"],
+            deferred,
+        )
+        self.assertEqual(
+            reconcile.call_args.kwargs["deferred_enable_names"],
+            deferred,
+        )
+        self.assertIn(
+            (
+                "restore-repair-services",
+                "--state",
+                str(journal),
+                "--unit",
+                retained.name,
+            ),
+            commands,
+        )
+        self.assertEqual(health.call_args.kwargs["active_units"], {new_unit.name})
+        self.assertEqual(commands[-1][0], "complete-repair")
+
+    def test_repair_retry_inherits_stale_unit_inventory_from_pending_journal(self):
+        runtime = Path("/tmp/actanara-repair-fixture")
+        old_journal = runtime / "app" / "update-transactions" / "old" / "journal.json"
+        plan = SimpleNamespace(
+            runtime=runtime,
+            profile_evidence={"settingsSha256": "a" * 64},
+            update_mode="repair",
+            dry_run=True,
+            profiles=("dashboard",),
+            rag_enabled=False,
+            force_rebuild=True,
+            source_root=ROOT,
+        )
+        selection = SimpleNamespace()
+        args = SimpleNamespace(no_shell_path=True)
+        with (
+            patch.object(
+                install_linux,
+                "_repair_transaction_postcondition",
+                return_value={
+                    "status": "configuration-pending",
+                    "journal": str(old_journal),
+                },
+            ),
+            patch(
+                "install.update_transaction._load_state",
+                return_value={
+                    "systemdUnits": [
+                        {"name": "actanara-stale-dashboard.service"}
+                    ]
+                },
+            ),
+            patch.object(
+                install_linux,
+                "_dependency_update_plan",
+                return_value={
+                    "updateMode": "rebuild-candidate-venv",
+                    "reason": "repair",
+                },
+            ),
+            patch.object(install_linux, "_read_update_settings", return_value={}),
+            patch.object(install_linux, "_source_identity", return_value=("release", "a" * 40)),
+            patch(
+                "data_foundation.source_identity.loaded_source_commit",
+                return_value="a" * 40,
+            ),
+            patch.object(install_linux, "_systemd_unit_inventory", return_value=([], ())),
+        ):
+            result = install_linux._update(plan, selection, args)
+
+        self.assertEqual(
+            result["managedUnits"],
+            ["actanara-stale-dashboard.service"],
+        )
+        self.assertEqual(result["reason"], "resume-committed-repair-configuration")
+
+    def test_repair_retry_resumes_committed_journal_without_starting_new_update(self):
+        runtime = Path("/tmp/actanara-repair-resume-fixture")
+        journal = runtime / "app" / "update-transactions" / "old" / "journal.json"
+        plan = SimpleNamespace(
+            runtime=runtime,
+            profile_evidence={"settingsSha256": "a" * 64},
+            update_mode="repair",
+            dry_run=False,
+            profiles=("dashboard",),
+            rag_enabled=False,
+            force_rebuild=True,
+            source_root=ROOT,
+        )
+        selection = SimpleNamespace()
+        args = SimpleNamespace(no_shell_path=True)
+        with (
+            patch.object(
+                install_linux,
+                "_repair_transaction_postcondition",
+                return_value={
+                    "status": "configuration-pending",
+                    "journal": str(journal),
+                },
+            ),
+            patch(
+                "install.update_transaction._load_state",
+                return_value={
+                    "txId": "repair-owner",
+                    "systemdUnits": [
+                        {"name": "actanara-dashboard.service"}
+                    ],
+                },
+            ),
+            patch.object(install_linux, "_read_update_settings", return_value={}),
+            patch.object(
+                install_linux,
+                "_source_identity",
+                return_value=("release", "b" * 40),
+            ),
+            patch(
+                "data_foundation.source_identity.loaded_source_commit",
+                return_value="b" * 40,
+            ),
+            patch.object(
+                install_linux,
+                "_systemd_unit_inventory",
+                return_value=([], ()),
+            ),
+            patch.object(install_linux, "_recover_systemd_transactions_before_update"),
+            patch.object(install_linux, "_validate_existing_systemd_unit_ownership"),
+            patch.object(
+                install_linux,
+                "_finish_committed_repair",
+                return_value=(
+                    Path("/tmp/database"),
+                    {"units": ["actanara-dashboard.service"]},
+                    {"status": "ok"},
+                ),
+            ) as finish,
+            patch.object(install_linux, "_dependency_update_plan") as dependency_plan,
+        ):
+            result = install_linux._update_guarded(plan, selection, args)
+
+        dependency_plan.assert_not_called()
+        finish.assert_called_once_with(
+            plan,
+            journal=journal,
+            source_commit="b" * 40,
+        )
+        self.assertEqual(result["status"], "repaired")
+        self.assertEqual(result["reason"], "resumed-committed-repair-configuration")
+
     def test_linux_result_envelope_matches_platform_neutral_update_cli_contract(self):
         envelope = install_linux._result_envelope(
             payload={
@@ -1409,6 +2381,9 @@ with (
         self.assertEqual(envelope["status"], "completed")
         self.assertEqual(envelope["updateMode"], "source-only")
         self.assertTrue(envelope["sourceUpdated"])
+        self.assertFalse(envelope["dependenciesInstalled"])
+        self.assertFalse(envelope["cacheUsed"])
+        self.assertFalse(envelope["plannedDependenciesInstall"])
         self.assertTrue(envelope["reusesRuntimeVenv"])
         self.assertTrue(envelope["servicesStopped"])
         self.assertTrue(envelope["stateCertain"])
@@ -1432,6 +2407,34 @@ with (
         self.assertTrue(envelope["rollbackComplete"])
         self.assertTrue(envelope["stateCertain"])
         self.assertEqual(envelope["stage"], "rollback-complete")
+
+    def test_linux_result_envelope_reports_committed_repair_as_pending_and_retryable(self):
+        error = install_linux.LinuxInstallError(
+            "repair readiness failed",
+            rollback_complete=None,
+            state_certain=True,
+            stage="repair-configuration-pending",
+            source_updated=True,
+            dependencies_installed=True,
+            reuses_runtime_venv=False,
+            services_stopped=True,
+        )
+        envelope = install_linux._result_envelope(
+            payload=None,
+            requested_mode="repair",
+            error=error,
+        )
+
+        self.assertEqual(envelope["status"], "failed")
+        self.assertTrue(envelope["sourceUpdated"])
+        self.assertTrue(envelope["dependenciesInstalled"])
+        self.assertTrue(envelope["cacheUsed"])
+        self.assertTrue(envelope["plannedDependenciesInstall"])
+        self.assertFalse(envelope["reusesRuntimeVenv"])
+        self.assertTrue(envelope["servicesStopped"])
+        self.assertIsNone(envelope["rollbackComplete"])
+        self.assertTrue(envelope["stateCertain"])
+        self.assertEqual(envelope["stage"], "repair-configuration-pending")
 
 
 if __name__ == "__main__":

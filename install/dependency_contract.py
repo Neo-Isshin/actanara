@@ -17,6 +17,7 @@ import os
 from pathlib import Path
 import platform
 import re
+import signal
 import shutil
 import stat
 import subprocess
@@ -2250,6 +2251,20 @@ def _run_pip(
     code: str,
     diagnostic_log: Path | str | None = None,
 ) -> None:
+    child_options: dict[str, Any] = {}
+    if sys.platform == "linux":
+        parent_pid = os.getpid()
+
+        def configure_parent_death_signal() -> None:  # pragma: no cover - Debian only
+            import ctypes
+
+            libc = ctypes.CDLL(None, use_errno=True)
+            if libc.prctl(1, signal.SIGKILL, 0, 0, 0) != 0:
+                os._exit(126)
+            if os.getppid() != parent_pid:
+                os._exit(126)
+
+        child_options["preexec_fn"] = configure_parent_death_signal
     try:
         result = subprocess.run(
             list(command),
@@ -2258,6 +2273,7 @@ def _run_pip(
             check=False,
             timeout=timeout,
             env=_pip_environment(),
+            **child_options,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         stdout = getattr(exc, "stdout", None)

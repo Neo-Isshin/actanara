@@ -82,11 +82,24 @@ class LinuxUpdateBootstrapTests(unittest.TestCase):
         executable.chmod(0o755)
         return executable, log
 
+    def _fake_gnu_stat(self, root: Path, *, identity: str) -> tuple[Path, Path]:
+        executable = root / "gnu-stat"
+        log = root / "stat.log"
+        executable.write_text(
+            "#!/bin/sh\n"
+            "printf '%s\\n' \"$*\" >> \"$ACTANARA_TEST_STAT_LOG\"\n"
+            f"printf '%s\\n' '{identity}'\n",
+            encoding="utf-8",
+        )
+        executable.chmod(0o755)
+        return executable, log
+
     def _environment(self, root: Path, python_log: Path, **overrides: str) -> dict[str, str]:
         env = os.environ.copy()
         for name in (
             "ACTANARA_HOME",
             "ACTANARA_INSTALL_CACHE_ROOT",
+            "ACTANARA_LOCATION_FILE",
             "ACTANARA_INSTALL_OFFLINE",
             "ACTANARA_INSTALL_PUBLIC_ENTRY",
             "ACTANARA_INSTALL_REF",
@@ -617,6 +630,123 @@ class LinuxUpdateBootstrapTests(unittest.TestCase):
         self.assertIn("existing managed Runtime", output)
         self.assertIn(str(runtime.name), output)
         self.assertIn("update --apply", output)
+        self.assertEqual(invocations, [])
+
+    def test_public_entry_recovers_fresh_staging_before_managed_runtime_routing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "Home").mkdir()
+            python, python_log = self._fake_python(root)
+            runtime = self._managed_runtime(root)
+            (runtime / "app" / "install-staging" / "interrupted").mkdir(
+                parents=True
+            )
+
+            result = self._run(
+                root,
+                "--source-root",
+                str(ROOT),
+                "--python",
+                str(python),
+                "--",
+                "--runtime",
+                str(runtime),
+                env=self._environment(
+                    root,
+                    python_log,
+                    ACTANARA_INSTALL_PUBLIC_ENTRY="1",
+                ),
+                streamed=True,
+                start_new_session=True,
+            )
+            invocations = self._python_invocations(python_log)
+
+        output = result.stdout + result.stderr
+        self.assertEqual(result.returncode, 0, output)
+        self.assertIn("recovering an interrupted fresh install", output)
+        self.assertEqual(len(invocations), 1)
+        self.assertIn("--runtime", invocations[0])
+        self.assertIn(str(runtime), invocations[0])
+        self.assertNotIn("--upgrade", invocations[0])
+        self.assertNotIn("--repair-existing", invocations[0])
+
+    def test_public_entry_reports_an_exact_retry_for_a_pending_linux_repair(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "Home").mkdir()
+            python, python_log = self._fake_python(root)
+            runtime = self._managed_runtime(root)
+            pending = runtime / "app" / ".repair-configuration-pending"
+            pending.write_text("20260722T120000-1234-deadbeef\n", encoding="ascii")
+            pending.chmod(0o600)
+            stat, stat_log = self._fake_gnu_stat(
+                root,
+                identity=f"1:600:{os.getuid()}",
+            )
+            result = self._run(
+                root,
+                "--source-root",
+                str(ROOT),
+                "--python",
+                str(python),
+                env=self._environment(
+                    root,
+                    python_log,
+                    ACTANARA_HOME=str(runtime),
+                    ACTANARA_INSTALL_PUBLIC_ENTRY="1",
+                    ACTANARA_INSTALL_STAT=str(stat),
+                    ACTANARA_TEST_STAT_LOG=str(stat_log),
+                ),
+                streamed=True,
+                start_new_session=True,
+            )
+            invocations = self._python_invocations(python_log)
+            stat_arguments = stat_log.read_text(encoding="utf-8")
+
+        output = result.stdout + result.stderr
+        self.assertEqual(result.returncode, 2, output)
+        self.assertIn("committed Runtime repair is pending", output)
+        self.assertIn("--repair-existing --yes --dry-run", output)
+        self.assertIn("--repair-existing --yes", output)
+        self.assertNotIn("update --apply", output)
+        self.assertEqual(invocations, [])
+        self.assertIn("-c %h:%a:%u", stat_arguments)
+
+    def test_public_entry_rejects_an_unsafe_pending_linux_repair_marker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "Home").mkdir()
+            python, python_log = self._fake_python(root)
+            runtime = self._managed_runtime(root)
+            pending = runtime / "app" / ".repair-configuration-pending"
+            pending.write_text("20260722T120000-1234-deadbeef\n", encoding="ascii")
+            pending.chmod(0o600)
+            stat, stat_log = self._fake_gnu_stat(
+                root,
+                identity=f"2:600:{os.getuid()}",
+            )
+            result = self._run(
+                root,
+                "--source-root",
+                str(ROOT),
+                "--python",
+                str(python),
+                env=self._environment(
+                    root,
+                    python_log,
+                    ACTANARA_HOME=str(runtime),
+                    ACTANARA_INSTALL_PUBLIC_ENTRY="1",
+                    ACTANARA_INSTALL_STAT=str(stat),
+                    ACTANARA_TEST_STAT_LOG=str(stat_log),
+                ),
+                streamed=True,
+                start_new_session=True,
+            )
+            invocations = self._python_invocations(python_log)
+
+        output = result.stdout + result.stderr
+        self.assertEqual(result.returncode, 2, output)
+        self.assertIn("repair marker is unsafe", output)
         self.assertEqual(invocations, [])
 
     def test_public_managed_runtime_dry_run_previews_upgrade_without_confirmation(self):

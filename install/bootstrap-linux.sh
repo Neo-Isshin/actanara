@@ -245,6 +245,29 @@ runtime_is_managed() {
   grep -q '"deploymentMode"[[:space:]]*:[[:space:]]*"release-symlink"' "$manifest" || return 1
 }
 
+runtime_repair_configuration_pending_status() {
+  runtime="$1"
+  marker="$runtime/app/.repair-configuration-pending"
+  [ -e "$marker" ] || [ -L "$marker" ] || return 1
+  [ -f "$marker" ] && [ ! -L "$marker" ] || return 2
+  stat_bin="/usr/bin/stat"
+  if [ "${ACTANARA_INSTALL_TEST_MODE:-0}" = "1" ] && [ -n "${ACTANARA_INSTALL_STAT:-}" ]; then
+    stat_bin="$ACTANARA_INSTALL_STAT"
+  fi
+  marker_identity=$("$stat_bin" -c '%h:%a:%u' "$marker" 2>/dev/null) || return 2
+  expected_uid=$(/usr/bin/id -u 2>/dev/null) || return 2
+  [ "$marker_identity" = "1:600:$expected_uid" ] || return 2
+  marker_size=$(wc -c < "$marker" 2>/dev/null | tr -d '[:space:]') || return 2
+  case "$marker_size" in
+    ""|*[!0123456789]*) return 2 ;;
+  esac
+  [ "$marker_size" -ge 2 ] && [ "$marker_size" -le 129 ] || return 2
+  tx_id=$(sed -n '1p' "$marker" 2>/dev/null) || return 2
+  printf '%s' "$tx_id" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$' || return 2
+  [ "$marker_size" -eq $((${#tx_id} + 1)) ] || return 2
+  return 0
+}
+
 shell_quote() {
   printf "'"
   printf '%s' "$1" | sed "s/'/'\\\\''/g"
@@ -273,6 +296,35 @@ print_guarded_update_command() {
   printf '\n'
 }
 
+print_guarded_repair_command() {
+  mode="$1"
+  printf 'sh '
+  shell_quote "$SOURCE_ROOT/install/bootstrap-linux.sh"
+  if [ "$CACHE_SOURCE" = "1" ]; then
+    printf ' --source-url '
+    shell_quote "$SOURCE_URL"
+    printf ' --ref '
+    shell_quote "$SOURCE_REF"
+    printf ' --cache-root '
+    shell_quote "$CACHE_ROOT"
+  else
+    printf ' --source-root '
+    shell_quote "$SOURCE_ROOT"
+  fi
+  printf ' --python '
+  shell_quote "$PYTHON_BIN"
+  if [ "$OFFLINE" = "1" ]; then
+    printf ' --offline'
+  fi
+  printf ' -- --runtime '
+  shell_quote "$INSTALLER_RUNTIME"
+  printf ' --repair-existing --yes'
+  if [ "$mode" = "dry-run" ]; then
+    printf ' --dry-run'
+  fi
+  printf '\n'
+}
+
 tty_is_available() {
   [ -r /dev/tty ] && [ -w /dev/tty ] && ( : </dev/tty ) 2>/dev/null
 }
@@ -286,7 +338,56 @@ run_linux_installer() {
       "$@"
 }
 
+handle_public_pending_repair() {
+  if [ "$INSTALLER_DRY_RUN" = "1" ]; then
+    printf 'Actanara Linux setup: previewing the pending Runtime repair: %s\n' "$INSTALLER_RUNTIME"
+    run_linux_installer --repair-existing --yes --dry-run --runtime "$INSTALLER_RUNTIME" "$@"
+    return $?
+  fi
+
+  if ! tty_is_available; then
+    printf 'Actanara Linux setup: a committed Runtime repair is pending: %s\n' "$INSTALLER_RUNTIME"
+    printf '%s\n' 'No Runtime changes were made because no controlling terminal is available.'
+    printf '%s\n' 'Review the pinned repair plan with:'
+    print_guarded_repair_command dry-run
+    printf '%s\n' 'Resume that exact pinned repair with:'
+    print_guarded_repair_command apply
+    return 2
+  fi
+
+  printf 'Actanara Linux setup: a committed Runtime repair is pending: %s\n' "$INSTALLER_RUNTIME"
+  printf '%s\n' 'Repair plan:'
+  run_linux_installer --repair-existing --yes --dry-run --runtime "$INSTALLER_RUNTIME" "$@" || return $?
+  if ! printf '%s' 'Resume this managed Runtime repair with the plan above? [y/N] ' > /dev/tty 2>/dev/null; then
+    bootstrap_error "could not open the controlling terminal for repair confirmation"
+    return 2
+  fi
+  answer=""
+  if ! IFS= read -r answer < /dev/tty; then
+    bootstrap_error "could not read the managed Runtime repair confirmation"
+    return 2
+  fi
+  case "$answer" in
+    y|Y|yes|YES|Yes)
+      run_linux_installer --repair-existing --yes --runtime "$INSTALLER_RUNTIME" "$@"
+      ;;
+    *)
+      printf '%s\n' 'Actanara Linux setup: repair cancelled; no repair was applied.'
+      ;;
+  esac
+}
+
 handle_public_managed_runtime() {
+  if runtime_repair_configuration_pending_status "$INSTALLER_RUNTIME"; then
+    handle_public_pending_repair "$@"
+    return $?
+  else
+    pending_status=$?
+    if [ "$pending_status" -eq 2 ]; then
+      bootstrap_error "existing Runtime repair marker is unsafe: $INSTALLER_RUNTIME"
+      return 2
+    fi
+  fi
   if [ "$INSTALLER_DRY_RUN" = "1" ]; then
     printf 'Actanara Linux setup: previewing the existing managed Runtime upgrade: %s\n' "$INSTALLER_RUNTIME"
     run_linux_installer --upgrade --dry-run --runtime "$INSTALLER_RUNTIME" "$@"
@@ -491,6 +592,12 @@ fi
 
 if [ "$PUBLIC_ENTRY" = "1" ] && [ "$INSTALLER_UPDATE_MODE" != "1" ]; then
   select_public_runtime || exit $?
+  fresh_staging="$INSTALLER_RUNTIME/app/install-staging"
+  if [ -e "$fresh_staging" ] || [ -L "$fresh_staging" ]; then
+    printf 'Actanara Linux setup: recovering an interrupted fresh install: %s\n' "$INSTALLER_RUNTIME"
+    run_linux_installer --runtime "$INSTALLER_RUNTIME" "$@"
+    exit $?
+  fi
   if runtime_is_managed "$INSTALLER_RUNTIME"; then
     handle_public_managed_runtime "$@"
     exit $?

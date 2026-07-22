@@ -381,6 +381,7 @@ class DashboardLaunchAgentTests(unittest.TestCase):
             return {"accepted": False, "status": "canceled", "reason": "canceled"}
 
         with (
+            patch.dict(os.environ, {}, clear=False),
             patch.object(rag_agent.sys, "platform", "linux"),
             patch.object(rag_agent.signal, "signal", side_effect=register),
             patch("agentic_rag.rag_settings.resolve_rag_settings", return_value=settings),
