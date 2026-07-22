@@ -73,6 +73,48 @@ class SystemdUserTests(unittest.TestCase):
         self.assertNotIn("/bin/zsh", dashboard.content)
         self.assertEqual(rag.name, "actanara-rag-server.service")
         self.assertIn("rag_server_launch_agent.py", rag.content)
+        self.assertIn("KillMode=control-group", rag.content)
+        self.assertIn("TimeoutStopSec=10s", rag.content)
+        self.assertIn("SendSIGKILL=yes", rag.content)
+
+    def test_install_readiness_failure_compensates_systemd_transaction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = self._runtime(root)
+            unit_dir = root / "units"
+            unit_dir.mkdir()
+            unit = rag_unit(paths)
+            enabled = False
+
+            def runner(command, **_kwargs):
+                nonlocal enabled
+                verb = command[2]
+                if verb == "is-enabled":
+                    return subprocess.CompletedProcess(command, 0 if enabled else 4, "", "")
+                if verb == "is-active":
+                    return subprocess.CompletedProcess(command, 0 if enabled else 4, "", "")
+                if verb == "enable":
+                    enabled = True
+                elif verb == "disable":
+                    enabled = False
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            with (
+                patch("data_foundation.systemd_user.platform.system", return_value="Linux"),
+                patch("data_foundation.systemd_user._systemctl_binary", return_value="/usr/bin/systemctl"),
+                patch("data_foundation.systemd_user.time.sleep"),
+                self.assertRaisesRegex(SystemdUserError, "readiness verification failed"),
+            ):
+                install_user_units(
+                    paths,
+                    [unit],
+                    unit_dir=unit_dir,
+                    runner=runner,
+                    readiness_verifier=lambda: (_ for _ in ()).throw(RuntimeError("model failed")),
+                )
+
+            self.assertFalse(enabled)
+            self.assertFalse((unit_dir / unit.name).exists())
 
     def test_dashboard_and_rag_units_honor_valid_persisted_unit_names(self):
         with tempfile.TemporaryDirectory() as tmp:
