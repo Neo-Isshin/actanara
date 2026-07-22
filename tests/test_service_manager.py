@@ -1,4 +1,5 @@
 import json
+import asyncio
 import os
 import subprocess
 import sys
@@ -130,7 +131,283 @@ class ServiceManagerTests(unittest.TestCase):
         self.assertEqual(removed["status"], "unregistered")
         self.assertFalse(unit_exists_after_uninstall)
         self.assertFalse(settings["dashboard"]["systemdUser"]["registered"])
+        self.assertFalse(settings["dashboard"]["server"]["enabled"])
         self.assertFalse(any("sudo" in item for command in runner.commands for item in command))
+
+    def test_linux_rag_uninstall_disables_server_setting(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = self._runtime(root)
+            unit_dir = root / "units"
+            runner = StatefulSystemctl()
+            manager = service_manager.PlatformServiceManager(
+                paths=paths,
+                systemctl_runner=runner,
+                unit_dir=unit_dir,
+            )
+            with self._linux()[0], self._linux()[1], self._linux()[2]:
+                manager.install(
+                    "rag",
+                    {"confirmationText": "INSTALL ACTANARA RAG SERVICE"},
+                )
+                manager.uninstall(
+                    "rag",
+                    {"confirmationText": "UNINSTALL ACTANARA RAG SERVICE"},
+                )
+            saved = read_settings(paths)
+
+        self.assertFalse(saved["rag"]["server"]["enabled"])
+        self.assertFalse(saved["rag"]["server"]["systemdUser"]["registered"])
+
+    def test_linux_dashboard_self_uninstall_queues_transient_job_after_settings_commit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = self._runtime(root)
+            unit_dir = root / "units"
+            unit_dir.mkdir()
+            unit = dashboard_unit(paths, {"server": {"enabled": True}})
+            (unit_dir / unit.name).write_text(unit.content, encoding="utf-8")
+            write_settings(
+                {
+                    "dashboard": {
+                        "server": {"enabled": True},
+                        "systemdUser": {
+                            "registered": True,
+                            "units": [unit.name],
+                        },
+                    }
+                },
+                paths,
+            )
+            submitted = []
+
+            def systemd_run(command, **kwargs):
+                committed = read_settings(paths)
+                self.assertFalse(committed["dashboard"]["server"]["enabled"])
+                self.assertFalse(committed["dashboard"]["systemdUser"]["registered"])
+                submitted.append(list(command))
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            manager = service_manager.PlatformServiceManager(
+                paths=paths,
+                systemctl_runner=StatefulSystemctl(),
+                systemd_run_runner=systemd_run,
+                unit_dir=unit_dir,
+            )
+            with (
+                self._linux()[0],
+                self._linux()[1],
+                self._linux()[2],
+                patch("data_foundation.systemd_user._systemd_run_binary", return_value="/usr/bin/systemd-run"),
+            ):
+                result = manager.enqueue(
+                    "dashboard",
+                    "uninstall",
+                    {"confirmationText": "UNINSTALL ACTANARA DASHBOARD SERVICE"},
+                )
+
+            saved = read_settings(paths)
+
+        self.assertTrue(result["accepted"])
+        self.assertEqual(result["status"], "queued")
+        self.assertIn("settingsTransaction", result)
+        self.assertEqual(len(submitted), 1)
+        command = submitted[0]
+        self.assertEqual(command[:2], ["/usr/bin/systemd-run", "--user"])
+        self.assertIn("--no-block", command)
+        self.assertIn("--collect", command)
+        self.assertIn("--on-active=1s", command)
+        self.assertIn("--timer-property=AccuracySec=1s", command)
+        self.assertIn("data_foundation.systemd_user", command)
+        self.assertIn("service-action", command)
+        self.assertFalse(saved["dashboard"]["server"]["enabled"])
+        self.assertFalse(saved["dashboard"]["systemdUser"]["registered"])
+        self.assertEqual(
+            saved["dashboard"]["systemdUser"]["pendingJobUnit"],
+            result["job"]["unitName"],
+        )
+        self.assertEqual(
+            saved["dashboard"]["systemdUser"]["pendingRequestId"],
+            result["job"]["requestId"],
+        )
+
+    def test_linux_service_api_returns_202_for_self_affecting_action(self):
+        try:
+            from app.routers import settings as settings_router
+        except ModuleNotFoundError as exc:
+            if exc.name == "fastapi":
+                self.skipTest("FastAPI is not installed")
+            raise
+        queued = {
+            "accepted": True,
+            "status": "queued",
+            "provider": "systemd-user",
+            "job": {"unitName": "actanara-service-control-test.service"},
+        }
+        with (
+            patch.object(service_manager, "service_action_requires_async", return_value=True),
+            patch.object(service_manager, "enqueue_service_action", return_value=queued) as enqueue,
+            patch.object(service_manager, "uninstall_service") as synchronous,
+        ):
+            response = asyncio.run(
+                settings_router.api_service_manager_action(
+                    "dashboard",
+                    "uninstall",
+                    {"confirmationText": "UNINSTALL ACTANARA DASHBOARD SERVICE"},
+                )
+            )
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(json.loads(response.body), queued)
+        enqueue.assert_called_once()
+        synchronous.assert_not_called()
+
+    def test_only_linux_mutating_self_actions_require_transient_jobs(self):
+        with patch.object(service_manager.platform, "system", return_value="Linux"):
+            for action in ("install", "uninstall", "stop", "restart"):
+                with self.subTest(action=action):
+                    self.assertTrue(
+                        service_manager.service_action_requires_async("dashboard", action)
+                    )
+            self.assertFalse(service_manager.service_action_requires_async("dashboard", "start"))
+            self.assertFalse(
+                service_manager.service_action_requires_async(
+                    "dashboard",
+                    "restart",
+                    {"dryRun": True},
+                )
+            )
+            self.assertFalse(service_manager.service_action_requires_async("rag", "uninstall"))
+        with patch.object(service_manager.platform, "system", return_value="Darwin"):
+            for action in ("install", "uninstall", "stop", "restart"):
+                with self.subTest(platform="Darwin", action=action):
+                    self.assertFalse(
+                        service_manager.service_action_requires_async("dashboard", action)
+                    )
+
+    def test_linux_enqueue_does_not_submit_job_when_settings_transaction_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = self._runtime(Path(tmp))
+            submitted = []
+
+            def systemd_run(command, **kwargs):
+                submitted.append(command)
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            manager = service_manager.PlatformServiceManager(
+                paths=paths,
+                systemd_run_runner=systemd_run,
+            )
+            failure = SettingsTransactionError(
+                {
+                    "id": "settings-failure",
+                    "phase": "commit",
+                    "status": "failed",
+                    "compensation": {"status": "complete"},
+                }
+            )
+            with (
+                self._linux()[0],
+                patch.object(service_manager, "write_service_manager_settings", side_effect=failure),
+                self.assertRaises(SettingsTransactionError),
+            ):
+                manager.enqueue(
+                    "dashboard",
+                    "uninstall",
+                    {"confirmationText": "UNINSTALL ACTANARA DASHBOARD SERVICE"},
+                )
+
+        self.assertEqual(submitted, [])
+
+    def test_linux_enqueue_submission_failure_restores_previous_desired_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = self._runtime(root)
+            write_settings(
+                {
+                    "dashboard": {
+                        "server": {"enabled": True},
+                        "systemdUser": {
+                            "registered": True,
+                            "units": ["actanara-dashboard.service"],
+                        },
+                    }
+                },
+                paths,
+            )
+
+            def systemd_run(command, **kwargs):
+                return subprocess.CompletedProcess(command, 1, "", "manager unavailable")
+
+            manager = service_manager.PlatformServiceManager(
+                paths=paths,
+                systemd_run_runner=systemd_run,
+            )
+            with (
+                self._linux()[0],
+                self._linux()[1],
+                self._linux()[2],
+                patch("data_foundation.systemd_user._systemd_run_binary", return_value="/usr/bin/systemd-run"),
+                self.assertRaisesRegex(service_manager.ServiceManagerError, "manager unavailable"),
+            ):
+                manager.enqueue(
+                    "dashboard",
+                    "uninstall",
+                    {"confirmationText": "UNINSTALL ACTANARA DASHBOARD SERVICE"},
+                )
+            saved = read_settings(paths)
+
+        self.assertTrue(saved["dashboard"]["server"]["enabled"])
+        registration = saved["dashboard"]["systemdUser"]
+        self.assertTrue(registration["registered"])
+        self.assertEqual(registration["lastActionStatus"], "failed")
+        self.assertIsNone(registration["pendingAction"])
+
+    def test_transient_helper_finishes_queued_uninstall_and_audit(self):
+        request_id = "1" * 32
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = self._runtime(root)
+            unit_dir = root / "units"
+            unit_dir.mkdir()
+            dashboard = {
+                "server": {"enabled": False},
+                "systemdUser": {
+                    "registered": False,
+                    "units": ["actanara-dashboard.service"],
+                    "pendingAction": "uninstall",
+                    "pendingRequestId": request_id,
+                    "lastActionStatus": "queued",
+                },
+            }
+            unit = dashboard_unit(paths, dashboard)
+            (unit_dir / unit.name).write_text(unit.content, encoding="utf-8")
+            write_settings({"dashboard": dashboard}, paths)
+            runner = StatefulSystemctl()
+            runner.states[unit.name] = {"enabled": True, "active": True}
+
+            with self._linux()[1], self._linux()[2]:
+                result = systemd_user.execute_queued_user_unit_action(
+                    paths,
+                    kind="dashboard",
+                    action="uninstall",
+                    request_id=request_id,
+                    unit_dir=unit_dir,
+                    runner=runner,
+                )
+            saved = read_settings(paths)
+            journals = list((paths.state_dir / "systemd-transactions").glob("*/journal.json"))
+            journal = json.loads(journals[0].read_text(encoding="utf-8"))
+
+        self.assertEqual(result["status"], "uninstalled")
+        self.assertFalse((unit_dir / unit.name).exists())
+        registration = saved["dashboard"]["systemdUser"]
+        self.assertEqual(registration["lastActionStatus"], "success")
+        self.assertIsNone(registration["pendingAction"])
+        self.assertIsNone(registration["pendingRequestId"])
+        self.assertEqual(journal["status"], "committed")
+        self.assertTrue(journal["settingsBeforeHash"])
+        self.assertEqual(journal["settingsBeforeHash"], journal["settingsAfterHash"])
 
     def test_linux_service_settings_failure_compensates_unit_install(self):
         with tempfile.TemporaryDirectory() as tmp:

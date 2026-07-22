@@ -466,8 +466,22 @@ def _read_repair_configuration_pending(path: Path) -> tuple[bytes, os.stat_resul
         os.close(descriptor)
 
 
-def _systemd_unit_root(home: Path) -> Path:
-    return home / ".config" / "systemd" / "user"
+def _systemd_config_home(home: Path) -> Path:
+    configured = os.environ.get("XDG_CONFIG_HOME")
+    root = Path(configured) if configured else home / ".config"
+    if (
+        not root.is_absolute()
+        or os.path.normpath(str(root)) != str(root)
+        or any(character in str(root) for character in "\0\r\n\t")
+    ):
+        raise TransactionError("XDG_CONFIG_HOME is unsafe for systemd user units")
+    if root.is_symlink():
+        raise TransactionError("XDG_CONFIG_HOME is unsafe for systemd user units")
+    return root.resolve(strict=False)
+
+
+def _systemd_unit_root(home: Path, config_home: Path | None = None) -> Path:
+    return (config_home or _systemd_config_home(home)) / "systemd" / "user"
 
 
 def _validate_systemd_journal_bindings(state: dict[str, Any]) -> None:
@@ -479,14 +493,25 @@ def _validate_systemd_journal_bindings(state: dict[str, Any]) -> None:
             raise TransactionError("non-Linux update journal contains systemd units")
         return
     home = Path(str(state.get("home") or ""))
+    configured_root = state.get("systemdConfigHome")
+    config_home = (
+        Path(str(configured_root))
+        if configured_root is not None
+        else home / ".config"
+    )
     root = Path(str(state.get("systemdUnitRoot") or ""))
-    if not home.is_absolute() or root != _systemd_unit_root(home):
-        raise TransactionError("systemd user-unit root escaped the selected HOME")
+    if (
+        not home.is_absolute()
+        or not config_home.is_absolute()
+        or os.path.normpath(str(config_home)) != str(config_home)
+        or root != _systemd_unit_root(home, config_home)
+        or not _is_within(root, config_home)
+    ):
+        raise TransactionError("systemd user-unit root escaped the selected XDG config root")
     if root.exists() and (
         root.is_symlink()
         or not root.is_dir()
         or root.resolve(strict=False) != root
-        or not _is_within(root, home)
     ):
         raise TransactionError("systemd user-unit root is unsafe")
     if not units and not state.get("systemctl") and state.get("systemctlIdentity") is None:
@@ -4200,6 +4225,11 @@ def begin(args: argparse.Namespace) -> int:
         command_lock_identity = _create_transaction_command_lock(tx_dir)
         if args.platform not in {"Darwin", "Linux"}:
             raise TransactionError("update transaction platform is unsupported")
+        systemd_config_home = (
+            _systemd_config_home(home)
+            if args.platform == "Linux"
+            else home / ".config"
+        )
         launchctl = args.launchctl
         systemctl = ""
         systemctl_identity: dict[str, Any] | None = None
@@ -4248,7 +4278,8 @@ def begin(args: argparse.Namespace) -> int:
             "domain": domain,
             "systemctl": systemctl,
             "systemctlIdentity": systemctl_identity,
-            "systemdUnitRoot": str(_systemd_unit_root(home)),
+            "systemdConfigHome": str(systemd_config_home),
+            "systemdUnitRoot": str(_systemd_unit_root(home, systemd_config_home)),
             "systemdUnits": [],
             "lockPath": str(lock),
             "commandLockIdentity": command_lock_identity,
@@ -4485,14 +4516,14 @@ def begin(args: argparse.Namespace) -> int:
                     }
                 )
         elif args.systemd_unit:
-            unit_root = _systemd_unit_root(home)
+            unit_root = Path(state["systemdUnitRoot"])
             if (
                 unit_root.exists()
                 and (
                     unit_root.is_symlink()
                     or not unit_root.is_dir()
                     or unit_root.resolve(strict=False) != unit_root
-                    or not _is_within(unit_root, home)
+                    or not _is_within(unit_root, systemd_config_home)
                 )
             ):
                 raise TransactionError("systemd user-unit root is unsafe")

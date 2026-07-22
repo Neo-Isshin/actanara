@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import fcntl
 import hashlib
 import json
@@ -10,6 +11,7 @@ import platform
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -20,6 +22,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from .paths import RuntimePaths
+from .paths import runtime_paths_for_home
 
 
 UNIT_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.@-]{0,126}$")
@@ -273,6 +276,20 @@ def _systemctl_binary() -> str:
     return os.environ.get("ACTANARA_INSTALL_SYSTEMCTL") or shutil.which("systemctl") or ""
 
 
+def _systemd_run_binary() -> str:
+    return os.environ.get("ACTANARA_INSTALL_SYSTEMD_RUN") or shutil.which("systemd-run") or ""
+
+
+def transient_user_action_unit_name(kind: str, action: str, request_id: str) -> str:
+    if kind not in {"dashboard", "rag"}:
+        raise SystemdUserError("transient systemd action has an unsupported service kind")
+    if action not in {"install", "uninstall", "start", "stop", "restart"}:
+        raise SystemdUserError("transient systemd action is unsupported")
+    if not re.fullmatch(r"[0-9a-f]{32}", str(request_id or "")):
+        raise SystemdUserError("transient systemd action request id is invalid")
+    return f"actanara-{kind}-service-{action}-{request_id[:12]}.service"
+
+
 def _run_systemctl(
     arguments: Iterable[str],
     *,
@@ -455,6 +472,107 @@ def control_user_units(
         "states": [{"name": name, **states[name]} for name in names],
         "recoveredTransactions": [item.get("id") for item in recovery],
         "linger": linger_status(runner=runner),
+    }
+
+
+def restart_dashboard_systemd_service(
+    paths: RuntimePaths,
+    *,
+    unit_dir: Path | None = None,
+    runner: Runner = subprocess.run,
+) -> dict[str, Any]:
+    """Restart the configured Dashboard unit without crossing into launchd."""
+
+    from .settings import read_settings
+
+    settings = read_settings(paths, redact_secrets=False, persist_defaults=False)
+    dashboard = settings.get("dashboard") if isinstance(settings.get("dashboard"), dict) else {}
+    return control_user_units(
+        paths,
+        [dashboard_unit(paths, dashboard)],
+        "restart",
+        unit_dir=unit_dir,
+        runner=runner,
+    )
+
+
+def enqueue_user_unit_action(
+    paths: RuntimePaths,
+    *,
+    kind: str,
+    action: str,
+    request_id: str,
+    unit_dir: Path | None = None,
+    runner: Runner = subprocess.run,
+) -> dict[str, Any]:
+    """Submit service control to a transient user unit outside the caller cgroup."""
+
+    _require_linux()
+    selected_kind = str(kind or "").strip().lower()
+    selected_action = str(action or "").strip().lower()
+    job_unit = transient_user_action_unit_name(selected_kind, selected_action, request_id)
+    systemd_run = _systemd_run_binary()
+    systemctl = _systemctl_binary()
+    if not systemd_run:
+        raise SystemdUserError("systemd-run is unavailable")
+    if not systemctl:
+        raise SystemdUserError("systemctl is unavailable")
+
+    source = paths.home / "app" / "source"
+    python = paths.home / ".venv" / "bin" / "python"
+    root = unit_dir or default_user_unit_dir()
+    job_base = job_unit.removesuffix(".service")
+    python_path = os.pathsep.join((str(source), str(source / "src"), str(source / "src" / "dashboard")))
+    command = [
+        systemd_run,
+        "--user",
+        "--no-block",
+        "--collect",
+        f"--unit={job_base}",
+        "--on-active=1s",
+        "--timer-property=AccuracySec=1s",
+        f"--working-directory={source}",
+        f"--setenv=PYTHONPATH={python_path}",
+        f"--setenv=ACTANARA_INSTALL_SYSTEMCTL={systemctl}",
+        str(python),
+        "-m",
+        "data_foundation.systemd_user",
+        "service-action",
+        "--runtime-home",
+        str(paths.home),
+        "--kind",
+        selected_kind,
+        "--action",
+        selected_action,
+        "--request-id",
+        request_id,
+        "--unit-dir",
+        str(root),
+    ]
+    try:
+        result = runner(
+            command,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise SystemdUserError("systemd-run --user could not submit the helper job") from exc
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip().replace("\n", " ")
+        if len(detail) > 500:
+            detail = detail[:497] + "..."
+        suffix = f": {detail}" if detail else ""
+        raise SystemdUserError(
+            f"systemd-run --user failed with status {result.returncode}{suffix}"
+        )
+    return {
+        "provider": "systemd-user",
+        "unitName": job_unit,
+        "timerName": f"{job_base}.timer",
+        "requestId": request_id,
+        "command": command,
     }
 
 
@@ -1105,3 +1223,175 @@ def uninstall_user_units(
         },
         "linger": linger_status(runner=runner),
     }
+
+
+def _service_action_units(paths: RuntimePaths, kind: str) -> list[UserUnit]:
+    from .settings import read_settings
+
+    settings = read_settings(paths, redact_secrets=False, persist_defaults=False)
+    if kind == "dashboard":
+        dashboard = settings.get("dashboard") if isinstance(settings.get("dashboard"), dict) else {}
+        return [dashboard_unit(paths, dashboard)]
+    rag = settings.get("rag") if isinstance(settings.get("rag"), dict) else {}
+    server = rag.get("server") if isinstance(rag.get("server"), dict) else {}
+    return [rag_unit(paths, server)]
+
+
+def _queued_registration(paths: RuntimePaths, kind: str) -> dict[str, Any]:
+    from .settings import read_settings
+
+    settings = read_settings(paths, redact_secrets=False, persist_defaults=False)
+    if kind == "dashboard":
+        dashboard = settings.get("dashboard") if isinstance(settings.get("dashboard"), dict) else {}
+        registration = dashboard.get("systemdUser")
+    else:
+        rag = settings.get("rag") if isinstance(settings.get("rag"), dict) else {}
+        server = rag.get("server") if isinstance(rag.get("server"), dict) else {}
+        registration = server.get("systemdUser")
+    return registration if isinstance(registration, dict) else {}
+
+
+def _record_queued_registration_result(
+    paths: RuntimePaths,
+    *,
+    kind: str,
+    action: str,
+    request_id: str,
+    error: str | None,
+) -> None:
+    from .settings import write_service_manager_settings
+
+    registration = _queued_registration(paths, kind)
+    if (
+        registration.get("pendingRequestId") != request_id
+        or registration.get("pendingAction") != action
+    ):
+        return
+    metadata = {
+        **registration,
+        "lastActionStatus": "failed" if error else "success",
+        "lastError": error,
+        "lastErrorAt": datetime.now().astimezone().isoformat() if error else None,
+        "pendingAction": None,
+        "pendingRequestId": None,
+        "pendingJobUnit": None,
+    }
+    update = (
+        {"dashboard": {"systemdUser": metadata}}
+        if kind == "dashboard"
+        else {"rag": {"server": {"systemdUser": metadata}}}
+    )
+    write_service_manager_settings(
+        update,
+        paths,
+        precommit_side_effects=lambda _context: None,
+    )
+
+
+def execute_queued_user_unit_action(
+    paths: RuntimePaths,
+    *,
+    kind: str,
+    action: str,
+    request_id: str,
+    unit_dir: Path,
+    runner: Runner = subprocess.run,
+) -> dict[str, Any]:
+    """Execute a previously accepted transient action in the helper cgroup."""
+
+    _require_linux()
+    if kind not in {"dashboard", "rag"} or action not in {
+        "install",
+        "uninstall",
+        "start",
+        "stop",
+        "restart",
+    }:
+        raise SystemdUserError("queued systemd service action is invalid")
+    if action in {"install", "uninstall"}:
+        registration = _queued_registration(paths, kind)
+        if (
+            registration.get("pendingRequestId") != request_id
+            or registration.get("pendingAction") != action
+        ):
+            raise SystemdUserError("queued systemd service action is stale")
+    units = _service_action_units(paths, kind)
+    settings_hash = _resource_hash(paths.config_dir / "settings.json")
+    transaction_context = {
+        "settingsBeforeHash": settings_hash,
+        "settingsAfterHash": settings_hash,
+    }
+    try:
+        if action == "install":
+            result = install_user_units(
+                paths,
+                units,
+                unit_dir=unit_dir,
+                runner=runner,
+                transaction_context=transaction_context,
+            )
+        elif action == "uninstall":
+            result = uninstall_user_units(
+                paths,
+                units,
+                unit_dir=unit_dir,
+                runner=runner,
+                transaction_context=transaction_context,
+            )
+        else:
+            result = control_user_units(paths, units, action, unit_dir=unit_dir, runner=runner)
+    except Exception as exc:
+        if action in {"install", "uninstall"}:
+            try:
+                _record_queued_registration_result(
+                    paths,
+                    kind=kind,
+                    action=action,
+                    request_id=request_id,
+                    error=str(exc),
+                )
+            except Exception:
+                pass
+        raise
+    if action in {"install", "uninstall"}:
+        _record_queued_registration_result(
+            paths,
+            kind=kind,
+            action=action,
+            request_id=request_id,
+            error=None,
+        )
+    return result
+
+
+def _service_action_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="python -m data_foundation.systemd_user")
+    subcommands = parser.add_subparsers(dest="command", required=True)
+    action_parser = subcommands.add_parser("service-action")
+    action_parser.add_argument("--runtime-home", required=True)
+    action_parser.add_argument("--kind", choices=("dashboard", "rag"), required=True)
+    action_parser.add_argument(
+        "--action",
+        choices=("install", "uninstall", "start", "stop", "restart"),
+        required=True,
+    )
+    action_parser.add_argument("--request-id", required=True)
+    action_parser.add_argument("--unit-dir", required=True)
+    args = parser.parse_args(argv)
+    try:
+        result = execute_queued_user_unit_action(
+            runtime_paths_for_home(Path(args.runtime_home)),
+            kind=args.kind,
+            action=args.action,
+            request_id=args.request_id,
+            unit_dir=Path(args.unit_dir),
+        )
+    except Exception as exc:
+        sys.stderr.write(f"systemd service helper failed: {exc}\n")
+        return 1
+    sys.stdout.write(json.dumps(result, ensure_ascii=False, sort_keys=True) + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_service_action_main())
