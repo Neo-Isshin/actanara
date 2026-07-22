@@ -100,7 +100,13 @@ class RealSystemdServiceManagerTests(unittest.TestCase):
 
             try:
                 manager = PlatformServiceManager(paths=paths)
+                # This real-systemd gate substitutes unique, test-owned unit
+                # names for the product's fixed units.  Keep the transaction's
+                # Settings-derived revalidation on the same injected boundary
+                # so the safety check validates the selected test definition
+                # instead of comparing it with actanara-dashboard.service.
                 manager._units = lambda _kind: list(current)
+                manager._units_from_settings = lambda _kind, _settings: list(current)
                 installed = manager.install(
                     "dashboard",
                     {"confirmationText": "INSTALL ACTANARA DASHBOARD SERVICE"},
