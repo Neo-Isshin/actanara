@@ -279,11 +279,16 @@ def probe_rag_server_readiness(
     listener = dict(inspect_rag_server_port(resolved, state=state))
     if health.get("reachable") or health.get("statusCode") is not None:
         listener["listening"] = True
-    if health.get("identityMatches"):
+    if health.get("identityMatches") and (
+        listener.get("managed") or not listener.get("inspectable")
+    ):
+        # Semantic identity is a fallback only when process ownership cannot
+        # be inspected. It must never override positive /proc evidence that
+        # the listening socket belongs to a different process.
         already_managed = bool(listener.get("managed"))
         listener["managed"] = True
         if not already_managed:
-            listener["basis"] = "semantic-health"
+            listener["basis"] = "semantic-health-fallback"
     listener["conflict"] = bool(listener.get("listening") and not listener.get("managed"))
 
     base: dict[str, Any] = {
@@ -305,15 +310,6 @@ def probe_rag_server_readiness(
             "identityMatches": process_running if pid else None,
         },
     }
-    if health.get("ready"):
-        return {
-            **base,
-            "ready": True,
-            "status": "ready",
-            "phase": "ready",
-            "reasonCode": None,
-            "retryable": False,
-        }
     if listener.get("conflict"):
         return {
             **base,
@@ -322,6 +318,15 @@ def probe_rag_server_readiness(
             "reasonCode": "rag-port-owned-by-external-process",
             "retryable": False,
             "rollbackRequired": True,
+        }
+    if health.get("ready"):
+        return {
+            **base,
+            "ready": True,
+            "status": "ready",
+            "phase": "ready",
+            "reasonCode": None,
+            "retryable": False,
         }
     if process_exists and not process_running:
         return {

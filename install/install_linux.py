@@ -85,7 +85,18 @@ FRESH_TRANSACTION_ID_RE = re.compile(r"[0-9]{8}T[0-9]{6}-[0-9]+-[0-9a-f]{8}\Z")
 
 
 class LinuxInstallError(RuntimeError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        rollback_complete: bool | None = None,
+        state_certain: bool | None = None,
+        stage: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.rollback_complete = rollback_complete
+        self.state_certain = state_certain
+        self.stage = stage
 
 
 @dataclass(frozen=True)
@@ -209,7 +220,7 @@ def build_plan(args: argparse.Namespace) -> InstallPlan:
         dashboard_service = not (args.no_dashboard_server or args.no_dashboard)
         scheduler = not args.no_scheduler
         rag_enabled = bool(args.enable_rag)
-        rag_embedding_mode = args.rag_embedding_mode or "cloud"
+        rag_embedding_mode = args.rag_embedding_mode or ("local" if rag_enabled else "cloud")
         profiles = {"dashboard"}
         if rag_enabled:
             profiles.add("rag-server")
@@ -433,7 +444,10 @@ def _preflight_linux_services(plan: InstallPlan, *, check_dashboard_port: bool =
         ports.append(("Dashboard", plan.dashboard_host, plan.dashboard_port))
     if plan.rag_enabled:
         ports.append(("RAG", "127.0.0.1", 3037))
-    selected_ports = [(host, port) for _label, host, port in ports]
+    # Every supported service host is loopback-only.  Treat localhost, IPv4,
+    # and IPv6 spellings as the same bind boundary instead of comparing the
+    # user-provided host strings literally.
+    selected_ports = [port for _label, _host, port in ports]
     if len(selected_ports) != len(set(selected_ports)):
         raise LinuxInstallError("Dashboard and RAG services cannot use the same loopback port")
     for label, host, port in ports:
@@ -520,6 +534,16 @@ def _validate_plan(plan: InstallPlan, args: argparse.Namespace) -> dependency_co
         raise LinuxInstallError("dashboard port must be between 1 and 65535")
     if plan.dashboard_host not in {"127.0.0.1", "localhost", "::1"}:
         raise LinuxInstallError("Linux phase 1 Dashboard binding must remain loopback-only")
+    if (
+        plan.update_mode == "fresh"
+        and plan.rag_enabled
+        and plan.rag_embedding_mode == "cloud"
+    ):
+        raise LinuxInstallError(
+            "fresh managed cloud RAG is not available until a credential-backed provider "
+            "profile is configured; use --rag-embedding-mode local or install without --enable-rag. "
+            "No Runtime changes were made"
+        )
     if not plan.python.is_file() or not os.access(plan.python, os.X_OK):
         raise LinuxInstallError(f"Python executable is unavailable: {plan.python}")
     version = subprocess.run(
@@ -649,6 +673,15 @@ def _source_identity(source: Path) -> tuple[str, str | None]:
     commit = result.stdout.strip().lower() if result.returncode == 0 else None
     if commit is not None and not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit):
         commit = None
+    if commit is not None:
+        worktree = subprocess.run(
+            ["git", "-C", str(source), "status", "--porcelain=v1", "--untracked-files=normal"],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if worktree.returncode != 0 or worktree.stdout.strip():
+            commit = None
     suffix = commit[:12] if commit else hashlib.sha256(str(source).encode()).hexdigest()[:12]
     return f"actanara-{version}-{suffix}", commit
 
@@ -1424,6 +1457,16 @@ def _update(
     rebuild = dependency_plan["updateMode"] == "rebuild-candidate-venv"
     transaction_mode = "repair" if plan.update_mode == "repair" else "upgrade" if rebuild else "source-only"
     settings = _read_update_settings(plan.runtime)
+    from data_foundation.source_identity import loaded_source_commit
+
+    prior_source_commit = loaded_source_commit(
+        plan.runtime / "app" / "source" / "src" / "data_foundation" / "operator_cli.py"
+    )
+    _candidate_release_id, candidate_source_commit = _source_identity(plan.source_root)
+    if plan.rag_enabled and candidate_source_commit is None:
+        raise LinuxInstallError(
+            "managed RAG update requires a clean source tree with an exact Git commit identity"
+        )
     desired, inventory = _systemd_unit_inventory(plan, settings)
     systemctl = os.environ.get("ACTANARA_INSTALL_SYSTEMCTL") or shutil.which("systemctl") or ""
     tx_id = (
@@ -1532,7 +1575,7 @@ def _update(
                 "source-temp",
             ).stdout.strip()
         )
-        _release_id, commit = _source_identity(plan.source_root)
+        commit = candidate_source_commit
         _stage_source(
             plan,
             temporary,
@@ -1690,8 +1733,32 @@ def _update(
             if rollback.returncode != 0:
                 detail = (rollback.stderr or rollback.stdout).strip()
                 raise LinuxInstallError(
-                    f"update failed and rollback is incomplete: {detail or rollback.returncode}"
+                    f"update failed and rollback is incomplete: {detail or rollback.returncode}",
+                    rollback_complete=False,
+                    state_certain=False,
+                    stage="rollback-incomplete",
                 ) from exc
+            try:
+                _wait_for_update_service_health(
+                    plan,
+                    settings,
+                    active_units=prior_active_units,
+                    expected_source_commit=prior_source_commit,
+                )
+            except Exception as recovery_exc:
+                raise LinuxInstallError(
+                    f"update rollback restored transaction state but prior service health is unconfirmed: "
+                    f"{recovery_exc}",
+                    rollback_complete=False,
+                    state_certain=False,
+                    stage="rollback-incomplete",
+                ) from exc
+            raise LinuxInstallError(
+                str(exc),
+                rollback_complete=True,
+                state_certain=True,
+                stage="rollback-complete",
+            ) from exc
         if isinstance(exc, LinuxInstallError):
             raise
         if isinstance(exc, dependency_contract.ContractError):
@@ -2009,6 +2076,11 @@ def _install(
     linger: dict | None = None,
 ) -> dict:
     base_release_id, commit = _source_identity(plan.source_root)
+    if plan.rag_enabled and commit is None:
+        raise LinuxInstallError(
+            "managed RAG fresh install requires a clean source tree with an exact Git commit identity; "
+            "no Runtime changes were made"
+        )
     transaction_id = _fresh_install_transaction_id()
     generation_id = f"{base_release_id}-{transaction_id}"
     release_target = plan.runtime / "app" / "releases" / generation_id
@@ -2237,9 +2309,17 @@ def _result_envelope(
     *,
     payload: dict | None,
     requested_mode: str,
-    error: str | None = None,
+    error: str | LinuxInstallError | None = None,
 ) -> dict:
     completed = payload is not None and error is None
+    error_text = str(error) if error is not None else None
+    rollback_complete = (
+        error.rollback_complete if isinstance(error, LinuxInstallError) else None
+    )
+    state_certain = (
+        error.state_certain if isinstance(error, LinuxInstallError) else None
+    )
+    error_stage = error.stage if isinstance(error, LinuxInstallError) else None
     status = str((payload or {}).get("status") or "")
     update_mode = str((payload or {}).get("updateMode") or requested_mode or "unknown")
     dependencies_installed = bool((payload or {}).get("dependenciesInstalled"))
@@ -2259,17 +2339,30 @@ def _result_envelope(
         "updateMode": update_mode,
         "dependenciesInstalled": dependencies_installed,
         "reusesRuntimeVenv": reuses_runtime_venv,
-        "sourceUpdated": status in {"updated", "repaired"} if completed else None,
-        "reason": str((payload or {}).get("reason") or error or status or "unknown"),
+        "sourceUpdated": (
+            status in {"updated", "repaired"}
+            if completed
+            else False
+            if rollback_complete is True
+            else None
+        ),
+        "reason": str((payload or {}).get("reason") or error_text or status or "unknown"),
         "cacheUsed": dependencies_installed,
         "servicesStopped": services_stopped,
         "plannedDependenciesInstall": planned_dependencies,
         "managedServiceDefinitionsNormalized": (
             requested_mode == "repair" if completed else None
         ),
-        "rollbackComplete": None,
-        "stateCertain": completed,
-        "stage": "preflight" if status == "planned" else "complete" if completed else "installer",
+        "rollbackComplete": rollback_complete,
+        "stateCertain": completed if state_certain is None else state_certain,
+        "stage": error_stage
+        or (
+            "preflight"
+            if status == "planned"
+            else "complete"
+            if completed
+            else "installer"
+        ),
     }
 
 
@@ -2312,7 +2405,7 @@ def main(argv: list[str] | None = None) -> int:
                 _result_envelope(
                     payload=None,
                     requested_mode=requested_mode,
-                    error=str(exc),
+                    error=exc,
                 )
             )
         print(

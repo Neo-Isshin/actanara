@@ -231,6 +231,58 @@ class RagServerLinuxLifecycleTests(unittest.TestCase):
         self.assertFalse(managed["rollbackRequired"])
         self.assertTrue(managed["listener"]["managed"])
 
+    def test_matching_health_cannot_override_foreign_proc_listener_ownership(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, settings = self._settings(Path(tmp))
+            state_path = paths.state_dir / "rag" / "server-state.json"
+            state_path.parent.mkdir(parents=True, exist_ok=True)
+            state_path.write_text(json.dumps({"pid": 4321}), encoding="utf-8")
+            ready_health = {
+                "ready": True,
+                "healthy": True,
+                "status": "ready",
+                "phase": "ready",
+                "identityMatches": True,
+                "reasonCode": None,
+                "reachable": True,
+            }
+            external_listener = {
+                "listening": True,
+                "pids": [9988],
+                "managed": False,
+                "managedPid": None,
+                "inspectable": True,
+                "basis": "linux-proc-socket-owner",
+            }
+            with (
+                patch.object(
+                    rag_server_lifecycle,
+                    "probe_rag_server_health",
+                    return_value=ready_health,
+                ),
+                patch.object(
+                    rag_server_lifecycle,
+                    "_state_process_running",
+                    return_value=True,
+                ),
+                patch.object(
+                    rag_server_lifecycle,
+                    "inspect_rag_server_port",
+                    return_value=external_listener,
+                ),
+            ):
+                readiness = rag_server_lifecycle.probe_rag_server_readiness(
+                    settings,
+                    expected_source_commit=SOURCE_COMMIT,
+                )
+
+        self.assertFalse(readiness["ready"])
+        self.assertEqual(readiness["status"], "port-conflict")
+        self.assertEqual(
+            readiness["reasonCode"],
+            "rag-port-owned-by-external-process",
+        )
+
     def test_linux_proc_listener_evidence_maps_socket_inode_to_managed_pid(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

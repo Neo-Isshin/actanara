@@ -40,7 +40,11 @@ class LinuxInstallerTests(unittest.TestCase):
         args = self._args("--enable-rag", "--enable-dev-test")
         plan = install_linux.build_plan(args)
 
-        self.assertEqual(plan.profiles, ("dashboard", "dev-test", "rag-server"))
+        self.assertEqual(
+            plan.profiles,
+            ("dashboard", "dev-test", "rag-local", "rag-server"),
+        )
+        self.assertEqual(plan.rag_embedding_mode, "local")
 
     def test_local_rag_selects_both_server_and_local_dependency_profiles(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -223,6 +227,59 @@ class LinuxInstallerTests(unittest.TestCase):
             {"mode": "cloud", "provider": "cloud"},
         )
 
+    def test_fresh_cloud_rag_blocks_before_runtime_or_dependency_writes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime = Path(tmp) / "runtime"
+            args = self._args(
+                "--runtime",
+                str(runtime),
+                "--enable-rag",
+                "--rag-embedding-mode",
+                "cloud",
+            )
+            plan = install_linux.build_plan(args)
+            with (
+                patch.object(install_linux.platform, "system", return_value="Linux"),
+                self.assertRaisesRegex(
+                    install_linux.LinuxInstallError,
+                    "fresh managed cloud RAG is not available",
+                ),
+            ):
+                install_linux._validate_plan(plan, args)
+
+            self.assertFalse(runtime.exists())
+
+    def test_managed_rag_fresh_install_rejects_source_without_exact_commit_before_writes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime = Path(tmp) / "runtime"
+            args = self._args(
+                "--runtime",
+                str(runtime),
+                "--enable-rag",
+                "--rag-embedding-mode",
+                "local",
+                "--no-linger-prompt",
+            )
+            plan = install_linux.build_plan(args)
+            selection = SimpleNamespace(
+                environment_id="linux-cpython313-x86-64",
+                lock_environment={"architecture": "x86_64"},
+            )
+            with (
+                patch.object(
+                    install_linux,
+                    "_source_identity",
+                    return_value=("actanara-fixture", None),
+                ),
+                self.assertRaisesRegex(
+                    install_linux.LinuxInstallError,
+                    "requires a clean source tree with an exact Git commit identity",
+                ),
+            ):
+                install_linux._install(plan, selection, args)
+
+            self.assertFalse(runtime.exists())
+
     def test_linux_service_preflight_requires_a_working_user_manager(self):
         args = self._args()
         plan = install_linux.build_plan(args)
@@ -279,6 +336,32 @@ class LinuxInstallerTests(unittest.TestCase):
             self.assertRaisesRegex(
                 install_linux.LinuxInstallError,
                 "RAG port 3037 is unavailable",
+            ),
+        ):
+            install_linux._preflight_linux_services(plan)
+
+    def test_linux_fresh_preflight_rejects_dashboard_and_rag_loopback_alias_collision(self):
+        args = self._args(
+            "--dashboard-host",
+            "localhost",
+            "--dashboard-port",
+            "3037",
+            "--enable-rag",
+            "--rag-embedding-mode",
+            "local",
+            "--no-scheduler",
+        )
+        plan = install_linux.build_plan(args)
+        with (
+            patch.object(install_linux.shutil, "which", return_value="/usr/bin/systemctl"),
+            patch.object(
+                install_linux.subprocess,
+                "run",
+                return_value=subprocess.CompletedProcess([], 0, "", ""),
+            ),
+            self.assertRaisesRegex(
+                install_linux.LinuxInstallError,
+                "Dashboard and RAG services cannot use the same loopback port",
             ),
         ):
             install_linux._preflight_linux_services(plan)
@@ -1273,6 +1356,25 @@ with (
         self.assertTrue(envelope["servicesStopped"])
         self.assertTrue(envelope["stateCertain"])
         self.assertEqual(len(envelope), 14)
+
+    def test_linux_result_envelope_reports_a_completed_rollback_as_certain(self):
+        error = install_linux.LinuxInstallError(
+            "candidate health failed",
+            rollback_complete=True,
+            state_certain=True,
+            stage="rollback-complete",
+        )
+        envelope = install_linux._result_envelope(
+            payload=None,
+            requested_mode="source-only",
+            error=error,
+        )
+
+        self.assertEqual(envelope["status"], "failed")
+        self.assertFalse(envelope["sourceUpdated"])
+        self.assertTrue(envelope["rollbackComplete"])
+        self.assertTrue(envelope["stateCertain"])
+        self.assertEqual(envelope["stage"], "rollback-complete")
 
 
 if __name__ == "__main__":
