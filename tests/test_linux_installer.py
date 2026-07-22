@@ -439,6 +439,35 @@ class LinuxInstallerTests(unittest.TestCase):
 
             self.assertFalse(runtime.exists())
 
+    def test_offline_fresh_cache_miss_blocks_before_venv_preflight_or_runtime_writes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime = Path(tmp) / "runtime"
+            args = self._args(
+                "--runtime",
+                str(runtime),
+                "--offline",
+                "--no-scheduler",
+                "--no-dashboard-server",
+            )
+            plan = install_linux.build_plan(args)
+            selection = SimpleNamespace(fingerprint="f" * 64)
+            with (
+                patch.object(
+                    install_linux.dependency_contract,
+                    "dependency_cache_status",
+                    return_value={"status": "miss", "usable": False},
+                ),
+                patch.object(install_linux.subprocess, "run") as run,
+                self.assertRaisesRegex(
+                    install_linux.LinuxInstallError,
+                    "complete trusted dependency cache",
+                ),
+            ):
+                install_linux._preflight_fresh_dependencies(plan, selection)
+
+            run.assert_not_called()
+            self.assertFalse(runtime.exists())
+
     def test_every_fresh_checkpoint_failure_cleans_generations_and_is_retryable(self):
         checkpoints = (
             "cache-ready",
