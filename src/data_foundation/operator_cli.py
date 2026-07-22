@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import platform
 import re
 import shutil
@@ -972,7 +973,17 @@ def _update_run(args: argparse.Namespace) -> int:
                 fields=(("Status", "Previewing" if args.dry_run else "Installing"), ("Data folder", paths.home)),
             )
         )
-    result = subprocess.run(command, text=True, capture_output=True, check=False)
+    run_kwargs = {"text": True, "capture_output": True, "check": False}
+    if platform.system() == "Linux":
+        environment = os.environ.copy()
+        for name in (
+            "ACTANARA_INSTALL_SOURCE_ROOT",
+            "ACTANARA_INSTALL_SOURCE_URL",
+            "ACTANARA_INSTALL_REF",
+        ):
+            environment.pop(name, None)
+        run_kwargs["env"] = environment
+    result = subprocess.run(command, **run_kwargs)
     stdout = getattr(result, "stdout", "") or ""
     stderr = getattr(result, "stderr", "") or ""
     envelope = _update_result_envelope(stdout)
@@ -1166,6 +1177,10 @@ def _apply_update_execution_result(payload: dict, envelope: dict | None, returnc
     planned_dependencies_install = _update_result_bool(envelope, "plannedDependenciesInstall")
     rollback_complete = _update_result_bool(envelope, "rollbackComplete")
     state_certain = _update_result_bool(envelope, "stateCertain")
+    if rollback_complete is True:
+        # A completed rollback is the stronger transaction fact: the prior
+        # source, venv, control files, and service state were restored.
+        state_certain = True
     reason = _update_result_text(envelope, "reason")
     stage = _update_result_text(envelope, "stage") or ("complete" if returncode == 0 else "installer")
     payload.update(

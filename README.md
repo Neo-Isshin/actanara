@@ -75,6 +75,13 @@ definition drift or non-Actanara units. New here? You can explore the
 [interactive Dashboard demo](https://neo-isshin.github.io/actanara/dashboard-demo/)
 before installing.
 
+When the Linux public entrypoint finds an existing managed Runtime, a run with
+a controlling terminal prints the pinned upgrade plan and asks before applying
+it. Without a controlling terminal it exits with status 2, makes no Runtime
+changes, and prints exact copy-paste `actanara update --dry-run` and
+`actanara update --apply` commands that include the resolved source URL,
+commit, Runtime, and installer cache.
+
 The stable Runtime shim is `~/.actanara/bin/actanara`; installation also links
 `~/.local/bin/actanara` by default. On macOS, `--no-shell-path` and
 `--shell-path-file /path/to/profile` control the managed profile block. On
@@ -250,6 +257,11 @@ actanara update --apply
 ```
 
 When dependencies are unchanged the updater reuses the venv; otherwise it rebuilds from the hashed lock. Details on venv reuse, `--source-only/--force-rebuild/--offline`, source acquisition, and commit pinning are in the Runbook's *Update* section. Actanara does not yet ship a one-command uninstaller—do not remove only `~/.actanara`; see the Runbook's *Uninstall boundary* section.
+
+On Linux, an explicit `--source-url` or `--ref` makes the nearby bootstrap file
+an execution entry only. The selected source is prepared in the installer
+cache; its normalized Git `origin` and exact fetched/cached commit are verified
+online and offline before the installer runs.
 
 On Linux, ordinary updates require aligned Actanara-managed systemd definitions
 and preserve each unit's prior enabled/active state. If trusted Runtime

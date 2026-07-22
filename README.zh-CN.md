@@ -72,6 +72,12 @@ curl -fsSL https://raw.githubusercontent.com/Neo-Isshin/actanara/main/install/se
 user unit 状态，遇到定义漂移或非 Actanara unit 时保守失败。第一次了解 Actanara？可以先体验
 [在线 Dashboard Demo](https://neo-isshin.github.io/actanara/dashboard-demo/)，再决定是否安装。
 
+Linux 公开入口发现已有 managed Runtime 时：存在控制终端会先展示固定到
+精确 commit 的升级计划，再询问是否执行；没有控制终端则以状态码 2
+退出、不改动 Runtime，并输出可直接复制的 `actanara update --dry-run` 与
+`actanara update --apply` 精确命令，其中包含已解析的源码 URL、commit、
+Runtime 与 installer cache。
+
 稳定 CLI shim 为 `~/.actanara/bin/actanara`，默认还会建立
 `~/.local/bin/actanara` 链接。macOS 可用 `--no-shell-path` 或
 `--shell-path-file /path/to/profile` 控制受管理的 profile 区块；Linux 的
@@ -246,6 +252,11 @@ actanara update --apply
 ```
 
 更新器在依赖一致时复用 venv、否则从带 hash 的 lock 重建；venv 复用、`--source-only/--force-rebuild/--offline`、源码获取与 commit 固定等细节，见 Runbook 的「更新」一节。Actanara 暂未提供一键卸载器，请勿直接删除 `~/.actanara`，正确卸载步骤见 Runbook「卸载边界」一节。
+
+Linux 上显式使用 `--source-url` 或 `--ref` 时，邻接 bootstrap 文件只作为
+执行入口，不会被当成所选源码。installer cache 中规范化后的 Git `origin`
+以及精确 fetched/cached commit 会在在线、离线模式下都先完成校验，之后才
+运行安装器。
 
 Linux 常规更新要求 Actanara 管理的 systemd 定义已对齐，并逐个保持 unit
 原有 enabled/active 状态。若可信 Runtime 配置或受管理定义发生漂移，请按
