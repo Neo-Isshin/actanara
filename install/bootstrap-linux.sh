@@ -454,7 +454,10 @@ if [ -z "$SOURCE_ROOT" ]; then
   fi
   git_exec -C "$SOURCE_ROOT" checkout --detach "$SOURCE_REF"
   git_exec -C "$SOURCE_ROOT" reset --hard "$SOURCE_REF"
-  git_exec -C "$SOURCE_ROOT" clean -fdX
+  # The cache is installer-owned. Remove both ignored and ordinary untracked
+  # files so the payload is exactly the requested commit, not a commit plus
+  # stale cache content.
+  git_exec -C "$SOURCE_ROOT" clean -fdx
   deployed_ref=$(git_exec -C "$SOURCE_ROOT" rev-parse --verify 'HEAD^{commit}' 2>/dev/null || true)
   deployed_ref=$(printf '%s' "$deployed_ref" | tr '[:upper:]' '[:lower:]')
   if [ "$deployed_ref" != "$SOURCE_REF" ]; then

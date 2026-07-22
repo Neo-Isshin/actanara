@@ -456,6 +456,39 @@ class LinuxUpdateBootstrapTests(unittest.TestCase):
         self.assertEqual(deployed, first)
         self.assertEqual(len(invocations), 1)
 
+    def test_verified_cache_removes_untracked_payload_before_exact_ref_install(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "Home").mkdir()
+            origin, first, _second = self._origin_fixture(root)
+            python, python_log = self._fake_python(root)
+            cache = root / "Cache"
+            self._git("clone", "--quiet", origin.as_uri(), str(cache / "source"), cwd=root)
+            injected = cache / "source" / "install" / "untracked-injected.py"
+            injected.write_text("raise RuntimeError('must not deploy')\n", encoding="utf-8")
+
+            result = self._run(
+                root,
+                "--source-url",
+                origin.as_uri(),
+                "--ref",
+                first,
+                "--cache-root",
+                str(cache),
+                "--python",
+                str(python),
+                "--",
+                "--dry-run",
+                env=self._environment(root, python_log),
+                streamed=True,
+            )
+            injected_exists = injected.exists()
+            invocations = self._python_invocations(python_log)
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse(injected_exists)
+        self.assertEqual(len(invocations), 1)
+
     def test_noninteractive_public_entry_prints_pinned_upgrade_commands_without_runtime_mutation(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
