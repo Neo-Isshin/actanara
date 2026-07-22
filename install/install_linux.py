@@ -575,6 +575,7 @@ def _validate_plan(plan: InstallPlan, args: argparse.Namespace) -> dependency_co
         plan.runtime / ".venv",
         plan.runtime / "config" / "settings.json",
         plan.runtime / "data" / "actanara_data.sqlite3",
+        plan.runtime / "config" / "runtime.json",
     )
     if plan.update_mode == "fresh":
         if any(path.exists() or path.is_symlink() for path in markers):
@@ -1063,9 +1064,13 @@ def _install_systemd_user_services(
     *,
     expected_source_commit: str | None = None,
     transaction_started: Callable[[str], None] | None = None,
+    transaction_owner_id: str | None = None,
 ) -> dict:
     from data_foundation.paths import runtime_paths_for_home
-    from data_foundation.settings import read_settings, write_settings
+    from data_foundation.settings import (
+        read_settings,
+        write_linux_installer_handoff_settings,
+    )
     from data_foundation.systemd_user import (
         SystemdUserError,
         finalize_user_unit_transaction,
@@ -1105,44 +1110,6 @@ def _install_systemd_user_services(
                 expected_source_commit=expected_source_commit,
                 timeout_seconds=_rag_install_readiness_timeout_seconds(),
             )
-
-    result: dict | None = None
-    try:
-        result = (
-            install_user_units(
-                paths,
-                units,
-                defer_commit=True,
-                readiness_verifier=readiness_verifier,
-            )
-            if readiness_verifier is not None
-            else install_user_units(paths, units, defer_commit=True)
-        )
-        transaction_id = str(result.get("transactionId") or "")
-        if not transaction_id:
-            raise LinuxInstallError("systemd install did not return a transaction identity")
-        if transaction_started is not None:
-            transaction_started(transaction_id)
-    except SystemdUserError as exc:
-        from agentic_rag.rag_server_lifecycle import RagServerReadinessError
-
-        cause = exc.__cause__
-        if isinstance(cause, RagServerReadinessError):
-            reason = str(cause.result.get("reasonCode") or cause.result.get("status") or "not-ready")
-            raise LinuxInstallError(f"RAG semantic readiness failed: {reason}") from exc
-        raise LinuxInstallError(str(exc)) from exc
-    except Exception as exc:
-        transaction_id = str((result or {}).get("transactionId") or "")
-        if transaction_id:
-            try:
-                rollback_user_unit_transaction(paths, transaction_id)
-            except SystemdUserError as rollback_exc:
-                raise LinuxInstallError(
-                    f"systemd install handoff failed and rollback is incomplete: {rollback_exc}"
-                ) from exc
-        if isinstance(exc, LinuxInstallError):
-            raise
-        raise LinuxInstallError(str(exc)) from exc
 
     now = datetime.now().astimezone().isoformat()
     update: dict = {}
@@ -1190,8 +1157,80 @@ def _install_systemd_user_services(
                 },
             }
         }
+    holder: dict[str, object] = {}
+
+    def precommit(context: dict[str, str]):
+        transaction_context = dict(context)
+        transaction_options: dict[str, object] = {
+            "defer_commit": True,
+            "transaction_context": transaction_context,
+        }
+        if transaction_owner_id is not None:
+            transaction_context["ownerId"] = transaction_owner_id
+            transaction_options["recover_transactions"] = False
+        result: dict | None = None
+        try:
+            result = (
+                install_user_units(
+                    paths,
+                    units,
+                    readiness_verifier=readiness_verifier,
+                    **transaction_options,
+                )
+                if readiness_verifier is not None
+                else install_user_units(paths, units, **transaction_options)
+            )
+            transaction_id = str(result.get("transactionId") or "")
+            if not transaction_id:
+                raise LinuxInstallError("systemd install did not return a transaction identity")
+            if transaction_started is not None:
+                transaction_started(transaction_id)
+        except Exception as exc:
+            holder["error"] = exc
+            transaction_id = str((result or {}).get("transactionId") or "")
+            if transaction_id:
+                try:
+                    rollback_user_unit_transaction(paths, transaction_id)
+                except SystemdUserError as rollback_exc:
+                    raise LinuxInstallError(
+                        f"systemd install handoff failed and rollback is incomplete: {rollback_exc}"
+                    ) from exc
+            raise
+        holder["result"] = result
+
+        def cleanup() -> None:
+            rollback_user_unit_transaction(paths, transaction_id)
+
+        return cleanup
+
     try:
-        write_settings(update, paths)
+        saved = write_linux_installer_handoff_settings(
+            update,
+            paths,
+            precommit_side_effects=precommit,
+        )
+    except Exception as exc:
+        handoff_error = holder.get("error")
+        if isinstance(handoff_error, SystemdUserError):
+            from agentic_rag.rag_server_lifecycle import RagServerReadinessError
+
+            cause = handoff_error.__cause__
+            if isinstance(cause, RagServerReadinessError):
+                reason = str(
+                    cause.result.get("reasonCode")
+                    or cause.result.get("status")
+                    or "not-ready"
+                )
+                raise LinuxInstallError(f"RAG semantic readiness failed: {reason}") from exc
+        if isinstance(handoff_error, LinuxInstallError):
+            raise handoff_error from exc
+        raise LinuxInstallError(str(handoff_error or exc)) from exc
+
+    result = holder.get("result")
+    if not isinstance(result, dict):
+        raise LinuxInstallError("systemd Settings handoff did not create a unit transaction")
+    transaction_id = str(result.get("transactionId") or "")
+    try:
         finalize_user_unit_transaction(paths, transaction_id)
     except Exception as exc:
         try:
@@ -1203,7 +1242,11 @@ def _install_systemd_user_services(
         if isinstance(exc, LinuxInstallError):
             raise
         raise LinuxInstallError(str(exc)) from exc
-    return {**result, "transactionStatus": "committed"}
+    return {
+        **result,
+        "transactionStatus": "committed",
+        "settingsTransaction": saved.get("settingsTransaction"),
+    }
 
 
 def _transaction_command(*arguments: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -1904,7 +1947,12 @@ def _remove_fresh_generation(path: Path, *, parent: Path, transaction_id: str) -
     shutil.rmtree(path)
 
 
-def _rollback_fresh_service_transaction(runtime: Path, transaction_id: str | None) -> None:
+def _rollback_fresh_service_transaction(
+    runtime: Path,
+    transaction_id: str | None,
+    *,
+    owner_id: str,
+) -> None:
     from data_foundation.paths import runtime_paths_for_home
     from data_foundation.systemd_user import (
         SystemdUserError,
@@ -1917,13 +1965,32 @@ def _rollback_fresh_service_transaction(runtime: Path, transaction_id: str | Non
         if transaction_id:
             rollback_user_unit_transaction(paths, transaction_id)
             return
-        recovery = recover_user_unit_transactions(paths)
+        recovery = recover_user_unit_transactions(paths, owner_id=owner_id)
     except SystemdUserError as exc:
         raise LinuxInstallError(
             f"fresh install systemd rollback is incomplete: {exc}"
         ) from exc
     if any(item.get("status") == "conflict" for item in recovery):
         raise LinuxInstallError("fresh install systemd recovery found a state conflict")
+
+
+def _recover_fresh_settings_transactions(runtime: Path) -> None:
+    from data_foundation.paths import runtime_paths_for_home
+    from data_foundation.settings_transaction import recover_settings_transactions
+
+    try:
+        recovery = recover_settings_transactions(runtime_paths_for_home(runtime))
+    except Exception as exc:
+        raise LinuxInstallError(
+            f"fresh install Settings recovery could not run: {exc}"
+        ) from exc
+    incomplete = [
+        item
+        for item in recovery
+        if item.get("status") not in {"compensated"}
+    ]
+    if incomplete:
+        raise LinuxInstallError("fresh install Settings recovery found a state conflict")
 
 
 def _validated_fresh_install_journal(runtime: Path, staging: Path, journal: dict) -> dict:
@@ -1971,9 +2038,11 @@ def _validated_fresh_install_journal(runtime: Path, staging: Path, journal: dict
 def _rollback_fresh_install(staging: Path, journal: dict) -> None:
     runtime = Path(str(journal["runtime"]))
     transaction_id = str(journal["transactionId"])
+    _recover_fresh_settings_transactions(runtime)
     _rollback_fresh_service_transaction(
         runtime,
         str(journal.get("serviceTransactionId") or "") or None,
+        owner_id=transaction_id,
     )
     _remove_fresh_pointer(runtime / "app" / "source", Path("releases") / Path(journal["releaseTarget"]).name)
     _remove_fresh_pointer(runtime / ".venv", Path("app") / "venvs" / Path(journal["venvTarget"]).name)
@@ -1989,6 +2058,7 @@ def _rollback_fresh_install(staging: Path, journal: dict) -> None:
     )
     for mutable in (
         runtime / "config" / "settings.json",
+        runtime / "config" / "runtime.json",
         runtime / "data" / "actanara_data.sqlite3",
     ):
         if mutable.is_symlink() or (mutable.exists() and not mutable.is_file()):
@@ -2220,6 +2290,7 @@ def _install(
             plan,
             expected_source_commit=commit,
             transaction_started=record_service_transaction,
+            transaction_owner_id=transaction_id,
         )
         _advance_fresh_install_journal(
             staging,

@@ -706,6 +706,7 @@ class LinuxInstallerTests(unittest.TestCase):
                 self.assertFalse((runtime / "app" / "source").exists())
                 self.assertFalse((runtime / ".venv").exists())
                 self.assertFalse((runtime / "config" / "settings.json").exists())
+                self.assertFalse((runtime / "config" / "runtime.json").exists())
                 self.assertFalse((runtime / "data" / "actanara_data.sqlite3").exists())
                 self.assertEqual(location.read_bytes(), original_location)
 
@@ -933,10 +934,23 @@ with (
                     "linger": {"enabled": False, "changed": False},
                 }
 
+            def fake_settings_handoff(update, _paths, *, precommit_side_effects):
+                installed["update"] = update
+                precommit_side_effects(
+                    {
+                        "settingsBeforeHash": "before-settings",
+                        "settingsAfterHash": "after-settings",
+                    }
+                )
+                return {"settingsTransaction": {"status": "committed"}}
+
             with (
                 patch("data_foundation.paths.runtime_paths_for_home", return_value=paths),
                 patch("data_foundation.settings.read_settings", return_value=settings),
-                patch("data_foundation.settings.write_settings") as write_settings,
+                patch(
+                    "data_foundation.settings.write_linux_installer_handoff_settings",
+                    side_effect=fake_settings_handoff,
+                ),
                 patch("data_foundation.systemd_user.install_user_units", side_effect=fake_install),
                 patch("data_foundation.systemd_user.finalize_user_unit_transaction"),
             ):
@@ -952,7 +966,7 @@ with (
                 "actanara.daily.dashboard-aggregation.timer",
             ],
         )
-        update = write_settings.call_args.args[0]
+        update = installed["update"]
         self.assertTrue(update["schedule"]["systemTimer"]["registered"])
         self.assertEqual(update["schedule"]["systemTimer"]["provider"], "systemd")
         self.assertNotIn("dashboard", update)
@@ -996,9 +1010,22 @@ with (
                     "readiness": captured["readiness"],
                 }
 
+            def fake_settings_handoff(update, _paths, *, precommit_side_effects):
+                captured["update"] = update
+                precommit_side_effects(
+                    {
+                        "settingsBeforeHash": "before-settings",
+                        "settingsAfterHash": "after-settings",
+                    }
+                )
+                return {"settingsTransaction": {"status": "committed"}}
+
             with (
                 patch("data_foundation.settings.read_settings", return_value=settings),
-                patch("data_foundation.settings.write_settings") as write_settings,
+                patch(
+                    "data_foundation.settings.write_linux_installer_handoff_settings",
+                    side_effect=fake_settings_handoff,
+                ) as write_settings,
                 patch("agentic_rag.rag_settings.resolve_rag_settings", return_value=resolved),
                 patch(
                     "agentic_rag.rag_server_lifecycle.require_rag_server_readiness",
@@ -1037,11 +1064,22 @@ with (
                 "units": ["actanara-dashboard.service"],
                 "transactionId": "fresh-systemd-transaction",
             }
+
+            def fail_settings_handoff(_update, _paths, *, precommit_side_effects):
+                cleanup = precommit_side_effects(
+                    {
+                        "settingsBeforeHash": "before-settings",
+                        "settingsAfterHash": "after-settings",
+                    }
+                )
+                cleanup()
+                raise RuntimeError("synthetic settings failure")
+
             with (
                 patch("data_foundation.settings.read_settings", return_value=settings),
                 patch(
-                    "data_foundation.settings.write_settings",
-                    side_effect=RuntimeError("synthetic settings failure"),
+                    "data_foundation.settings.write_linux_installer_handoff_settings",
+                    side_effect=fail_settings_handoff,
                 ),
                 patch(
                     "data_foundation.systemd_user.install_user_units",
@@ -1061,9 +1099,19 @@ with (
                 install_linux._install_systemd_user_services(
                     plan,
                     transaction_started=transaction_ids.append,
+                    transaction_owner_id="fresh-install-owner",
                 )
 
             self.assertTrue(install_units.call_args.kwargs["defer_commit"])
+            self.assertFalse(install_units.call_args.kwargs["recover_transactions"])
+            self.assertEqual(
+                install_units.call_args.kwargs["transaction_context"],
+                {
+                    "settingsBeforeHash": "before-settings",
+                    "settingsAfterHash": "after-settings",
+                    "ownerId": "fresh-install-owner",
+                },
+            )
             self.assertEqual(transaction_ids, ["fresh-systemd-transaction"])
             rollback.assert_called_once()
             finalize.assert_not_called()
@@ -1114,6 +1162,7 @@ with (
                 staging_root = runtime / "app" / install_linux.FRESH_INSTALL_STAGING_NAME
                 journal_path = next(staging_root.iterdir()) / install_linux.FRESH_INSTALL_JOURNAL_NAME
                 observed.update(json.loads(journal_path.read_text(encoding="utf-8")))
+                observed["transactionOwnerArgument"] = kwargs["transaction_owner_id"]
                 raise install_linux.LinuxInstallError("synthetic post-handoff failure")
 
             with (
@@ -1135,6 +1184,10 @@ with (
 
             self.assertEqual(observed["phase"], "service-transaction-started")
             self.assertEqual(observed["serviceTransactionId"], "fresh-systemd-id")
+            self.assertEqual(
+                observed["transactionOwnerArgument"],
+                observed["transactionId"],
+            )
 
     def test_fresh_recovery_finds_a_systemd_transaction_created_before_handoff(self):
         runtime = Path("/tmp/actanara-fresh-systemd-recovery")
@@ -1153,9 +1206,13 @@ with (
             ) as recover,
             patch("data_foundation.systemd_user.rollback_user_unit_transaction") as rollback,
         ):
-            install_linux._rollback_fresh_service_transaction(runtime, None)
+            install_linux._rollback_fresh_service_transaction(
+                runtime,
+                None,
+                owner_id="fresh-owner-id",
+            )
 
-        recover.assert_called_once_with(paths)
+        recover.assert_called_once_with(paths, owner_id="fresh-owner-id")
         rollback.assert_not_called()
 
     def test_database_initialization_uses_deployed_runtime_and_private_mode(self):

@@ -1135,6 +1135,25 @@ def write_service_manager_settings(
     )
 
 
+def write_linux_installer_handoff_settings(
+    registration_update: dict[str, Any],
+    paths: RuntimePaths,
+    *,
+    precommit_side_effects: Callable[[dict], Callable[[], None] | None],
+) -> dict:
+    """Commit Linux installer registration metadata around its unit handoff."""
+
+    if not isinstance(registration_update, dict) or not registration_update:
+        raise ValueError("Linux installer registration update must be a non-empty object")
+    if set(registration_update) - {"dashboard", "rag", "schedule"}:
+        raise ValueError("Linux installer registration update contains an unsupported group")
+    return _write_operator_settings_transaction(
+        paths,
+        lambda _current: registration_update,
+        precommit_side_effects=precommit_side_effects,
+    )
+
+
 def write_backup_settings(
     backup_update: dict[str, Any],
     paths: RuntimePaths | None = None,
