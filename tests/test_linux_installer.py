@@ -255,6 +255,34 @@ class LinuxInstallerTests(unittest.TestCase):
         ):
             install_linux._preflight_linux_services(plan)
 
+    def test_linux_fresh_rag_preflight_rejects_an_external_listener(self):
+        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.addCleanup(listener.close)
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind(("127.0.0.1", 3037))
+        listener.listen(1)
+        args = self._args(
+            "--enable-rag",
+            "--rag-embedding-mode",
+            "local",
+            "--no-dashboard-server",
+            "--no-scheduler",
+        )
+        plan = install_linux.build_plan(args)
+        with (
+            patch.object(install_linux.shutil, "which", return_value="/usr/bin/systemctl"),
+            patch.object(
+                install_linux.subprocess,
+                "run",
+                return_value=subprocess.CompletedProcess([], 0, "", ""),
+            ),
+            self.assertRaisesRegex(
+                install_linux.LinuxInstallError,
+                "RAG port 3037 is unavailable",
+            ),
+        ):
+            install_linux._preflight_linux_services(plan)
+
     def test_linux_service_preflight_can_be_skipped_for_cli_only_install(self):
         args = self._args("--no-scheduler", "--no-dashboard-server")
         plan = install_linux.build_plan(args)
@@ -813,16 +841,21 @@ with (
             paths = SimpleNamespace(home=runtime)
             installed = {}
 
-            def fake_install(selected_paths, units):
+            def fake_install(selected_paths, units, **_kwargs):
                 installed["paths"] = selected_paths
                 installed["names"] = [unit.name for unit in units]
-                return {"status": "installed", "linger": {"enabled": False, "changed": False}}
+                return {
+                    "status": "installed",
+                    "transactionId": "fresh-systemd-selection",
+                    "linger": {"enabled": False, "changed": False},
+                }
 
             with (
                 patch("data_foundation.paths.runtime_paths_for_home", return_value=paths),
                 patch("data_foundation.settings.read_settings", return_value=settings),
                 patch("data_foundation.settings.write_settings") as write_settings,
                 patch("data_foundation.systemd_user.install_user_units", side_effect=fake_install),
+                patch("data_foundation.systemd_user.finalize_user_unit_transaction"),
             ):
                 result = install_linux._install_systemd_user_services(plan)
 
@@ -840,6 +873,207 @@ with (
         self.assertTrue(update["schedule"]["systemTimer"]["registered"])
         self.assertEqual(update["schedule"]["systemTimer"]["provider"], "systemd")
         self.assertNotIn("dashboard", update)
+
+    def test_fresh_rag_systemd_install_requires_semantic_readiness_before_settings_commit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime = Path(tmp) / "runtime"
+            args = self._args(
+                "--runtime",
+                str(runtime),
+                "--enable-rag",
+                "--rag-embedding-mode",
+                "local",
+                "--no-dashboard-server",
+                "--no-scheduler",
+            )
+            plan = install_linux.build_plan(args)
+            settings = {
+                "rag": {
+                    "enabled": True,
+                    "embedding": {
+                        "mode": "local",
+                        "provider": "local",
+                        "providerId": "local",
+                        "model": "intfloat/multilingual-e5-small",
+                        "dimension": 384,
+                    },
+                    "server": {"enabled": True, "host": "127.0.0.1", "port": 3037},
+                }
+            }
+            resolved = object()
+            captured = {}
+
+            def fake_install(_paths, units, **kwargs):
+                captured["names"] = [unit.name for unit in units]
+                captured["readiness"] = kwargs["readiness_verifier"]()
+                return {
+                    "status": "installed",
+                    "units": captured["names"],
+                    "transactionId": "systemd-fresh-rag",
+                    "readiness": captured["readiness"],
+                }
+
+            with (
+                patch("data_foundation.settings.read_settings", return_value=settings),
+                patch("data_foundation.settings.write_settings") as write_settings,
+                patch("agentic_rag.rag_settings.resolve_rag_settings", return_value=resolved),
+                patch(
+                    "agentic_rag.rag_server_lifecycle.require_rag_server_readiness",
+                    return_value={"ready": True, "status": "ready"},
+                ) as require_ready,
+                patch(
+                    "data_foundation.systemd_user.install_user_units",
+                    side_effect=fake_install,
+                ),
+                patch("data_foundation.systemd_user.finalize_user_unit_transaction"),
+            ):
+                result = install_linux._install_systemd_user_services(
+                    plan,
+                    expected_source_commit="a" * 40,
+                )
+
+            self.assertEqual(result["readiness"]["status"], "ready")
+            self.assertEqual(captured["names"], ["actanara-rag-server.service"])
+            require_ready.assert_called_once()
+            self.assertIs(require_ready.call_args.args[0], resolved)
+            self.assertEqual(
+                require_ready.call_args.kwargs["expected_source_commit"],
+                "a" * 40,
+            )
+            write_settings.assert_called_once()
+
+    def test_fresh_systemd_settings_failure_rolls_back_the_unit_transaction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime = Path(tmp) / "runtime"
+            args = self._args("--runtime", str(runtime), "--no-scheduler")
+            plan = install_linux.build_plan(args)
+            settings = {"dashboard": {"host": "127.0.0.1", "port": 3036}}
+            transaction_ids = []
+            installed = {
+                "status": "installed",
+                "units": ["actanara-dashboard.service"],
+                "transactionId": "fresh-systemd-transaction",
+            }
+            with (
+                patch("data_foundation.settings.read_settings", return_value=settings),
+                patch(
+                    "data_foundation.settings.write_settings",
+                    side_effect=RuntimeError("synthetic settings failure"),
+                ),
+                patch(
+                    "data_foundation.systemd_user.install_user_units",
+                    return_value=installed,
+                ) as install_units,
+                patch(
+                    "data_foundation.systemd_user.rollback_user_unit_transaction"
+                ) as rollback,
+                patch(
+                    "data_foundation.systemd_user.finalize_user_unit_transaction"
+                ) as finalize,
+                self.assertRaisesRegex(
+                    install_linux.LinuxInstallError,
+                    "synthetic settings failure",
+                ),
+            ):
+                install_linux._install_systemd_user_services(
+                    plan,
+                    transaction_started=transaction_ids.append,
+                )
+
+            self.assertTrue(install_units.call_args.kwargs["defer_commit"])
+            self.assertEqual(transaction_ids, ["fresh-systemd-transaction"])
+            rollback.assert_called_once()
+            finalize.assert_not_called()
+
+    def test_fresh_service_transaction_is_journaled_before_settings_commit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            runtime = root / "runtime"
+            location = root / "location.json"
+            location.write_text('{}\n', encoding="utf-8")
+            args = self._args(
+                "--runtime",
+                str(runtime),
+                "--no-scheduler",
+                "--no-dashboard-server",
+                "--no-shell-path",
+            )
+            plan = install_linux.build_plan(args)
+            selection = SimpleNamespace(
+                environment_id="linux-cpython313-x86-64",
+                lock_environment={"architecture": "x86_64"},
+            )
+            observed = {}
+
+            def fake_seed(_plan, candidate):
+                (candidate / "bin").mkdir(parents=True)
+                python = candidate / "bin" / "python"
+                python.write_text("#!/bin/sh\n", encoding="utf-8")
+                return python
+
+            def fake_stage(_plan, candidate, _commit, **_kwargs):
+                candidate.mkdir(parents=True)
+                return {}
+
+            def fake_configure(_plan):
+                settings = runtime / "config" / "settings.json"
+                settings.parent.mkdir(parents=True, exist_ok=True)
+                settings.write_text('{}\n', encoding="utf-8")
+
+            def fake_database(_plan):
+                database = runtime / "data" / "actanara_data.sqlite3"
+                database.parent.mkdir(parents=True, exist_ok=True)
+                database.write_bytes(b"sqlite")
+                return database
+
+            def fake_systemd(_plan, **kwargs):
+                kwargs["transaction_started"]("fresh-systemd-id")
+                staging_root = runtime / "app" / install_linux.FRESH_INSTALL_STAGING_NAME
+                journal_path = next(staging_root.iterdir()) / install_linux.FRESH_INSTALL_JOURNAL_NAME
+                observed.update(json.loads(journal_path.read_text(encoding="utf-8")))
+                raise install_linux.LinuxInstallError("synthetic post-handoff failure")
+
+            with (
+                patch.object(install_linux, "_source_identity", return_value=("release", "a" * 40)),
+                patch.object(install_linux, "_seed_venv_pip", side_effect=fake_seed),
+                patch.object(install_linux, "_stage_source", side_effect=fake_stage),
+                patch.object(install_linux, "_configure_runtime", side_effect=fake_configure),
+                patch.object(install_linux, "_initialize_database", side_effect=fake_database),
+                patch.object(install_linux, "_install_systemd_user_services", side_effect=fake_systemd),
+                patch.object(install_linux, "_rollback_fresh_service_transaction"),
+                patch.object(install_linux.dependency_contract, "materialize_dependency_cache"),
+                patch.object(install_linux.dependency_contract, "install_locked_dependencies"),
+                patch.object(install_linux.dependency_contract, "write_dependency_marker"),
+                patch.object(install_linux.dependency_contract, "verify_dependency_marker"),
+                patch.dict(os.environ, {"ACTANARA_LOCATION_FILE": str(location)}, clear=False),
+                self.assertRaisesRegex(install_linux.LinuxInstallError, "post-handoff failure"),
+            ):
+                install_linux._install(plan, selection, args)
+
+            self.assertEqual(observed["phase"], "service-transaction-started")
+            self.assertEqual(observed["serviceTransactionId"], "fresh-systemd-id")
+
+    def test_fresh_recovery_finds_a_systemd_transaction_created_before_handoff(self):
+        runtime = Path("/tmp/actanara-fresh-systemd-recovery")
+        paths = object()
+        with (
+            patch("data_foundation.paths.runtime_paths_for_home", return_value=paths),
+            patch(
+                "data_foundation.systemd_user.recover_user_unit_transactions",
+                return_value=[
+                    {
+                        "id": "interrupted-before-handoff",
+                        "status": "compensated",
+                        "phase": "recovered-prior",
+                    }
+                ],
+            ) as recover,
+            patch("data_foundation.systemd_user.rollback_user_unit_transaction") as rollback,
+        ):
+            install_linux._rollback_fresh_service_transaction(runtime, None)
+
+        recover.assert_called_once_with(paths)
+        rollback.assert_not_called()
 
     def test_database_initialization_uses_deployed_runtime_and_private_mode(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -943,6 +1177,48 @@ with (
                 )
 
         connection.assert_not_called()
+
+    def test_update_rag_health_uses_semantic_readiness_and_expected_commit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = SimpleNamespace(
+                runtime=Path(tmp) / "runtime",
+                dashboard_service=False,
+                rag_enabled=True,
+            )
+            settings = {
+                "rag": {
+                    "enabled": True,
+                    "embedding": {
+                        "provider": "local",
+                        "providerId": "local",
+                        "model": "intfloat/multilingual-e5-small",
+                        "dimension": 384,
+                    },
+                    "server": {"enabled": True, "host": "127.0.0.1", "port": 3037},
+                }
+            }
+            resolved = object()
+            with (
+                patch("agentic_rag.rag_settings.resolve_rag_settings", return_value=resolved),
+                patch(
+                    "agentic_rag.rag_server_lifecycle.require_rag_server_readiness",
+                    return_value={"ready": True, "status": "ready"},
+                ) as require_ready,
+                patch.object(install_linux.http.client, "HTTPConnection") as connection,
+            ):
+                install_linux._wait_for_update_service_health(
+                    plan,
+                    settings,
+                    expected_source_commit="b" * 40,
+                )
+
+            connection.assert_not_called()
+            require_ready.assert_called_once()
+            self.assertIs(require_ready.call_args.args[0], resolved)
+            self.assertEqual(
+                require_ready.call_args.kwargs["expected_source_commit"],
+                "b" * 40,
+            )
 
     def test_update_doctor_is_captured_as_bounded_machine_readable_evidence(self):
         plan = SimpleNamespace(runtime=Path("/tmp/actanara-update-fixture"))

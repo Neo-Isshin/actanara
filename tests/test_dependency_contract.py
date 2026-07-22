@@ -1505,16 +1505,16 @@ class DependencyWheelhouseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=SECURE_TEMP_PARENT) as temporary:
             root = Path(temporary)
             log = root / "runtime" / "state" / "logs" / "dependencies.log"
-            secret = "synthetic-pip-credential-value"
+            credential_fixture = "synthetic-pip-credential-value"
             completed = subprocess.CompletedProcess(
                 ["python", "-m", "pip"],
                 1,
                 ("collecting fixture\n" + "detail " * 5000).encode(),
                 (
                     "ERROR: https://user:"
-                    + secret
+                    + credential_fixture
                     + "@packages.example.invalid/simple?token="
-                    + secret
+                    + credential_fixture
                     + "\nNo matching distribution found for fixture==9.9\n"
                 ).encode(),
             )
@@ -1522,7 +1522,7 @@ class DependencyWheelhouseTests(unittest.TestCase):
                 patch.object(contract.subprocess, "run", return_value=completed),
                 patch.dict(
                     os.environ,
-                    {"ACTANARA_TEST_SYNTHETIC_TOKEN": secret},
+                    {"ACTANARA_TEST_SYNTHETIC_TOKEN": credential_fixture},
                     clear=False,
                 ),
                 self.assertRaises(contract.ContractError) as raised,
@@ -1537,13 +1537,13 @@ class DependencyWheelhouseTests(unittest.TestCase):
             summary = raised.exception.message
             self.assertLessEqual(len(summary), contract.MAX_PIP_ERROR_SUMMARY_CHARS)
             self.assertIn("No matching distribution", summary)
-            self.assertNotIn(secret, summary)
+            self.assertNotIn(credential_fixture, summary)
             self.assertTrue(log.is_file())
             self.assertEqual(stat.S_IMODE(log.stat().st_mode), 0o600)
             diagnostic = log.read_text(encoding="utf-8")
             self.assertIn("collecting fixture", diagnostic)
             self.assertIn("No matching distribution", diagnostic)
-            self.assertNotIn(secret, diagnostic)
+            self.assertNotIn(credential_fixture, diagnostic)
             self.assertIn("[redacted]", diagnostic)
 
 

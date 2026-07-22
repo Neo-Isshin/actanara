@@ -23,7 +23,7 @@ import tomllib
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -426,16 +426,29 @@ def _preflight_linux_services(plan: InstallPlan, *, check_dashboard_port: bool =
             "the systemd user manager is unavailable; start a user session or disable managed services"
         )
 
-    if not plan.dashboard_service or not check_dashboard_port:
+    if not check_dashboard_port:
         return
+    ports: list[tuple[str, str, int]] = []
+    if plan.dashboard_service:
+        ports.append(("Dashboard", plan.dashboard_host, plan.dashboard_port))
+    if plan.rag_enabled:
+        ports.append(("RAG", "127.0.0.1", 3037))
+    selected_ports = [(host, port) for _label, host, port in ports]
+    if len(selected_ports) != len(set(selected_ports)):
+        raise LinuxInstallError("Dashboard and RAG services cannot use the same loopback port")
+    for label, host, port in ports:
+        _require_available_service_port(label, host, port)
+
+
+def _require_available_service_port(label: str, host: str, port: int) -> None:
     try:
         addresses = socket.getaddrinfo(
-            plan.dashboard_host,
-            plan.dashboard_port,
+            host,
+            port,
             type=socket.SOCK_STREAM,
         )
     except socket.gaierror as exc:
-        raise LinuxInstallError("the Dashboard loopback host could not be resolved") from exc
+        raise LinuxInstallError(f"the {label} loopback host could not be resolved") from exc
     checked: set[tuple[int, tuple]] = set()
     for family, socktype, protocol, _canonical, address in addresses:
         key = (family, address)
@@ -447,7 +460,7 @@ def _preflight_linux_services(plan: InstallPlan, *, check_dashboard_port: bool =
             probe.bind(address)
         except OSError as exc:
             raise LinuxInstallError(
-                f"Dashboard port {plan.dashboard_port} is unavailable on {plan.dashboard_host}"
+                f"{label} port {port} is unavailable on {host}"
             ) from exc
         finally:
             probe.close()
@@ -556,12 +569,12 @@ def _validate_plan(plan: InstallPlan, args: argparse.Namespace) -> dependency_co
         )
     except dependency_contract.ContractError as exc:
         raise LinuxInstallError(f"runtime dependency lock rejected this host: {exc.message}") from exc
-    _preflight_fresh_dependencies(plan, selection)
     if host_platform == "Linux":
         _preflight_linux_services(
             plan,
             check_dashboard_port=plan.update_mode == "fresh",
         )
+    _preflight_fresh_dependencies(plan, selection)
     return selection
 
 
@@ -1001,12 +1014,30 @@ def _reconcile_existing_systemd_units(plan: InstallPlan, settings: dict) -> dict
     }
 
 
-def _install_systemd_user_services(plan: InstallPlan) -> dict:
+def _rag_install_readiness_timeout_seconds() -> float:
+    raw = os.environ.get("ACTANARA_INSTALL_RAG_READINESS_TIMEOUT_SECONDS", "600")
+    try:
+        timeout = float(raw)
+    except ValueError as exc:
+        raise LinuxInstallError("RAG readiness timeout must be numeric") from exc
+    if not 1.0 <= timeout <= 1800.0:
+        raise LinuxInstallError("RAG readiness timeout must be between 1 and 1800 seconds")
+    return timeout
+
+
+def _install_systemd_user_services(
+    plan: InstallPlan,
+    *,
+    expected_source_commit: str | None = None,
+    transaction_started: Callable[[str], None] | None = None,
+) -> dict:
     from data_foundation.paths import runtime_paths_for_home
     from data_foundation.settings import read_settings, write_settings
     from data_foundation.systemd_user import (
         SystemdUserError,
+        finalize_user_unit_transaction,
         install_user_units,
+        rollback_user_unit_transaction,
     )
 
     paths = runtime_paths_for_home(plan.runtime)
@@ -1028,9 +1059,56 @@ def _install_systemd_user_services(plan: InstallPlan) -> dict:
             "units": [],
             "linger": {"status": "not-probed", "enabled": None, "changed": False},
         }
+    readiness_verifier = None
+    if plan.rag_enabled:
+        from agentic_rag.rag_server_lifecycle import require_rag_server_readiness
+        from agentic_rag.rag_settings import resolve_rag_settings
+
+        rag_settings = resolve_rag_settings(paths, settings)
+
+        def readiness_verifier():
+            return require_rag_server_readiness(
+                rag_settings,
+                expected_source_commit=expected_source_commit,
+                timeout_seconds=_rag_install_readiness_timeout_seconds(),
+            )
+
+    result: dict | None = None
     try:
-        result = install_user_units(paths, units)
+        result = (
+            install_user_units(
+                paths,
+                units,
+                defer_commit=True,
+                readiness_verifier=readiness_verifier,
+            )
+            if readiness_verifier is not None
+            else install_user_units(paths, units, defer_commit=True)
+        )
+        transaction_id = str(result.get("transactionId") or "")
+        if not transaction_id:
+            raise LinuxInstallError("systemd install did not return a transaction identity")
+        if transaction_started is not None:
+            transaction_started(transaction_id)
     except SystemdUserError as exc:
+        from agentic_rag.rag_server_lifecycle import RagServerReadinessError
+
+        cause = exc.__cause__
+        if isinstance(cause, RagServerReadinessError):
+            reason = str(cause.result.get("reasonCode") or cause.result.get("status") or "not-ready")
+            raise LinuxInstallError(f"RAG semantic readiness failed: {reason}") from exc
+        raise LinuxInstallError(str(exc)) from exc
+    except Exception as exc:
+        transaction_id = str((result or {}).get("transactionId") or "")
+        if transaction_id:
+            try:
+                rollback_user_unit_transaction(paths, transaction_id)
+            except SystemdUserError as rollback_exc:
+                raise LinuxInstallError(
+                    f"systemd install handoff failed and rollback is incomplete: {rollback_exc}"
+                ) from exc
+        if isinstance(exc, LinuxInstallError):
+            raise
         raise LinuxInstallError(str(exc)) from exc
 
     now = datetime.now().astimezone().isoformat()
@@ -1079,8 +1157,20 @@ def _install_systemd_user_services(plan: InstallPlan) -> dict:
                 },
             }
         }
-    write_settings(update, paths)
-    return result
+    try:
+        write_settings(update, paths)
+        finalize_user_unit_transaction(paths, transaction_id)
+    except Exception as exc:
+        try:
+            rollback_user_unit_transaction(paths, transaction_id)
+        except SystemdUserError as rollback_exc:
+            raise LinuxInstallError(
+                f"systemd Settings commit failed and rollback is incomplete: {rollback_exc}"
+            ) from exc
+        if isinstance(exc, LinuxInstallError):
+            raise
+        raise LinuxInstallError(str(exc)) from exc
+    return {**result, "transactionStatus": "committed"}
 
 
 def _transaction_command(*arguments: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -1246,6 +1336,7 @@ def _wait_for_update_service_health(
     settings: dict,
     *,
     active_units: set[str] | None = None,
+    expected_source_commit: str | None = None,
 ) -> None:
     from data_foundation.paths import runtime_paths_for_home
     from data_foundation.systemd_user import dashboard_unit, rag_unit
@@ -1270,14 +1361,23 @@ def _wait_for_update_service_health(
             )
         )
     if plan.rag_enabled and rag_active:
-        endpoints.append(
-            (
-                "rag",
-                str(server.get("host") or "127.0.0.1"),
-                int(server.get("port") or 3037),
-                str(server.get("healthPath") or "/health"),
-            )
+        from agentic_rag.rag_server_lifecycle import (
+            RagServerReadinessError,
+            require_rag_server_readiness,
         )
+        from agentic_rag.rag_settings import resolve_rag_settings
+
+        try:
+            require_rag_server_readiness(
+                resolve_rag_settings(paths, settings),
+                expected_source_commit=expected_source_commit,
+                timeout_seconds=_rag_install_readiness_timeout_seconds(),
+            )
+        except RagServerReadinessError as exc:
+            reason = str(exc.result.get("reasonCode") or exc.result.get("status") or "not-ready")
+            raise LinuxInstallError(
+                f"managed RAG semantic health check failed after update: {reason}"
+            ) from exc
     for kind, host, port, path in endpoints:
         if host == "0.0.0.0":
             host = "127.0.0.1"
@@ -1530,7 +1630,11 @@ def _update(
             database = _initialize_database(plan)
             settings = _read_update_settings(plan.runtime)
             systemd_result = _reconcile_existing_systemd_units(plan, settings)
-            _wait_for_update_service_health(plan, settings)
+            _wait_for_update_service_health(
+                plan,
+                settings,
+                expected_source_commit=commit,
+            )
             _verify_updated_systemd_units(plan, settings)
             _transaction_command("complete-repair", "--state", str(journal))
             doctor = _run_update_doctor(plan)
@@ -1554,6 +1658,7 @@ def _update(
             plan,
             settings,
             active_units=prior_active_units,
+            expected_source_commit=commit,
         )
         systemd_probe = _verify_updated_systemd_units(plan, settings)
         doctor = _run_update_doctor(plan)
@@ -1733,17 +1838,25 @@ def _remove_fresh_generation(path: Path, *, parent: Path, transaction_id: str) -
 
 
 def _rollback_fresh_service_transaction(runtime: Path, transaction_id: str | None) -> None:
-    if not transaction_id:
-        return
     from data_foundation.paths import runtime_paths_for_home
-    from data_foundation.systemd_user import SystemdUserError, rollback_user_unit_transaction
+    from data_foundation.systemd_user import (
+        SystemdUserError,
+        recover_user_unit_transactions,
+        rollback_user_unit_transaction,
+    )
 
+    paths = runtime_paths_for_home(runtime)
     try:
-        rollback_user_unit_transaction(runtime_paths_for_home(runtime), transaction_id)
+        if transaction_id:
+            rollback_user_unit_transaction(paths, transaction_id)
+            return
+        recovery = recover_user_unit_transactions(paths)
     except SystemdUserError as exc:
         raise LinuxInstallError(
             f"fresh install systemd rollback is incomplete: {exc}"
         ) from exc
+    if any(item.get("status") == "conflict" for item in recovery):
+        raise LinuxInstallError("fresh install systemd recovery found a state conflict")
 
 
 def _validated_fresh_install_journal(runtime: Path, staging: Path, journal: dict) -> dict:
@@ -2023,7 +2136,19 @@ def _install(
         database = _initialize_database(plan)
         _advance_fresh_install_journal(staging, journal, "database-ready")
         fresh_install_checkpoint("database-ready", transaction_id)
-        systemd_result = _install_systemd_user_services(plan)
+        def record_service_transaction(service_transaction_id: str) -> None:
+            _advance_fresh_install_journal(
+                staging,
+                journal,
+                "service-transaction-started",
+                serviceTransactionId=service_transaction_id,
+            )
+
+        systemd_result = _install_systemd_user_services(
+            plan,
+            expected_source_commit=commit,
+            transaction_started=record_service_transaction,
+        )
         _advance_fresh_install_journal(
             staging,
             journal,
