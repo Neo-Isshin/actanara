@@ -103,6 +103,7 @@ def _service_unit(
     working_directory: Path,
     environment: dict[str, str],
     restart: bool,
+    service_directives: Iterable[str] = (),
 ) -> str:
     command_line = " ".join(_quote(item) for item in command)
     lines = [
@@ -116,6 +117,7 @@ def _service_unit(
         f"WorkingDirectory={_path_value(working_directory)}",
         *_environment_lines(environment),
         f"ExecStart={command_line}",
+        *service_directives,
     ]
     if restart:
         lines.extend(("Restart=on-failure", "RestartSec=10"))
@@ -264,6 +266,11 @@ def rag_unit(paths: RuntimePaths, server: dict | None = None) -> UserUnit:
             working_directory=source,
             environment=environment,
             restart=True,
+            service_directives=(
+                "KillMode=control-group",
+                "TimeoutStopSec=10s",
+                "SendSIGKILL=yes",
+            ),
         ),
     )
 
@@ -1020,6 +1027,7 @@ def install_user_units(
     defer_commit: bool = False,
     transaction_context: dict[str, str] | None = None,
     recover_transactions: bool = True,
+    readiness_verifier: Callable[[], Any] | None = None,
 ) -> dict:
     _require_linux()
     selected_units = _validated_units(units)
@@ -1053,6 +1061,7 @@ def install_user_units(
         prior_states=prior_states,
         transaction_context=transaction_context,
     )
+    readiness: Any = None
     try:
         for unit in selected_units:
             target = root / unit.name
@@ -1092,6 +1101,13 @@ def install_user_units(
         alignment = inspect_user_units(selected_units, unit_dir=root, runner=runner)
         if alignment.get("definitionsAligned") is not True:
             raise SystemdUserError("systemd user-unit definitions are not aligned after install")
+        if readiness_verifier is not None:
+            try:
+                readiness = readiness_verifier()
+            except Exception as exc:
+                raise SystemdUserError("systemd user-unit readiness verification failed") from exc
+            if isinstance(readiness, dict) and readiness.get("ready") is not True:
+                raise SystemdUserError("systemd user-unit readiness verification failed")
         _advance_systemd_transaction(transaction_dir, journal, "external-verified")
         systemd_transaction_checkpoint("after-external-verified", str(journal["id"]))
         if not defer_commit:
@@ -1120,6 +1136,7 @@ def install_user_units(
         "backupDirectory": str(backup_root) if backup_root.exists() else None,
         "probe": probe,
         "alignment": alignment,
+        "readiness": readiness,
         "transactionId": str(journal["id"]),
         "transactionStatus": "pending-settings" if defer_commit else "committed",
         "recoveredTransactions": [item.get("id") for item in recovery],
