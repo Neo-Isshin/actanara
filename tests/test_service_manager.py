@@ -363,6 +363,103 @@ class ServiceManagerTests(unittest.TestCase):
         self.assertEqual(registration["lastActionStatus"], "failed")
         self.assertIsNone(registration["pendingAction"])
 
+    def test_transient_helper_failure_restores_queued_dashboard_state(self):
+        for action in ("install", "uninstall"):
+            with self.subTest(action=action), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                paths = self._runtime(root)
+                unit_dir = root / "units"
+                unit_dir.mkdir()
+                previously_registered = action == "uninstall"
+                previous_units = (
+                    ["actanara-dashboard.service"] if previously_registered else []
+                )
+                write_settings(
+                    {
+                        "dashboard": {
+                            "server": {"enabled": previously_registered},
+                            "systemdUser": {
+                                "registered": previously_registered,
+                                "units": previous_units,
+                            },
+                        }
+                    },
+                    paths,
+                )
+                unit = dashboard_unit(paths, {"server": {"enabled": True}})
+                runner = StatefulSystemctl()
+                if previously_registered:
+                    (unit_dir / unit.name).write_text(unit.content, encoding="utf-8")
+                    runner.states[unit.name] = {"enabled": True, "active": True}
+
+                rejected_verb = "disable" if action == "uninstall" else "enable"
+
+                def failing_runner(command, **kwargs):
+                    if command[2] == rejected_verb:
+                        return subprocess.CompletedProcess(command, 2, "", "synthetic helper failure")
+                    return runner(command, **kwargs)
+
+                manager = service_manager.PlatformServiceManager(
+                    paths=paths,
+                    systemd_run_runner=lambda command, **kwargs: subprocess.CompletedProcess(
+                        command, 0, "", ""
+                    ),
+                    unit_dir=unit_dir,
+                )
+                confirmation = (
+                    "INSTALL ACTANARA DASHBOARD SERVICE"
+                    if action == "install"
+                    else "UNINSTALL ACTANARA DASHBOARD SERVICE"
+                )
+                with (
+                    self._linux()[0],
+                    self._linux()[1],
+                    self._linux()[2],
+                    patch(
+                        "data_foundation.systemd_user._systemd_run_binary",
+                        return_value="/usr/bin/systemd-run",
+                    ),
+                ):
+                    queued = manager.enqueue(
+                        "dashboard",
+                        action,
+                        {"confirmationText": confirmation},
+                    )
+                    queued_settings = read_settings(paths)
+                    queued_registration = queued_settings["dashboard"]["systemdUser"]
+                    request_id = queued["job"]["requestId"]
+                    self.assertEqual(
+                        queued_registration["pendingPreviousState"],
+                        {
+                            "serverEnabled": previously_registered,
+                            "registered": previously_registered,
+                            "units": previous_units,
+                        },
+                    )
+                    with self.assertRaisesRegex(SystemdUserError, "synthetic helper failure"):
+                        systemd_user.execute_queued_user_unit_action(
+                            paths,
+                            kind="dashboard",
+                            action=action,
+                            request_id=request_id,
+                            unit_dir=unit_dir,
+                            runner=failing_runner,
+                        )
+                saved = read_settings(paths)
+
+                self.assertIs(
+                    saved["dashboard"]["server"]["enabled"],
+                    previously_registered,
+                )
+                registration = saved["dashboard"]["systemdUser"]
+                self.assertIs(registration["registered"], previously_registered)
+                self.assertEqual(registration["units"], previous_units)
+                self.assertEqual(registration["lastActionStatus"], "failed")
+                self.assertIn("synthetic helper failure", registration["lastError"])
+                self.assertIsNone(registration["pendingAction"])
+                self.assertIsNone(registration["pendingRequestId"])
+                self.assertIsNone(registration["pendingPreviousState"])
+
     def test_transient_helper_finishes_queued_uninstall_and_audit(self):
         request_id = "1" * 32
         with tempfile.TemporaryDirectory() as tmp:
@@ -378,6 +475,11 @@ class ServiceManagerTests(unittest.TestCase):
                     "pendingAction": "uninstall",
                     "pendingRequestId": request_id,
                     "lastActionStatus": "queued",
+                    "pendingPreviousState": {
+                        "serverEnabled": True,
+                        "registered": True,
+                        "units": ["actanara-dashboard.service"],
+                    },
                 },
             }
             unit = dashboard_unit(paths, dashboard)
@@ -402,9 +504,12 @@ class ServiceManagerTests(unittest.TestCase):
         self.assertEqual(result["status"], "uninstalled")
         self.assertFalse((unit_dir / unit.name).exists())
         registration = saved["dashboard"]["systemdUser"]
+        self.assertFalse(saved["dashboard"]["server"]["enabled"])
+        self.assertFalse(registration["registered"])
         self.assertEqual(registration["lastActionStatus"], "success")
         self.assertIsNone(registration["pendingAction"])
         self.assertIsNone(registration["pendingRequestId"])
+        self.assertIsNone(registration["pendingPreviousState"])
         self.assertEqual(journal["status"], "committed")
         self.assertTrue(journal["settingsBeforeHash"])
         self.assertEqual(journal["settingsBeforeHash"], journal["settingsAfterHash"])
@@ -480,6 +585,161 @@ class ServiceManagerTests(unittest.TestCase):
         self.assertEqual(recovered[0]["status"], "compensated")
         self.assertEqual(recovered_again, [])
         self.assertEqual(runner.states[before_unit.name], {"enabled": True, "active": True})
+
+    def test_systemd_transaction_is_published_only_after_complete_staging(self):
+        for failure_kind in ("interruption", "write-failure"):
+            with self.subTest(failure_kind=failure_kind), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                paths = self._runtime(root)
+                unit_dir = root / "units"
+                unit_dir.mkdir()
+                before_unit = dashboard_unit(paths, {"host": "127.0.0.1", "port": 3036})
+                after_unit = dashboard_unit(paths, {"host": "127.0.0.1", "port": 4040})
+                target = unit_dir / before_unit.name
+                target.write_text(before_unit.content, encoding="utf-8")
+                runner = StatefulSystemctl()
+
+                def interrupt(phase, _transaction_id):
+                    if phase == "before-transaction-publish":
+                        raise SyntheticSystemdCrash()
+
+                failure_patch = (
+                    patch.object(
+                        systemd_user,
+                        "systemd_transaction_checkpoint",
+                        side_effect=interrupt,
+                    )
+                    if failure_kind == "interruption"
+                    else patch.object(
+                        systemd_user,
+                        "_write_systemd_journal",
+                        side_effect=OSError("synthetic journal write failure"),
+                    )
+                )
+                expected_error = SyntheticSystemdCrash if failure_kind == "interruption" else OSError
+                with (
+                    patch("data_foundation.systemd_user.platform.system", return_value="Linux"),
+                    patch(
+                        "data_foundation.systemd_user._systemctl_binary",
+                        return_value="/usr/bin/systemctl",
+                    ),
+                    failure_patch,
+                    self.assertRaises(expected_error),
+                ):
+                    install_user_units(
+                        paths,
+                        [after_unit],
+                        unit_dir=unit_dir,
+                        runner=runner,
+                    )
+
+                transaction_root = paths.state_dir / "systemd-transactions"
+                published = [path for path in transaction_root.iterdir() if path.is_dir()]
+                with (
+                    patch("data_foundation.systemd_user.platform.system", return_value="Linux"),
+                    patch(
+                        "data_foundation.systemd_user._systemctl_binary",
+                        return_value="/usr/bin/systemctl",
+                    ),
+                ):
+                    recovered = recover_user_unit_transactions(paths, runner=runner)
+
+                self.assertEqual(published, [])
+                self.assertEqual(recovered, [])
+                self.assertEqual(target.read_text(encoding="utf-8"), before_unit.content)
+
+    def test_scoped_systemd_recovery_touches_only_matching_owner(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = self._runtime(root)
+            unit_dir = root / "units"
+            unit_dir.mkdir()
+            runner = StatefulSystemctl()
+            first = dashboard_unit(
+                paths,
+                {
+                    "host": "127.0.0.1",
+                    "port": 3036,
+                    "systemdUser": {"units": ["actanara-owner-a.service"]},
+                },
+            )
+            second = dashboard_unit(
+                paths,
+                {
+                    "host": "127.0.0.1",
+                    "port": 3037,
+                    "systemdUser": {"units": ["actanara-owner-b.service"]},
+                },
+            )
+            with (
+                patch("data_foundation.systemd_user.platform.system", return_value="Linux"),
+                patch(
+                    "data_foundation.systemd_user._systemctl_binary",
+                    return_value="/usr/bin/systemctl",
+                ),
+            ):
+                first_result = install_user_units(
+                    paths,
+                    [first],
+                    unit_dir=unit_dir,
+                    runner=runner,
+                    defer_commit=True,
+                    recover_transactions=False,
+                    transaction_context={"ownerId": "fresh-owner-a"},
+                )
+                second_result = install_user_units(
+                    paths,
+                    [second],
+                    unit_dir=unit_dir,
+                    runner=runner,
+                    defer_commit=True,
+                    recover_transactions=False,
+                    transaction_context={"ownerId": "fresh-owner-b"},
+                )
+                transaction_root = paths.state_dir / "systemd-transactions"
+                journal_less = transaction_root / ("f" * 32)
+                journal_less.mkdir()
+                recovered = recover_user_unit_transactions(
+                    paths,
+                    runner=runner,
+                    owner_id="fresh-owner-a",
+                )
+
+            first_journal = json.loads(
+                (
+                    transaction_root
+                    / first_result["transactionId"]
+                    / "journal.json"
+                ).read_text(encoding="utf-8")
+            )
+            second_journal = json.loads(
+                (
+                    transaction_root
+                    / second_result["transactionId"]
+                    / "journal.json"
+                ).read_text(encoding="utf-8")
+            )
+            first_definition_exists = (unit_dir / first.name).exists()
+            second_definition_exists = (unit_dir / second.name).exists()
+            journal_less_exists = journal_less.is_dir()
+
+        self.assertEqual(
+            recovered,
+            [
+                {
+                    "id": first_result["transactionId"],
+                    "status": "compensated",
+                    "phase": "recovered-prior",
+                }
+            ],
+        )
+        self.assertEqual(first_journal["ownerId"], "fresh-owner-a")
+        self.assertEqual(first_journal["status"], "compensated")
+        self.assertEqual(second_journal["ownerId"], "fresh-owner-b")
+        self.assertEqual(second_journal["status"], "active")
+        self.assertFalse(first_definition_exists)
+        self.assertTrue(second_definition_exists)
+        self.assertTrue(journal_less_exists)
 
     def test_interrupted_systemd_recovery_preserves_concurrent_definition(self):
         with tempfile.TemporaryDirectory() as tmp:

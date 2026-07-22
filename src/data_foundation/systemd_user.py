@@ -718,6 +718,14 @@ def _atomic_write_bytes(path: Path, content: bytes) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
 def _write_systemd_journal(transaction_dir: Path, journal: dict[str, Any]) -> None:
     _atomic_write_bytes(
         transaction_dir / "journal.json",
@@ -756,41 +764,63 @@ def _begin_systemd_transaction(
     transaction_context: dict[str, str] | None,
 ) -> tuple[Path, dict[str, Any]]:
     transaction_id = uuid.uuid4().hex
-    transaction_dir = _systemd_transaction_root(paths) / transaction_id
-    transaction_dir.mkdir(parents=True, mode=0o700)
-    transaction_dir.chmod(0o700)
-    records: list[dict[str, Any]] = []
-    for unit in units:
-        target = unit_dir / unit.name
-        before = _read_optional_bytes(target)
-        if before is not None:
-            _atomic_write_bytes(transaction_dir / f"{unit.name}.before", before)
-        desired = unit.content.encode("utf-8") if action == "install" else None
-        records.append(
-            {
-                "name": unit.name,
-                "enableNow": unit.enable_now,
-                "beforeExists": before is not None,
-                "beforeHash": _bytes_hash(before),
-                "afterHash": _bytes_hash(desired),
-                "beforeMode": (target.stat().st_mode & 0o777) if before is not None else None,
-                "priorState": prior_states[unit.name],
-            }
-        )
+    transaction_root = _systemd_transaction_root(paths)
+    transaction_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    transaction_root.chmod(0o700)
+    transaction_dir = transaction_root / transaction_id
+    staging_dir = transaction_root.parent / f".{transaction_root.name}-{transaction_id}.pending"
     context = transaction_context if isinstance(transaction_context, dict) else {}
-    journal = {
-        "schemaVersion": 1,
-        "id": transaction_id,
-        "status": "active",
-        "phase": "prior-captured",
-        "action": action,
-        "provider": "systemd-user",
-        "unitDirectory": str(unit_dir),
-        "settingsBeforeHash": context.get("settingsBeforeHash"),
-        "settingsAfterHash": context.get("settingsAfterHash"),
-        "units": records,
-    }
-    _write_systemd_journal(transaction_dir, journal)
+    owner_id = context.get("ownerId")
+    if owner_id is not None and (
+        not isinstance(owner_id, str)
+        or not owner_id
+        or len(owner_id) > 256
+        or any(character in owner_id for character in "\x00\r\n")
+    ):
+        raise SystemdUserError("systemd transaction owner identity is invalid")
+    staging_dir.mkdir(mode=0o700)
+    try:
+        staging_dir.chmod(0o700)
+        records: list[dict[str, Any]] = []
+        for unit in units:
+            target = unit_dir / unit.name
+            before = _read_optional_bytes(target)
+            if before is not None:
+                _atomic_write_bytes(staging_dir / f"{unit.name}.before", before)
+            desired = unit.content.encode("utf-8") if action == "install" else None
+            records.append(
+                {
+                    "name": unit.name,
+                    "enableNow": unit.enable_now,
+                    "beforeExists": before is not None,
+                    "beforeHash": _bytes_hash(before),
+                    "afterHash": _bytes_hash(desired),
+                    "beforeMode": (target.stat().st_mode & 0o777) if before is not None else None,
+                    "priorState": prior_states[unit.name],
+                }
+            )
+        journal = {
+            "schemaVersion": 1,
+            "id": transaction_id,
+            "ownerId": owner_id,
+            "status": "active",
+            "phase": "prior-captured",
+            "action": action,
+            "provider": "systemd-user",
+            "unitDirectory": str(unit_dir),
+            "settingsBeforeHash": context.get("settingsBeforeHash"),
+            "settingsAfterHash": context.get("settingsAfterHash"),
+            "units": records,
+        }
+        _write_systemd_journal(staging_dir, journal)
+        _fsync_directory(staging_dir)
+        systemd_transaction_checkpoint("before-transaction-publish", transaction_id)
+        os.rename(staging_dir, transaction_dir)
+        _fsync_directory(transaction_root)
+        _fsync_directory(transaction_root.parent)
+    except Exception:
+        shutil.rmtree(staging_dir, ignore_errors=True)
+        raise
     systemd_transaction_checkpoint("after-prior-captured", transaction_id)
     return transaction_dir, journal
 
@@ -867,8 +897,9 @@ def recover_user_unit_transactions(
     paths: RuntimePaths,
     *,
     runner: Runner = subprocess.run,
+    owner_id: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Recover interrupted systemd mutations without guessing across conflicts."""
+    """Recover interrupted mutations, optionally limited to one durable owner."""
 
     root = _systemd_transaction_root(paths)
     if not root.exists():
@@ -877,6 +908,10 @@ def recover_user_unit_transactions(
     with _systemd_transaction_lock(paths):
         for transaction_dir in sorted(path for path in root.iterdir() if path.is_dir()):
             journal = _read_systemd_journal(transaction_dir)
+            if owner_id is not None and (
+                not journal or journal.get("ownerId") != owner_id
+            ):
+                continue
             if not journal:
                 results.append({"id": transaction_dir.name, "status": "conflict", "phase": "journal-unreadable"})
                 continue
@@ -1268,6 +1303,29 @@ def _queued_registration(paths: RuntimePaths, kind: str) -> dict[str, Any]:
     return registration if isinstance(registration, dict) else {}
 
 
+def _queued_previous_registration_state(
+    registration: dict[str, Any],
+) -> dict[str, Any] | None:
+    previous = registration.get("pendingPreviousState")
+    if not isinstance(previous, dict):
+        return None
+    enabled = previous.get("serverEnabled")
+    registered = previous.get("registered")
+    units = previous.get("units")
+    if (
+        type(enabled) is not bool
+        or type(registered) is not bool
+        or not isinstance(units, list)
+        or any(not isinstance(name, str) or not UNIT_NAME_RE.fullmatch(name) for name in units)
+    ):
+        return None
+    return {
+        "serverEnabled": enabled,
+        "registered": registered,
+        "units": list(units),
+    }
+
+
 def _record_queued_registration_result(
     paths: RuntimePaths,
     *,
@@ -1284,20 +1342,35 @@ def _record_queued_registration_result(
         or registration.get("pendingAction") != action
     ):
         return
+    previous = _queued_previous_registration_state(registration) if error else None
     metadata = {
         **registration,
+        **(
+            {
+                "registered": previous["registered"],
+                "units": previous["units"],
+            }
+            if previous is not None
+            else {}
+        ),
         "lastActionStatus": "failed" if error else "success",
         "lastError": error,
         "lastErrorAt": datetime.now().astimezone().isoformat() if error else None,
         "pendingAction": None,
         "pendingRequestId": None,
         "pendingJobUnit": None,
+        "pendingPreviousState": None,
     }
-    update = (
-        {"dashboard": {"systemdUser": metadata}}
-        if kind == "dashboard"
-        else {"rag": {"server": {"systemdUser": metadata}}}
-    )
+    if kind == "dashboard":
+        dashboard_update: dict[str, Any] = {"systemdUser": metadata}
+        if previous is not None:
+            dashboard_update["server"] = {"enabled": previous["serverEnabled"]}
+        update = {"dashboard": dashboard_update}
+    else:
+        server_update: dict[str, Any] = {"systemdUser": metadata}
+        if previous is not None:
+            server_update["enabled"] = previous["serverEnabled"]
+        update = {"rag": {"server": server_update}}
     write_service_manager_settings(
         update,
         paths,

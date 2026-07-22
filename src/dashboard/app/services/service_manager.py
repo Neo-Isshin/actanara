@@ -152,6 +152,7 @@ class PlatformServiceManager:
                 units,
                 status="queued",
                 request_id=request_id,
+                previous=previous,
             )
             saved = write_service_manager_settings(
                 update,
@@ -396,8 +397,9 @@ class PlatformServiceManager:
         names = [str(name) for name in configured_units if isinstance(name, str)]
         return {
             "enabled": enabled,
+            "registered": bool(metadata.get("registered")),
             "metadata": dict(metadata),
-            "units": names or [unit.name for unit in units],
+            "units": names,
         }
 
     def _registration_update(
@@ -408,6 +410,7 @@ class PlatformServiceManager:
         *,
         status: str,
         request_id: str | None = None,
+        previous: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         registered = action == "install"
         now = datetime.now().astimezone().isoformat()
@@ -428,6 +431,15 @@ class PlatformServiceManager:
             "pendingJobUnit": (
                 transient_user_action_unit_name(kind, action, request_id)
                 if status == "queued" and request_id is not None
+                else None
+            ),
+            "pendingPreviousState": (
+                {
+                    "serverEnabled": bool(previous["enabled"]),
+                    "registered": bool(previous["registered"]),
+                    "units": list(previous["units"]),
+                }
+                if status == "queued" and previous is not None
                 else None
             ),
         }
@@ -464,7 +476,7 @@ class PlatformServiceManager:
             return
         metadata = {
             **previous["metadata"],
-            "registered": bool(previous["metadata"].get("registered")),
+            "registered": bool(previous["registered"]),
             "provider": "systemd-user",
             "units": previous["units"],
             "lastAction": action,
@@ -474,6 +486,7 @@ class PlatformServiceManager:
             "pendingAction": None,
             "pendingRequestId": None,
             "pendingJobUnit": None,
+            "pendingPreviousState": None,
         }
         update = (
             {
