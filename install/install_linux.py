@@ -11,10 +11,13 @@ import os
 import platform
 import re
 import secrets
+import signal
 import shutil
 import socket
+import stat
 import subprocess
 import sys
+import tempfile
 import time
 import tomllib
 from dataclasses import dataclass
@@ -75,6 +78,10 @@ EXCLUDED_SUFFIXES = (
     ".sqlite3",
 )
 UPDATE_RESULT_PREFIX = "ACTANARA_UPDATE_RESULT_JSON="
+FRESH_INSTALL_STAGING_NAME = "install-staging"
+FRESH_INSTALL_JOURNAL_NAME = "journal.json"
+FRESH_INSTALL_SCHEMA_VERSION = 1
+FRESH_TRANSACTION_ID_RE = re.compile(r"[0-9]{8}T[0-9]{6}-[0-9]+-[0-9a-f]{8}\Z")
 
 
 class LinuxInstallError(RuntimeError):
@@ -446,6 +453,52 @@ def _preflight_linux_services(plan: InstallPlan, *, check_dashboard_port: bool =
             probe.close()
 
 
+def _preflight_fresh_dependencies(
+    plan: InstallPlan,
+    selection: dependency_contract.ContractSelection,
+) -> None:
+    """Fail an offline fresh install before its Runtime receives any writes."""
+
+    if plan.update_mode != "fresh" or not plan.offline:
+        return
+    cache_root = plan.runtime / "app" / "dependency-cache" / "v1"
+    try:
+        cache = dependency_contract.dependency_cache_status(cache_root, selection)
+    except dependency_contract.ContractError as exc:
+        raise LinuxInstallError(
+            f"offline fresh install dependency cache is not trustworthy: {exc.message}"
+        ) from exc
+    if cache.get("status") != "hit" or cache.get("usable") is not True:
+        raise LinuxInstallError(
+            "offline fresh install requires a complete trusted dependency cache; "
+            "no Runtime changes were made"
+        )
+    with tempfile.TemporaryDirectory(prefix="actanara-linux-pip-preflight-") as temporary:
+        probe_venv = Path(temporary) / "venv"
+        created = subprocess.run(
+            [str(plan.python), "-I", "-m", "venv", "--without-pip", str(probe_venv)],
+            capture_output=True,
+            text=False,
+            check=False,
+        )
+        if created.returncode != 0:
+            raise LinuxInstallError(
+                "offline fresh install pip bootstrap preflight could not create an isolated venv; "
+                "no Runtime changes were made"
+            )
+        ensurepip = subprocess.run(
+            [str(probe_venv / "bin" / "python"), "-I", "-m", "ensurepip", "--upgrade"],
+            capture_output=True,
+            text=False,
+            check=False,
+        )
+        if ensurepip.returncode != 0:
+            raise LinuxInstallError(
+                "offline fresh install pip bootstrap is unavailable for this Python; "
+                "rerun online or use a Python build with ensurepip. No Runtime changes were made"
+            )
+
+
 def _validate_plan(plan: InstallPlan, args: argparse.Namespace) -> dependency_contract.ContractSelection:
     host_platform = platform.system()
     if host_platform != "Linux" and not _env_flag("ACTANARA_INSTALL_TEST_MODE"):
@@ -494,13 +547,8 @@ def _validate_plan(plan: InstallPlan, args: argparse.Namespace) -> dependency_co
             raise LinuxInstallError("repair requires trustworthy existing Runtime Settings")
     elif not all(path.exists() or path.is_symlink() for path in markers[:3]):
         raise LinuxInstallError("selected Runtime is incomplete and cannot be updated safely")
-    if host_platform == "Linux":
-        _preflight_linux_services(
-            plan,
-            check_dashboard_port=plan.update_mode == "fresh",
-        )
     try:
-        return dependency_contract.load_contract_selection(
+        selection = dependency_contract.load_contract_selection(
             plan.source_root / "install" / "runtime-dependencies.lock.json",
             plan.source_root / "pyproject.toml",
             plan.profiles,
@@ -508,6 +556,13 @@ def _validate_plan(plan: InstallPlan, args: argparse.Namespace) -> dependency_co
         )
     except dependency_contract.ContractError as exc:
         raise LinuxInstallError(f"runtime dependency lock rejected this host: {exc.message}") from exc
+    _preflight_fresh_dependencies(plan, selection)
+    if host_platform == "Linux":
+        _preflight_linux_services(
+            plan,
+            check_dashboard_port=plan.update_mode == "fresh",
+        )
+    return selection
 
 
 def _secure_directory(path: Path, *, parents: bool = True) -> None:
@@ -1275,6 +1330,7 @@ def _update(
         datetime.now().strftime("%Y%m%dT%H%M%S")
         + f"-{os.getpid()}-{secrets.token_hex(4)}"
     )
+    dependency_log = plan.runtime / "state" / "logs" / f"dependencies-{tx_id}.log"
     if plan.dry_run:
         return {
             "schemaVersion": 1,
@@ -1296,6 +1352,7 @@ def _update(
             python=plan.python,
             offline=plan.offline,
             timeout=900,
+            diagnostic_log=dependency_log,
         )
     if plan.update_mode != "repair":
         _validate_existing_systemd_units_for_update(plan, desired, inventory)
@@ -1424,6 +1481,7 @@ def _update(
                 selection,
                 venv_python=venv_python,
                 timeout=900,
+                diagnostic_log=dependency_log,
             )
             dependency_contract.write_dependency_marker(candidate_venv, selection)
             dependency_contract.verify_dependency_marker(candidate_venv, selection)
@@ -1536,6 +1594,300 @@ def _update(
         raise LinuxInstallError(str(exc)) from exc
 
 
+def fresh_install_checkpoint(phase: str, transaction_id: str) -> None:
+    """No-op hook used by deterministic fresh-install interruption tests."""
+
+    if os.environ.get("ACTANARA_INSTALL_TEST_MODE") != "1":
+        return
+    if os.environ.get("ACTANARA_INSTALL_TEST_KILL_PHASE") == phase:
+        os.kill(os.getpid(), signal.SIGKILL)
+    if os.environ.get("ACTANARA_INSTALL_TEST_FAIL_PHASE") == phase:
+        raise LinuxInstallError(
+            f"synthetic fresh install failure at phase {phase} ({transaction_id})"
+        )
+
+
+def _fresh_install_transaction_id() -> str:
+    return datetime.now().strftime("%Y%m%dT%H%M%S") + f"-{os.getpid()}-{secrets.token_hex(4)}"
+
+
+def _write_fresh_install_journal(staging: Path, journal: dict) -> None:
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{FRESH_INSTALL_JOURNAL_NAME}.",
+        dir=staging,
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(journal, handle, ensure_ascii=False, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        temporary.chmod(0o600)
+        os.replace(temporary, staging / FRESH_INSTALL_JOURNAL_NAME)
+        directory = os.open(staging, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _advance_fresh_install_journal(
+    staging: Path,
+    journal: dict,
+    phase: str,
+    **updates: object,
+) -> None:
+    journal.update(updates)
+    journal["phase"] = phase
+    journal["updatedAt"] = datetime.now().astimezone().isoformat()
+    _write_fresh_install_journal(staging, journal)
+
+
+def _capture_fresh_file_snapshot(staging: Path, key: str, path: Path) -> dict:
+    record: dict[str, object] = {"path": str(path), "existed": False, "backup": None, "mode": None}
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return record
+    if path.is_symlink() or not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid():
+        raise LinuxInstallError(f"fresh install cannot safely preserve existing file: {path}")
+    if metadata.st_size > 8 * 1024 * 1024:
+        raise LinuxInstallError(f"fresh install preservation file is unexpectedly large: {path}")
+    backup_root = staging / "backups"
+    _secure_directory(backup_root)
+    backup = backup_root / key
+    shutil.copy2(path, backup, follow_symlinks=False)
+    backup.chmod(0o600)
+    record.update(
+        {
+            "existed": True,
+            "backup": str(backup.relative_to(staging)),
+            "mode": stat.S_IMODE(metadata.st_mode),
+        }
+    )
+    return record
+
+
+def _restore_fresh_file_snapshot(
+    staging: Path,
+    record: dict,
+    *,
+    expected_path: Path,
+) -> None:
+    if Path(str(record.get("path") or "")) != expected_path:
+        raise LinuxInstallError("fresh install recovery snapshot path is inconsistent")
+    if record.get("existed") is not True:
+        try:
+            metadata = expected_path.lstat()
+        except FileNotFoundError:
+            return
+        if stat.S_ISDIR(metadata.st_mode) and not stat.S_ISLNK(metadata.st_mode):
+            raise LinuxInstallError(f"fresh install recovery refuses to remove a directory: {expected_path}")
+        expected_path.unlink()
+        return
+    relative = Path(str(record.get("backup") or ""))
+    backup = staging / relative
+    if (
+        relative.is_absolute()
+        or relative.parts[:1] != ("backups",)
+        or backup.is_symlink()
+        or not backup.is_file()
+    ):
+        raise LinuxInstallError("fresh install recovery snapshot is unavailable")
+    expected_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{expected_path.name}.", dir=expected_path.parent)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(backup.read_bytes())
+            handle.flush()
+            os.fsync(handle.fileno())
+        mode = record.get("mode")
+        temporary.chmod(mode if isinstance(mode, int) else 0o600)
+        os.replace(temporary, expected_path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _remove_fresh_pointer(path: Path, expected: Path) -> None:
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return
+    if not stat.S_ISLNK(metadata.st_mode) or Path(os.readlink(path)) != expected:
+        raise LinuxInstallError(f"fresh install recovery found a changed pointer: {path}")
+    path.unlink()
+
+
+def _remove_fresh_generation(path: Path, *, parent: Path, transaction_id: str) -> None:
+    if path.parent != parent or not path.name.endswith(f"-{transaction_id}"):
+        raise LinuxInstallError("fresh install recovery generation target is inconsistent")
+    if not path.exists() and not path.is_symlink():
+        return
+    if path.is_symlink() or not path.is_dir():
+        raise LinuxInstallError(f"fresh install recovery found an unsafe generation: {path}")
+    shutil.rmtree(path)
+
+
+def _rollback_fresh_service_transaction(runtime: Path, transaction_id: str | None) -> None:
+    if not transaction_id:
+        return
+    from data_foundation.paths import runtime_paths_for_home
+    from data_foundation.systemd_user import SystemdUserError, rollback_user_unit_transaction
+
+    try:
+        rollback_user_unit_transaction(runtime_paths_for_home(runtime), transaction_id)
+    except SystemdUserError as exc:
+        raise LinuxInstallError(
+            f"fresh install systemd rollback is incomplete: {exc}"
+        ) from exc
+
+
+def _validated_fresh_install_journal(runtime: Path, staging: Path, journal: dict) -> dict:
+    transaction_id = str(journal.get("transactionId") or "")
+    expected_staging = runtime / "app" / FRESH_INSTALL_STAGING_NAME / transaction_id
+    release_target = Path(str(journal.get("releaseTarget") or ""))
+    venv_target = Path(str(journal.get("venvTarget") or ""))
+    if (
+        journal.get("schemaVersion") != FRESH_INSTALL_SCHEMA_VERSION
+        or journal.get("product") != "actanara"
+        or not FRESH_TRANSACTION_ID_RE.fullmatch(transaction_id)
+        or Path(str(journal.get("runtime") or "")) != runtime
+        or staging != expected_staging
+        or Path(str(journal.get("stagingRoot") or "")) != expected_staging
+        or release_target.parent != runtime / "app" / "releases"
+        or venv_target.parent != runtime / "app" / "venvs"
+        or not release_target.name.endswith(f"-{transaction_id}")
+        or not venv_target.name.endswith(f"-{transaction_id}")
+        or Path(str(journal.get("sourcePointer") or "")) != runtime / "app" / "source"
+        or Path(str(journal.get("venvPointer") or "")) != runtime / ".venv"
+    ):
+        raise LinuxInstallError("fresh install recovery journal is unsafe")
+    snapshots = journal.get("snapshots")
+    if (
+        not isinstance(snapshots, dict)
+        or set(snapshots) != {"location", "runtimeCli"}
+        or not all(isinstance(value, dict) for value in snapshots.values())
+    ):
+        raise LinuxInstallError("fresh install recovery snapshots are invalid")
+    location = Path(
+        os.environ.get(
+            "ACTANARA_LOCATION_FILE",
+            str(Path.home() / ".config" / "actanara" / "location.json"),
+        )
+    ).expanduser().absolute()
+    if Path(str(snapshots["location"].get("path") or "")) != location:
+        raise LinuxInstallError(
+            "fresh install recovery needs the original ACTANARA_LOCATION_FILE setting"
+        )
+    if Path(str(snapshots["runtimeCli"].get("path") or "")) != runtime / "bin" / "actanara":
+        raise LinuxInstallError("fresh install recovery Runtime CLI snapshot is invalid")
+    return journal
+
+
+def _rollback_fresh_install(staging: Path, journal: dict) -> None:
+    runtime = Path(str(journal["runtime"]))
+    transaction_id = str(journal["transactionId"])
+    _rollback_fresh_service_transaction(
+        runtime,
+        str(journal.get("serviceTransactionId") or "") or None,
+    )
+    _remove_fresh_pointer(runtime / "app" / "source", Path("releases") / Path(journal["releaseTarget"]).name)
+    _remove_fresh_pointer(runtime / ".venv", Path("app") / "venvs" / Path(journal["venvTarget"]).name)
+    _remove_fresh_generation(
+        Path(journal["releaseTarget"]),
+        parent=runtime / "app" / "releases",
+        transaction_id=transaction_id,
+    )
+    _remove_fresh_generation(
+        Path(journal["venvTarget"]),
+        parent=runtime / "app" / "venvs",
+        transaction_id=transaction_id,
+    )
+    for mutable in (
+        runtime / "config" / "settings.json",
+        runtime / "data" / "actanara_data.sqlite3",
+    ):
+        if mutable.is_symlink() or (mutable.exists() and not mutable.is_file()):
+            raise LinuxInstallError(f"fresh install recovery found an unsafe mutable file: {mutable}")
+        mutable.unlink(missing_ok=True)
+    snapshots = journal["snapshots"]
+    location = Path(str(snapshots["location"]["path"]))
+    _restore_fresh_file_snapshot(
+        staging,
+        snapshots["location"],
+        expected_path=location,
+    )
+    _restore_fresh_file_snapshot(
+        staging,
+        snapshots["runtimeCli"],
+        expected_path=runtime / "bin" / "actanara",
+    )
+    user_shim = Path.home() / ".local" / "bin" / "actanara"
+    if journal.get("userShimExisted") is False and user_shim.is_symlink():
+        if Path(os.readlink(user_shim)) == runtime / "bin" / "actanara":
+            user_shim.unlink()
+
+
+def _recover_fresh_install(runtime: Path) -> list[str]:
+    runtime = runtime.expanduser().absolute()
+    root = runtime / "app" / FRESH_INSTALL_STAGING_NAME
+    if not root.exists():
+        return []
+    if root.is_symlink() or not root.is_dir():
+        raise LinuxInstallError("fresh install staging root is unsafe")
+    recovered: list[str] = []
+    for staging in sorted(root.iterdir()):
+        if staging.is_symlink() or not staging.is_dir() or not FRESH_TRANSACTION_ID_RE.fullmatch(staging.name):
+            raise LinuxInstallError("fresh install staging contains an unknown entry")
+        journal_path = staging / FRESH_INSTALL_JOURNAL_NAME
+        try:
+            journal = json.loads(journal_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise LinuxInstallError("fresh install recovery journal is unreadable") from exc
+        if not isinstance(journal, dict):
+            raise LinuxInstallError("fresh install recovery journal is invalid")
+        _validated_fresh_install_journal(runtime, staging, journal)
+        if journal.get("status") != "committed":
+            _rollback_fresh_install(staging, journal)
+        shutil.rmtree(staging)
+        recovered.append(staging.name)
+    try:
+        root.rmdir()
+    except OSError:
+        pass
+    return recovered
+
+
+def _relocate_candidate_venv(candidate: Path, target: Path) -> None:
+    """Rewrite venv text launchers before the candidate directory is renamed."""
+
+    old = os.fsencode(str(candidate))
+    new = os.fsencode(str(target))
+    bin_directory = candidate / "bin"
+    if not bin_directory.is_dir():
+        raise LinuxInstallError("candidate venv has no executable directory")
+    for path in bin_directory.iterdir():
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > 2 * 1024 * 1024:
+            continue
+        content = path.read_bytes()
+        if old not in content:
+            continue
+        path.write_bytes(content.replace(old, new))
+
+
+def _promote_fresh_generation(candidate: Path, target: Path) -> None:
+    from install.update_transaction import TransactionError, _rename_exclusive
+
+    try:
+        _rename_exclusive(candidate, target)
+    except TransactionError as exc:
+        raise LinuxInstallError(f"fresh generation promotion failed: {exc}") from exc
+
+
 def _install(
     plan: InstallPlan,
     selection: dependency_contract.ContractSelection,
@@ -1543,9 +1895,11 @@ def _install(
     *,
     linger: dict | None = None,
 ) -> dict:
-    release_id, commit = _source_identity(plan.source_root)
-    release_target = plan.runtime / "app" / "releases" / release_id
-    venv_target = plan.runtime / "app" / "venvs" / release_id
+    base_release_id, commit = _source_identity(plan.source_root)
+    transaction_id = _fresh_install_transaction_id()
+    generation_id = f"{base_release_id}-{transaction_id}"
+    release_target = plan.runtime / "app" / "releases" / generation_id
+    venv_target = plan.runtime / "app" / "venvs" / generation_id
     cache_root = plan.runtime / "app" / "dependency-cache" / "v1"
     if plan.dry_run:
         return {
@@ -1565,6 +1919,11 @@ def _install(
         }
 
     previous_umask = os.umask(0o077)
+    staging = plan.runtime / "app" / FRESH_INSTALL_STAGING_NAME / transaction_id
+    journal: dict | None = None
+    database: Path | None = None
+    systemd_result: dict | None = None
+    committed = False
     try:
         for directory in (
             plan.runtime,
@@ -1573,40 +1932,160 @@ def _install(
             plan.runtime / "app" / "venvs",
             plan.runtime / "bin",
             plan.runtime / "state" / "logs",
+            staging,
         ):
             _secure_directory(directory)
+        location = Path(
+            os.environ.get(
+                "ACTANARA_LOCATION_FILE",
+                str(Path.home() / ".config" / "actanara" / "location.json"),
+            )
+        ).expanduser().absolute()
+        journal = {
+            "schemaVersion": FRESH_INSTALL_SCHEMA_VERSION,
+            "product": "actanara",
+            "transactionId": transaction_id,
+            "runtime": str(plan.runtime),
+            "stagingRoot": str(staging),
+            "status": "active",
+            "phase": "prepared",
+            "createdAt": datetime.now().astimezone().isoformat(),
+            "updatedAt": datetime.now().astimezone().isoformat(),
+            "releaseTarget": str(release_target),
+            "venvTarget": str(venv_target),
+            "sourcePointer": str(plan.runtime / "app" / "source"),
+            "venvPointer": str(plan.runtime / ".venv"),
+            "serviceTransactionId": None,
+            "userShimExisted": bool(
+                (Path.home() / ".local" / "bin" / "actanara").exists()
+                or (Path.home() / ".local" / "bin" / "actanara").is_symlink()
+            ),
+            "snapshots": {
+                "location": _capture_fresh_file_snapshot(staging, "location", location),
+                "runtimeCli": _capture_fresh_file_snapshot(
+                    staging,
+                    "runtime-cli",
+                    plan.runtime / "bin" / "actanara",
+                ),
+            },
+        }
+        _write_fresh_install_journal(staging, journal)
+        dependency_log = plan.runtime / "state" / "logs" / f"dependencies-{transaction_id}.log"
         dependency_contract.materialize_dependency_cache(
             cache_root,
             selection,
             python=plan.python,
             offline=plan.offline,
             timeout=900,
+            diagnostic_log=dependency_log,
         )
-        _stage_source(plan, release_target, commit)
-        _secure_directory(venv_target.parent)
-        venv_python = _seed_venv_pip(plan, venv_target)
+        _advance_fresh_install_journal(staging, journal, "cache-ready")
+        fresh_install_checkpoint("cache-ready", transaction_id)
+        candidate_venv = staging / "venv"
+        venv_python = _seed_venv_pip(plan, candidate_venv)
+        _advance_fresh_install_journal(staging, journal, "venv-bootstrap-ready")
+        fresh_install_checkpoint("venv-bootstrap-ready", transaction_id)
         dependency_contract.install_locked_dependencies(
             cache_root,
             selection,
             venv_python=venv_python,
             timeout=900,
+            diagnostic_log=dependency_log,
         )
-        dependency_contract.write_dependency_marker(venv_target, selection)
-        dependency_contract.verify_dependency_marker(venv_target, selection)
-        (plan.runtime / "app" / "source").symlink_to(Path("releases") / release_id)
-        (plan.runtime / ".venv").symlink_to(Path("app") / "venvs" / release_id)
+        dependency_contract.write_dependency_marker(candidate_venv, selection)
+        dependency_contract.verify_dependency_marker(candidate_venv, selection)
+        _advance_fresh_install_journal(staging, journal, "dependencies-ready")
+        fresh_install_checkpoint("dependencies-ready", transaction_id)
+        candidate_release = staging / "release"
+        _stage_source(
+            plan,
+            candidate_release,
+            commit,
+            manifest_release_id=generation_id,
+        )
+        _advance_fresh_install_journal(staging, journal, "source-staged")
+        fresh_install_checkpoint("source-staged", transaction_id)
+        _relocate_candidate_venv(candidate_venv, venv_target)
+        _promote_fresh_generation(candidate_release, release_target)
+        _advance_fresh_install_journal(staging, journal, "release-promoted")
+        fresh_install_checkpoint("release-promoted", transaction_id)
+        _promote_fresh_generation(candidate_venv, venv_target)
+        _advance_fresh_install_journal(staging, journal, "venv-promoted")
+        fresh_install_checkpoint("venv-promoted", transaction_id)
+        (plan.runtime / "app" / "source").symlink_to(Path("releases") / generation_id)
+        (plan.runtime / ".venv").symlink_to(Path("app") / "venvs" / generation_id)
+        _advance_fresh_install_journal(staging, journal, "pointers-published")
+        fresh_install_checkpoint("pointers-published", transaction_id)
         _write_cli_shim(plan.runtime)
         _configure_runtime(plan)
+        _advance_fresh_install_journal(staging, journal, "runtime-configured")
+        fresh_install_checkpoint("runtime-configured", transaction_id)
         database = _initialize_database(plan)
+        _advance_fresh_install_journal(staging, journal, "database-ready")
+        fresh_install_checkpoint("database-ready", transaction_id)
         systemd_result = _install_systemd_user_services(plan)
+        _advance_fresh_install_journal(
+            staging,
+            journal,
+            "services-ready",
+            serviceTransactionId=(
+                str(systemd_result.get("transactionId"))
+                if isinstance(systemd_result, dict) and systemd_result.get("transactionId")
+                else None
+            ),
+        )
+        fresh_install_checkpoint("services-ready", transaction_id)
         if not args.no_shell_path:
             user_bin = Path.home() / ".local" / "bin"
             _secure_directory(user_bin)
             user_shim = user_bin / "actanara"
             if not user_shim.exists() and not user_shim.is_symlink():
                 user_shim.symlink_to(plan.runtime / "bin" / "actanara")
+        _advance_fresh_install_journal(
+            staging,
+            journal,
+            "committed",
+            status="committed",
+        )
+        committed = True
+    except Exception as exc:
+        rollback_error: Exception | None = None
+        if journal is not None:
+            try:
+                _validated_fresh_install_journal(plan.runtime, staging, journal)
+                _rollback_fresh_install(staging, journal)
+            except Exception as recovery_exc:
+                rollback_error = recovery_exc
+            else:
+                try:
+                    shutil.rmtree(staging, ignore_errors=False)
+                except OSError as recovery_exc:
+                    rollback_error = recovery_exc
+        elif staging.is_dir() and not staging.is_symlink():
+            try:
+                shutil.rmtree(staging, ignore_errors=False)
+            except OSError as recovery_exc:
+                rollback_error = recovery_exc
+        if rollback_error is not None:
+            raise LinuxInstallError(
+                f"fresh install failed and recovery is incomplete: {rollback_error}"
+            ) from exc
+        if isinstance(exc, LinuxInstallError):
+            raise
+        if isinstance(exc, dependency_contract.ContractError):
+            raise LinuxInstallError(f"dependency contract failed: {exc.message}") from exc
+        raise LinuxInstallError(str(exc)) from exc
     finally:
         os.umask(previous_umask)
+    if committed:
+        try:
+            shutil.rmtree(staging)
+        except OSError as exc:
+            raise LinuxInstallError(
+                f"fresh install committed but staging cleanup failed: {staging}"
+            ) from exc
+    if database is None or systemd_result is None:
+        raise LinuxInstallError("fresh install did not produce complete Runtime evidence")
     return {
         "schemaVersion": 1,
         "status": "installed",
@@ -1679,7 +2158,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         args = _parser().parse_args(argv)
         requested_mode = _requested_update_mode(args)
-        if requested_mode != "fresh":
+        if requested_mode == "fresh":
+            _recover_fresh_install(Path(args.runtime).expanduser().absolute())
+        else:
             _recover_update_runtime(Path(args.runtime).expanduser().absolute())
         plan = build_plan(args)
         selection = _validate_plan(plan, args)

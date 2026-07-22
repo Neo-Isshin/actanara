@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import ExitStack
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -401,6 +402,324 @@ class LinuxInstallerTests(unittest.TestCase):
         self.assertFalse(payload["writes"])
         self.assertEqual(payload["schedulerProvider"], "systemd")
         self.assertFalse(runtime.exists())
+
+    def test_offline_fresh_preflight_blocks_broken_ensurepip_without_runtime_writes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            runtime = root / "runtime"
+            args = self._args(
+                "--runtime",
+                str(runtime),
+                "--offline",
+                "--no-scheduler",
+                "--no-dashboard-server",
+            )
+            plan = install_linux.build_plan(args)
+            selection = SimpleNamespace(fingerprint="f" * 64)
+
+            def completed(command, **_kwargs):
+                command = list(command)
+                if "ensurepip" in command:
+                    return subprocess.CompletedProcess(command, 1, b"", b"ensurepip unavailable")
+                return subprocess.CompletedProcess(command, 0, "3.13\n", "")
+
+            with (
+                patch.object(
+                    install_linux.dependency_contract,
+                    "dependency_cache_status",
+                    return_value={"status": "hit", "usable": True},
+                ),
+                patch.object(install_linux.subprocess, "run", side_effect=completed),
+                self.assertRaisesRegex(
+                    install_linux.LinuxInstallError,
+                    "offline.*pip bootstrap",
+                ),
+            ):
+                install_linux._preflight_fresh_dependencies(plan, selection)
+
+            self.assertFalse(runtime.exists())
+
+    def test_every_fresh_checkpoint_failure_cleans_generations_and_is_retryable(self):
+        checkpoints = (
+            "cache-ready",
+            "venv-bootstrap-ready",
+            "dependencies-ready",
+            "source-staged",
+            "release-promoted",
+            "venv-promoted",
+            "pointers-published",
+            "runtime-configured",
+            "database-ready",
+            "services-ready",
+        )
+        for checkpoint in checkpoints:
+            with self.subTest(checkpoint=checkpoint), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                runtime = root / "runtime"
+                location = root / "location.json"
+                original_location = b'{"actanaraHome":"/preserved/runtime"}\n'
+                location.write_bytes(original_location)
+                location.chmod(0o600)
+                args = self._args(
+                    "--runtime",
+                    str(runtime),
+                    "--no-scheduler",
+                    "--no-dashboard-server",
+                    "--no-shell-path",
+                )
+                plan = install_linux.build_plan(args)
+                selection = SimpleNamespace(
+                    environment_id="linux-cpython313-x86-64",
+                    lock_environment={"architecture": "x86_64"},
+                )
+
+                def fake_seed(_plan, candidate):
+                    (candidate / "bin").mkdir(parents=True)
+                    python = candidate / "bin" / "python"
+                    python.write_text("#!/bin/sh\n", encoding="utf-8")
+                    python.chmod(0o700)
+                    return python
+
+                def fake_stage(_plan, candidate, _commit, **_kwargs):
+                    candidate.mkdir(parents=True)
+                    (candidate / ".actanara-runtime-source.json").write_text(
+                        '{}\n', encoding="utf-8"
+                    )
+                    return {}
+
+                def fake_configure(_plan):
+                    settings = runtime / "config" / "settings.json"
+                    settings.parent.mkdir(parents=True, exist_ok=True)
+                    settings.write_text('{}\n', encoding="utf-8")
+                    location.write_text(
+                        json.dumps({"actanaraHome": str(runtime)}) + "\n",
+                        encoding="utf-8",
+                    )
+
+                def fake_database(_plan):
+                    database = runtime / "data" / "actanara_data.sqlite3"
+                    database.parent.mkdir(parents=True, exist_ok=True)
+                    database.write_bytes(b"sqlite")
+                    return database
+
+                def fail_at(phase, _transaction_id):
+                    if phase == checkpoint:
+                        raise install_linux.LinuxInstallError(
+                            f"synthetic fresh failure at {phase}"
+                        )
+
+                dependency_patches = (
+                    patch.object(
+                        install_linux.dependency_contract,
+                        "materialize_dependency_cache",
+                        return_value={"status": "hit"},
+                    ),
+                    patch.object(
+                        install_linux.dependency_contract,
+                        "install_locked_dependencies",
+                        return_value={"status": "installed"},
+                    ),
+                    patch.object(
+                        install_linux.dependency_contract,
+                        "write_dependency_marker",
+                        return_value={},
+                    ),
+                    patch.object(
+                        install_linux.dependency_contract,
+                        "verify_dependency_marker",
+                        return_value={},
+                    ),
+                )
+                with ExitStack() as stack:
+                    for dependency_patch in dependency_patches:
+                        stack.enter_context(dependency_patch)
+                    stack.enter_context(
+                        patch.object(install_linux, "_source_identity", return_value=("release", "a" * 40))
+                    )
+                    stack.enter_context(patch.object(install_linux, "_seed_venv_pip", side_effect=fake_seed))
+                    stack.enter_context(patch.object(install_linux, "_stage_source", side_effect=fake_stage))
+                    stack.enter_context(patch.object(install_linux, "_configure_runtime", side_effect=fake_configure))
+                    stack.enter_context(patch.object(install_linux, "_initialize_database", side_effect=fake_database))
+                    stack.enter_context(patch.object(
+                        install_linux,
+                        "_install_systemd_user_services",
+                        return_value={"status": "not-requested", "units": []},
+                    ))
+                    stack.enter_context(
+                        patch.object(install_linux, "fresh_install_checkpoint", side_effect=fail_at)
+                    )
+                    stack.enter_context(patch.dict(
+                        os.environ,
+                        {"ACTANARA_LOCATION_FILE": str(location)},
+                        clear=False,
+                    ))
+                    stack.enter_context(self.assertRaisesRegex(
+                        install_linux.LinuxInstallError,
+                        "synthetic fresh failure",
+                    ))
+                    install_linux._install(plan, selection, args)
+
+                releases = runtime / "app" / "releases"
+                venvs = runtime / "app" / "venvs"
+                self.assertEqual(list(releases.iterdir()) if releases.exists() else [], [])
+                self.assertEqual(list(venvs.iterdir()) if venvs.exists() else [], [])
+                self.assertFalse((runtime / "app" / "source").exists())
+                self.assertFalse((runtime / ".venv").exists())
+                self.assertFalse((runtime / "config" / "settings.json").exists())
+                self.assertFalse((runtime / "data" / "actanara_data.sqlite3").exists())
+                self.assertEqual(location.read_bytes(), original_location)
+
+                retry_dependency_patches = (
+                        patch.object(
+                            install_linux.dependency_contract,
+                            "materialize_dependency_cache",
+                            return_value={"status": "hit"},
+                        ),
+                        patch.object(
+                            install_linux.dependency_contract,
+                            "install_locked_dependencies",
+                            return_value={"status": "installed"},
+                        ),
+                        patch.object(
+                            install_linux.dependency_contract,
+                            "write_dependency_marker",
+                            return_value={},
+                        ),
+                        patch.object(
+                            install_linux.dependency_contract,
+                            "verify_dependency_marker",
+                            return_value={},
+                        ),
+                )
+                with ExitStack() as stack:
+                    for dependency_patch in retry_dependency_patches:
+                        stack.enter_context(dependency_patch)
+                    stack.enter_context(
+                        patch.object(install_linux, "_source_identity", return_value=("release", "a" * 40))
+                    )
+                    stack.enter_context(patch.object(install_linux, "_seed_venv_pip", side_effect=fake_seed))
+                    stack.enter_context(patch.object(install_linux, "_stage_source", side_effect=fake_stage))
+                    stack.enter_context(patch.object(install_linux, "_configure_runtime", side_effect=fake_configure))
+                    stack.enter_context(patch.object(install_linux, "_initialize_database", side_effect=fake_database))
+                    stack.enter_context(patch.object(
+                        install_linux,
+                        "_install_systemd_user_services",
+                        return_value={"status": "not-requested", "units": []},
+                    ))
+                    stack.enter_context(patch.dict(
+                        os.environ,
+                        {"ACTANARA_LOCATION_FILE": str(location)},
+                        clear=False,
+                    ))
+                    retry = install_linux._install(plan, selection, args)
+
+                self.assertEqual(retry["status"], "installed")
+
+    def test_sigkill_after_fresh_promotion_is_recovered_on_the_next_attempt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            runtime = root / "runtime"
+            location = root / "location.json"
+            original_location = b'{"actanaraHome":"/preserved/runtime"}\n'
+            location.write_bytes(original_location)
+            location.chmod(0o600)
+            child = r'''
+import os
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+from install import install_linux
+
+root = Path(os.environ["ACTANARA_TEST_FRESH_ROOT"])
+runtime = root / "runtime"
+args = install_linux._parser().parse_args([
+    "--source-root", str(Path.cwd()),
+    "--python", sys.executable,
+    "--runtime", str(runtime),
+    "--no-scheduler", "--no-dashboard-server", "--no-shell-path",
+])
+plan = install_linux.build_plan(args)
+selection = SimpleNamespace(
+    environment_id="linux-cpython313-x86-64",
+    lock_environment={"architecture": "x86_64"},
+)
+
+def seed(_plan, candidate):
+    (candidate / "bin").mkdir(parents=True)
+    python = candidate / "bin" / "python"
+    python.write_text("#!/bin/sh\n", encoding="utf-8")
+    python.chmod(0o700)
+    return python
+
+def stage(_plan, candidate, _commit, **_kwargs):
+    candidate.mkdir(parents=True)
+    (candidate / ".actanara-runtime-source.json").write_text("{}\n", encoding="utf-8")
+    return {}
+
+with (
+    patch.object(install_linux, "_source_identity", return_value=("release", "a" * 40)),
+    patch.object(install_linux, "_seed_venv_pip", side_effect=seed),
+    patch.object(install_linux, "_stage_source", side_effect=stage),
+    patch.object(install_linux.dependency_contract, "materialize_dependency_cache", return_value={"status": "hit"}),
+    patch.object(install_linux.dependency_contract, "install_locked_dependencies", return_value={"status": "installed"}),
+    patch.object(install_linux.dependency_contract, "write_dependency_marker", return_value={}),
+    patch.object(install_linux.dependency_contract, "verify_dependency_marker", return_value={}),
+):
+    install_linux._install(plan, selection, args)
+'''
+            environment = {
+                **os.environ,
+                "ACTANARA_INSTALL_TEST_MODE": "1",
+                "ACTANARA_INSTALL_TEST_KILL_PHASE": "pointers-published",
+                "ACTANARA_TEST_FRESH_ROOT": str(root),
+                "ACTANARA_LOCATION_FILE": str(location),
+                "PYTHONPATH": os.pathsep.join((str(ROOT), str(ROOT / "src"))),
+            }
+            killed = subprocess.run(
+                [sys.executable, "-c", child],
+                cwd=ROOT,
+                env=environment,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(killed.returncode, -9, killed.stdout + killed.stderr)
+            self.assertTrue((runtime / "app" / "source").is_symlink())
+            self.assertTrue((runtime / ".venv").is_symlink())
+            with patch.dict(
+                os.environ,
+                {"ACTANARA_LOCATION_FILE": str(location)},
+                clear=False,
+            ):
+                recovered = install_linux._recover_fresh_install(runtime)
+
+            self.assertEqual(len(recovered), 1)
+            self.assertFalse((runtime / "app" / "source").exists())
+            self.assertFalse((runtime / ".venv").exists())
+            self.assertEqual(list((runtime / "app" / "releases").iterdir()), [])
+            self.assertEqual(list((runtime / "app" / "venvs").iterdir()), [])
+            self.assertEqual(location.read_bytes(), original_location)
+
+    def test_candidate_venv_launchers_are_relocated_before_atomic_promotion(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            candidate = root / "staging" / "venv"
+            target = root / "runtime" / "app" / "venvs" / "generation"
+            (candidate / "bin").mkdir(parents=True)
+            pip = candidate / "bin" / "pip"
+            activate = candidate / "bin" / "activate"
+            pip.write_text(f"#!{candidate}/bin/python\n", encoding="utf-8")
+            activate.write_text(f'VIRTUAL_ENV="{candidate}"\n', encoding="utf-8")
+
+            install_linux._relocate_candidate_venv(candidate, target)
+
+            self.assertEqual(pip.read_text(encoding="utf-8"), f"#!{target}/bin/python\n")
+            self.assertEqual(
+                activate.read_text(encoding="utf-8"),
+                f'VIRTUAL_ENV="{target}"\n',
+            )
 
     def test_runtime_directories_ignore_permissive_login_umask(self):
         with tempfile.TemporaryDirectory() as tmp:
