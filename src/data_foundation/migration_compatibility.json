@@ -3,7 +3,7 @@
   "policy": "rollback-compatible-additive-only",
   "preCommitWriterContract": "prior-reader-compatible-v1",
   "minimumReadableSchema": "unversioned",
-  "maximumReadableSchema": "0019_pipeline_llm_attribution",
+  "maximumReadableSchema": "0021_ingestion_artifact_indexes",
   "migrations": [
     {
       "version": "0001_initial",
@@ -98,6 +98,11 @@
     {
       "version": "0019_pipeline_llm_attribution",
       "sha256": "2eac44c9d90589a169f9d4b6f46f9f17a89752dde433e29a876a3c32f026b8bc",
+      "rollbackClass": "rollback-compatible-additive"
+    },
+    {
+      "version": "0021_ingestion_artifact_indexes",
+      "sha256": "6b9a53bf1e361dab9bd4553c307c728100a21c77390a6da5af13daa6eb3c1dfd",
       "rollbackClass": "rollback-compatible-additive"
     }
   ]

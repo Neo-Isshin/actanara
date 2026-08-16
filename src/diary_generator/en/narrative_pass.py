@@ -20,6 +20,7 @@ if str(SRC_DIR) not in sys.path:
 
 from _not_enabled import main as contract_main
 from data_foundation.diary_paths import diary_narrative_report_path, diary_no_activity_report_path
+from data_foundation.filtered_dialogue import load_filtered_day
 from data_foundation.paths import load_paths
 from data_foundation.time import business_today
 from data_foundation.weather import fetch_weather_for_date
@@ -63,23 +64,7 @@ def cli(argv: list[str] | None = None) -> int:
 def load_filtered_entries(date_str: str, diary_root: Path | None = None) -> dict[str, list[dict]]:
     root = diary_root or load_paths().diary_dir
     base_dir = root / "__diary_daily" / date_str / "_filtered"
-    all_entries: dict[str, list[dict]] = {}
-    if not base_dir.exists():
-        return all_entries
-    for agent_dir in sorted(path for path in base_dir.iterdir() if path.is_dir()):
-        entries: list[dict] = []
-        for jsonl_path in sorted(agent_dir.glob("*.jsonl")):
-            with jsonl_path.open("r", encoding="utf-8") as handle:
-                for line in handle:
-                    try:
-                        payload = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if isinstance(payload, dict):
-                        entries.append(payload)
-        if entries:
-            all_entries[agent_dir.name] = entries
-    return all_entries
+    return load_filtered_day(base_dir)
 
 
 def _ensure_weather_section(date_str: str, markdown: str) -> str:

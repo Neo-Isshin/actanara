@@ -496,16 +496,17 @@ class RuntimeSettingsTests(unittest.TestCase):
 
     def test_timezone_resolver_preserves_default_business_day_and_allows_env_override(self):
         occurred = datetime.fromisoformat("2026-05-20T19:30:00+00:00")
-        self.assertEqual(resolve_timezone_name(), "Asia/Hong_Kong")
-        self.assertEqual(business_date_for(occurred).isoformat(), "2026-05-20")
-        start, end = business_window(date(2026, 5, 20))
-        self.assertEqual(start.isoformat(), "2026-05-19T20:00:00+00:00")
-        self.assertEqual(end.isoformat(), "2026-05-20T20:00:00+00:00")
-
-        with patch.dict(os.environ, {"TARGET_TIMEZONE": "UTC"}):
-            self.assertEqual(resolve_timezone_name(), "UTC")
+        with patch.dict(os.environ, {"TARGET_TIMEZONE": "Asia/Hong_Kong"}, clear=False):
+            self.assertEqual(resolve_timezone_name(), "Asia/Hong_Kong")
             self.assertEqual(business_date_for(occurred).isoformat(), "2026-05-20")
-            self.assertEqual(dashboard_tz.utc_ts_to_hkt("2026-05-20T03:30:00Z"), (date(2026, 5, 19), 3))
+            start, end = business_window(date(2026, 5, 20))
+            self.assertEqual(start.isoformat(), "2026-05-19T20:00:00+00:00")
+            self.assertEqual(end.isoformat(), "2026-05-20T20:00:00+00:00")
+
+            with patch.dict(os.environ, {"TARGET_TIMEZONE": "UTC"}):
+                self.assertEqual(resolve_timezone_name(), "UTC")
+                self.assertEqual(business_date_for(occurred).isoformat(), "2026-05-20")
+                self.assertEqual(dashboard_tz.utc_ts_to_hkt("2026-05-20T03:30:00Z"), (date(2026, 5, 19), 3))
 
     def test_dashboard_timestamp_conversion_reuses_supplied_timezone(self):
         with patch("app.services.tz.resolve_timezone", side_effect=AssertionError("should not resolve per event")):
@@ -646,7 +647,7 @@ class RuntimeSettingsTests(unittest.TestCase):
             self.assertEqual(saved["pipelineConcurrency"], 4)
             self.assertEqual(saved["pipelineGateTokens"], 25000)
             self.assertEqual(saved["pipelineGateMode"], "manual")
-            self.assertEqual(saved["autoPipelineGateTokens"], 30000)
+            self.assertEqual(saved["autoPipelineGateTokens"], 80000)
             self.assertEqual(saved["apiKey"], MASKED_SECRET)
             self.assertIn("catalog", read_llm_provider(paths))
             resolved = resolve_llm_provider(paths, redact_secrets=True)
@@ -654,7 +655,7 @@ class RuntimeSettingsTests(unittest.TestCase):
             self.assertEqual(resolved["pipelineConcurrency"], 4)
             self.assertEqual(resolved["pipelineGateTokens"], 25000)
             self.assertEqual(resolved["pipelineGateMode"], "manual")
-            self.assertEqual(resolved["autoPipelineGateTokens"], 30000)
+            self.assertEqual(resolved["autoPipelineGateTokens"], 80000)
             self.assertTrue(resolved["pipelineGateDrift"])
             self.assertEqual(resolved["apiKey"], MASKED_SECRET)
 
@@ -676,8 +677,8 @@ class RuntimeSettingsTests(unittest.TestCase):
                 },
                 paths,
             )
-            self.assertEqual(saved["contextWindow"], 524288)
-            self.assertEqual(saved["pipelineGateTokens"], 78643)
+            self.assertEqual(saved["contextWindow"], 1000000)
+            self.assertEqual(saved["pipelineGateTokens"], 150000)
             self.assertEqual(saved["pipelineGateMode"], "auto")
             self.assertEqual(saved["timeoutSeconds"], 300)
 
@@ -693,7 +694,7 @@ class RuntimeSettingsTests(unittest.TestCase):
             )
             self.assertEqual(saved["timeoutSeconds"], 480)
             self.assertEqual(resolve_llm_provider(paths, redact_secrets=True)["timeoutSeconds"], 480)
-            self.assertEqual(saved["autoPipelineGateTokens"], 78643)
+            self.assertEqual(saved["autoPipelineGateTokens"], 150000)
 
             saved = write_llm_provider(
                 {
@@ -705,9 +706,9 @@ class RuntimeSettingsTests(unittest.TestCase):
                 paths,
             )
             self.assertEqual(saved["contextWindow"], 204800)
-            self.assertEqual(saved["pipelineGateTokens"], 30720)
+            self.assertEqual(saved["pipelineGateTokens"], 80000)
             self.assertEqual(saved["pipelineGateMode"], "auto")
-            self.assertEqual(saved["autoPipelineGateTokens"], 30720)
+            self.assertEqual(saved["autoPipelineGateTokens"], 80000)
 
     def test_llm_provider_manual_gate_overrides_auto_gate(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -724,7 +725,7 @@ class RuntimeSettingsTests(unittest.TestCase):
             )
             self.assertEqual(saved["pipelineGateTokens"], 42000)
             self.assertEqual(saved["pipelineGateMode"], "manual")
-            self.assertEqual(saved["autoPipelineGateTokens"], 78643)
+            self.assertEqual(saved["autoPipelineGateTokens"], 150000)
 
             saved = write_llm_provider(
                 {
@@ -737,7 +738,7 @@ class RuntimeSettingsTests(unittest.TestCase):
             )
             self.assertEqual(saved["pipelineGateTokens"], 42000)
             self.assertEqual(saved["pipelineGateMode"], "manual")
-            self.assertEqual(saved["autoPipelineGateTokens"], 30720)
+            self.assertEqual(saved["autoPipelineGateTokens"], 80000)
 
             saved = write_llm_provider(
                 {
@@ -749,7 +750,7 @@ class RuntimeSettingsTests(unittest.TestCase):
                 },
                 paths,
             )
-            self.assertEqual(saved["pipelineGateTokens"], 78643)
+            self.assertEqual(saved["pipelineGateTokens"], 150000)
             self.assertEqual(saved["pipelineGateMode"], "auto")
 
     def test_legacy_pipeline_gate_without_mode_is_preserved_as_manual(self):
@@ -786,10 +787,10 @@ class RuntimeSettingsTests(unittest.TestCase):
 
         self.assertEqual(redacted["llmProvider"]["pipelineGateMode"], "manual")
         self.assertEqual(redacted["llmProvider"]["pipelineGateTokens"], 30000)
-        self.assertEqual(redacted["llmProvider"]["autoPipelineGateTokens"], 78643)
+        self.assertEqual(redacted["llmProvider"]["autoPipelineGateTokens"], 80000)
         self.assertEqual(resolved["pipelineGateMode"], "manual")
         self.assertEqual(resolved["pipelineGateTokens"], 30000)
-        self.assertEqual(resolved["autoPipelineGateTokens"], 78643)
+        self.assertEqual(resolved["autoPipelineGateTokens"], 80000)
         self.assertTrue(resolved["pipelineGateDrift"])
 
     def test_llm_provider_openclaw_static_preset_uses_catalog_endpoint(self):
@@ -812,10 +813,12 @@ class RuntimeSettingsTests(unittest.TestCase):
             self.assertEqual(saved["maxTokens"], 65536)
             self.assertEqual(saved["api"], "openai-compatible")
 
-    def test_auto_pipeline_gate_caps_context_window(self):
-        self.assertEqual(auto_pipeline_gate_tokens(204800), 30720)
-        self.assertEqual(auto_pipeline_gate_tokens(524288), 78643)
-        self.assertEqual(auto_pipeline_gate_tokens(1000000), 80000)
+    def test_auto_pipeline_gate_uses_floor_then_context_ratio(self):
+        self.assertEqual(auto_pipeline_gate_tokens(204800), 80000)
+        self.assertEqual(auto_pipeline_gate_tokens(524288), 80000)
+        self.assertEqual(auto_pipeline_gate_tokens(1000000), 150000)
+        self.assertEqual(auto_pipeline_gate_tokens(32000), 32000)
+        self.assertEqual(auto_pipeline_gate_tokens(512), 512)
         self.assertEqual(auto_pipeline_gate_tokens(None), 30000)
 
     def test_llm_provider_kimi_code_uses_anthropic_compatible_endpoint(self):
@@ -1173,7 +1176,7 @@ class RuntimeSettingsTests(unittest.TestCase):
         self.assertEqual(llm_fields["llmProvider.apiKey"]["settingsValue"], MASKED_SECRET)
         self.assertEqual(llm_fields["llmProvider.apiKey"]["effectiveValue"], MASKED_SECRET)
         self.assertEqual(llm_fields["llmProvider.pipelineGateTokens"]["mode"], "manual")
-        self.assertEqual(llm_fields["llmProvider.pipelineGateTokens"]["autoValue"], 78643)
+        self.assertEqual(llm_fields["llmProvider.pipelineGateTokens"]["autoValue"], 150000)
         self.assertTrue(llm_fields["llmProvider.pipelineGateTokens"]["drift"])
         self.assertEqual(llm_fields["llmProvider.pipelineGateTokens"]["effectiveValue"], 42000)
 

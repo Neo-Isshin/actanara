@@ -20,6 +20,7 @@ if str(SRC_DIR) not in sys.path:
 
 from _not_enabled import main as contract_main
 from data_foundation.diary_paths import diary_technical_report_path
+from data_foundation.filtered_dialogue import load_filtered_source_entries
 from data_foundation.nova_task import render_task_graph_context
 from data_foundation.paths import load_paths
 from data_foundation.settings import is_nova_task_enabled
@@ -63,16 +64,7 @@ def cli(argv: list[str] | None = None) -> int:
 
 
 def load_agent_entries(agent_dir: Path) -> list[dict]:
-    entries: list[dict] = []
-    for jsonl_path in sorted(agent_dir.glob("*.jsonl")):
-        with jsonl_path.open("r", encoding="utf-8") as handle:
-            for line in handle:
-                try:
-                    payload = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if isinstance(payload, dict):
-                    entries.append(payload)
+    entries = load_filtered_source_entries(agent_dir)
     entries.sort(key=lambda item: str(item.get("time") or ""))
     return entries
 

@@ -17,6 +17,7 @@ import re
 from pathlib import Path
 from datetime import datetime
 from data_foundation.paths import load_paths
+from data_foundation.filtered_dialogue import opaque_conversation_id, write_compact_filtered_jsonl
 from data_foundation.session_files import is_openclaw_session_file
 from data_foundation.settings import (
     default_external_tool_path,
@@ -309,6 +310,7 @@ def collect_engine(name, cfg, target_date):
     if cfg["engine"] == "jsonl_stream":
         for fpath in path.rglob(cfg["pattern"]):
             if not is_session_file(fpath.name): continue
+            conversation_id = opaque_conversation_id(name, str(fpath))
             try:
                 with open(fpath, "r", errors="ignore") as f:
                     first_char = f.read(1)
@@ -399,18 +401,27 @@ def collect_engine(name, cfg, target_date):
                                     if final_content:
                                         hhmm = format_local_hhmm(ts)
                                         if name == "codex":
-                                            entry_key = (role, normalize_codex_content(final_content))
+                                            entry_key = (conversation_id, role, hhmm, normalize_codex_content(final_content))
                                         else:
-                                            entry_key = (role, hhmm, final_content)
+                                            entry_key = (conversation_id, role, hhmm, final_content)
                                         if entry_key not in seen_entries:
                                             seen_entries.add(entry_key)
-                                            daily_unified.append({"role": role, "content": final_content, "time": hhmm, "agent": name})
+                                            daily_unified.append(
+                                                {
+                                                    "role": role,
+                                                    "content": final_content,
+                                                    "time": hhmm,
+                                                    "agent": name,
+                                                    "conversationId": conversation_id,
+                                                }
+                                            )
                             except: continue
             except: continue
 
     elif cfg["engine"] == "json_messages":
         for fpath in path.glob(cfg["pattern"]):
             if not is_session_file(fpath.name): continue
+            conversation_id = opaque_conversation_id(name, str(fpath))
             try:
                 with open(fpath, "r") as f: data = json.load(f)
                 all_raw_msgs = data.get("messages", []) + data.get("transcript", [])
@@ -444,10 +455,18 @@ def collect_engine(name, cfg, target_date):
                         content = re.sub(r'<(thinking|思考)>[\s\S]*?</\1>', '', str(content)).strip()
                         if content:
                             hhmm = format_local_hhmm(ts)
-                            entry_key = (role, hhmm, content)
+                            entry_key = (conversation_id, role, hhmm, content)
                             if entry_key not in seen_entries:
                                 seen_entries.add(entry_key)
-                                daily_unified.append({"role": role, "content": content, "time": hhmm, "agent": name})
+                                daily_unified.append(
+                                    {
+                                        "role": role,
+                                        "content": content,
+                                        "time": hhmm,
+                                        "agent": name,
+                                        "conversationId": conversation_id,
+                                    }
+                                )
             except: continue
 
     if daily_unified:
@@ -455,10 +474,22 @@ def collect_engine(name, cfg, target_date):
         out_dir = diary_root / "__diary_daily" / target_date / name
         flt_dir = diary_root / "__diary_daily" / target_date / "_filtered" / name
         out_dir.mkdir(parents=True, exist_ok=True); flt_dir.mkdir(parents=True, exist_ok=True)
-        with open(out_dir / "unified_daily.jsonl", "w") as f1, open(flt_dir / "unified_daily.jsonl", "w") as f2:
+        with open(out_dir / "unified_daily.jsonl", "w") as f1:
             for e in daily_unified:
                 f1.write(json.dumps(e, ensure_ascii=False) + "\n")
-                f2.write(json.dumps({"role": e["role"], "content": e["content"], "time": e["time"]}, ensure_ascii=False) + "\n")
+        write_compact_filtered_jsonl(
+            flt_dir / "unified_daily.jsonl",
+            (
+                {
+                    "role": entry["role"],
+                    "content": entry["content"],
+                    "time": entry["time"],
+                    "conversationId": entry["conversationId"],
+                }
+                for entry in daily_unified
+            ),
+            source=name,
+        )
     return len(daily_unified)
 
 
@@ -501,6 +532,10 @@ def collect_runtime_records(name, target_date, start_ts, end_ts):
                         "source": name,
                         "sourceVariant": record.source_variant,
                         "session": record.external_session_key,
+                        "conversationId": opaque_conversation_id(
+                            name,
+                            record.external_session_key or record.external_message_key or str(source_order),
+                        ),
                     },
                 )
             )
@@ -514,23 +549,22 @@ def collect_runtime_records(name, target_date, start_ts, end_ts):
     flt_dir = diary_root / "__diary_daily" / target_date / "_filtered" / name
     out_dir.mkdir(parents=True, exist_ok=True)
     flt_dir.mkdir(parents=True, exist_ok=True)
-    with (
-        (out_dir / "unified_daily.jsonl").open("w", encoding="utf-8") as raw_handle,
-        (flt_dir / "unified_daily.jsonl").open("w", encoding="utf-8") as filtered_handle,
-    ):
+    with (out_dir / "unified_daily.jsonl").open("w", encoding="utf-8") as raw_handle:
         for _timestamp, _source_order, entry in daily_unified:
             raw_handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
-            filtered_handle.write(
-                json.dumps(
-                    {
-                        "role": entry["role"],
-                        "content": entry["content"],
-                        "time": entry["time"],
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n"
-            )
+    write_compact_filtered_jsonl(
+        flt_dir / "unified_daily.jsonl",
+        (
+            {
+                "role": entry["role"],
+                "content": entry["content"],
+                "time": entry["time"],
+                "conversationId": entry["conversationId"],
+            }
+            for _timestamp, _source_order, entry in daily_unified
+        ),
+        source=name,
+    )
     return len(daily_unified)
 
 
@@ -585,6 +619,7 @@ def collect_openclaw_agents(path, cfg, target_date, start_ts, end_ts):
         for fpath in sorted(sessions_dir.glob(pattern)):
             if not is_openclaw_session_file(fpath.name):
                 continue
+            conversation_id = opaque_conversation_id(agent_dir.name, str(fpath))
             entries = []
             try:
                 with open(fpath, "r", encoding="utf-8", errors="ignore") as handle:
@@ -607,10 +642,11 @@ def collect_openclaw_agents(path, cfg, target_date, start_ts, end_ts):
                 dialogue = extract_openclaw_dialogue(entry)
                 if not dialogue:
                     continue
-                key = (dialogue["role"], dialogue["time"], dialogue["content"])
+                key = (conversation_id, dialogue["role"], dialogue["time"], dialogue["content"])
                 if key in seen_entries:
                     continue
                 seen_entries.add(key)
+                dialogue["conversationId"] = conversation_id
                 daily_unified.append(dialogue)
         if daily_unified:
             diary_root = _diary_root()
@@ -618,11 +654,15 @@ def collect_openclaw_agents(path, cfg, target_date, start_ts, end_ts):
             flt_dir = diary_root / "__diary_daily" / target_date / "_filtered" / agent_dir.name
             out_dir.mkdir(parents=True, exist_ok=True)
             flt_dir.mkdir(parents=True, exist_ok=True)
-            with open(out_dir / "unified_daily.jsonl", "w") as f1, open(flt_dir / "unified_daily.jsonl", "w") as f2:
+            with open(out_dir / "unified_daily.jsonl", "w") as f1:
                 for entry in daily_unified:
                     raw = {**entry, "agent": agent_dir.name, "source": "openclaw"}
                     f1.write(json.dumps(raw, ensure_ascii=False) + "\n")
-                    f2.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            write_compact_filtered_jsonl(
+                flt_dir / "unified_daily.jsonl",
+                daily_unified,
+                source=agent_dir.name,
+            )
             total += len(daily_unified)
     return total
 

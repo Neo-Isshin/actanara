@@ -16,6 +16,7 @@ from pathlib import Path
 import sys, os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 from data_foundation.paths import load_paths
+from data_foundation.filtered_dialogue import load_filtered_day
 from data_foundation.settings import default_external_tool_path, external_tool_path, resolve_llm_provider, resolve_runtime_source
 from data_foundation.llm_execution import ProviderChainError, execute_llm_message
 from data_foundation.time import business_today, business_window
@@ -181,20 +182,7 @@ def call_llm(prompt, is_int=False, label=None, max_tokens=None):
 
 def load_filtered_entries(date_str):
     base_dir = _runtime_diary_root() / "__diary_daily" / date_str / "_filtered"
-    all_entries = {}
-    if not base_dir.exists(): return all_entries
-    for agent in os.listdir(base_dir):
-        path = base_dir / agent
-        if path.is_dir():
-            ents = []
-            for f in sorted(os.listdir(path)):
-                if f.endswith('.jsonl'):
-                    with open(path / f, "r", encoding="utf-8") as fin:
-                        for line in fin:
-                            try: ents.append(json.loads(line))
-                            except: pass
-            if ents: all_entries[agent] = ents
-    return all_entries
+    return load_filtered_day(base_dir)
 
 def extract_top_topics(all_entries_dict):
     words = []

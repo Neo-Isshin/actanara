@@ -2026,7 +2026,7 @@ const LLM_UI_TEXT = {
     readingProvider: '读取 Provider…',
     readProviderFailed: '读取 Provider 失败: ',
     manualOverride: (value, drift) => `当前为手动覆盖；自动建议值 ${value}${drift ? '，与当前值不同' : ''}`,
-    autoGate: (value) => `当前随模型 context 自动更新；自动建议值 ${value}`,
+    autoGate: (value) => `当前随模型 context 自动更新；取 context 的 15% 与 80,000 中较大值，且不超过 context；当前值 ${value}`,
     cancel: '取消',
     testAvailability: '检测可用性',
     saveProvider: '保存 Provider',
@@ -2072,7 +2072,7 @@ const LLM_UI_TEXT = {
     readingProvider: 'Reading Provider...',
     readProviderFailed: 'Provider read failed: ',
     manualOverride: (value, drift) => `Manual override; automatic recommendation ${value}${drift ? ', differs from current value' : ''}`,
-    autoGate: (value) => `Auto-updates from model context; automatic recommendation ${value}`,
+    autoGate: (value) => `Auto-updates from model context; uses the larger of 15% of context or 80,000, capped by context; current value ${value}`,
     cancel: 'Cancel',
     testAvailability: 'Test Availability',
     saveProvider: 'Save Provider',
@@ -9912,7 +9912,7 @@ function providerStatusLabel(status) {
 function llmAutoGateTokens(contextWindow) {
   const parsed = Number.parseInt(contextWindow, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return 30000;
-  return Math.max(1000, Math.min(Math.floor(parsed * 0.15), 80000));
+  return Math.min(parsed, Math.max(Math.floor(parsed * 0.15), 80000));
 }
 
 function providerCatalogNote(provider) {

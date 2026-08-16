@@ -19,7 +19,7 @@ SUPPORTED_APIS = {"openai-compatible", "anthropic-messages"}
 DEFAULT_PIPELINE_CONCURRENCY = 3
 DEFAULT_PIPELINE_GATE_TOKENS = 30000
 DEFAULT_LLM_TIMEOUT_SECONDS = 300
-MAX_AUTO_PIPELINE_GATE_TOKENS = 80000
+MIN_AUTO_PIPELINE_GATE_TOKENS = 80000
 AUTO_PIPELINE_GATE_RATIO = 0.15
 PIPELINE_GATE_MODE_AUTO = "auto"
 PIPELINE_GATE_MODE_MANUAL = "manual"
@@ -94,14 +94,25 @@ def _model(
 
 
 def auto_pipeline_gate_tokens(context_window: Any, fallback: int = DEFAULT_PIPELINE_GATE_TOKENS) -> int:
-    """Return the default quality gate for a model context window."""
+    """Return the automatic gate without exceeding the model context window.
+
+    Eighty thousand tokens is the automatic floor, not a ceiling. Known
+    context windows use the larger of that floor and fifteen percent of the
+    window, then clamp the result to the model's physical context capacity.
+    """
     try:
         parsed = int(context_window)
     except (TypeError, ValueError):
         parsed = 0
     if parsed <= 0:
         return fallback
-    return max(1000, min(int(parsed * AUTO_PIPELINE_GATE_RATIO), MAX_AUTO_PIPELINE_GATE_TOKENS))
+    return min(
+        parsed,
+        max(
+            int(parsed * AUTO_PIPELINE_GATE_RATIO),
+            MIN_AUTO_PIPELINE_GATE_TOKENS,
+        ),
+    )
 
 
 def _provider(
@@ -144,7 +155,7 @@ _CATALOG = [
         source="nova-compatibility",
         models=[
             _model("MiniMax-M2.7-highspeed", "MiniMax M2.7 Highspeed", 204800, 128000, reasoning=True),
-            _model("MiniMax-M3", "MiniMax M3", 524288, 524288, reasoning=True),
+            _model("MiniMax-M3", "MiniMax M3", 1000000, 524288, reasoning=True),
             _model("MiniMax-M2.5", "MiniMax M2.5", 200000, 8192, reasoning=True),
         ],
     ),
@@ -315,7 +326,7 @@ _CATALOG = [
         endpoint="https://api.minimax.io/anthropic",
         auth="x-api-key",
         source_api="anthropic-messages",
-        models=[_model("MiniMax-M3", context_window=524288, max_tokens=524288, reasoning=True), _model("MiniMax-M2.7-highspeed", context_window=204800, max_tokens=128000, reasoning=True), _model("MiniMax-M2.5", context_window=1000000, max_tokens=65536, reasoning=True)],
+        models=[_model("MiniMax-M3", context_window=1000000, max_tokens=524288, reasoning=True), _model("MiniMax-M2.7-highspeed", context_window=204800, max_tokens=128000, reasoning=True), _model("MiniMax-M2.5", context_window=1000000, max_tokens=65536, reasoning=True)],
     ),
     _provider(
         "mistral",

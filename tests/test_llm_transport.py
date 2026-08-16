@@ -27,6 +27,7 @@ from data_foundation.llm_transport import (
     LlmTransportResult,
     LlmUsage,
     _reduced_max_tokens,
+    _verified_tls_context,
     anthropic_messages_payload,
     anthropic_messages_url,
     openai_chat_completions_payload,
@@ -341,6 +342,36 @@ def _stalled_tls_handshake_server():
 
 
 class LLMTransportTests(unittest.TestCase):
+    def test_tls_context_uses_standard_os_bundle_when_framework_default_is_missing(self):
+        context = object()
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch(
+                "data_foundation.llm_transport.ssl.get_default_verify_paths",
+                return_value=SimpleNamespace(cafile=None, capath=None),
+            ),
+            patch(
+                "data_foundation.llm_transport.os.path.isfile",
+                side_effect=lambda path: path == "/etc/ssl/cert.pem",
+            ),
+            patch("data_foundation.llm_transport.ssl.create_default_context", return_value=context) as create,
+        ):
+            result = _verified_tls_context()
+
+        self.assertIs(result, context)
+        create.assert_called_once_with(cafile="/etc/ssl/cert.pem")
+
+    def test_tls_context_keeps_explicit_ca_environment_authoritative(self):
+        context = object()
+        with (
+            patch.dict(os.environ, {"SSL_CERT_FILE": "/operator/ca.pem"}, clear=True),
+            patch("data_foundation.llm_transport.ssl.create_default_context", return_value=context) as create,
+        ):
+            result = _verified_tls_context()
+
+        self.assertIs(result, context)
+        create.assert_called_once_with()
+
     def test_diary_passes_default_thinking_mode_is_off(self):
         self.assertEqual(narrative_pass.THINKING_MODE, "off")
         self.assertEqual(technical_pass.THINKING_MODE, "off")

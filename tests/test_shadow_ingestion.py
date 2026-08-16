@@ -74,6 +74,7 @@ class ShadowIngestionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             paths = initialize_home(root / "Actanara", legacy_diary_root=root / "legacy")
+            write_settings({"general": {"timezone": "Asia/Hong_Kong"}}, paths)
             adapters = self._adapters(root)
             target = date(2026, 5, 19)
             (paths.config_dir / "projects-registry.json").write_text(
@@ -119,6 +120,193 @@ class ShadowIngestionTests(unittest.TestCase):
             self.assertEqual(assigned[0]["tool_key"], "claude-code")
             self.assertEqual(assigned[0]["tokens"], 30)
             self.assertEqual(assigned[0]["evidence_confidence"], "high")
+
+    def test_jsonl_cursor_skips_unchanged_content_and_reads_only_append(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "codex"
+            source.mkdir()
+            artifact = source / "rollout-incremental.jsonl"
+            first_usage = {
+                "timestamp": "2026-05-19T12:00:00Z",
+                "type": "event_msg",
+                "payload": {
+                    "type": "token_count",
+                    "info": {
+                        "last_token_usage": {
+                            "input_tokens": 10,
+                            "output_tokens": 2,
+                            "cached_input_tokens": 3,
+                        }
+                    },
+                },
+            }
+            rows = [
+                {"type": "session_meta", "payload": {"id": "codex-session", "cwd": "/workspace"}},
+                {"timestamp": "2026-05-19T12:00:00Z", "type": "turn_context", "payload": {"model": "gpt-5.5"}},
+                first_usage,
+            ]
+            artifact.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+            paths = initialize_home(root / "Actanara")
+            adapter = CodexAdapter(source)
+            target = date(2026, 5, 19)
+
+            with patch("data_foundation.ingest.resolve_timezone", return_value=timezone.utc) as resolver:
+                first = run_shadow_ingestion(paths, target, adapters=(adapter,), observe_assets=False)
+                unchanged = run_shadow_ingestion(paths, target, adapters=(adapter,), observe_assets=False)
+                second_usage = {
+                    "timestamp": "2026-05-19T13:00:00Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "token_count",
+                        "info": {
+                            "last_token_usage": {
+                                "input_tokens": 20,
+                                "output_tokens": 4,
+                                "cached_input_tokens": 6,
+                            }
+                        },
+                    },
+                }
+                with artifact.open("a", encoding="utf-8") as handle:
+                    handle.write(json.dumps(second_usage) + "\n")
+                appended = run_shadow_ingestion(paths, target, adapters=(adapter,), observe_assets=False)
+
+            self.assertEqual(resolver.call_count, 3)
+            self.assertEqual((first.events_seen, first.events_in_window), (1, 1))
+            self.assertEqual((unchanged.events_seen, unchanged.events_in_window), (0, 1))
+            self.assertEqual((appended.events_seen, appended.events_in_window), (1, 2))
+            with connect(paths, read_only=True) as connection:
+                cursor = json.loads(
+                    connection.execute(
+                        "SELECT cursor_json FROM source_artifacts WHERE tool_key = 'codex'"
+                    ).fetchone()["cursor_json"]
+                )
+                inputs = [
+                    row["input_tokens"]
+                    for row in connection.execute(
+                        "SELECT input_tokens FROM usage_events ORDER BY occurred_at"
+                    ).fetchall()
+                ]
+            self.assertEqual(cursor["kind"], "jsonl-byte-offset")
+            self.assertEqual(cursor["committed_offset"], artifact.stat().st_size)
+            self.assertEqual(inputs, [10, 20])
+
+    def test_jsonl_cursor_rebuilds_window_after_source_rewrite(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "codex"
+            source.mkdir()
+            artifact = source / "rollout-reset.jsonl"
+            paths = initialize_home(root / "Actanara")
+            target = date(2026, 5, 19)
+
+            def usage(hour: int, input_tokens: int) -> dict:
+                return {
+                    "timestamp": f"2026-05-19T{hour:02d}:00:00Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "token_count",
+                        "info": {
+                            "last_token_usage": {
+                                "input_tokens": input_tokens,
+                                "output_tokens": 1,
+                                "cached_input_tokens": 0,
+                            }
+                        },
+                    },
+                }
+
+            header = [
+                {"type": "session_meta", "payload": {"id": "codex-session"}},
+                {"timestamp": "2026-05-19T12:00:00Z", "type": "turn_context", "payload": {"model": "gpt-5.5"}},
+            ]
+            artifact.write_text(
+                "\n".join(json.dumps(row) for row in [*header, usage(12, 5), usage(13, 6)]) + "\n",
+                encoding="utf-8",
+            )
+            with patch("data_foundation.ingest.resolve_timezone", return_value=timezone.utc):
+                first = run_shadow_ingestion(
+                    paths,
+                    target,
+                    adapters=(CodexAdapter(source),),
+                    observe_assets=False,
+                )
+                artifact.write_text(
+                    "\n".join(json.dumps(row) for row in [*header, usage(14, 7)]) + "\n",
+                    encoding="utf-8",
+                )
+                rebuilt = run_shadow_ingestion(
+                    paths,
+                    target,
+                    adapters=(CodexAdapter(source),),
+                    observe_assets=False,
+                )
+
+            self.assertEqual(first.events_in_window, 2)
+            self.assertEqual((rebuilt.events_seen, rebuilt.events_in_window), (1, 1))
+            with connect(paths, read_only=True) as connection:
+                rows = connection.execute(
+                    "SELECT input_tokens FROM usage_events ORDER BY occurred_at"
+                ).fetchall()
+            self.assertEqual([row["input_tokens"] for row in rows], [7])
+
+    def test_jsonl_cursor_retries_an_incomplete_tail_after_newline_commit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "codex"
+            source.mkdir()
+            artifact = source / "rollout-tail.jsonl"
+            paths = initialize_home(root / "Actanara")
+            target = date(2026, 5, 19)
+            header = [
+                {"type": "session_meta", "payload": {"id": "codex-session"}},
+                {"timestamp": "2026-05-19T12:00:00Z", "type": "turn_context", "payload": {"model": "gpt-5.5"}},
+            ]
+            first_usage = {
+                "timestamp": "2026-05-19T12:00:00Z",
+                "type": "event_msg",
+                "payload": {
+                    "type": "token_count",
+                    "info": {"last_token_usage": {"input_tokens": 5, "output_tokens": 1}},
+                },
+            }
+            second_usage = {
+                "timestamp": "2026-05-19T13:00:00Z",
+                "type": "event_msg",
+                "payload": {
+                    "type": "token_count",
+                    "info": {"last_token_usage": {"input_tokens": 8, "output_tokens": 1}},
+                },
+            }
+            artifact.write_text(
+                "\n".join(json.dumps(row) for row in [*header, first_usage]) + "\n",
+                encoding="utf-8",
+            )
+
+            with patch("data_foundation.ingest.resolve_timezone", return_value=timezone.utc):
+                run_shadow_ingestion(paths, target, adapters=(CodexAdapter(source),), observe_assets=False)
+                with artifact.open("a", encoding="utf-8") as handle:
+                    handle.write(json.dumps(second_usage))
+                incomplete = run_shadow_ingestion(
+                    paths,
+                    target,
+                    adapters=(CodexAdapter(source),),
+                    observe_assets=False,
+                )
+                with artifact.open("a", encoding="utf-8") as handle:
+                    handle.write("\n")
+                completed = run_shadow_ingestion(
+                    paths,
+                    target,
+                    adapters=(CodexAdapter(source),),
+                    observe_assets=False,
+                )
+
+            self.assertEqual((incomplete.events_seen, incomplete.events_in_window), (0, 1))
+            self.assertEqual((completed.events_seen, completed.events_in_window), (1, 2))
+            with connect(paths, read_only=True) as connection:
+                self.assertEqual(connection.execute("SELECT COUNT(*) FROM usage_events").fetchone()[0], 2)
 
     def test_codex_adapter_normalizes_cached_input_when_total_tokens_excludes_cache_detail(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -231,6 +419,7 @@ class ShadowIngestionTests(unittest.TestCase):
             artifact.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
             missing = root / "missing"
             with (
+                patch.dict("os.environ", {"TARGET_TIMEZONE": "Asia/Hong_Kong"}, clear=False),
                 patch.object(token_engine, "AGENTS_DIR", missing),
                 patch.object(token_engine, "GEMINI_DIR", missing),
                 patch.object(token_engine, "CLAUDE_DIR", missing),
@@ -296,6 +485,7 @@ class ShadowIngestionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             paths = initialize_home(root / "Actanara")
+            write_settings({"general": {"timezone": "Asia/Hong_Kong"}}, paths)
             start = date(2026, 5, 18)
             end = date(2026, 5, 19)
             result = run_shadow_period_ingestion(paths, start, end, adapters=self._adapters(root), observe_assets=False)
@@ -307,6 +497,7 @@ class ShadowIngestionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             paths = initialize_home(root / "Actanara")
+            write_settings({"general": {"timezone": "Asia/Hong_Kong"}}, paths)
             chat_root = root / "gemini"
             chat_root.mkdir()
             (chat_root / "session-zero.jsonl").write_text(

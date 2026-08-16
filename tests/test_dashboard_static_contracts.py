@@ -999,6 +999,7 @@ class DashboardStaticContractTests(unittest.TestCase):
         self.assertIn("llmPipelineGateTokens", script)
         self.assertIn("llmPipelineGateMode", script)
         self.assertIn("autoPipelineGateTokens", script)
+        self.assertIn("Math.min(parsed, Math.max(Math.floor(parsed * 0.15), 80000))", script)
         self.assertIn("function llmPipelineGateEdited()", script)
         self.assertIn("function llmUseAutoPipelineGate()", script)
         self.assertIn("payload.pipelineGateMode = document.getElementById('llmPipelineGateMode')", script)

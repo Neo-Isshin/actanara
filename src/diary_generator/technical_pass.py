@@ -15,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 import config
 from data_foundation.diary_paths import diary_technical_report_path
+from data_foundation.filtered_dialogue import load_filtered_source_entries
 from data_foundation.settings import is_nova_task_enabled, resolve_llm_provider
 from data_foundation.llm_execution import execute_llm_message
 from data_foundation.nova_task import render_task_graph_context
@@ -521,14 +522,7 @@ def _call_unified_technical_pass(date_str, task_graph_context, entries, truncati
 
 
 def load_agent_entries(agent_dir: Path) -> list[dict]:
-    entries = []
-    for f in agent_dir.glob("*.jsonl"):
-        with open(f) as fin:
-            for line in fin:
-                try:
-                    entries.append(json.loads(line))
-                except Exception:
-                    pass
+    entries = load_filtered_source_entries(agent_dir)
     entries.sort(key=lambda x: x.get("time", ""))
     return entries
 

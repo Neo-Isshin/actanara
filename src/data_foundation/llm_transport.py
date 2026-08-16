@@ -1,5 +1,6 @@
 import json
 from dataclasses import dataclass
+import os
 import re
 import socket
 import ssl
@@ -549,6 +550,19 @@ def _sleep_before_retry(retry_index: int) -> None:
     time.sleep([2, 8][min(retry_index, 1)])
 
 
+def _verified_tls_context() -> ssl.SSLContext:
+    """Build a verified TLS context even when framework Python lacks its CA link."""
+    if os.environ.get("SSL_CERT_FILE") or os.environ.get("SSL_CERT_DIR"):
+        return ssl.create_default_context()
+    defaults = ssl.get_default_verify_paths()
+    if defaults.cafile or defaults.capath:
+        return ssl.create_default_context()
+    for candidate in ("/etc/ssl/cert.pem", "/etc/ssl/certs/ca-certificates.crt"):
+        if os.path.isfile(candidate):
+            return ssl.create_default_context(cafile=candidate)
+    return ssl.create_default_context()
+
+
 def _post_json(*, url: str, headers: dict, payload: dict, timeout: int) -> dict:
     req = urllib.request.Request(
         url,
@@ -556,7 +570,7 @@ def _post_json(*, url: str, headers: dict, payload: dict, timeout: int) -> dict:
         headers=headers,
         method="POST",
     )
-    ctx = ssl.create_default_context()
+    ctx = _verified_tls_context()
     with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
         result = json.loads(resp.read())
         if not isinstance(result, dict):

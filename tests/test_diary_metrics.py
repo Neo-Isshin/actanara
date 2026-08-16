@@ -719,7 +719,11 @@ class DiaryMetricsReaderTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
-            with patch.object(cron_run_reporter, "CRON_RUNS_DIR", root), redirect_stdout(io.StringIO()):
+            with (
+                patch.dict("os.environ", {"TARGET_TIMEZONE": "Asia/Hong_Kong"}, clear=False),
+                patch.object(cron_run_reporter, "CRON_RUNS_DIR", root),
+                redirect_stdout(io.StringIO()),
+            ):
                 report = cron_run_reporter.generate_cron_report("2026-05-20")
 
         self.assertIn("| 14:04 | `daily-cr", report)

@@ -37,6 +37,7 @@ EXPECTED_MIGRATIONS = [
     "0017_infrastructure_graph",
     "0018_pipeline_runs",
     "0019_pipeline_llm_attribution",
+    "0021_ingestion_artifact_indexes",
 ]
 
 
@@ -363,6 +364,7 @@ db.migrate()
                     "0017_infrastructure_graph",
                     "0018_pipeline_runs",
                     "0019_pipeline_llm_attribution",
+                    "0021_ingestion_artifact_indexes",
                 ],
             )
             with connect(paths) as connection:

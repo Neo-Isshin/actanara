@@ -11,11 +11,36 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
 from ai_assets_center import unified_source_collector as collector
+from data_foundation.filtered_dialogue import replay_filtered_entries
 from data_foundation.settings import write_settings
 from data_foundation.paths import initialize_home, update_runtime_manifest_paths
 
 
 class UnifiedSourceCollectorTests(unittest.TestCase):
+    def test_codex_snapshot_copies_are_compacted_without_losing_occurrences(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sessions = root / ".codex" / "sessions" / "2026" / "05" / "21"
+            sessions.mkdir(parents=True)
+            _write_codex_rollout_fixture(sessions / "rollout-copy-one.jsonl")
+            _write_codex_rollout_fixture(sessions / "rollout-copy-two.jsonl")
+            diary_root = root / "Diary"
+
+            with (
+                patch.dict("os.environ", {"TARGET_TIMEZONE": "Asia/Hong_Kong"}, clear=False),
+                patch.object(collector, "load_paths", return_value=type("Paths", (), {"diary_dir": diary_root})()),
+                patch.object(collector, "external_tool_path", return_value=root / ".codex" / "sessions"),
+            ):
+                captured = collector.collect_engine("codex", collector.SOURCES["codex"], "2026-05-22")
+
+            filtered = diary_root / "__diary_daily" / "2026-05-22" / "_filtered" / "codex" / "unified_daily.jsonl"
+            compact = [json.loads(line) for line in filtered.read_text(encoding="utf-8").splitlines()]
+
+        self.assertEqual(captured, 4)
+        self.assertEqual(len(compact), 2)
+        self.assertEqual([row["occurrenceCount"] for row in compact], [2, 2])
+        self.assertEqual(len(replay_filtered_entries(compact)), 4)
+
     def test_codex_rollout_response_items_are_archived_for_narrative_input(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
