@@ -3,7 +3,15 @@ from datetime import date, datetime, timedelta
 from fastapi import APIRouter, BackgroundTasks, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from starlette.concurrency import run_in_threadpool
-from app.services import ai_assets, agents, backups, foundation, skills
+from app.services import (
+    ai_assets,
+    agents,
+    backups,
+    foundation,
+    skill_asset_registration,
+    skill_assets,
+    skills,
+)
 from app.services.dashboard_state import dashboard_failure
 from app.services.tz import hkt_today
 from data_foundation.refresh import HistoryBackfillAlreadyActiveError
@@ -42,6 +50,82 @@ async def api_ai_assets():
                 "agentCount": 0,
                 "activeDayCount": 0,
             },
+        )
+
+
+@router.get("/ai-assets/skill-assets")
+async def api_ai_assets_skill_assets(businessDate: str | None = None):
+    try:
+        return await run_in_threadpool(skill_assets.get_skill_asset_review, businessDate)
+    except skill_assets.SkillAssetLedgerError as error:
+        return JSONResponse(
+            {"status": "error", "error": str(error), "items": []},
+            status_code=422,
+        )
+    except Exception:
+        logger.exception("GET /api/ai-assets/skill-assets failed")
+        return JSONResponse(
+            {"status": "error", "error": "Skill asset review is unavailable.", "items": []},
+            status_code=500,
+        )
+
+
+@router.post("/ai-assets/skill-assets/crystallize")
+async def api_ai_assets_skill_assets_crystallize(payload: dict):
+    try:
+        result = await run_in_threadpool(
+            skill_assets.force_crystallize_lessons,
+            payload,
+        )
+        return result
+    except skill_assets.SkillAssetActionError as error:
+        return JSONResponse(
+            {"status": "error", "error": str(error), "code": error.code},
+            status_code=error.status_code,
+        )
+    except skill_assets.SkillAssetLedgerError as error:
+        return JSONResponse(
+            {"status": "error", "error": str(error), "code": "skill-ledger-invalid"},
+            status_code=422,
+        )
+    except Exception:
+        logger.exception("POST /api/ai-assets/skill-assets/crystallize failed")
+        return JSONResponse(
+            {
+                "status": "error",
+                "error": "The selected Lesson could not be crystallized.",
+                "code": "skill-crystallization-failed",
+            },
+            status_code=500,
+        )
+
+
+@router.post("/ai-assets/skill-assets/register")
+async def api_ai_assets_skill_assets_register(payload: dict):
+    try:
+        return await run_in_threadpool(
+            skill_asset_registration.register_finalized_skill_assets,
+            payload,
+        )
+    except skill_assets.SkillAssetActionError as error:
+        return JSONResponse(
+            {"status": "error", "error": str(error), "code": error.code},
+            status_code=error.status_code,
+        )
+    except skill_assets.SkillAssetLedgerError as error:
+        return JSONResponse(
+            {"status": "error", "error": str(error), "code": "skill-ledger-invalid"},
+            status_code=422,
+        )
+    except Exception:
+        logger.exception("POST /api/ai-assets/skill-assets/register failed")
+        return JSONResponse(
+            {
+                "status": "error",
+                "error": "The selected Skills could not be registered.",
+                "code": "skill-registration-failed",
+            },
+            status_code=500,
         )
 
 

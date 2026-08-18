@@ -635,6 +635,7 @@ def default_settings(paths: RuntimePaths | None = None) -> dict:
                 "narrative_pass.py": 1800,
                 "technical_pass.py": 1800,
                 "learning_pass.py": 900,
+                "skill_pass_minimal_harness.py": 1800,
                 "rag_v2_sync.py": 1800,
             },
             "totalWatchdogSeconds": 7200,
@@ -2609,6 +2610,7 @@ def _resolve_pipeline_step_timeouts(raw: Any, default_step_timeout: int) -> dict
         "narrative_pass.py": 1800,
         "technical_pass.py": 1800,
         "learning_pass.py": 900,
+        "skill_pass_minimal_harness.py": 1800,
         "rag_v2_sync.py": 1800,
     }
     result = {key: _positive_int(value, default_step_timeout) for key, value in defaults.items()}

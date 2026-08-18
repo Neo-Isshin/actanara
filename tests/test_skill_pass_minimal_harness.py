@@ -2,6 +2,7 @@ import json
 import sys
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -174,7 +175,9 @@ class MinimalHarnessTests(unittest.TestCase):
         self.assertIn("只保留证据最强且可独立闭合的一条程序", harness.CRYSTALLIZATION_PROMPT)
         self.assertIn("Procedure 用 2–6 个有序步骤", harness.CRYSTALLIZATION_PROMPT)
         self.assertIn("闭卷证据测试", harness.CRYSTALLIZATION_PROMPT)
-        self.assertIn("独立完成态核验", harness.CRYSTALLIZATION_PROMPT)
+        self.assertIn("{authority_boundary}", harness.CRYSTALLIZATION_PROMPT)
+        self.assertIn("完成态与批内资产组合已经独立核验", harness.CRYSTALLIZATION_SYSTEM)
+        self.assertIn("人工覆盖不代表完成态", harness.HUMAN_OVERRIDE_CRYSTALLIZATION_SYSTEM)
         self.assertIn("单独调用", harness.PORTFOLIO_PROMPT)
         self.assertIn("不要追求数量", harness.PORTFOLIO_PROMPT)
         self.assertIn("Skill Promotion", harness.PORTFOLIO_PROMPT)
@@ -345,6 +348,8 @@ Why: 第二条完整因果线索具有独立记录集合。"""
         )
         self.assertEqual(rejected, 0)
         prompt = harness.build_crystallization_prompt(decisions, evidence_stream=stream)
+        self.assertIn("已通过独立完成态和批内资产组合核验", prompt)
+        self.assertNotIn("用户只覆盖了“允许尝试结晶”", prompt)
         self.assertIn("模型只需复制 Review-ID、选择库动作", prompt)
         self.assertEqual(prompt.count("[record 000002"), 1)
         self.assertIn("Action-Records: 000003", prompt)
@@ -378,6 +383,61 @@ Why: 第二条完整因果线索具有独立记录集合。"""
             "", stream=stream, decisions=decisions
         )
         self.assertEqual((skills, rejected), ([], 0))
+
+    def test_user_forced_lesson_reaches_only_targeted_crystallization(self):
+        stream = _stream()
+        source = support.parse_discovery_output(_discovery(), stream=stream)[0][0]
+        lesson_raw = _decision().replace("Decision: skill", "Decision: lesson")
+        lesson_raw = lesson_raw.replace("Value 4/5", "Value 2/5")
+        decisions, rejected = harness.parse_adjudication_output(
+            lesson_raw,
+            stream=stream,
+            candidates=[source],
+        )
+        self.assertEqual(rejected, 0)
+        self.assertEqual(decisions[0].decision, "lesson")
+        self.assertFalse(decisions[0].crystallizable)
+
+        normal_prompt = harness.build_crystallization_prompt(
+            decisions,
+            evidence_stream=stream,
+        )
+        self.assertNotIn(
+            '<approved_skill_dossier id="review-001">',
+            normal_prompt,
+        )
+        normal_skills, normal_rejected = harness.parse_crystallization_output(
+            _skill(),
+            stream=stream,
+            decisions=decisions,
+        )
+        self.assertEqual((normal_skills, normal_rejected), ([], 1))
+
+        forced_prompt = harness.build_crystallization_prompt(
+            decisions,
+            evidence_stream=stream,
+            forced_review_ids=("review-001",),
+        )
+        self.assertIn("Review-ID: review-001", forced_prompt)
+        self.assertIn(
+            '<approved_skill_dossier id="review-001">',
+            forced_prompt,
+        )
+        self.assertIn("Authority: user-forced-lesson", forced_prompt)
+        self.assertIn("用户只覆盖了“允许尝试结晶”", forced_prompt)
+        self.assertIn("没有因此获得完成态、独立资产价值、批内组合或注册权威", forced_prompt)
+        self.assertNotIn(
+            "进入本阶段的 dossier 已通过独立完成态和批内资产组合核验",
+            forced_prompt,
+        )
+        forced_skills, forced_rejected = harness.parse_crystallization_output(
+            _skill(),
+            stream=stream,
+            decisions=decisions,
+            forced_review_ids=("review-001",),
+        )
+        self.assertEqual((len(forced_skills), forced_rejected), (1, 0))
+        self.assertEqual(forced_skills[0].scores.learning_value, 2)
 
     def test_replayed_pipeline_attaches_host_owned_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -428,6 +488,104 @@ Why: 第二条完整因果线索具有独立记录集合。"""
             self.assertIn("Evidence: thread-0001:000001-000004", report)
             self.assertIn("Skill Library Proposals", report)
             self.assertEqual(result.proposals[0].action, "create")
+            self.assertEqual(
+                [(item.asset_class, item.disposition) for item in result.asset_ledger],
+                [("skill", "library-create")],
+            )
+            ledger_rows = [
+                json.loads(line)
+                for line in result.asset_ledger_path.read_text(
+                    encoding="utf-8"
+                ).splitlines()
+            ]
+            self.assertEqual(len(ledger_rows), 1)
+            self.assertEqual(ledger_rows[0]["schema"], harness.ASSET_LEDGER_SCHEMA)
+            self.assertEqual(ledger_rows[0]["assetClass"], "skill")
+            self.assertEqual(
+                ledger_rows[0]["skillName"], "diagnose-asymmetric-paths"
+            )
+            for heading in (
+                "### Skill Proposals",
+                "### Lessons",
+                "### References",
+                "### Discarded Retrieval Records",
+            ):
+                self.assertIn(heading, report)
+
+    def test_asset_ledger_preserves_model_classes_and_deterministic_demotions(self):
+        stream = _stream()
+        source = support.parse_discovery_output(_discovery(), stream=stream)[0][0]
+        base = harness.parse_adjudication_output(
+            _decision(), stream=stream, candidates=[source]
+        )[0][0]
+        explicit = [
+            base,
+            replace(
+                base,
+                candidate_id="candidate-002",
+                review_id="review-002",
+                decision="lesson",
+            ),
+            replace(
+                base,
+                candidate_id="candidate-003",
+                review_id="review-003",
+                decision="reference",
+            ),
+            replace(
+                base,
+                candidate_id="candidate-004",
+                review_id="review-004",
+                decision="discard",
+            ),
+        ]
+        proposal = harness.SkillProposal(
+            review_id="review-001",
+            action="create",
+            existing_asset_id=None,
+            existing_skill_name=None,
+            reason="库中没有覆盖该程序。",
+            skill=support.parse_skill_candidate(
+                "\n".join(
+                    [
+                        support.SKILL_MARKER,
+                        f"Evidence: {', '.join(base.evidence)}",
+                        base.scores.skill_scores().markdown(),
+                        "",
+                        _skill().split("Library-Reason:", 1)[1].split("\n", 1)[1],
+                    ]
+                ),
+                stream=stream,
+            ),
+        )
+        ledger = harness.build_asset_ledger(
+            (source, source, source, source),
+            explicit,
+            (harness.parse_completion_output(_completion(), decisions=[base])[0][0],),
+            (harness.PortfolioKeep("review-001", "独立程序。"),),
+            (proposal,),
+        )
+        self.assertEqual(
+            [item.asset_class for item in ledger],
+            ["skill", "lesson", "reference", "discard"],
+        )
+        self.assertTrue(all(item.original_decision == expected for item, expected in zip(
+            ledger, ("skill", "lesson", "reference", "discard")
+        )))
+
+        incomplete = replace(
+            harness.parse_completion_output(_completion(), decisions=[base])[0][0],
+            completion="incomplete",
+            action_state="incomplete",
+            result_state="missing",
+        )
+        demoted = harness.build_asset_ledger(
+            (source,), (base,), (incomplete,), (), ()
+        )[0]
+        self.assertEqual(
+            (demoted.asset_class, demoted.disposition),
+            ("lesson", "completion-incomplete"),
+        )
 
     def test_incomplete_completion_audit_never_reaches_crystallization(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -810,6 +968,25 @@ Why: 第二条完整因果线索具有独立记录集合。"""
         self.assertEqual(proposals[0].action, "covered")
         self.assertIsNone(proposals[0].skill)
 
+        conflict = "\n".join(
+            (
+                harness.PROPOSAL_MARKER,
+                "Review-ID: review-001",
+                "Library-Action: conflict",
+                f"Existing-Skill: {asset.asset_id}",
+                "Library-Reason: 新证据与现有完成判断冲突，需要人工处理。",
+            )
+        )
+        proposals, rejected = harness.parse_crystallization_proposals(
+            conflict,
+            stream=stream,
+            decisions=decisions,
+            library_matches=effective,
+        )
+        self.assertEqual((len(proposals), rejected), (1, 0))
+        self.assertEqual(proposals[0].action, "conflict")
+        self.assertIsNone(proposals[0].skill)
+
         rejected_proposal = "\n".join(
             (
                 harness.PROPOSAL_MARKER,
@@ -843,6 +1020,30 @@ Why: 第二条完整因果线索具有独立记录集合。"""
         self.assertEqual((len(proposals), rejected), (1, 0))
         self.assertEqual(proposals[0].action, "extend")
         self.assertIsNotNone(proposals[0].skill)
+
+        unrelated = replace(
+            asset,
+            asset_id="asset-222222222222",
+            name="audit-unrelated-storage",
+            description="Audit unrelated storage behavior.",
+            body=asset.body.replace(
+                "diagnose-asymmetric-paths", "audit-unrelated-storage"
+            ),
+        )
+        unrelated_matches = {
+            "review-001": (
+                harness.SkillLibraryMatch(unrelated, body_included=True),
+            )
+        }
+        proposals, rejected = harness.parse_crystallization_proposals(
+            _skill(),
+            stream=stream,
+            decisions=decisions,
+            library_matches=unrelated_matches,
+        )
+        self.assertEqual((len(proposals), rejected), (1, 0))
+        self.assertEqual(proposals[0].action, "create")
+        self.assertEqual(proposals[0].skill.name, "diagnose-asymmetric-paths")
 
         read_only = {
             "review-001": (

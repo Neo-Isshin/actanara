@@ -3083,6 +3083,87 @@ textarea:focus-visible {
   border-bottom: 1px solid var(--border);
 }
 .aa-info-row:last-child { border-bottom: none; }
+.aa-skill-assets-empty {
+  color: var(--slate);
+  font-size: 13px;
+  padding: 18px 4px;
+}
+.aa-skill-assets-error { color: var(--ruby); }
+.aa-skill-assets-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.aa-skill-assets-title { color: var(--navy); font-size: 15px; font-weight: 750; }
+.aa-skill-assets-context { color: var(--slate); font-size: 11px; margin-top: 4px; }
+.aa-skill-assets-counts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.aa-skill-assets-counts span,
+.aa-skill-asset-class,
+.aa-skill-asset-disposition {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--slate);
+  font-size: 10px;
+  line-height: 1;
+  padding: 5px 8px;
+}
+.aa-skill-assets-counts [data-asset-class="skill"],
+.aa-skill-asset-card[data-asset-class="skill"] .aa-skill-asset-class {
+  background: rgba(83,58,253,0.08);
+  border-color: rgba(83,58,253,0.25);
+  color: var(--purple);
+}
+.aa-skill-assets-boundary {
+  background: #f7f8ff;
+  border: 1px solid rgba(83,58,253,0.14);
+  border-radius: 9px;
+  color: #46546a;
+  font-size: 12px;
+  line-height: 1.55;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+}
+.aa-skill-assets-list { display: grid; gap: 10px; }
+.aa-skill-asset-card {
+  background: #fbfcff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+}
+.aa-skill-asset-card[data-asset-class="skill"] { border-left: 3px solid var(--purple); }
+.aa-skill-asset-head { display: flex; align-items: flex-start; gap: 10px; }
+.aa-skill-asset-checkbox { accent-color: var(--purple); height: 16px; margin-top: 4px; width: 16px; }
+.aa-skill-asset-nonselect { color: var(--slate); font-size: 18px; line-height: 16px; margin-top: 1px; }
+.aa-skill-asset-heading { min-width: 0; flex: 1; }
+.aa-skill-asset-heading h4 { color: var(--navy); font-size: 13px; line-height: 1.45; margin: 7px 0 0; }
+.aa-skill-asset-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+.aa-skill-asset-disposition { font-family: var(--font-mono); }
+.aa-skill-asset-summary { color: #475569; font-size: 12px; line-height: 1.55; margin: 9px 0 0 26px; }
+.aa-skill-asset-details { margin: 9px 0 0 26px; }
+.aa-skill-asset-details summary { color: var(--purple); cursor: pointer; font-size: 11px; font-weight: 650; }
+.aa-skill-asset-details > p { color: #475569; font-size: 12px; line-height: 1.6; }
+.aa-skill-asset-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 9px 0; }
+.aa-skill-asset-meta span { color: var(--slate); font-size: 11px; }
+.aa-skill-asset-draft { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 10px; }
+.aa-skill-asset-draft-name { color: var(--navy); font-family: var(--font-mono); font-size: 12px; font-weight: 700; }
+.aa-skill-asset-draft-description { color: #475569; font-size: 12px; line-height: 1.55; margin-top: 4px; }
+.aa-skill-asset-draft pre { background: #0b1728; border-radius: 8px; color: #dbeafe; font-size: 11px; line-height: 1.5; margin: 9px 0 0; max-height: 340px; overflow: auto; padding: 12px; white-space: pre-wrap; }
+.aa-skill-assets-actions {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+  padding-top: 14px;
+}
+.aa-skill-assets-actions strong { color: var(--navy); display: block; font-size: 12px; }
+.aa-skill-assets-actions small { color: var(--slate); display: block; font-size: 10px; margin-top: 3px; }
+.aa-skill-assets-export { background: var(--purple); border: 0; border-radius: 8px; color: white; cursor: pointer; font-size: 12px; font-weight: 700; padding: 9px 14px; }
+.aa-skill-assets-export:disabled { cursor: not-allowed; opacity: 0.45; }
+.aa-skill-assets-message { color: var(--success-text); font-size: 11px; min-height: 16px; margin-top: 8px; }
 .aa-info-label { color: var(--slate); font-size: 12px; }
 .aa-info-val { font-weight: 600; color: var(--navy); font-family: var(--font-mono); font-size: 13px; }
 .aa-rag-status {

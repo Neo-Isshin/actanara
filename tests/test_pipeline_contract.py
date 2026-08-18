@@ -122,9 +122,12 @@ class PipelineCommandContractTests(unittest.TestCase):
         self.assertEqual(tuple(production_steps_for_language("zh")), PRODUCTION_STEPS)
         self.assertTrue(any("diary_generator/narrative_pass.py" in script for script in zh_scripts))
         self.assertFalse(any("diary_generator/en/narrative_pass.py" in script for script in zh_scripts))
+        self.assertTrue(any("skill_pass_minimal_harness.py" in script for script in zh_scripts))
+        self.assertFalse(any("diary_generator/learning_pass.py" in script for script in zh_scripts))
         self.assertTrue(any("diary_generator/en/narrative_pass.py" in script for script in en_scripts))
         self.assertTrue(any("diary_generator/en/technical_pass.py" in script for script in en_scripts))
         self.assertTrue(any("diary_generator/en/learning_pass.py" in script for script in en_scripts))
+        self.assertFalse(any("skill_pass_minimal_harness.py" in script for script in en_scripts))
         self.assertEqual(
             en_manifest,
             [
@@ -1132,6 +1135,61 @@ class PipelineCommandContractTests(unittest.TestCase):
 
             self.assertTrue(result.success)
             self.assertEqual(observed, ["technical_pass.py", "learning_pass.py"])
+
+    def test_skill_pass_runs_as_required_production_step(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = initialize_home(
+                root / "Actanara", legacy_diary_root=root / "Diary"
+            )
+            skill = root / "skill_pass_minimal_harness.py"
+            skill.write_text("", encoding="utf-8")
+            observed = []
+
+            def runner(command, **kwargs):
+                observed.append(Path(command[1]).name)
+                return subprocess.CompletedProcess(command, 0, "ok\n", "")
+
+            result = run_daily_pipeline(
+                "2026-05-19",
+                paths=paths,
+                steps=[PipelineStep("skill", skill, stage_id="skill")],
+                runner=runner,
+            )
+
+            self.assertTrue(result.success)
+            self.assertEqual(observed, ["skill_pass_minimal_harness.py"])
+            self.assertEqual(result.succeeded_steps, 1)
+
+    def test_skill_pass_failure_is_fatal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = initialize_home(
+                root / "Actanara", legacy_diary_root=root / "Diary"
+            )
+            skill = root / "skill_pass_minimal_harness.py"
+            skill.write_text("", encoding="utf-8")
+            observed = []
+
+            def runner(command, **kwargs):
+                name = Path(command[1]).name
+                observed.append(name)
+                return subprocess.CompletedProcess(
+                    command, 1,
+                    "",
+                    "synthetic Skill Pass failure",
+                )
+
+            result = run_daily_pipeline(
+                "2026-05-19",
+                paths=paths,
+                steps=[PipelineStep("skill", skill, stage_id="skill")],
+                runner=runner,
+            )
+
+            self.assertFalse(result.success)
+            self.assertEqual(observed, ["skill_pass_minimal_harness.py"])
+            self.assertEqual(result.failed_step, "skill")
 
     def test_nova_task_pipeline_materializer_runs_reconciliation_from_technical_report_and_exports_board(self):
         with tempfile.TemporaryDirectory() as tmp:

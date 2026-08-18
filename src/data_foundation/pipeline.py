@@ -8,6 +8,7 @@ import inspect
 import os
 import json
 import re
+import stat
 import subprocess
 import sys
 import fcntl
@@ -98,6 +99,7 @@ _STEP_DISPLAY_NAMES = {
     "narrative_pass.py": "Generate diary · Daily story",
     "technical_pass.py": "Generate diary · Technical notes",
     "learning_pass.py": "Generate diary · Lessons learned",
+    "skill_pass_minimal_harness.py": "Distill procedural assets",
     "rag_v2_sync.py": "Update search memory",
 }
 
@@ -115,6 +117,8 @@ def _pipeline_step_display_name(step: PipelineStep) -> str:
 
 def _pipeline_stage_display_name(name: str) -> str:
     normalized = str(name or "").casefold()
+    if "skill" in normalized:
+        return "Distill procedural assets"
     if "rag" in normalized or "search memory" in normalized:
         return "Update search memory"
     if "nova-task" in normalized or "task" in normalized:
@@ -170,9 +174,10 @@ ZH_PRODUCTION_STEPS = (
         ("{date}",),
     ),
     PipelineStep(
-        "7. 经验教训学习 (Learning Pass)",
-        SRC_DIR / "diary_generator" / "learning_pass.py",
+        "7. 程序性资产提炼 (Skill Pass)",
+        SRC_DIR / "diary_generator" / "skill_pass_minimal_harness.py",
         ("{date}",),
+        stage_id="skill",
     ),
     PipelineStep(
         "8. nova-RAG 索引同步 (Active Sync)",
@@ -333,15 +338,59 @@ def _pipeline_llm_environment(pipeline_run_id: int, stage_id: str):
             os.environ[PIPELINE_STAGE_ID_ENV] = previous_stage_id
 
 
+def _skill_artifact_paths(paths: RuntimePaths, date_str: str) -> tuple[Path, ...]:
+    root = paths.home / "artifacts" / "skills"
+    try:
+        root_metadata = root.lstat()
+    except (FileNotFoundError, OSError):
+        return ()
+    if (
+        root.is_symlink()
+        or not stat.S_ISDIR(root_metadata.st_mode)
+        or root_metadata.st_uid != os.geteuid()
+    ):
+        return ()
+    pattern = re.compile(
+        rf"^skill-harness-minimal-v\d+-(?:assets-)?{re.escape(date_str)}"
+        rf"\.(?:md|jsonl)$"
+    )
+    result: list[Path] = []
+    try:
+        candidates = sorted(root.iterdir())
+    except OSError:
+        return ()
+    for path in candidates:
+        if not pattern.fullmatch(path.name):
+            continue
+        try:
+            metadata = path.lstat()
+        except OSError:
+            continue
+        if (
+            path.is_symlink()
+            or not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+            or metadata.st_nlink != 1
+            or metadata.st_mode & 0o077
+        ):
+            continue
+        result.append(path)
+    return tuple(result)
+
+
 def _pipeline_artifact_paths(paths: RuntimePaths, date_str: str, *, language_profile: str = "zh") -> dict:
     narrative = diary_report_paths(paths.diary_dir, date_str, "narrative", language_profile=language_profile)
     technical = diary_report_paths(paths.diary_dir, date_str, "technical", language_profile=language_profile)
-    learning = diary_report_paths(paths.diary_dir, date_str, "learning", language_profile=language_profile)
-    return {
+    result = {
         "narrative": [str(path) for path in narrative],
         "technical": [str(path) for path in technical],
-        "learning": [str(path) for path in learning],
     }
+    if language_profile == "en":
+        learning = diary_report_paths(paths.diary_dir, date_str, "learning", language_profile=language_profile)
+        result["learning"] = [str(path) for path in learning]
+    else:
+        result["skill"] = [str(path) for path in _skill_artifact_paths(paths, date_str)]
+    return result
 
 
 _PRODUCTION_STAGE_IDS = {
@@ -349,6 +398,7 @@ _PRODUCTION_STAGE_IDS = {
     "narrative_pass.py": "narrative",
     "technical_pass.py": "technical",
     "learning_pass.py": "learning",
+    "skill_pass_minimal_harness.py": "skill",
     "rag_v2_sync.py": "rag-sync",
 }
 
@@ -419,6 +469,7 @@ _REPORT_TYPES_BY_STAGE = {
     "blank-narrative": {"narrative"},
     "technical": {"technical"},
     "learning": {"learning"},
+    "skill": {"skill"},
 }
 
 
@@ -431,7 +482,8 @@ def _pipeline_artifact_proof_map(
     """Return stable hashes only for current, regular diary artifacts."""
     root = paths.diary_dir.resolve()
     proofs: dict[str, dict[str, Any]] = {}
-    for report_type in ("narrative", "technical", "learning"):
+    report_types = ("narrative", "technical", "learning") if language_profile == "en" else ("narrative", "technical")
+    for report_type in report_types:
         for path in diary_report_paths(root, date_str, report_type, language_profile=language_profile):
             try:
                 if path.is_symlink():
@@ -452,6 +504,63 @@ def _pipeline_artifact_proof_map(
                 "sha256": hashlib.sha256(content).hexdigest(),
                 "byteSize": int(after.st_size),
                 "reportType": report_type,
+            }
+    skill_root_path = paths.home / "artifacts" / "skills"
+    try:
+        skill_root_metadata = skill_root_path.lstat()
+    except (FileNotFoundError, OSError):
+        skill_root_metadata = None
+    if (
+        skill_root_metadata is not None
+        and not skill_root_path.is_symlink()
+        and stat.S_ISDIR(skill_root_metadata.st_mode)
+        and skill_root_metadata.st_uid == os.geteuid()
+    ):
+        skill_root = skill_root_path.resolve()
+        date_pattern = re.escape(date_str)
+        name_pattern = re.compile(
+            rf"^skill-harness-minimal-v\d+-(?:assets-)?{date_pattern}"
+            rf"\.(?:md|jsonl)$"
+        )
+        for path in sorted(skill_root.iterdir()):
+            if not name_pattern.fullmatch(path.name):
+                continue
+            try:
+                if path.is_symlink():
+                    continue
+                resolved = path.resolve(strict=True)
+                resolved.relative_to(skill_root)
+                before = resolved.stat()
+                if (
+                    not stat.S_ISREG(before.st_mode)
+                    or before.st_uid != os.geteuid()
+                    or before.st_nlink != 1
+                    or before.st_mode & 0o077
+                ):
+                    continue
+                content = resolved.read_bytes()
+                after = resolved.stat()
+            except (FileNotFoundError, OSError, ValueError):
+                continue
+            before_signature = (
+                before.st_dev,
+                before.st_ino,
+                before.st_size,
+                before.st_mtime_ns,
+            )
+            after_signature = (
+                after.st_dev,
+                after.st_ino,
+                after.st_size,
+                after.st_mtime_ns,
+            )
+            if before_signature != after_signature or len(content) != after.st_size:
+                continue
+            proofs[str(resolved)] = {
+                "path": str(resolved),
+                "sha256": hashlib.sha256(content).hexdigest(),
+                "byteSize": int(after.st_size),
+                "reportType": "skill",
             }
     return proofs
 
@@ -720,12 +829,21 @@ def _is_technical_step(step: PipelineStep) -> bool:
     return step.script.name == "technical_pass.py"
 
 
+def _is_skill_step(step: PipelineStep) -> bool:
+    return step.script.name == "skill_pass_minimal_harness.py"
+
+
 def _is_rag_sync_step(step: PipelineStep) -> bool:
     return step.script.name == "rag_v2_sync.py"
 
 
 def _is_blank_day_passthrough_step(step: PipelineStep) -> bool:
-    return _is_narrative_step(step) or _is_technical_step(step) or step.script.name == "learning_pass.py"
+    return (
+        _is_narrative_step(step)
+        or _is_technical_step(step)
+        or _is_skill_step(step)
+        or step.script.name == "learning_pass.py"
+    )
 
 
 def _llm_provider_blocking_reason(paths: RuntimePaths | None = None) -> str | None:
@@ -1120,6 +1238,7 @@ def run_daily_pipeline(
                 "stageContractVersion": 2,
                 "languageProfile": language_profile,
                 "novaTaskEnabled": nova_task_enabled,
+                "skillPassEnabled": any(_is_skill_step(step) for step in active_steps),
                 "stepManifest": step_manifest,
                 "stepContract": step_contract,
                 "pipelineContractHash": pipeline_contract_hash,

@@ -14,18 +14,20 @@ from .diary_markdown import read_diary_markdown_documents
 from .diary_paths import diary_report_paths
 from .paths import RuntimePaths
 from .settings import ensure_settings, is_nova_task_enabled
+from .skill_asset_memory import skill_asset_ledger_ready
 from .snapshots import read_rag_daily_status_snapshot
 from .time import resolve_timezone
 
-REQUIRED_DIARY_REPORTS = ("narrative", "technical", "learning")
+REQUIRED_DIARY_REPORTS = ("narrative", "technical")
 
 
 def evaluate_daily_completeness(paths: RuntimePaths, business_date: date, *, documents: list[dict] | None = None) -> dict[str, Any]:
     """Evaluate the canonical daily readiness contract.
 
     A blank/no-activity day is complete when the no-activity marker is materialized;
-    otherwise narrative, technical, learning, SQLite materialization, RAG sync, and
-    enabled Nova-Task projection/evidence must all be present.
+    otherwise narrative, technical, the current procedural-asset ledger, SQLite
+    materialization, RAG sync, and enabled Nova-Task projection/evidence must all
+    be present. English compatibility runs retain their Learning report contract.
     """
     if documents is not None:
         docs = list(documents)
@@ -34,10 +36,26 @@ def evaluate_daily_completeness(paths: RuntimePaths, business_date: date, *, doc
             docs = read_diary_markdown_documents(paths, business_date, business_date)
         except Exception:
             docs = []
-    report_paths = _report_paths(paths, business_date)
+    try:
+        language_profile = _pipeline_language_profile(paths)
+    except Exception:
+        language_profile = "zh"
+    required_reports = (
+        (*REQUIRED_DIARY_REPORTS, "learning")
+        if language_profile == "en"
+        else REQUIRED_DIARY_REPORTS
+    )
+    report_paths = _report_paths(paths, business_date, required_reports)
     no_activity = _has_no_activity_marker(docs, report_paths)
-    docs_ready = {report_type: bool(report_paths.get(report_type)) or _doc_present(docs, report_type) for report_type in REQUIRED_DIARY_REPORTS}
-    materialized = bool(docs) and (_has_no_activity_doc(docs) if no_activity else all(_doc_present(docs, item) for item in REQUIRED_DIARY_REPORTS))
+    skill_required = bool(language_profile != "en" and not no_activity)
+    skill_ready = bool(
+        not skill_required
+        or skill_asset_ledger_ready(paths, business_date.isoformat())
+    )
+    docs_ready = {report_type: bool(report_paths.get(report_type)) or _doc_present(docs, report_type) for report_type in required_reports}
+    if language_profile != "en":
+        docs_ready["skill"] = skill_ready
+    materialized = bool(docs) and (_has_no_activity_doc(docs) if no_activity else all(_doc_present(docs, item) for item in required_reports))
     foundation_materialized = _foundation_materialized(paths, business_date)
     sqlite_ready = bool(materialized and foundation_materialized)
     rag_required = _rag_required(paths)
@@ -62,7 +80,9 @@ def evaluate_daily_completeness(paths: RuntimePaths, business_date: date, *, doc
         for report_type, ready in docs_ready.items():
             if not ready:
                 action = "daily-full" if report_type == "narrative" else f"{report_type}-pass"
-                missing.append(_missing(f"diary-{report_type}", f"{report_type} diary", 1, action))
+                label = "procedural asset ledger" if report_type == "skill" else f"{report_type} diary"
+                llm_calls = 5 if report_type == "skill" else 1
+                missing.append(_missing(f"diary-{report_type}", label, llm_calls, action))
         if not sqlite_ready:
             missing.append(_missing("sqlite-materialization", "SQLite materialization", 0, "daily-materialization"))
         if rag_required and not rag_ready:
@@ -71,7 +91,17 @@ def evaluate_daily_completeness(paths: RuntimePaths, business_date: date, *, doc
             skipped.append(_skipped("rag-sync", "RAG sync", rag_disabled_reason or "nova-RAG is disabled or unavailable."))
         if nova_task_required and not task_updated:
             missing.append(_missing("nova-task", "Nova-Task work graph/export", 0, "nova-task-work-graph"))
-    existing_items = _existing_items(docs, report_paths, sqlite_ready, rag_ready, task_updated, no_activity)
+    existing_items = _existing_items(
+        docs,
+        report_paths,
+        sqlite_ready,
+        rag_ready,
+        task_updated,
+        no_activity,
+        required_reports=required_reports,
+        skill_ready=skill_ready,
+        skill_required=skill_required,
+    )
     ready = not missing
     return {
         "businessDate": business_date.isoformat(),
@@ -95,14 +125,15 @@ def evaluate_daily_completeness(paths: RuntimePaths, business_date: date, *, doc
     }
 
 
-def _report_paths(paths: RuntimePaths, business_date: date) -> dict[str, list]:
-    try:
-        language_profile = _pipeline_language_profile(paths)
-    except Exception:
-        language_profile = "zh"
+def _report_paths(
+    paths: RuntimePaths,
+    business_date: date,
+    required_reports: tuple[str, ...],
+) -> dict[str, list]:
+    language_profile = _pipeline_language_profile(paths)
     return {
         report_type: _safe_diary_report_paths(paths, business_date, report_type, language_profile)
-        for report_type in REQUIRED_DIARY_REPORTS
+        for report_type in required_reports
     }
 
 
@@ -284,13 +315,19 @@ def _existing_items(
     rag_ready: bool,
     task_ready: bool,
     no_activity: bool,
+    *,
+    required_reports: tuple[str, ...],
+    skill_ready: bool,
+    skill_required: bool,
 ) -> list[str]:
     items: list[str] = []
     if no_activity:
         items.append("blankday")
-    for report_type in REQUIRED_DIARY_REPORTS:
+    for report_type in required_reports:
         if bool(report_paths.get(report_type)) or _doc_present(documents, report_type):
             items.append(f"diary-{report_type}")
+    if skill_required and skill_ready:
+        items.append("diary-skill")
     if sqlite_ready:
         items.append("sqlite-materialization")
     if rag_ready:
@@ -311,7 +348,7 @@ def _skipped(key: str, label: str, reason: str) -> dict[str, Any]:
 def _estimate_llm_calls(missing: list[dict[str, Any]]) -> int:
     actions = {item["action"] for item in missing}
     if "daily-full" in actions:
-        return 3
+        return 7
     return sum(int(item.get("llmCalls") or 0) for item in missing if item.get("action") != "daily-materialization")
 
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""Minimal harness for high-quality procedural asset distillation.
+"""Production Skill Pass for high-quality procedural asset distillation.
 
 The model discovers causal candidates, adjudicates useful asset classes,
 checks completion, selects a sparse portfolio, and writes only approved Skill
@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import re
 import stat
@@ -37,6 +38,8 @@ COMPLETION_MARKER = "<!-- actanara-completion-audit -->"
 PORTFOLIO_MARKER = "<!-- actanara-portfolio-keep -->"
 PROPOSAL_MARKER = "<!-- actanara-skill-proposal -->"
 DISCOVERY_NONE_MARKER = "<!-- actanara-discovery-none -->"
+ASSET_LEDGER_MARKER = "<!-- actanara-asset-ledger -->"
+ASSET_LEDGER_SCHEMA = "actanara.skill-asset-ledger.v1"
 DEFAULT_MAX_OUTPUT_TOKENS = 16384
 THINKING_MODE = os.getenv("SKILL_LLM_THINKING_MODE", "medium").strip().lower()
 MAX_SKILL_LIBRARY_FILE_BYTES = 131072
@@ -203,6 +206,9 @@ Why-Standalone: 一句说明它为何必须独立调用、且不被哪类相邻�
 CRYSTALLIZATION_SYSTEM = """你是程序性记忆写作者。完成态与批内资产组合已经独立核验；你只把保留项与现有 Skill 库比较，再提出新建、增补、已覆盖、冲突或拒绝。现有库只是只读参考，不是工作证据。不得新增候选、改变原始事实、补写未执行步骤，或直接修改任何现有 Skill。"""
 
 
+HUMAN_OVERRIDE_CRYSTALLIZATION_SYSTEM = """你是程序性记忆写作者。用户可能明确要求把上游 Lesson 送入结晶，但人工覆盖不代表完成态、独立资产价值或批内组合已经通过核验。你必须仅依据所列原始记录重新确认它能形成一条已经执行、由后续结果验证的单一程序；不能确认时选择 reject。现有 Skill 库只是只读参考，不是工作证据。不得新增候选、改变原始事实、补写未执行步骤，或直接修改任何现有 Skill。"""
+
+
 CRYSTALLIZATION_PROMPT = """<existing_skill_library>
 {library}
 </existing_skill_library>
@@ -219,7 +225,7 @@ CRYSTALLIZATION_PROMPT = """<existing_skill_library>
 
 每个 dossier 只列记录编号；正文统一放在 `approved_work_records` 中且只出现一次。Trigger 与 Pitfalls 可参考 Context-Records；Procedure 只能使用 Action-Records 中实际执行的动作；Verification 只能使用 Verification-Records 中已经发生的结果。
 
-进入本阶段的 dossier 已通过独立完成态核验。若写作时仍发现记录无法支持单一程序，可以选择 `reject` 且不写正文；不要补齐缺失步骤。
+{authority_boundary}
 
 先比较该 dossier 的 `Allowed-Library-Assets`：
 
@@ -517,6 +523,117 @@ class PortfolioKeep:
 
 
 @dataclass(frozen=True)
+class AssetLedgerEntry:
+    asset_class: str
+    disposition: str
+    title: str
+    candidate_id: str
+    review_id: str
+    original_decision: str
+    summary: str
+    reason: str
+    evidence: tuple[str, ...]
+    evidence_records: tuple[int, ...]
+    scores: HarnessScores
+    completion: str | None = None
+    completion_reason: str | None = None
+    portfolio_reason: str | None = None
+    library_action: str | None = None
+    existing_asset_id: str | None = None
+    existing_skill_name: str | None = None
+    skill: support.SkillCandidate | None = None
+
+    def payload(self, *, business_date: str) -> dict[str, object]:
+        return {
+            "schema": ASSET_LEDGER_SCHEMA,
+            "businessDate": business_date,
+            "promptVersion": PROMPT_VERSION,
+            "assetClass": self.asset_class,
+            "disposition": self.disposition,
+            "candidateId": self.candidate_id,
+            "reviewId": self.review_id,
+            "originalDecision": self.original_decision,
+            "title": self.title,
+            "summary": self.summary,
+            "reason": self.reason,
+            "evidence": list(self.evidence),
+            "evidenceRecords": list(self.evidence_records),
+            "scores": {
+                "evidence": self.scores.evidence,
+                "value": self.scores.value,
+                "reuse": self.scores.reuse,
+                "program": self.scores.program,
+            },
+            "completion": self.completion,
+            "completionReason": self.completion_reason,
+            "portfolioReason": self.portfolio_reason,
+            "libraryAction": self.library_action,
+            "existingAssetId": self.existing_asset_id,
+            "existingSkillName": self.existing_skill_name,
+            "skillName": self.skill.name if self.skill is not None else None,
+            "skillDescription": (
+                self.skill.description if self.skill is not None else None
+            ),
+            "skillMarkdown": (
+                self.skill.markdown() if self.skill is not None else None
+            ),
+        }
+
+    def markdown(self) -> str:
+        lines = [
+            ASSET_LEDGER_MARKER,
+            f"### {self.title}",
+            f"Asset-Class: {self.asset_class}",
+            f"Disposition: {self.disposition}",
+            f"Candidate-ID: {self.candidate_id}",
+            f"Review-ID: {self.review_id}",
+            f"Original-Decision: {self.original_decision}",
+            f"Evidence: {', '.join(self.evidence)}",
+            self.scores.markdown(),
+            "",
+            "#### Experience",
+            self.summary or self.reason,
+            "",
+            "#### Judgment",
+            self.reason,
+        ]
+        if self.completion is not None:
+            lines.extend(
+                [
+                    "",
+                    "#### Completion",
+                    f"{self.completion}: {self.completion_reason or 'no reason supplied'}",
+                ]
+            )
+        if self.portfolio_reason is not None:
+            lines.extend(
+                ["", "#### Portfolio", self.portfolio_reason]
+            )
+        if self.library_action is not None:
+            target = (
+                f"{self.existing_skill_name} ({self.existing_asset_id})"
+                if self.existing_skill_name and self.existing_asset_id
+                else "none"
+            )
+            lines.extend(
+                [
+                    "",
+                    "#### Library",
+                    f"{self.library_action}; existing={target}",
+                ]
+            )
+        if self.skill is not None:
+            lines.extend(
+                [
+                    "",
+                    "#### Skill Draft",
+                    f"{self.skill.name}: {self.skill.description}",
+                ]
+            )
+        return "\n".join(lines)
+
+
+@dataclass(frozen=True)
 class HarnessResult:
     business_date: str
     input_entries: int
@@ -533,6 +650,7 @@ class HarnessResult:
     portfolio_keeps: tuple[PortfolioKeep, ...]
     proposals: tuple[SkillProposal, ...]
     skills: tuple[support.SkillCandidate, ...]
+    asset_ledger: tuple[AssetLedgerEntry, ...]
     library_assets_scanned: int
     library_assets_selected: int
     rejected_discoveries: int
@@ -541,6 +659,7 @@ class HarnessResult:
     rejected_portfolio_keeps: int
     rejected_skills: int
     report_path: Path
+    asset_ledger_path: Path
     discovery_raw_path: Path | None
     discovery_repair_raw_path: Path | None
     adjudication_raw_path: Path | None
@@ -1331,12 +1450,36 @@ def build_crystallization_prompt(
     evidence_stream: str,
     library_text: str = "(none)",
     library_matches: Mapping[str, Sequence[SkillLibraryMatch]] | None = None,
+    forced_review_ids: Iterable[str] = (),
 ) -> str:
-    accepted = [item for item in decisions if item.crystallizable]
+    forced = frozenset(forced_review_ids)
+    accepted = [
+        item
+        for item in decisions
+        if item.crystallizable
+        or (
+            item.review_id in forced
+            and bool(item.action_records)
+            and bool(item.verification_records)
+        )
+    ]
     allowed = library_matches or {}
+    accepted_forced = frozenset(
+        item.review_id for item in accepted if item.review_id in forced
+    )
+    if accepted_forced:
+        authority_boundary = """逐项按 `Authority` 判断证据权威：
+
+- `model-approved`：该项已经通过独立完成态和批内资产组合核验；若写作时仍发现记录无法支持单一程序，选择 `reject`。
+- `user-forced-lesson`：用户只覆盖了“允许尝试结晶”这一道入口；它没有因此获得完成态、独立资产价值、批内组合或注册权威。必须从 Action-Records 向后核对 Verification-Records，确认动作已经执行、结果发生在动作之后，并且二者闭合为一条程序；任何一项不能确认都选择 `reject`。
+
+不得把用户选择本身当作成功证据，不得为了服从用户而补齐缺失步骤或结果。"""
+    else:
+        authority_boundary = """进入本阶段的 dossier 已通过独立完成态和批内资产组合核验。若写作时仍发现记录无法支持单一程序，可以选择 `reject` 且不写正文；不要补齐缺失步骤。"""
     dossiers = "\n\n".join(
         f'<approved_skill_dossier id="{item.review_id}">\n'
         f"Review-ID: {item.review_id}\n"
+        f"Authority: {'user-forced-lesson' if item.review_id in forced else 'model-approved'}\n"
         f"Title: {item.title}\n"
         f"Reason: {item.reason}\n"
         "Allowed-Library-Assets: "
@@ -1373,6 +1516,7 @@ def build_crystallization_prompt(
         .replace("{review_ids}", ", ".join(item.review_id for item in accepted))
         .replace("{library}", str(library_text or "(none)").strip())
         .replace("{stream}", str(evidence_stream or "").strip())
+        .replace("{authority_boundary}", authority_boundary)
     )
 
 
@@ -1382,12 +1526,14 @@ def parse_crystallization_output(
     stream: str,
     decisions: Iterable[HarnessDecision],
     library_matches: Mapping[str, Sequence[SkillLibraryMatch]] | None = None,
+    forced_review_ids: Iterable[str] = (),
 ) -> tuple[list[support.SkillCandidate], int]:
     proposals, rejected = parse_crystallization_proposals(
         raw_output,
         stream=stream,
         decisions=decisions,
         library_matches=library_matches,
+        forced_review_ids=forced_review_ids,
     )
     return [item.skill for item in proposals if item.skill is not None], rejected
 
@@ -1398,8 +1544,19 @@ def parse_crystallization_proposals(
     stream: str,
     decisions: Iterable[HarnessDecision],
     library_matches: Mapping[str, Sequence[SkillLibraryMatch]] | None = None,
+    forced_review_ids: Iterable[str] = (),
 ) -> tuple[list[SkillProposal], int]:
-    approved = {item.review_id: item for item in decisions if item.crystallizable}
+    forced = frozenset(forced_review_ids)
+    approved = {
+        item.review_id: item
+        for item in decisions
+        if item.crystallizable
+        or (
+            item.review_id in forced
+            and bool(item.action_records)
+            and bool(item.verification_records)
+        )
+    }
     allowed = library_matches or {}
     prepared = support._unwrap_outer_fence(
         support._THINKING_RE.sub("", str(raw_output or ""))
@@ -1515,12 +1672,14 @@ def _parse_crystallization_pairs(
     stream: str,
     decisions: Iterable[HarnessDecision],
     library_matches: Mapping[str, Sequence[SkillLibraryMatch]] | None = None,
+    forced_review_ids: Iterable[str] = (),
 ) -> tuple[list[tuple[str, support.SkillCandidate]], int]:
     proposals, rejected = parse_crystallization_proposals(
         raw_output,
         stream=stream,
         decisions=decisions,
         library_matches=library_matches,
+        forced_review_ids=forced_review_ids,
     )
     return [
         (proposal.review_id, proposal.skill)
@@ -1594,6 +1753,119 @@ def raw_output_path(paths: RuntimePaths, business_date: str, stage: str) -> Path
     )
 
 
+def asset_ledger_path(paths: RuntimePaths, business_date: str) -> Path:
+    return (
+        paths.home
+        / "artifacts"
+        / "skills"
+        / f"skill-harness-{PROMPT_VERSION}-assets-{business_date}.jsonl"
+    )
+
+
+def build_asset_ledger(
+    discoveries: Sequence[support.DiscoveryCandidate],
+    decisions: Sequence[HarnessDecision],
+    completion_audits: Sequence[CompletionAudit],
+    portfolio_keeps: Sequence[PortfolioKeep],
+    proposals: Sequence[SkillProposal],
+) -> tuple[AssetLedgerEntry, ...]:
+    """Project model-authored judgments without making new semantic decisions."""
+    audits = {item.review_id: item for item in completion_audits}
+    keeps = {item.review_id: item for item in portfolio_keeps}
+    proposal_rows = {item.review_id: item for item in proposals}
+    rows: list[AssetLedgerEntry] = []
+
+    for decision in decisions:
+        try:
+            candidate_number = int(decision.candidate_id.rsplit("-", 1)[1])
+        except (IndexError, ValueError):
+            candidate_number = 0
+        discovery = (
+            discoveries[candidate_number - 1]
+            if 1 <= candidate_number <= len(discoveries)
+            else None
+        )
+        summary = ""
+        if discovery is not None:
+            summary = (
+                discovery.summary
+                or discovery.reuse_hypothesis
+                or discovery.observed_result
+            ).strip()
+
+        audit = audits.get(decision.review_id)
+        keep = keeps.get(decision.review_id)
+        proposal = proposal_rows.get(decision.review_id)
+        asset_class = decision.decision
+        disposition = "adjudicated"
+
+        if decision.decision == "skill":
+            if not decision.crystallizable:
+                asset_class = "lesson"
+                disposition = "skill-score-contract-withheld"
+            elif audit is None:
+                asset_class = "lesson"
+                disposition = "completion-audit-missing"
+            elif audit.completion != "verified":
+                asset_class = "lesson"
+                disposition = f"completion-{audit.completion}"
+            elif keep is None:
+                asset_class = "lesson"
+                disposition = "portfolio-omitted"
+            elif proposal is None:
+                asset_class = "lesson"
+                disposition = "crystallization-missing"
+            elif proposal.action in {"create", "extend"} and proposal.skill is not None:
+                asset_class = "skill"
+                disposition = f"library-{proposal.action}"
+            elif proposal.action in {"covered", "conflict"}:
+                asset_class = "reference"
+                disposition = f"library-{proposal.action}"
+            else:
+                asset_class = "discard"
+                disposition = "library-reject"
+
+        rows.append(
+            AssetLedgerEntry(
+                asset_class=asset_class,
+                disposition=disposition,
+                title=decision.title or summary or decision.candidate_id,
+                candidate_id=decision.candidate_id,
+                review_id=decision.review_id,
+                original_decision=decision.decision,
+                summary=summary,
+                reason=decision.reason,
+                evidence=decision.evidence,
+                evidence_records=decision.evidence_records,
+                scores=decision.scores,
+                completion=audit.completion if audit is not None else None,
+                completion_reason=audit.reason if audit is not None else None,
+                portfolio_reason=keep.reason if keep is not None else None,
+                library_action=proposal.action if proposal is not None else None,
+                existing_asset_id=(
+                    proposal.existing_asset_id if proposal is not None else None
+                ),
+                existing_skill_name=(
+                    proposal.existing_skill_name if proposal is not None else None
+                ),
+                skill=proposal.skill if proposal is not None else None,
+            )
+        )
+    return tuple(rows)
+
+
+def render_asset_ledger_jsonl(result: HarnessResult) -> str:
+    return "".join(
+        json.dumps(
+            item.payload(business_date=result.business_date),
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        + "\n"
+        for item in result.asset_ledger
+    )
+
+
 def render_report(result: HarnessResult) -> str:
     counts = {
         decision: sum(1 for item in result.decisions if item.decision == decision)
@@ -1602,7 +1874,7 @@ def render_report(result: HarnessResult) -> str:
     lines = [
         f"# {result.business_date} Skill Minimal Harness ({PROMPT_VERSION})",
         "",
-        "> Experimental only: no Skill is installed or published.",
+        "> Skill proposals require explicit Dashboard registration; Lessons, References, and Discards remain retrieval assets.",
         "",
         f"- Input entries: {result.input_entries}",
         f"- Input tokens: {result.input_tokens}",
@@ -1634,11 +1906,37 @@ def render_report(result: HarnessResult) -> str:
         f"- Structurally rejected portfolio keeps: {result.rejected_portfolio_keeps}",
         f"- Library proposals: {len(result.proposals)} (missing/invalid={result.rejected_skills})",
         f"- Skill drafts: {len(result.skills)}",
+        "- Final assets: "
+        + ", ".join(
+            f"{asset_class}="
+            + str(
+                sum(
+                    item.asset_class == asset_class
+                    for item in result.asset_ledger
+                )
+            )
+            for asset_class in ("skill", "lesson", "reference", "discard")
+        ),
         "- Crystallization stage recovery attempted: "
         + ("yes" if result.crystallization_repair_raw_path is not None else "no"),
         "",
-        "## Adjudication Ledger",
+        "## Final Asset Ledger",
     ]
+    for asset_class, title in (
+        ("skill", "Skill Proposals"),
+        ("lesson", "Lessons"),
+        ("reference", "References"),
+        ("discard", "Discarded Retrieval Records"),
+    ):
+        lines.extend(["", f"### {title}"])
+        rows = [
+            item for item in result.asset_ledger if item.asset_class == asset_class
+        ]
+        if not rows:
+            lines.extend(["", "(none)"])
+        for item in rows:
+            lines.extend(["", item.markdown()])
+    lines.extend(["", "## Adjudication Ledger"])
     if not result.decisions:
         lines.extend(["", "(none)"])
     for decision in result.decisions:
@@ -2073,6 +2371,13 @@ def run_skill_pass(
                 ]
                 rejected_skills = len(approved) - len(proposals)
 
+    asset_ledger = build_asset_ledger(
+        discoveries,
+        decisions,
+        completion_audits,
+        portfolio_keeps,
+        proposals,
+    )
     result = HarnessResult(
         business_date=business_date,
         input_entries=len(entries),
@@ -2093,6 +2398,7 @@ def run_skill_pass(
         portfolio_keeps=tuple(portfolio_keeps),
         proposals=tuple(proposals),
         skills=tuple(skills),
+        asset_ledger=asset_ledger,
         library_assets_scanned=len(library_assets),
         library_assets_selected=library_assets_selected,
         rejected_discoveries=rejected_discoveries,
@@ -2101,6 +2407,7 @@ def run_skill_pass(
         rejected_portfolio_keeps=rejected_portfolio_keeps,
         rejected_skills=rejected_skills,
         report_path=report_path(selected, business_date),
+        asset_ledger_path=asset_ledger_path(selected, business_date),
         discovery_raw_path=discovery_raw_path,
         discovery_repair_raw_path=discovery_repair_raw_path,
         adjudication_raw_path=adjudication_raw_path,
@@ -2111,34 +2418,23 @@ def run_skill_pass(
         crystallization_raw_path=crystallization_raw_path,
         crystallization_repair_raw_path=crystallization_repair_raw_path,
     )
+    support._write_text_atomic(
+        result.asset_ledger_path,
+        render_asset_ledger_jsonl(result),
+    )
     support._write_text_atomic(result.report_path, render_report(result))
     return result
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Test the small Skill distillation harness.")
+    parser = argparse.ArgumentParser(description="Run the production Skill Pass.")
     parser.add_argument("business_date", nargs="?", default=business_today())
     parser.add_argument("--gate-tokens", type=int)
-    parser.add_argument(
-        "--reuse-v22-discovery",
-        action="store_true",
-        help="reuse the sanitized v7 discovery artifact to isolate adjudication and writing",
-    )
     args = parser.parse_args(argv)
     try:
-        discovery_override = None
-        if args.reuse_v22_discovery:
-            selected = load_paths()
-            discovery_override = (
-                selected.home
-                / "artifacts"
-                / "skills"
-                / f"skill-two-call-v7-raw-discovery-{support.normalize_business_date(args.business_date)}.md"
-            ).read_text(encoding="utf-8")
         result = run_skill_pass(
             args.business_date,
             gate_tokens=args.gate_tokens,
-            discovery_raw_override=discovery_override,
         )
     except (OSError, support.SkillPassError, ValueError) as exc:
         print(f"[X] Skill minimal harness could not finish: {exc}", file=sys.stderr)
@@ -2146,7 +2442,8 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"[OK] Skill minimal harness {result.business_date}: calls={result.llm_calls}, "
         f"discoveries={len(result.discoveries)}, decisions={len(result.decisions)}, "
-        f"skills={len(result.skills)}, report={result.report_path}"
+        f"skills={len(result.skills)}, assets={len(result.asset_ledger)}, "
+        f"report={result.report_path}"
     )
     return 0
 

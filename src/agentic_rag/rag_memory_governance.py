@@ -25,6 +25,27 @@ SOURCE_SET_POLICIES: dict[str, dict[str, Any]] = {
         "retrievalWeight": 1.1,
         "canonicalEligible": True,
     },
+    "skill-lessons": {
+        "authorityRank": 82,
+        "lifecycle": "distilled-lesson",
+        "retention": "long-term-retrieval",
+        "retrievalWeight": 1.04,
+        "canonicalEligible": False,
+    },
+    "skill-references": {
+        "authorityRank": 68,
+        "lifecycle": "procedural-reference",
+        "retention": "long-term-retrieval",
+        "retrievalWeight": 0.94,
+        "canonicalEligible": False,
+    },
+    "skill-discards": {
+        "authorityRank": 48,
+        "lifecycle": "discarded-observation",
+        "retention": "bounded-retrieval",
+        "retrievalWeight": 0.78,
+        "canonicalEligible": False,
+    },
     "foundation-usage-rollups": {
         "authorityRank": 82,
         "lifecycle": "metric",

@@ -55,6 +55,18 @@ FASTAPI_AVAILABLE = importlib.util.find_spec("fastapi") is not None
 
 
 class ProjectionRefreshTests(unittest.TestCase):
+    def _write_skill_ledger(self, paths, business_date="2026-06-20"):
+        target = (
+            paths.home
+            / "artifacts"
+            / "skills"
+            / f"skill-harness-minimal-v21-assets-{business_date}.jsonl"
+        )
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("", encoding="utf-8")
+        target.chmod(0o600)
+        return target
+
     def test_dashboard_write_paths_preserve_selected_generated_diary_root(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -249,6 +261,7 @@ No activity today.
                 legacy_diary_root=diary_root,
             )
             write_settings({"rag": {"enabled": False, "mode": "disabled"}}, paths)
+            self._write_skill_ledger(paths)
 
             completeness = evaluate_daily_completeness(paths, date(2026, 6, 20))
             pending = _history_backfill_pending_items(
@@ -315,6 +328,7 @@ No activity today.
                 },
                 paths,
             )
+            self._write_skill_ledger(paths)
             migrate(paths)
             day = date(2026, 6, 20)
             run_id = begin_ingestion_run(

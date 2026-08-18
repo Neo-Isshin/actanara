@@ -630,6 +630,7 @@ const DASHBOARD_SHELL_TEXT = {
     storageUsage: '存储使用',
     taskOverview: '任务总览',
     agentConfigPanel: 'Agent 配置面板',
+    proceduralAssets: '程序性资产复核',
     skillLibrary: 'Skill 库',
     toolConfig: '工具配置',
     runtimeRegistry: '运行环境登记',
@@ -749,6 +750,7 @@ const DASHBOARD_SHELL_TEXT = {
     storageUsage: 'Storage Usage',
     taskOverview: 'Task Overview',
     agentConfigPanel: 'Agent Configuration Panel',
+    proceduralAssets: 'Procedural Asset Review',
     skillLibrary: 'Skill Library',
     toolConfig: 'Tool Configuration',
     runtimeRegistry: 'Runtime Registry',
@@ -2296,6 +2298,30 @@ const AI_ASSETS_TEXT = {
     profileLabel: 'Profile',
     linesUnit: '行',
     skillsLibrary: '技能库',
+    skillAssetsLoading: '正在读取 Skill Pass 资产账本…',
+    skillAssetsEmpty: '尚无 Skill Pass 资产账本。Base Pipeline 成功运行后会在这里显示程序性资产。',
+    skillAssetsFailed: 'Skill Pass 资产账本读取失败：',
+    skillAssetsTitle: 'Skill Pass 程序性资产',
+    skillAssetsBoundary: 'Skill 提案默认勾选；Lesson 默认不勾选，但可由用户强制结晶。点击生成后，最终 create/extend 草案会写入 Actanara 主库并自动注册到已检测且受支持的本机 Agent；covered/conflict/reject 不执行写入。',
+    skillAssetsDate: '业务日期',
+    skillAssetsPrompt: '提示词版本',
+    skillAssetsSelected: (count) => `已选择 ${count} 条资产`,
+    skillAssetsGenerateRegister: '生成并注册',
+    skillAssetsGenerating: '正在结晶并注册所选资产…',
+    skillAssetsNoSelection: '没有可生成的 Skill 或 Lesson。',
+    skillAssetsCrystallizationFailed: 'Skill 生成或注册失败：',
+    skillAssetsHumanOverride: '用户强制结晶',
+    skillAssetsRegistrationCompleted: 'Skill 已写入 Actanara 主库。',
+    skillAssetsRegistered: (count) => `已同步到 ${count} 个受支持的本机 Agent。`,
+    skillAssetsRegistrationBoundary: '点击按钮即授权本次本机 Skill 写入；自定义同名 Skill 会保留且不会被覆盖。注册只提供调用能力，不会要求 Agent 立即执行。',
+    skillAssetsClasses: { skill: 'Skill 提案', lesson: '经验教训', reference: '检索参考', discard: '丢弃记录' },
+    skillAssetsEvidence: '证据记录',
+    skillAssetsScores: '评分',
+    skillAssetsCompletion: '完成性',
+    skillAssetsLibraryAction: 'Skill 库动作',
+    skillAssetsExisting: '已有 Skill',
+    skillAssetsOriginalDecision: '原始裁决',
+    skillAssetsDetails: '查看依据与草案',
     skillSearchPlaceholder: '🔍 搜索所有工具的 Skills...',
     noSkillsData: '暂无 Skills 数据',
     noMatches: '无匹配结果',
@@ -2517,6 +2543,30 @@ const AI_ASSETS_TEXT = {
     profileLabel: 'Profile',
     linesUnit: 'lines',
     skillsLibrary: 'Skill Library',
+    skillAssetsLoading: 'Reading the Skill Pass asset ledger...',
+    skillAssetsEmpty: 'No Skill Pass asset ledger is available. A successful Base Pipeline run will publish procedural assets here.',
+    skillAssetsFailed: 'Failed to read the Skill Pass asset ledger: ',
+    skillAssetsTitle: 'Skill Pass Procedural Assets',
+    skillAssetsBoundary: 'Skill proposals are selected by default. Lessons are not selected by default but may be force-crystallized by the user. On Generate, finalized create/extend drafts are written to the Actanara canonical library and registered with detected supported local Agents; covered/conflict/reject perform no write.',
+    skillAssetsDate: 'Business date',
+    skillAssetsPrompt: 'Prompt version',
+    skillAssetsSelected: (count) => `${count} asset(s) selected`,
+    skillAssetsGenerateRegister: 'Generate and Register',
+    skillAssetsGenerating: 'Crystallizing and registering selected assets...',
+    skillAssetsNoSelection: 'No eligible Skill or Lesson is selected.',
+    skillAssetsCrystallizationFailed: 'Skill generation or registration failed: ',
+    skillAssetsHumanOverride: 'User-forced crystallization',
+    skillAssetsRegistrationCompleted: 'The Skill was written to the Actanara canonical library.',
+    skillAssetsRegistered: (count) => `Synchronized with ${count} supported local Agent(s).`,
+    skillAssetsRegistrationBoundary: 'Clicking the button authorizes this local Skill write. Customized same-name Skills are preserved. Registration makes a Skill available; it does not force an Agent to run it.',
+    skillAssetsClasses: { skill: 'Skill Proposal', lesson: 'Lesson', reference: 'Reference', discard: 'Discarded Record' },
+    skillAssetsEvidence: 'Evidence records',
+    skillAssetsScores: 'Scores',
+    skillAssetsCompletion: 'Completion',
+    skillAssetsLibraryAction: 'Library action',
+    skillAssetsExisting: 'Existing Skill',
+    skillAssetsOriginalDecision: 'Original decision',
+    skillAssetsDetails: 'Review rationale and draft',
     skillSearchPlaceholder: '🔍 Search all tool Skills...',
     noSkillsData: 'No Skills data',
     noMatches: 'No matches',
@@ -10665,6 +10715,7 @@ function fetchTokenClock() {
 /* ═══ AI Assets Page — Data Fetch & Render ═══ */
 let _aaCharts = { trend: null, model: null, tool: null };
 let _aaState = { data: null, skillTab: 'global', infraExpanded: { devices: false, services: false }, infraActivityItems: [] };
+let _aaSkillAssetState = { payload: null, selected: new Set(), loading: false, generating: false, error: '' };
 let _aaLoading = false;
 const AA_INFRA_CARD_LIMIT = 6;
 
@@ -10857,6 +10908,191 @@ function renderHeatmap(trend30d, targetId = 'aaHeatmapWrap', showLegend = false)
 function aaToolColor(name) {
   const map = { 'OpenClaw':'#FF6B35','Claude Code':'#D97706','Gemini CLI':'#8B5CF6','Codex':'#10B981','Hermes':'#F59E0B','OpenCode':'#0EA5A4','Antigravity':'#6366F1','Cursor':'#7C3AED' };
   return map[name] || '#533afd';
+}
+
+function aaSkillAssetItems(payload) {
+  const allowedClasses = new Set(['skill', 'lesson', 'reference', 'discard']);
+  const allowedActions = new Set(['create', 'extend', 'covered', 'conflict', 'reject']);
+  const rows = Array.isArray(payload?.items) ? payload.items : [];
+  return rows.filter(item => {
+    if (!item || !/^review-\d{3}$/.test(String(item.reviewId || ''))) return false;
+    if (!allowedClasses.has(String(item.assetClass || ''))) return false;
+    if (item.libraryAction && !allowedActions.has(String(item.libraryAction))) return false;
+    if (item.assetClass === 'skill') {
+      return ['create', 'extend'].includes(item.libraryAction) &&
+        Boolean(item.skillName && item.skillDescription && item.skillMarkdown);
+    }
+    return !item.skillMarkdown;
+  });
+}
+
+function aaSkillAssetScoreText(scores) {
+  const row = scores || {};
+  return ['E ' + Number(row.evidence || 0), 'V ' + Number(row.value || 0), 'R ' + Number(row.reuse || 0), 'P ' + Number(row.program || 0)].join(' · ');
+}
+
+function aaSkillAssetCard(item, labels) {
+  const assetClass = String(item.assetClass || 'discard');
+  const selectable = assetClass === 'skill' || assetClass === 'lesson';
+  const selected = selectable && _aaSkillAssetState.selected.has(item.reviewId);
+  const classLabel = labels.skillAssetsClasses?.[assetClass] || assetClass;
+  const checkbox = selectable
+    ? '<input type="checkbox" class="aa-skill-asset-checkbox" aria-label="' + escapeHtml(classLabel + ': ' + item.title) + '" ' +
+      (selected ? 'checked ' : '') + 'onchange="aaToggleSkillAssetSelection(\'' + escapeHtml(item.reviewId) + '\', this.checked)">'
+    : '<span class="aa-skill-asset-nonselect" aria-hidden="true">•</span>';
+  const detailRows = [
+    [labels.skillAssetsOriginalDecision, item.originalDecision],
+    [labels.skillAssetsEvidence, Number(item.evidenceCount || 0)],
+    [labels.skillAssetsScores, aaSkillAssetScoreText(item.scores)],
+    [labels.skillAssetsCompletion, item.completion],
+    [labels.skillAssetsLibraryAction, item.libraryAction],
+    [labels.skillAssetsExisting, item.existingSkillName],
+  ].filter(row => row[1] !== null && row[1] !== undefined && row[1] !== '');
+  const draft = assetClass === 'skill'
+    ? '<div class="aa-skill-asset-draft"><div class="aa-skill-asset-draft-name">' + escapeHtml(item.skillName) + '</div>' +
+      '<div class="aa-skill-asset-draft-description">' + escapeHtml(item.skillDescription) + '</div>' +
+      '<pre>' + escapeHtml(item.skillMarkdown) + '</pre></div>'
+    : '';
+  return '<article class="aa-skill-asset-card" data-asset-class="' + escapeHtml(assetClass) + '">' +
+    '<div class="aa-skill-asset-head">' + checkbox +
+      '<div class="aa-skill-asset-heading"><div class="aa-skill-asset-tags"><span class="aa-skill-asset-class">' + escapeHtml(classLabel) + '</span>' +
+      (item.humanOverride === true ? '<span class="aa-skill-asset-disposition">' + escapeHtml(labels.skillAssetsHumanOverride) + '</span>' : '') +
+      '<span class="aa-skill-asset-disposition">' + escapeHtml(item.disposition || '') + '</span></div>' +
+      '<h4>' + escapeHtml(item.title || item.skillName || item.reviewId) + '</h4></div></div>' +
+    (item.summary ? '<p class="aa-skill-asset-summary">' + escapeHtml(item.summary) + '</p>' : '') +
+    '<details class="aa-skill-asset-details"><summary>' + escapeHtml(labels.skillAssetsDetails) + '</summary>' +
+      (item.reason ? '<p>' + escapeHtml(item.reason) + '</p>' : '') +
+      '<div class="aa-skill-asset-meta">' + detailRows.map(row => '<span><b>' + escapeHtml(row[0]) + ':</b> ' + escapeHtml(row[1]) + '</span>').join('') + '</div>' +
+      draft +
+    '</details></article>';
+}
+
+function renderSkillAssetReview() {
+  const target = document.getElementById('aaSkillAssetReview');
+  if (!target) return;
+  const labels = aiAssetsText();
+  if (_aaSkillAssetState.loading) {
+    target.innerHTML = '<div class="aa-skill-assets-empty">' + escapeHtml(labels.skillAssetsLoading) + '</div>';
+    return;
+  }
+  if (_aaSkillAssetState.error) {
+    target.innerHTML = '<div class="aa-skill-assets-empty aa-skill-assets-error">' + escapeHtml(labels.skillAssetsFailed + _aaSkillAssetState.error) + '</div>';
+    return;
+  }
+  const payload = _aaSkillAssetState.payload;
+  const items = aaSkillAssetItems(payload);
+  if (!payload || payload.status === 'empty' || !items.length) {
+    target.innerHTML = '<div class="aa-skill-assets-empty">' + escapeHtml(labels.skillAssetsEmpty) + '</div>';
+    return;
+  }
+  const counts = payload.counts || {};
+  const selectedCount = items.filter(item => ['skill', 'lesson'].includes(item.assetClass) && _aaSkillAssetState.selected.has(item.reviewId)).length;
+  const countOrder = ['skill', 'lesson', 'reference', 'discard'];
+  target.innerHTML = '<div class="aa-skill-assets-toolbar">' +
+    '<div><div class="aa-skill-assets-title">' + escapeHtml(labels.skillAssetsTitle) + '</div>' +
+      '<div class="aa-skill-assets-context">' + escapeHtml(labels.skillAssetsDate) + ': ' + escapeHtml(payload.businessDate || '—') + ' · ' + escapeHtml(labels.skillAssetsPrompt) + ': ' + escapeHtml(payload.promptVersion || '—') + '</div></div>' +
+    '<div class="aa-skill-assets-counts">' + countOrder.map(key => '<span data-asset-class="' + key + '">' + escapeHtml(labels.skillAssetsClasses?.[key] || key) + ' ' + Number(counts[key] || 0) + '</span>').join('') + '</div></div>' +
+    '<div class="aa-skill-assets-boundary">' + escapeHtml(labels.skillAssetsBoundary) + '</div>' +
+    '<div class="aa-skill-assets-list">' + items.map(item => aaSkillAssetCard(item, labels)).join('') + '</div>' +
+    '<div class="aa-skill-assets-actions"><div><strong>' + escapeHtml(labels.skillAssetsSelected(selectedCount)) + '</strong><small>' + escapeHtml(labels.skillAssetsRegistrationBoundary) + '</small></div>' +
+      '<button type="button" class="aa-skill-assets-export" onclick="generateAndRegisterSelectedSkillAssets()" ' + (selectedCount && !_aaSkillAssetState.generating ? '' : 'disabled') + '>' + escapeHtml(_aaSkillAssetState.generating ? labels.skillAssetsGenerating : labels.skillAssetsGenerateRegister) + '</button></div>' +
+    '<div id="aaSkillAssetMessage" class="aa-skill-assets-message" role="status" aria-live="polite"></div>';
+}
+
+function aaToggleSkillAssetSelection(reviewId, selected) {
+  const item = aaSkillAssetItems(_aaSkillAssetState.payload).find(row => row.reviewId === reviewId && ['skill', 'lesson'].includes(row.assetClass));
+  if (!item) return;
+  if (selected) _aaSkillAssetState.selected.add(reviewId);
+  else _aaSkillAssetState.selected.delete(reviewId);
+  renderSkillAssetReview();
+}
+
+async function loadSkillAssetReview() {
+  if (_aaSkillAssetState.loading) return;
+  _aaSkillAssetState.loading = true;
+  _aaSkillAssetState.error = '';
+  renderSkillAssetReview();
+  try {
+    const response = await fetch('/api/ai-assets/skill-assets');
+    const payload = await response.json();
+    if (!response.ok || !['ready', 'empty'].includes(payload.status)) throw new Error(payload.error || ('HTTP ' + response.status));
+    const items = aaSkillAssetItems(payload);
+    _aaSkillAssetState.payload = {...payload, items};
+    _aaSkillAssetState.selected = new Set(items.filter(item => item.selectedByDefault === true && item.assetClass === 'skill').map(item => item.reviewId));
+  } catch (error) {
+    _aaSkillAssetState.payload = null;
+    _aaSkillAssetState.selected = new Set();
+    _aaSkillAssetState.error = String(error?.message || error || 'unknown');
+  } finally {
+    _aaSkillAssetState.loading = false;
+    renderSkillAssetReview();
+  }
+}
+
+async function generateAndRegisterSelectedSkillAssets() {
+  if (_aaSkillAssetState.generating) return;
+  const labels = aiAssetsText();
+  const payload = _aaSkillAssetState.payload;
+  const selected = aaSkillAssetItems(payload).filter(item =>
+    ['skill', 'lesson'].includes(item.assetClass) && _aaSkillAssetState.selected.has(item.reviewId));
+  const messageText = selected.length ? '' : labels.skillAssetsNoSelection;
+  if (!selected.length) {
+    const message = document.getElementById('aaSkillAssetMessage');
+    if (message) message.textContent = messageText;
+    return;
+  }
+  _aaSkillAssetState.generating = true;
+  renderSkillAssetReview();
+  let registration = null;
+  try {
+    const lessons = selected.filter(item => item.assetClass === 'lesson');
+    if (lessons.length) {
+      const response = await fetch('/api/ai-assets/skill-assets/crystallize', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          businessDate: payload.businessDate,
+          promptVersion: payload.promptVersion,
+          reviewIds: lessons.map(item => item.reviewId),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'ready' || !result.review) {
+        throw new Error(result.error || ('HTTP ' + response.status));
+      }
+      const items = aaSkillAssetItems(result.review);
+      _aaSkillAssetState.payload = {...result.review, items};
+    }
+    const finalized = aaSkillAssetItems(_aaSkillAssetState.payload).filter(item =>
+      item.assetClass === 'skill' && _aaSkillAssetState.selected.has(item.reviewId));
+    if (!finalized.length) throw new Error(labels.skillAssetsNoSelection);
+    const registerResponse = await fetch('/api/ai-assets/skill-assets/register', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        businessDate: _aaSkillAssetState.payload.businessDate,
+        promptVersion: _aaSkillAssetState.payload.promptVersion,
+        reviewIds: finalized.map(item => item.reviewId),
+      }),
+    });
+    registration = await registerResponse.json();
+    if (!registerResponse.ok || registration.status !== 'completed') {
+      throw new Error(registration.error || ('HTTP ' + registerResponse.status));
+    }
+  } catch (error) {
+    _aaSkillAssetState.generating = false;
+    renderSkillAssetReview();
+    const message = document.getElementById('aaSkillAssetMessage');
+    if (message) message.textContent = labels.skillAssetsCrystallizationFailed + String(error?.message || error || 'unknown');
+    return;
+  }
+  _aaSkillAssetState.generating = false;
+  renderSkillAssetReview();
+  const message = document.getElementById('aaSkillAssetMessage');
+  if (message) {
+    const toolCount = Array.isArray(registration?.registeredTools) ? registration.registeredTools.length : 0;
+    message.textContent = labels.skillAssetsRegistrationCompleted + ' ' + labels.skillAssetsRegistered(toolCount);
+  }
 }
 
 async function loadAiAssets() {
@@ -12062,8 +12298,11 @@ function aaRender(d) {
   // L: Skill 库
   renderSkills(d.skills || {});
 
-  // M: 工具配置
+  // N: 工具配置
   if (typeof renderToolConfigs === 'function') renderToolConfigs(d.toolConfigs || []);
+
+  // L: Skill Pass review projection (read-only; no registration side effects)
+  void loadSkillAssetReview();
 }
 
 function switchSkillTab(type) {

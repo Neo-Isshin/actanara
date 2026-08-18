@@ -29,6 +29,7 @@ try:
     from data_foundation.diary_paths import diary_report_paths, diary_report_type_for_filename, iter_diary_markdown_files
     from data_foundation.memory_corpus import CorpusCollector, collect_memory_corpus, lessons_read_paths
     from data_foundation.nova_task import _extract_nova_task_payload
+    from data_foundation.skill_asset_memory import collect_skill_asset_memory_records
     from data_foundation.tasks import _parse_report_updates, parse_task_board_markdown
     from data_foundation.time import business_date_for, parse_timestamp
 except ImportError:  # pragma: no cover - direct script fallback
@@ -37,6 +38,7 @@ except ImportError:  # pragma: no cover - direct script fallback
     from data_foundation.diary_paths import diary_report_paths, diary_report_type_for_filename, iter_diary_markdown_files  # type: ignore
     from data_foundation.memory_corpus import CorpusCollector, collect_memory_corpus, lessons_read_paths  # type: ignore
     from data_foundation.nova_task import _extract_nova_task_payload  # type: ignore
+    from data_foundation.skill_asset_memory import collect_skill_asset_memory_records  # type: ignore
     from data_foundation.tasks import _parse_report_updates, parse_task_board_markdown  # type: ignore
     from data_foundation.time import business_date_for, parse_timestamp  # type: ignore
 
@@ -293,6 +295,7 @@ def collect_candidate_chunks(
         (
             CorpusCollector(("filtered-dialogue-daily",), _collect_filtered_dialogue_daily),
             CorpusCollector(("lessons",), _collect_lessons),
+            CorpusCollector(("lessons",), _collect_skill_assets),
             CorpusCollector(("foundation-usage-rollups",), _collect_foundation_usage_rollups),
             CorpusCollector(("foundation-dashboard-snapshots",), _collect_foundation_dashboard_snapshots),
             CorpusCollector(("diary-markdown-sections", "diary-markdown"), _collect_diary_markdown_sections),
@@ -458,6 +461,58 @@ def _collect_lessons(settings: RagSettings) -> tuple[list[dict[str, Any]], list[
             )
             chunks.append(chunk)
         sources.append(_source_record("lessons", lessons_path, len(chunks) - count_before, source_type="jsonl"))
+    return chunks, sources
+
+
+def _collect_skill_assets(settings: RagSettings) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Project the current Skill Pass non-Skill ledger into retrieval tiers."""
+
+    from data_foundation.paths import runtime_paths_for_home
+
+    runtime_paths = runtime_paths_for_home(settings.runtime_home)
+    records, _source_paths = collect_skill_asset_memory_records(runtime_paths)
+    chunks: list[dict[str, Any]] = []
+    counts: dict[tuple[Path, str], int] = {}
+    source_sets = {
+        "lesson": "skill-lessons",
+        "reference": "skill-references",
+        "discard": "skill-discards",
+    }
+    for record in records:
+        source_set = source_sets[record.asset_class]
+        chunks.append(
+            _chunk_payload(
+                source_set=source_set,
+                text=record.text,
+                layer=record.asset_class,
+                date=record.business_date,
+                agent="skill-pass",
+                source_path=record.source_path,
+                line_number=record.line_number,
+                stable_id=record.record_id,
+                source_type="skill-asset-ledger-jsonl",
+                provenance={
+                    "authority": "Skill Pass model judgment; retrieve as experience, not as an independently verified fact.",
+                    "promptVersion": record.prompt_version,
+                    "reviewId": record.review_id,
+                    "assetClass": record.asset_class,
+                    "disposition": record.disposition,
+                },
+            )
+        )
+        key = (record.source_path, source_set)
+        counts[key] = counts.get(key, 0) + 1
+    sources = [
+        _source_record(
+            source_set,
+            path,
+            count,
+            source_type="skill-asset-ledger-jsonl",
+        )
+        for (path, source_set), count in sorted(
+            counts.items(), key=lambda item: (str(item[0][0]), item[0][1])
+        )
+    ]
     return chunks, sources
 
 

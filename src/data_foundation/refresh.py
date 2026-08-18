@@ -1767,7 +1767,19 @@ def _run_history_daily_actions(
     selected = []
     if "technical-pass" in action_set:
         selected.extend(step for step in steps if step.script.name == "technical_pass.py")
-    if "learning-pass" in action_set:
+    if "skill-pass" in action_set or (
+        "learning-pass" in action_set
+        and str(settings.get("languageProfile") or "zh") != "en"
+    ):
+        selected.extend(
+            step
+            for step in steps
+            if step.script.name == "skill_pass_minimal_harness.py"
+        )
+    if (
+        "learning-pass" in action_set
+        and str(settings.get("languageProfile") or "zh") == "en"
+    ):
         selected.extend(step for step in steps if step.script.name == "learning_pass.py")
     if "daily-materialization" in action_set and "rag-sync" not in action_set:
         ok = materialize_pipeline_foundation_outputs(day_str, paths)
