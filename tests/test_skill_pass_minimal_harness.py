@@ -11,9 +11,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from data_foundation.paths import initialize_home
 from diary_generator import skill_pass_minimal_harness as harness
-from diary_generator import skill_pass_single_call as single
-from diary_generator import skill_pass_three_call as v22
-from diary_generator import skill_pass_two_call as two
+from diary_generator import skill_pass_minimal_support as support
 
 
 def _stream() -> str:
@@ -24,7 +22,7 @@ def _stream() -> str:
 
 
 def _discovery() -> str:
-    return f"""{two.DISCOVERY_MARKER}
+    return f"""{support.DISCOVERY_MARKER}
 # 用双端证据诊断不对称路径
 Records: 000001, 000002, 000003, 000004
 Why: 单端成功误导归因，改用对照路径和双端观察后确认返回方向丢失。
@@ -144,10 +142,7 @@ class MinimalHarnessTests(unittest.TestCase):
                 )
                 self.assertEqual(call.call_args.kwargs["thinking_mode"], "high")
 
-    def test_prompt_contract_is_smaller_without_removing_core_judgment(self):
-        self.assertLess(len(harness.DISCOVERY_PROMPT), len(two.DISCOVERY_PROMPT))
-        self.assertLess(len(harness.ADJUDICATION_PROMPT), len(v22.REVIEW_PROMPT) // 2)
-        self.assertLess(len(harness.CRYSTALLIZATION_PROMPT), len(v22.CRYSTALLIZATION_PROMPT))
+    def test_prompt_contract_retains_core_judgment(self):
         for term in ("Evidence", "Value", "Reuse", "Program"):
             self.assertIn(term, harness.ADJUDICATION_PROMPT)
         for decision in ("skill", "lesson", "reference", "discard"):
@@ -194,7 +189,7 @@ class MinimalHarnessTests(unittest.TestCase):
 
     def test_adjudication_preserves_four_model_authored_asset_classes(self):
         stream = _stream()
-        source = two.parse_discovery_output(_discovery(), stream=stream)[0][0]
+        source = support.parse_discovery_output(_discovery(), stream=stream)[0][0]
         prompt = harness.build_adjudication_prompt([source], evidence_stream=stream)
         self.assertEqual(prompt.count("[record 000002"), 1)
         self.assertNotIn("<allowed_work_records>", prompt)
@@ -209,7 +204,7 @@ class MinimalHarnessTests(unittest.TestCase):
 
     def test_one_marker_can_prefix_multiple_complete_review_cards(self):
         stream = _stream()
-        source = two.parse_discovery_output(_discovery(), stream=stream)[0][0]
+        source = support.parse_discovery_output(_discovery(), stream=stream)[0][0]
         second = _decision("lesson").replace(
             harness.REVIEW_MARKER + "\n", "", 1
         ).replace("candidate-001", "candidate-002")
@@ -249,7 +244,7 @@ Why: 第二条完整因果线索具有独立记录集合。"""
 
     def test_completion_audit_keeps_verified_and_blocks_incomplete(self):
         stream = _stream()
-        source = two.parse_discovery_output(_discovery(), stream=stream)[0][0]
+        source = support.parse_discovery_output(_discovery(), stream=stream)[0][0]
         decisions, rejected = harness.parse_adjudication_output(
             _decision()
             + "\n\n"
@@ -308,12 +303,12 @@ Why: 第二条完整因果线索具有独立记录集合。"""
                 "Records: 000003, 000004",
             )
         )
-        candidates, rejected = two.parse_discovery_output(
+        candidates, rejected = support.parse_discovery_output(
             first_raw + "\n\n" + second_raw,
             stream=stream,
         )
         self.assertEqual((len(candidates), rejected), (2, 0))
-        selected_stream = two.select_cited_records(stream, [candidates[1]])
+        selected_stream = support.select_cited_records(stream, [candidates[1]])
         prompt = harness.build_adjudication_prompt(
             candidates,
             evidence_stream=selected_stream,
@@ -324,7 +319,7 @@ Why: 第二条完整因果线索具有独立记录集合。"""
 
     def test_adjudication_rejects_cross_dossier_evidence_but_not_low_scores(self):
         stream = _stream()
-        source = two.parse_discovery_output(_discovery(), stream=stream)[0][0]
+        source = support.parse_discovery_output(_discovery(), stream=stream)[0][0]
         invalid, rejected = harness.parse_adjudication_output(
             _decision(evidence="000001, 000099"),
             stream=stream,
@@ -344,7 +339,7 @@ Why: 第二条完整因果线索具有独立记录集合。"""
 
     def test_crystallization_model_does_not_repeat_evidence_or_scores(self):
         stream = _stream()
-        source = two.parse_discovery_output(_discovery(), stream=stream)[0][0]
+        source = support.parse_discovery_output(_discovery(), stream=stream)[0][0]
         decisions, rejected = harness.parse_adjudication_output(
             _decision(), stream=stream, candidates=[source]
         )
@@ -372,7 +367,7 @@ Why: 第二条完整因果线索具有独立记录集合。"""
 
     def test_only_skill_decisions_reach_crystallization(self):
         stream = _stream()
-        source = two.parse_discovery_output(_discovery(), stream=stream)[0][0]
+        source = support.parse_discovery_output(_discovery(), stream=stream)[0][0]
         decisions, rejected = harness.parse_adjudication_output(
             _decision("reference"), stream=stream, candidates=[source]
         )
@@ -777,7 +772,7 @@ Why: 第二条完整因果线索具有独立记录集合。"""
 
     def test_library_actions_are_model_authored_but_structurally_bounded(self):
         stream = _stream()
-        source = two.parse_discovery_output(_discovery(), stream=stream)[0][0]
+        source = support.parse_discovery_output(_discovery(), stream=stream)[0][0]
         decisions, _ = harness.parse_adjudication_output(
             _decision(), stream=stream, candidates=[source]
         )

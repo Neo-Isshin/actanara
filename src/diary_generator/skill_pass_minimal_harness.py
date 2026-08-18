@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""Small three-stage harness for high-quality procedural asset distillation.
+"""Minimal harness for high-quality procedural asset distillation.
 
-The frozen v22 experiment remains in ``skill_pass_three_call.py``.  This path
-tests a smaller contract: the model discovers causal candidates, adjudicates
-four useful asset classes, and writes only approved Skill bodies.  Local code
-owns identifiers, evidence locators, privacy checks, and report assembly; it
-does not infer semantic value from transcript wording.
+The model discovers causal candidates, adjudicates useful asset classes,
+checks completion, selects a sparse portfolio, and writes only approved Skill
+bodies.  Local code owns identifiers, evidence locators, privacy checks, and
+report assembly; it does not infer semantic value from transcript wording.
 """
 
 from __future__ import annotations
@@ -29,8 +28,7 @@ from data_foundation.llm_execution import execute_llm_message
 from data_foundation.paths import RuntimePaths, load_paths
 from data_foundation.settings import resolve_llm_provider
 from data_foundation.time import business_today
-from diary_generator import skill_pass_single_call as single
-from diary_generator import skill_pass_two_call as two
+from diary_generator import skill_pass_minimal_support as support
 
 
 PROMPT_VERSION = "minimal-v21"
@@ -383,7 +381,7 @@ class SkillProposal:
     existing_asset_id: str | None
     existing_skill_name: str | None
     reason: str
-    skill: single.SkillCandidate | None
+    skill: support.SkillCandidate | None
 
     def markdown(self) -> str:
         lines = [
@@ -416,8 +414,8 @@ class HarnessScores:
             f"Reuse {self.reuse}/5 · Program {self.program}/5"
         )
 
-    def skill_scores(self) -> single.ScoreCard:
-        return single.ScoreCard(
+    def skill_scores(self) -> support.ScoreCard:
+        return support.ScoreCard(
             evidence_closure=self.evidence,
             learning_value=self.value,
             transferability=self.reuse,
@@ -529,12 +527,12 @@ class HarnessResult:
     crystallization_tokens: int
     gate_tokens: int
     llm_calls: int
-    discoveries: tuple[two.DiscoveryCandidate, ...]
+    discoveries: tuple[support.DiscoveryCandidate, ...]
     decisions: tuple[HarnessDecision, ...]
     completion_audits: tuple[CompletionAudit, ...]
     portfolio_keeps: tuple[PortfolioKeep, ...]
     proposals: tuple[SkillProposal, ...]
-    skills: tuple[single.SkillCandidate, ...]
+    skills: tuple[support.SkillCandidate, ...]
     library_assets_scanned: int
     library_assets_selected: int
     rejected_discoveries: int
@@ -562,15 +560,15 @@ def parse_discovery_output(
     raw_output: str,
     *,
     stream: str,
-) -> tuple[list[two.DiscoveryCandidate], int]:
+) -> tuple[list[support.DiscoveryCandidate], int]:
     """Accept an explicit empty result or repeated complete Records/Why cards."""
-    prepared = single._unwrap_outer_fence(
-        single._THINKING_RE.sub("", str(raw_output or ""))
+    prepared = support._unwrap_outer_fence(
+        support._THINKING_RE.sub("", str(raw_output or ""))
     ).strip()
     none_markers = list(
         re.finditer(rf"(?m)^{re.escape(DISCOVERY_NONE_MARKER)}[ \t]*$", prepared)
     )
-    markers = list(re.finditer(rf"(?m)^{re.escape(two.DISCOVERY_MARKER)}[ \t]*$", prepared))
+    markers = list(re.finditer(rf"(?m)^{re.escape(support.DISCOVERY_MARKER)}[ \t]*$", prepared))
     record_starts = list(re.finditer(r"(?m)^Records[ \t]*:[ \t]*[^\n]+$", prepared))
     if none_markers:
         reasons = list(_REASON_RE.finditer(prepared))
@@ -579,7 +577,7 @@ def parse_discovery_output(
             and not markers
             and not record_starts
             and len(reasons) == 1
-            and not single._contains_private_runtime_value(prepared)
+            and not support._contains_private_runtime_value(prepared)
         ):
             return [], 0
         return [], 1
@@ -598,15 +596,15 @@ def parse_discovery_output(
                 if not title or title == "一句话候选身份":
                     title = card.group("summary").strip()
                 blocks.append(
-                    f"{two.DISCOVERY_MARKER}\n# {title}\n"
+                    f"{support.DISCOVERY_MARKER}\n# {title}\n"
                     f"{card.group('records').strip()}\n{card.group('why').strip()}"
                 )
             prepared = "\n\n".join(blocks)
-    return two.parse_discovery_output(prepared, stream=stream)
+    return support.parse_discovery_output(prepared, stream=stream)
 
 
 def build_adjudication_prompt(
-    candidates: Iterable[two.DiscoveryCandidate],
+    candidates: Iterable[support.DiscoveryCandidate],
     *,
     evidence_stream: str,
     candidate_numbers: Iterable[int] | None = None,
@@ -643,13 +641,13 @@ def _parse_record_ids(
     if not parts or any(re.fullmatch(r"\d{1,6}", part) is None for part in parts):
         return None
     normalized = ", ".join(f"{int(part):06d}" for part in parts)
-    parsed = two._parse_global_record_ids(normalized, stream=stream)
+    parsed = support._parse_global_record_ids(normalized, stream=stream)
     return parsed[1] if parsed is not None else None
 
 
 def _parse_decision_block(block: str, *, stream: str) -> HarnessDecision | None:
     raw = str(block or "").strip()
-    if not raw.startswith(REVIEW_MARKER) or single._contains_private_runtime_value(raw):
+    if not raw.startswith(REVIEW_MARKER) or support._contains_private_runtime_value(raw):
         return None
     title_rows = list(re.finditer(r"(?m)^# (?P<value>[^\n]+?)[ \t]*$", raw))
     candidate_rows = list(_CANDIDATE_ID_RE.finditer(raw))
@@ -696,8 +694,8 @@ def _parse_decision_block(block: str, *, stream: str) -> HarnessDecision | None:
     if decision == "skill" and (not action_records or not verification_records):
         return None
     score = score_rows[0]
-    records = single._stream_records(stream)
-    evidence = two._references_for_record_ids(evidence_records, records=records)
+    records = support._stream_records(stream)
+    evidence = support._references_for_record_ids(evidence_records, records=records)
     return HarnessDecision(
         title=(title_rows[0].group("value").strip() if title_rows else ""),
         candidate_id=candidate_rows[0].group("value").casefold(),
@@ -721,7 +719,7 @@ def parse_adjudication_output(
     raw_output: str,
     *,
     stream: str,
-    candidates: Iterable[two.DiscoveryCandidate],
+    candidates: Iterable[support.DiscoveryCandidate],
     candidate_numbers: Iterable[int] | None = None,
 ) -> tuple[list[HarnessDecision], int]:
     expected_rows = list(candidates)
@@ -732,8 +730,8 @@ def parse_adjudication_output(
         f"candidate-{number:03d}": expected_rows[number - 1]
         for number in numbers
     }
-    prepared = single._unwrap_outer_fence(
-        single._THINKING_RE.sub("", str(raw_output or ""))
+    prepared = support._unwrap_outer_fence(
+        support._THINKING_RE.sub("", str(raw_output or ""))
     ).strip()
     markers = list(_REVIEW_MARKER_RE.finditer(prepared))
     card_starts = list(_REVIEW_CARD_START_RE.finditer(prepared))
@@ -766,7 +764,7 @@ def parse_adjudication_output(
         source = expected.get(item.candidate_id)
         allowed = (
             source.record_ids
-            or two._record_ids_for_references(source.evidence, stream=stream)
+            or support._record_ids_for_references(source.evidence, stream=stream)
             if source is not None
             else ()
         )
@@ -822,8 +820,8 @@ def parse_completion_output(
     decisions: Iterable[HarnessDecision],
 ) -> tuple[list[CompletionAudit], int]:
     expected = {item.review_id for item in decisions}
-    prepared = single._unwrap_outer_fence(
-        single._THINKING_RE.sub("", str(raw_output or ""))
+    prepared = support._unwrap_outer_fence(
+        support._THINKING_RE.sub("", str(raw_output or ""))
     ).strip()
     if not expected:
         return [], 0 if not prepared else 1
@@ -856,7 +854,7 @@ def parse_completion_output(
     audits: list[CompletionAudit] = []
     seen: set[str] = set()
     for block in blocks:
-        if single._contains_private_runtime_value(block):
+        if support._contains_private_runtime_value(block):
             continue
         review_rows = list(_REVIEW_ID_RE.finditer(block))
         action_state_rows = list(_ACTION_STATE_RE.finditer(block))
@@ -935,8 +933,8 @@ def parse_portfolio_output(
     decisions: Iterable[HarnessDecision],
 ) -> tuple[list[PortfolioKeep], int]:
     expected = {item.review_id for item in decisions}
-    prepared = single._unwrap_outer_fence(
-        single._THINKING_RE.sub("", str(raw_output or ""))
+    prepared = support._unwrap_outer_fence(
+        support._THINKING_RE.sub("", str(raw_output or ""))
     ).strip()
     if not prepared:
         return [], 0
@@ -972,7 +970,7 @@ def parse_portfolio_output(
     seen: set[str] = set()
     invalid = 0
     for block in blocks:
-        if single._contains_private_runtime_value(block):
+        if support._contains_private_runtime_value(block):
             invalid += 1
             continue
         review_rows = list(_REVIEW_ID_RE.finditer(block))
@@ -1149,7 +1147,7 @@ def load_existing_skill_library(
             ):
                 continue
             raw = _safe_read_skill_file(resolved)
-            if not raw or single._contains_private_runtime_value(raw):
+            if not raw or support._contains_private_runtime_value(raw):
                 continue
             frontmatter = _FRONTMATTER_RE.match(raw)
             if frontmatter is None:
@@ -1157,7 +1155,7 @@ def load_existing_skill_library(
             name = _frontmatter_value(frontmatter.group("body"), "name")
             description = _frontmatter_value(frontmatter.group("body"), "description")
             if (
-                single._NAME_RE.fullmatch(name) is None
+                support._NAME_RE.fullmatch(name) is None
                 or not description
                 or len(description) > 1200
             ):
@@ -1174,7 +1172,7 @@ def load_existing_skill_library(
                     name=name,
                     description=" ".join(description.split()),
                     source=root_contract.source,
-                    body=two.redact_discovery_output(raw).strip(),
+                    body=support.redact_discovery_output(raw).strip(),
                     modifiable=root_contract.modifiable,
                 )
             )
@@ -1384,7 +1382,7 @@ def parse_crystallization_output(
     stream: str,
     decisions: Iterable[HarnessDecision],
     library_matches: Mapping[str, Sequence[SkillLibraryMatch]] | None = None,
-) -> tuple[list[single.SkillCandidate], int]:
+) -> tuple[list[support.SkillCandidate], int]:
     proposals, rejected = parse_crystallization_proposals(
         raw_output,
         stream=stream,
@@ -1403,8 +1401,8 @@ def parse_crystallization_proposals(
 ) -> tuple[list[SkillProposal], int]:
     approved = {item.review_id: item for item in decisions if item.crystallizable}
     allowed = library_matches or {}
-    prepared = single._unwrap_outer_fence(
-        single._THINKING_RE.sub("", str(raw_output or ""))
+    prepared = support._unwrap_outer_fence(
+        support._THINKING_RE.sub("", str(raw_output or ""))
     ).strip()
     if not approved:
         return [], 0 if not prepared else 1
@@ -1436,7 +1434,7 @@ def parse_crystallization_proposals(
     seen: set[str] = set()
     for block in blocks:
         block = block.strip()
-        if single._contains_private_runtime_value(block):
+        if support._contains_private_runtime_value(block):
             continue
         review_rows = list(_REVIEW_ID_RE.finditer(block))
         action_rows = list(_LIBRARY_ACTION_RE.finditer(block))
@@ -1453,7 +1451,7 @@ def parse_crystallization_proposals(
         matches = {match.asset.asset_id: match for match in allowed.get(review_id, ())}
         existing_match = matches.get(existing_value)
         body = block[reason_rows[0].end() :].strip()
-        item: single.SkillCandidate | None = None
+        item: support.SkillCandidate | None = None
         if action == "create":
             if existing_value != "none" or not body:
                 continue
@@ -1472,18 +1470,18 @@ def parse_crystallization_proposals(
             if existing_match is None or body:
                 continue
         if action in {"create", "extend"}:
-            if body.startswith(single.SKILL_MARKER):
-                body = body[len(single.SKILL_MARKER) :].strip()
+            if body.startswith(support.SKILL_MARKER):
+                body = body[len(support.SKILL_MARKER) :].strip()
             synthesized = "\n".join(
                 [
-                    single.SKILL_MARKER,
+                    support.SKILL_MARKER,
                     f"Evidence: {', '.join(review.evidence)}",
                     review.scores.skill_scores().markdown(),
                     "",
                     body,
                 ]
             )
-            item = single.parse_skill_candidate(synthesized, stream=stream)
+            item = support.parse_skill_candidate(synthesized, stream=stream)
             if item is None:
                 continue
             if action == "extend" and item.name != existing_match.asset.name:
@@ -1517,7 +1515,7 @@ def _parse_crystallization_pairs(
     stream: str,
     decisions: Iterable[HarnessDecision],
     library_matches: Mapping[str, Sequence[SkillLibraryMatch]] | None = None,
-) -> tuple[list[tuple[str, single.SkillCandidate]], int]:
+) -> tuple[list[tuple[str, support.SkillCandidate]], int]:
     proposals, rejected = parse_crystallization_proposals(
         raw_output,
         stream=stream,
@@ -1547,7 +1545,7 @@ def call_harness_llm(
     started = time.time()
     print(
         f"   [SKILL-LLM-START] {PROMPT_VERSION}/{stage}: "
-        f"prompt≈{single.token_count(prompt):,} tokens",
+        f"prompt≈{support.token_count(prompt):,} tokens",
         flush=True,
     )
     result = execute_llm_message(
@@ -1574,7 +1572,7 @@ def call_harness_llm(
         label=f"skill minimal harness {stage}",
         chunk_id=_chunk_id(stage, source),
     ).text
-    cleaned = single._THINKING_RE.sub("", result or "").strip()
+    cleaned = support._THINKING_RE.sub("", result or "").strip()
     print(
         f"   [SKILL-LLM-END] {PROMPT_VERSION}/{stage}: "
         f"{time.time() - started:.1f}s, chars={len(cleaned):,}",
@@ -1681,19 +1679,19 @@ def run_skill_pass(
     library_assets_override: Iterable[ExistingSkillAsset] | None = None,
 ) -> HarnessResult:
     selected = paths or load_paths()
-    business_date = single.normalize_business_date(business_date)
-    entries = single.load_filtered_stream(selected, business_date)
-    stream = single.render_filtered_stream(entries)
+    business_date = support.normalize_business_date(business_date)
+    entries = support.load_filtered_stream(selected, business_date)
+    stream = support.render_filtered_stream(entries)
     provider = resolve_llm_provider(selected, redact_secrets=True)
     configured_gate = int(provider.get("pipelineGateTokens") or 30000)
-    gate = single.single_call_gate_tokens(configured_gate, override=gate_tokens)
+    gate = support.single_call_gate_tokens(configured_gate, override=gate_tokens)
 
-    discoveries: list[two.DiscoveryCandidate] = []
+    discoveries: list[support.DiscoveryCandidate] = []
     decisions: list[HarnessDecision] = []
     completion_audits: list[CompletionAudit] = []
     portfolio_keeps: list[PortfolioKeep] = []
     proposals: list[SkillProposal] = []
-    skills: list[single.SkillCandidate] = []
+    skills: list[support.SkillCandidate] = []
     library_assets: tuple[ExistingSkillAsset, ...] = ()
     library_assets_selected = 0
     rejected_discoveries = rejected_decisions = 0
@@ -1711,8 +1709,8 @@ def run_skill_pass(
         raw_discovery = discovery_raw_override
         if raw_discovery is None:
             prompt = build_discovery_prompt(stream)
-            if single.token_count(prompt) > gate:
-                raise single.SkillPassError("complete stream exceeds discovery gate")
+            if support.token_count(prompt) > gate:
+                raise support.SkillPassError("complete stream exceeds discovery gate")
             raw_discovery = llm_call(
                 prompt,
                 system=DISCOVERY_SYSTEM,
@@ -1721,9 +1719,9 @@ def run_skill_pass(
                 paths=selected,
             )
             calls += 1
-        safe = two.redact_discovery_output(raw_discovery)
+        safe = support.redact_discovery_output(raw_discovery)
         discovery_raw_path = raw_output_path(selected, business_date, "discovery")
-        two._persist_raw(discovery_raw_path, safe)
+        support._persist_raw(discovery_raw_path, safe)
         discoveries, rejected_discoveries = parse_discovery_output(safe, stream=stream)
         if (
             not discoveries
@@ -1743,25 +1741,25 @@ def run_skill_pass(
                     paths=selected,
                 )
                 calls += 1
-            safe_repair = two.redact_discovery_output(raw_repair)
+            safe_repair = support.redact_discovery_output(raw_repair)
             discovery_repair_raw_path = raw_output_path(
                 selected, business_date, "discovery-repair"
             )
-            two._persist_raw(discovery_repair_raw_path, safe_repair)
+            support._persist_raw(discovery_repair_raw_path, safe_repair)
             discoveries, rejected_discoveries = parse_discovery_output(
                 safe_repair,
                 stream=stream,
             )
 
         if discoveries:
-            adjudication_stream = two.select_cited_records(stream, discoveries)
+            adjudication_stream = support.select_cited_records(stream, discoveries)
             raw_adjudication = adjudication_raw_override
             if raw_adjudication is None:
                 prompt = build_adjudication_prompt(
                     discoveries, evidence_stream=adjudication_stream
                 )
-                if single.token_count(prompt) > gate:
-                    raise single.SkillPassError("evidence exceeds adjudication gate")
+                if support.token_count(prompt) > gate:
+                    raise support.SkillPassError("evidence exceeds adjudication gate")
                 raw_adjudication = llm_call(
                     prompt,
                     system=ADJUDICATION_SYSTEM,
@@ -1770,9 +1768,9 @@ def run_skill_pass(
                     paths=selected,
                 )
                 calls += 1
-            safe = two.redact_discovery_output(raw_adjudication)
+            safe = support.redact_discovery_output(raw_adjudication)
             adjudication_raw_path = raw_output_path(selected, business_date, "adjudication")
-            two._persist_raw(adjudication_raw_path, safe)
+            support._persist_raw(adjudication_raw_path, safe)
             decisions, rejected_decisions = parse_adjudication_output(
                 safe,
                 stream=adjudication_stream,
@@ -1796,7 +1794,7 @@ def run_skill_pass(
                 missing_candidates = [
                     discoveries[index - 1] for index in missing_numbers
                 ]
-                repair_adjudication_stream = two.select_cited_records(
+                repair_adjudication_stream = support.select_cited_records(
                     adjudication_stream,
                     missing_candidates,
                 )
@@ -1805,8 +1803,8 @@ def run_skill_pass(
                     evidence_stream=repair_adjudication_stream,
                     candidate_numbers=missing_numbers,
                 )
-                if single.token_count(repair_prompt) > gate:
-                    raise single.SkillPassError("repair evidence exceeds adjudication gate")
+                if support.token_count(repair_prompt) > gate:
+                    raise support.SkillPassError("repair evidence exceeds adjudication gate")
                 raw_repair = adjudication_repair_raw_override
                 if raw_repair is None:
                     raw_repair = llm_call(
@@ -1817,11 +1815,11 @@ def run_skill_pass(
                         paths=selected,
                     )
                     calls += 1
-                safe_repair = two.redact_discovery_output(raw_repair)
+                safe_repair = support.redact_discovery_output(raw_repair)
                 adjudication_repair_raw_path = raw_output_path(
                     selected, business_date, "adjudication-repair"
                 )
-                two._persist_raw(adjudication_repair_raw_path, safe_repair)
+                support._persist_raw(adjudication_repair_raw_path, safe_repair)
                 repaired, _ = parse_adjudication_output(
                     safe_repair,
                     stream=repair_adjudication_stream,
@@ -1835,7 +1833,7 @@ def run_skill_pass(
         approved = [item for item in decisions if item.crystallizable]
         if approved:
             source_candidates = [
-                two.DiscoveryCandidate(
+                support.DiscoveryCandidate(
                     title=item.title,
                     goal="",
                     obstacle="",
@@ -1848,13 +1846,13 @@ def run_skill_pass(
                 )
                 for item in approved
             ]
-            completion_stream = two.select_cited_records(stream, source_candidates)
+            completion_stream = support.select_cited_records(stream, source_candidates)
             completion_prompt = build_completion_prompt(
                 approved,
                 evidence_stream=completion_stream,
             )
-            if single.token_count(completion_prompt) > gate:
-                raise single.SkillPassError("evidence exceeds completion audit gate")
+            if support.token_count(completion_prompt) > gate:
+                raise support.SkillPassError("evidence exceeds completion audit gate")
             raw_completion = completion_raw_override
             if raw_completion is None:
                 raw_completion = llm_call(
@@ -1865,11 +1863,11 @@ def run_skill_pass(
                     paths=selected,
                 )
                 calls += 1
-            safe_completion = two.redact_discovery_output(raw_completion)
+            safe_completion = support.redact_discovery_output(raw_completion)
             completion_raw_path = raw_output_path(
                 selected, business_date, "completion-audit"
             )
-            two._persist_raw(completion_raw_path, safe_completion)
+            support._persist_raw(completion_raw_path, safe_completion)
             completion_audits, rejected_completion_audits = parse_completion_output(
                 safe_completion,
                 decisions=approved,
@@ -1892,11 +1890,11 @@ def run_skill_pass(
                         paths=selected,
                     )
                     calls += 1
-                safe_repair = two.redact_discovery_output(raw_repair)
+                safe_repair = support.redact_discovery_output(raw_repair)
                 completion_repair_raw_path = raw_output_path(
                     selected, business_date, "completion-audit-repair"
                 )
-                two._persist_raw(completion_repair_raw_path, safe_repair)
+                support._persist_raw(completion_repair_raw_path, safe_repair)
                 completion_audits, rejected_completion_audits = parse_completion_output(
                     safe_repair,
                     decisions=approved,
@@ -1913,8 +1911,8 @@ def run_skill_pass(
 
         if approved:
             portfolio_prompt_text = build_portfolio_prompt(approved)
-            if single.token_count(portfolio_prompt_text) > gate:
-                raise single.SkillPassError("candidates exceed portfolio gate")
+            if support.token_count(portfolio_prompt_text) > gate:
+                raise support.SkillPassError("candidates exceed portfolio gate")
             raw_portfolio = portfolio_raw_override
             if raw_portfolio is None:
                 raw_portfolio = llm_call(
@@ -1925,9 +1923,9 @@ def run_skill_pass(
                     paths=selected,
                 )
                 calls += 1
-            safe_portfolio = two.redact_discovery_output(raw_portfolio)
+            safe_portfolio = support.redact_discovery_output(raw_portfolio)
             portfolio_raw_path = raw_output_path(selected, business_date, "portfolio")
-            two._persist_raw(portfolio_raw_path, safe_portfolio)
+            support._persist_raw(portfolio_raw_path, safe_portfolio)
             portfolio_keeps, rejected_portfolio_keeps = parse_portfolio_output(
                 safe_portfolio,
                 decisions=approved,
@@ -1944,7 +1942,7 @@ def run_skill_pass(
                 else load_existing_skill_library(selected)
             )
             source_candidates = [
-                two.DiscoveryCandidate(
+                support.DiscoveryCandidate(
                     title=item.title,
                     goal="",
                     obstacle="",
@@ -1957,7 +1955,7 @@ def run_skill_pass(
                 )
                 for item in approved
             ]
-            crystallization_stream = two.select_cited_records(stream, source_candidates)
+            crystallization_stream = support.select_cited_records(stream, source_candidates)
             selected_matches = select_library_matches(
                 approved,
                 library_assets,
@@ -1977,8 +1975,8 @@ def run_skill_pass(
                 library_text=library_text,
                 library_matches=effective_matches,
             )
-            if single.token_count(prompt) > gate:
-                raise single.SkillPassError("evidence exceeds crystallization gate")
+            if support.token_count(prompt) > gate:
+                raise support.SkillPassError("evidence exceeds crystallization gate")
             raw_crystallization = crystallization_raw_override
             if raw_crystallization is None:
                 raw_crystallization = llm_call(
@@ -1989,11 +1987,11 @@ def run_skill_pass(
                     paths=selected,
                 )
                 calls += 1
-            safe = two.redact_discovery_output(raw_crystallization)
+            safe = support.redact_discovery_output(raw_crystallization)
             crystallization_raw_path = raw_output_path(
                 selected, business_date, "crystallization"
             )
-            two._persist_raw(crystallization_raw_path, safe)
+            support._persist_raw(crystallization_raw_path, safe)
             proposals, rejected_skills = parse_crystallization_proposals(
                 safe,
                 stream=crystallization_stream,
@@ -2019,7 +2017,7 @@ def run_skill_pass(
                     for decision in missing_reviews
                 }
                 repair_source_candidates = [
-                    two.DiscoveryCandidate(
+                    support.DiscoveryCandidate(
                         title=item.title,
                         goal="",
                         obstacle="",
@@ -2032,7 +2030,7 @@ def run_skill_pass(
                     )
                     for item in missing_reviews
                 ]
-                repair_crystallization_stream = two.select_cited_records(
+                repair_crystallization_stream = support.select_cited_records(
                     crystallization_stream,
                     repair_source_candidates,
                 )
@@ -2045,8 +2043,8 @@ def run_skill_pass(
                     library_text=repair_library_text,
                     library_matches=repair_effective_matches,
                 )
-                if single.token_count(repair_prompt) > gate:
-                    raise single.SkillPassError("repair evidence exceeds crystallization gate")
+                if support.token_count(repair_prompt) > gate:
+                    raise support.SkillPassError("repair evidence exceeds crystallization gate")
                 raw_repair = crystallization_repair_raw_override
                 if raw_repair is None:
                     raw_repair = llm_call(
@@ -2057,11 +2055,11 @@ def run_skill_pass(
                         paths=selected,
                     )
                     calls += 1
-                safe_repair = two.redact_discovery_output(raw_repair)
+                safe_repair = support.redact_discovery_output(raw_repair)
                 crystallization_repair_raw_path = raw_output_path(
                     selected, business_date, "crystallization-repair"
                 )
-                two._persist_raw(crystallization_repair_raw_path, safe_repair)
+                support._persist_raw(crystallization_repair_raw_path, safe_repair)
                 repaired_proposals, _ = parse_crystallization_proposals(
                     safe_repair,
                     stream=repair_crystallization_stream,
@@ -2078,14 +2076,14 @@ def run_skill_pass(
     result = HarnessResult(
         business_date=business_date,
         input_entries=len(entries),
-        input_tokens=single.token_count(stream) if stream else 0,
-        adjudication_tokens=(single.token_count(adjudication_stream) if adjudication_stream else 0),
-        completion_tokens=(single.token_count(completion_stream) if completion_stream else 0),
+        input_tokens=support.token_count(stream) if stream else 0,
+        adjudication_tokens=(support.token_count(adjudication_stream) if adjudication_stream else 0),
+        completion_tokens=(support.token_count(completion_stream) if completion_stream else 0),
         portfolio_tokens=(
-            single.token_count(portfolio_prompt_text) if portfolio_prompt_text else 0
+            support.token_count(portfolio_prompt_text) if portfolio_prompt_text else 0
         ),
         crystallization_tokens=(
-            single.token_count(crystallization_stream) if crystallization_stream else 0
+            support.token_count(crystallization_stream) if crystallization_stream else 0
         ),
         gate_tokens=gate,
         llm_calls=calls,
@@ -2113,7 +2111,7 @@ def run_skill_pass(
         crystallization_raw_path=crystallization_raw_path,
         crystallization_repair_raw_path=crystallization_repair_raw_path,
     )
-    single._write_text_atomic(result.report_path, render_report(result))
+    support._write_text_atomic(result.report_path, render_report(result))
     return result
 
 
@@ -2135,14 +2133,14 @@ def main(argv: list[str] | None = None) -> int:
                 selected.home
                 / "artifacts"
                 / "skills"
-                / f"skill-two-call-v7-raw-discovery-{single.normalize_business_date(args.business_date)}.md"
+                / f"skill-two-call-v7-raw-discovery-{support.normalize_business_date(args.business_date)}.md"
             ).read_text(encoding="utf-8")
         result = run_skill_pass(
             args.business_date,
             gate_tokens=args.gate_tokens,
             discovery_raw_override=discovery_override,
         )
-    except (OSError, single.SkillPassError, ValueError) as exc:
+    except (OSError, support.SkillPassError, ValueError) as exc:
         print(f"[X] Skill minimal harness could not finish: {exc}", file=sys.stderr)
         return 1
     print(
