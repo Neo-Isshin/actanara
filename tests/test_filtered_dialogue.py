@@ -17,7 +17,7 @@ from data_foundation.filtered_dialogue import (
     replay_filtered_entries,
     write_compact_filtered_jsonl,
 )
-from diary_generator import narrative_pass, skill_pass, technical_pass
+from diary_generator import narrative_pass, skill_pass_minimal_support as skill_pass, technical_pass
 
 
 class FilteredDialogueCompactionTests(unittest.TestCase):
@@ -113,7 +113,7 @@ class FilteredDialogueCompactionTests(unittest.TestCase):
         self.assertEqual(len(technical_rows), 4)
         self.assertEqual(len(skill_rows), 4)
         self.assertEqual(skill_stream.count("\ngoal"), 1)
-        self.assertIn("occurrences=2", skill_stream)
+        self.assertEqual(skill_stream.count("[record "), 4)
 
 
 def _row(conversation_id: str, time: str, role: str, content: str) -> dict[str, str]:

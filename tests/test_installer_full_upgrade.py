@@ -1550,7 +1550,7 @@ class InstallerFullUpgradeTests(unittest.TestCase):
                 )
 
     def test_additive_candidate_migration_survives_rollback_and_prior_source_can_write(self):
-        migration_version = "0019_session_d_additive"
+        migration_version = "0026_session_d_additive"
         migration_body = textwrap.dedent(
             """\
             CREATE TABLE candidate_additive_probe (

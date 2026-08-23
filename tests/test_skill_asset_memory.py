@@ -157,7 +157,8 @@ class SkillAssetMemoryTests(unittest.TestCase):
 
             self.assertIn("diary-skill", missing["missingKeys"])
             self.assertIn("diary-environment", missing["missingKeys"])
-            self.assertEqual(missing["llmCalls"], 6)
+            # Skill Pass v22 uses four calls; Environment Reconciliation adds one.
+            self.assertEqual(missing["llmCalls"], 5)
             self.assertNotIn("diary-skill", complete["missingKeys"])
             self.assertNotIn("diary-environment", complete["missingKeys"])
             self.assertTrue(complete["documentsReady"]["skill"])

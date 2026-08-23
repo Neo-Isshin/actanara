@@ -21,7 +21,13 @@ SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 _PROTECTED_PREFIXES = ("/api", "/events")
 _SESSION_EXEMPT_PREFIXES = ("/api/rag/external", "/api/memory/external")
-_BOOTSTRAP_PATHS = {"/", "/dashboard", "/tasks"}
+_BOOTSTRAP_PATHS = {
+    "/",
+    "/dashboard",
+    "/dashboard-classic",
+    "/dashboard-preview",
+    "/tasks",
+}
 _BOOTSTRAP_PREFIXES = ("/static", "/diary-data")
 
 

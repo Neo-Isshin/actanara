@@ -67,5 +67,17 @@ include = ["agentic_rag*", "app*", "data_foundation*", "diary_generator*", "ai_a
 
 [tool.setuptools.package-data]
 "data_foundation" = ["migrations/*.sql", "migration_compatibility.json"]
-"app" = ["static/*.html", "static/css/*.css", "static/js/*.js", "static/img/*.png"]
+"app" = [
+  "static/*.html",
+  "static/css/*.css",
+  "static/js/*.js",
+  "static/img/*.png",
+  "static/archive/*.html",
+  "static/archive/*.css",
+  "static/archive/*.js",
+  "static/archive/css/*.css",
+  "static/archive/js/*.js",
+  "static/archive/js/pages/*.js",
+  "static/archive/assets/*",
+]
 "agentic_rag" = ["rag_eval_queries.jsonl", "rag_eval_queries.en.jsonl", "rag_eval_queries.zh.jsonl"]

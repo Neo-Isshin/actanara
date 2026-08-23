@@ -1692,6 +1692,10 @@ wizard_core_dependency_gate() {
     "src/dashboard/app/static/index.html"
     "src/dashboard/app/static/css/style.css"
     "src/dashboard/app/static/js/app.js"
+    "src/dashboard/app/static/archive/index.html"
+    "src/dashboard/app/static/archive/style.css"
+    "src/dashboard/app/static/archive/archive-api.js"
+    "src/dashboard/app/static/archive/app.js"
   )
 
   if ensure_python_bin; then
@@ -4105,6 +4109,10 @@ required_static = [
     source_root / "src" / "dashboard" / "app" / "static" / "index.html",
     source_root / "src" / "dashboard" / "app" / "static" / "css" / "style.css",
     source_root / "src" / "dashboard" / "app" / "static" / "js" / "app.js",
+    source_root / "src" / "dashboard" / "app" / "static" / "archive" / "index.html",
+    source_root / "src" / "dashboard" / "app" / "static" / "archive" / "style.css",
+    source_root / "src" / "dashboard" / "app" / "static" / "archive" / "archive-api.js",
+    source_root / "src" / "dashboard" / "app" / "static" / "archive" / "app.js",
 ]
 dashboard_checks = [
     ("fastapi", "fastapi>=0.110,<1", "Dashboard API"),

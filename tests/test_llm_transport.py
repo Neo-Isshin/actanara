@@ -1006,7 +1006,8 @@ class LLMTransportTests(unittest.TestCase):
         self.assertEqual(llm.call_count, 1)
         self.assertIn("[10:00][main][user]", captured["prompt"])
         self.assertIn("[10:01][gemini-cli][assistant]", captured["prompt"])
-        self.assertIn("environment graph", captured["prompt"])
+        self.assertNotIn("environment graph", captured["prompt"])
+        self.assertIn("actanara.environment-observations.v2", captured["prompt"])
         self.assertNotIn("Source Hints", captured["prompt"])
 
 

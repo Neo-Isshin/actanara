@@ -67,6 +67,7 @@ class PublicSourceBoundaryTests(unittest.TestCase):
                 "advanced/cli/actanara.py",
                 "advanced/dashboard/dashboard_launch_agent.py",
                 "advanced/dashboard/rag_server_launch_agent.py",
+                "advanced/dashboard/run_managed_dashboard.py",
                 "advanced/dashboard/run_dashboard_server.sh",
                 "advanced/pipeline/run_daily_pipeline.py",
                 "advanced/pipeline/run_dashboard_foundation_refresh.py",

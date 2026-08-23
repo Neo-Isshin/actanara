@@ -254,7 +254,7 @@ class DashboardSkillAssetProjectionTests(unittest.TestCase):
         self.assertTrue(response["registrationRequested"])
         action.assert_called_once()
 
-    def test_user_forced_lesson_crystallizes_once_and_preserves_prior_decision(self):
+    def test_historical_lesson_is_read_only_under_current_writer(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "runtime"
             paths = initialize_home(home)
@@ -344,32 +344,21 @@ description: 当恢复动作已执行但完成状态仍不明确时，使用直�
 观察目标行为是否恢复并满足完成条件。
 """
 
-            result = skill_assets.force_crystallize_lessons(
-                {
-                    "businessDate": "2026-08-12",
-                    "promptVersion": "minimal-v21",
-                    "reviewIds": ["review-001"],
-                },
-                paths=paths,
-                llm_call=llm_call,
-            )
+            before = ledger.read_bytes()
+            with self.assertRaises(skill_assets.SkillAssetActionError) as raised:
+                skill_assets.force_crystallize_lessons(
+                    {
+                        "businessDate": "2026-08-12",
+                        "promptVersion": "minimal-v21",
+                        "reviewIds": ["review-001"],
+                    },
+                    paths=paths,
+                    llm_call=llm_call,
+                )
 
-            self.assertEqual(result["crystallizedReviewIds"], ["review-001"])
-            self.assertFalse(result["registrationRequested"])
-            self.assertEqual(len(calls), 1)
-            self.assertEqual(calls[0]["stage"], "human-override-crystallization")
-            self.assertEqual(
-                calls[0]["system"],
-                harness.HUMAN_OVERRIDE_CRYSTALLIZATION_SYSTEM,
-            )
-            self.assertIn("Authority: user-forced-lesson", calls[0]["prompt"])
-            self.assertIn("用户只覆盖了“允许尝试结晶”", calls[0]["prompt"])
-            item = result["review"]["items"][0]
-            self.assertEqual(item["assetClass"], "skill")
-            self.assertEqual(item["originalDecision"], "lesson")
-            self.assertTrue(item["humanOverride"])
-            self.assertEqual(item["humanOverrideFrom"], "lesson")
-            self.assertEqual(item["scores"]["value"], 2)
+            self.assertEqual(raised.exception.code, "skill-crystallization-version-mismatch")
+            self.assertEqual(calls, [])
+            self.assertEqual(ledger.read_bytes(), before)
             self.assertEqual(stat.S_IMODE(ledger.stat().st_mode), 0o600)
 
 

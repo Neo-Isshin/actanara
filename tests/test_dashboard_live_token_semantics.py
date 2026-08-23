@@ -26,6 +26,14 @@ def _detected(*tool_ids: str) -> dict:
 
 
 class DashboardLiveTokenSemanticsTests(unittest.TestCase):
+    def setUp(self):
+        # These legacy live-token fixtures and their explicit assertions use
+        # the Asia/Hong_Kong 04:00 business-day contract.  Pin it so the suite
+        # remains deterministic when the developer Runtime uses another zone.
+        timezone = patch.dict(os.environ, {"TARGET_TIMEZONE": "Asia/Hong_Kong"}, clear=False)
+        timezone.start()
+        self.addCleanup(timezone.stop)
+
     def test_token_clock_uses_foundation_protocol_total(self):
         fixed_now = datetime(2026, 5, 19, 12, 0, 0, tzinfo=token_clock.local_timezone())
 

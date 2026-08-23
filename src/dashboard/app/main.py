@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.routers import diary, tasks, metrics, ai_assets, settings, foundation_ops
+from app.routers import archive, diary, tasks, metrics, ai_assets, settings, foundation_ops
 from app.services import scheduler
 from app.services.dashboard_security import (
     DASHBOARD_CSRF_COOKIE,
@@ -118,6 +118,7 @@ app.include_router(metrics.router, prefix="/api", tags=["Metrics"])
 app.include_router(ai_assets.router, prefix="/api", tags=["AI Assets"])
 app.include_router(settings.router, prefix="/api", tags=["Settings"])
 app.include_router(foundation_ops.router, prefix="/api", tags=["Foundation Ops"])
+app.include_router(archive.router, prefix="/api", tags=["Living Archive"])
 app.include_router(metrics.events_router, tags=["Events"])
 app.include_router(ai_assets.events_router, tags=["Events"])
 
@@ -128,6 +129,18 @@ async def root():
 @app.get("/dashboard")
 async def dashboard():
     return RedirectResponse(url="/static/index.html")
+
+
+@app.get("/dashboard-classic")
+async def dashboard_classic():
+    """Permanent recovery route for the original Dashboard."""
+    return RedirectResponse(url="/static/index.html")
+
+
+@app.get("/dashboard-preview")
+async def dashboard_preview():
+    """Opt-in Living Archive UI while the original Dashboard stays default."""
+    return RedirectResponse(url="/static/archive/index.html")
 
 @app.get("/tasks")
 async def tasks_page():

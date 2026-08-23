@@ -607,6 +607,10 @@ def _validate_plan(plan: InstallPlan, args: argparse.Namespace) -> dependency_co
         "install/runtime-dependencies.lock.json",
         "src/data_foundation/migrations/0001_initial.sql",
         "src/dashboard/app/static/index.html",
+        "src/dashboard/app/static/archive/index.html",
+        "src/dashboard/app/static/archive/style.css",
+        "src/dashboard/app/static/archive/archive-api.js",
+        "src/dashboard/app/static/archive/app.js",
     )
     missing = [name for name in required if not (plan.source_root / name).is_file()]
     if missing:
