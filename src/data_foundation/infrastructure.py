@@ -11,7 +11,7 @@ import hashlib
 import json
 import re
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Mapping
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from .db import connect, migrate
@@ -28,6 +28,14 @@ SECRET_ASSIGNMENT_RE = re.compile(
 )
 URL_RE = re.compile(r"\b[a-z][a-z0-9+.-]*://[^\s<>()\"'`,;]+", re.IGNORECASE)
 REDACTED = "[redacted]"
+
+
+class InfrastructureIdentityError(RuntimeError):
+    """An infrastructure update did not bind to the active entity catalog."""
+
+
+class InfrastructureCatalogActionError(RuntimeError):
+    """A catalog-maintenance proposal could not be applied safely."""
 
 
 def _now() -> str:
@@ -110,13 +118,21 @@ def _resolve_entity_id(connection: Any, *, entity_type: str, name: str, host: st
     canonical_key = _canonical_key(entity_type, name, host)
     if requested_id:
         row = connection.execute(
-            "SELECT entity_id, canonical_key FROM infrastructure_entities WHERE entity_id = ?",
+            """
+            SELECT entity_id, canonical_key
+            FROM infrastructure_entities
+            WHERE entity_id = ? AND archived_at IS NULL
+            """,
             (requested_id,),
         ).fetchone()
         if row is not None:
             return str(row["entity_id"]), str(row["canonical_key"])
     row = connection.execute(
-        "SELECT entity_id, canonical_key FROM infrastructure_entities WHERE canonical_key = ?",
+        """
+        SELECT entity_id, canonical_key
+        FROM infrastructure_entities
+        WHERE canonical_key = ? AND archived_at IS NULL
+        """,
         (canonical_key,),
     ).fetchone()
     if row is not None:
@@ -126,7 +142,7 @@ def _resolve_entity_id(connection: Any, *, entity_type: str, name: str, host: st
         SELECT e.entity_id, e.canonical_key
         FROM infrastructure_entity_aliases a
         JOIN infrastructure_entities e ON e.entity_id = a.entity_id
-        WHERE a.normalized_alias = ?
+        WHERE a.normalized_alias = ? AND e.archived_at IS NULL
         """,
         (_slug(name),),
     ).fetchall()
@@ -183,6 +199,7 @@ def _entity_patch(update: dict[str, Any], *, entity_type: str, host: str) -> dic
     port = update.get("port") or (field_value if field == "port" else "")
     path = update.get("path") or update.get("runtimePath") or (field_value if field == "path" else "")
     status = update.get("status") or update.get("state") or (field_value if field == "status" else "")
+    normalized_status = str(status or "").strip().lower()
     return {
         "kind": redact_sensitive_value(kind, field_name="kind"),
         "status": redact_sensitive_value(status, field_name="status") or "unknown",
@@ -191,8 +208,31 @@ def _entity_patch(update: dict[str, Any], *, entity_type: str, host: str) -> dic
         "port": redact_sensitive_value(port, field_name="port"),
         "protocol": redact_sensitive_value(update.get("protocol") or "", field_name="protocol"),
         "path": redact_sensitive_value(path, field_name="path"),
+        "subtype": "unknown",
+        "lifecycle_status": normalized_status if normalized_status in {"planned", "provisioning", "active", "suspended", "retired"} else "unknown",
+        "health_status": normalized_status if normalized_status in {"healthy", "degraded", "unhealthy", "offline"} else "unknown",
+        "environment": "unknown",
+        "exposure_scope": "unknown",
         "metadata_json": _json(_metadata(update, host=host)),
     }
+
+
+def _event_taxonomy(value: str | None) -> tuple[str, str]:
+    normalized = _event_type(value)
+    categories = {
+        "created": "lifecycle", "activated": "lifecycle", "suspended": "lifecycle", "retired": "lifecycle",
+        "configuration_changed": "configuration", "port_changed": "configuration", "path_changed": "configuration", "setting_changed": "configuration",
+        "deployed": "deployment", "upgraded": "deployment", "restarted": "deployment",
+        "health_changed": "health", "started": "health", "stopped": "health", "recovered": "health", "degraded": "health",
+        "endpoint_changed": "network", "exposure_changed": "network", "route_changed": "network",
+        "credential_rotated": "security", "access_policy_changed": "security",
+        "host_changed": "ownership", "owner_changed": "ownership",
+        "capacity_changed": "capacity",
+    }
+    aliases = {"configured": "configuration_changed"}
+    normalized = aliases.get(normalized, normalized)
+    category = categories.get(normalized, "other")
+    return category, normalized if category != "other" else "updated"
 
 
 def apply_infrastructure_updates(
@@ -217,13 +257,66 @@ def apply_infrastructure_updates(
             if not name:
                 continue
             host = _normalize_name(update.get("host") or update.get("device") or update.get("parent"))
-            entity_id, canonical_key = _resolve_entity_id(
-                connection,
-                entity_type=entity_type,
-                name=name,
-                host=host,
-                requested_id=str(update.get("entityId") or ""),
-            )
+            requested_id = str(update.get("entityId") or "").strip()
+            identity_mode = str(update.get("identityMode") or "").strip().lower()
+            strict_catalog_identity = source in {
+                "technical-pass",
+                "environment-reconciliation",
+            }
+            if strict_catalog_identity:
+                if identity_mode == "existing":
+                    if not requested_id:
+                        raise InfrastructureIdentityError(
+                            "existing Technical infrastructure update requires entityId"
+                        )
+                    catalog_row = connection.execute(
+                        "SELECT * FROM infrastructure_entities WHERE entity_id = ? AND archived_at IS NULL",
+                        (requested_id,),
+                    ).fetchone()
+                    if catalog_row is None:
+                        raise InfrastructureIdentityError(
+                            "Technical infrastructure update references an unknown entityId"
+                        )
+                    if str(catalog_row["entity_type"]) != entity_type:
+                        raise InfrastructureIdentityError(
+                            "Technical infrastructure update entity type does not match the catalog"
+                        )
+                    entity_id = str(catalog_row["entity_id"])
+                    canonical_key = str(catalog_row["canonical_key"])
+                    # Entity identity is Foundation-owned.  Model wording may
+                    # describe the change, but it may not rename the object.
+                    name = str(catalog_row["name"])
+                elif identity_mode == "new":
+                    if requested_id:
+                        raise InfrastructureIdentityError(
+                            "new Technical infrastructure update must not provide entityId"
+                        )
+                    entity_id, canonical_key = _resolve_entity_id(
+                        connection,
+                        entity_type=entity_type,
+                        name=name,
+                        host=host,
+                    )
+                    collision = connection.execute(
+                        "SELECT entity_id FROM infrastructure_entities WHERE entity_id = ?",
+                        (entity_id,),
+                    ).fetchone()
+                    if collision is not None:
+                        raise InfrastructureIdentityError(
+                            "new Technical infrastructure update matches an existing catalog entity"
+                        )
+                else:
+                    raise InfrastructureIdentityError(
+                        "Technical infrastructure update requires identityMode existing or new"
+                    )
+            else:
+                entity_id, canonical_key = _resolve_entity_id(
+                    connection,
+                    entity_type=entity_type,
+                    name=name,
+                    host=host,
+                    requested_id=requested_id,
+                )
             patch = _entity_patch(update, entity_type=entity_type, host=host)
             existing = connection.execute(
                 "SELECT * FROM infrastructure_entities WHERE entity_id = ?",
@@ -235,8 +328,9 @@ def apply_infrastructure_updates(
                     INSERT INTO infrastructure_entities(
                         entity_id, entity_type, canonical_key, name, kind, status, location,
                         endpoint, port, protocol, path, metadata_json,
+                        subtype, lifecycle_status, health_status, environment, exposure_scope,
                         created_at, updated_at, last_seen_date
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         entity_id,
@@ -251,6 +345,11 @@ def apply_infrastructure_updates(
                         patch["protocol"],
                         patch["path"],
                         patch["metadata_json"],
+                        patch["subtype"],
+                        patch["lifecycle_status"],
+                        patch["health_status"],
+                        patch["environment"],
+                        patch["exposure_scope"],
                         now,
                         now,
                         date_str,
@@ -268,7 +367,8 @@ def apply_infrastructure_updates(
                     UPDATE infrastructure_entities
                     SET name = ?, kind = ?, status = ?, location = ?, endpoint = ?, port = ?,
                         protocol = ?, path = ?, metadata_json = ?, updated_at = ?,
-                        last_seen_date = ?, archived_at = CASE WHEN ? = 'archived' THEN COALESCE(archived_at, ?) ELSE archived_at END
+                        last_seen_date = ?, lifecycle_status = ?, health_status = ?,
+                        archived_at = CASE WHEN ? = 'retired' THEN COALESCE(archived_at, ?) ELSE archived_at END
                     WHERE entity_id = ?
                     """,
                     (
@@ -283,7 +383,9 @@ def apply_infrastructure_updates(
                         _json(metadata),
                         now,
                         date_str,
-                        merged["status"],
+                        patch["lifecycle_status"] if patch["lifecycle_status"] != "unknown" else existing["lifecycle_status"],
+                        patch["health_status"] if patch["health_status"] != "unknown" else existing["health_status"],
+                        patch["lifecycle_status"],
                         now,
                         entity_id,
                     ),
@@ -306,6 +408,12 @@ def apply_infrastructure_updates(
             evidence = update.get("evidence") if isinstance(update.get("evidence"), list) else []
             evidence = [redact_sensitive_value(item, field_name="evidence") for item in evidence if str(item or "").strip()]
             event_type = _event_type(update.get("eventType") or update.get("changeType"))
+            event_category, normalized_event_type = _event_taxonomy(event_type)
+            evidence_contract = {
+                "schema": "actanara.environment-evidence.v1",
+                "source": source,
+                "evidenceRefs": evidence,
+            }
             event_key = _stable_id("infra-event", date_str, entity_id, event_type, field, current, change)
             event_id = _stable_id("IE", event_key)
             cursor = connection.execute(
@@ -313,8 +421,9 @@ def apply_infrastructure_updates(
                 INSERT OR IGNORE INTO infrastructure_events(
                     event_id, event_key, entity_id, business_date, event_type, summary,
                     field, previous_value, current_value, evidence_json, confidence,
-                    source, raw_json, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    source, raw_json, created_at, event_category,
+                    normalized_event_type, evidence_contract_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     event_id,
@@ -331,11 +440,327 @@ def apply_infrastructure_updates(
                     source,
                     _json(_redacted_raw_update(update, field=field)),
                     now,
+                    event_category,
+                    normalized_event_type,
+                    _json(evidence_contract),
                 ),
             )
             if cursor.rowcount:
                 applied_events += 1
     return {"entities": applied_entities, "events": applied_events}
+
+
+CATALOG_ACTIONS = frozenset({"merge_existing", "archive_existing", "transition_state"})
+CATALOG_LIFECYCLE_STATUSES = frozenset({"planned", "provisioning", "active", "suspended", "retired"})
+CATALOG_HEALTH_STATUSES = frozenset({"healthy", "degraded", "unhealthy", "offline"})
+
+
+def apply_infrastructure_catalog_actions(
+    paths: RuntimePaths,
+    business_date: date | str,
+    actions: list[dict[str, Any]],
+    *,
+    source: str = "environment-reconciliation",
+) -> dict[str, int]:
+    """Apply reversible LLM-proposed catalog maintenance in one transaction.
+
+    The model selects an action, but this executor owns identity, state, and
+    history safety.  Entities and events are never deleted.  A merge moves
+    aliases and hosted-service references to the canonical entity, then
+    archives the duplicate while preserving its historical events.
+    """
+
+    migrate(paths)
+    date_str = business_date.isoformat() if isinstance(business_date, date) else str(business_date)
+    try:
+        date.fromisoformat(date_str)
+    except ValueError as exc:
+        raise InfrastructureCatalogActionError("catalog action date is invalid") from exc
+    normalized = [_normalize_catalog_action(item) for item in actions]
+    if not normalized:
+        return {"merged": 0, "archived": 0, "transitioned": 0, "events": 0}
+    source_ids = [item["entityId"] for item in normalized]
+    if len(source_ids) != len(set(source_ids)):
+        raise InfrastructureCatalogActionError("catalog actions repeat an entity")
+
+    now = _now()
+    counts = {"merged": 0, "archived": 0, "transitioned": 0, "events": 0}
+    with connect(paths) as connection:
+        active_rows = {
+            str(row["entity_id"]): row
+            for row in connection.execute(
+                "SELECT * FROM infrastructure_entities WHERE archived_at IS NULL"
+            ).fetchall()
+        }
+        action_by_entity = {item["entityId"]: item for item in normalized}
+        for item in normalized:
+            entity = active_rows.get(item["entityId"])
+            if entity is None:
+                raise InfrastructureCatalogActionError("catalog action references an inactive entity")
+            target_id = item["canonicalEntityId"]
+            target = active_rows.get(target_id) if target_id else None
+            if item["action"] == "merge_existing":
+                if target is None or target_id == item["entityId"]:
+                    raise InfrastructureCatalogActionError("catalog merge target is invalid")
+                if str(target["entity_type"]) != str(entity["entity_type"]):
+                    raise InfrastructureCatalogActionError("catalog merge types do not match")
+                if target_id in action_by_entity:
+                    raise InfrastructureCatalogActionError("catalog merge target is also being maintained")
+            elif item["action"] == "archive_existing" and target_id:
+                if target is None or target_id == item["entityId"]:
+                    raise InfrastructureCatalogActionError("catalog archive replacement is invalid")
+                if str(target["entity_type"]) != str(entity["entity_type"]):
+                    raise InfrastructureCatalogActionError("catalog archive replacement type does not match")
+                if target_id in action_by_entity:
+                    raise InfrastructureCatalogActionError("catalog archive replacement is also being maintained")
+            elif item["action"] == "archive_existing" and str(entity["entity_type"]) == "device":
+                hosted = connection.execute(
+                    """
+                    SELECT 1 FROM infrastructure_entities
+                    WHERE host_entity_id = ? AND archived_at IS NULL LIMIT 1
+                    """,
+                    (item["entityId"],),
+                ).fetchone()
+                if hosted is not None:
+                    raise InfrastructureCatalogActionError(
+                        "catalog archive would orphan an active hosted service"
+                    )
+
+        _validate_catalog_alias_moves(connection, normalized)
+
+        for item in normalized:
+            entity_id = item["entityId"]
+            entity = active_rows[entity_id]
+            action = item["action"]
+            target_id = item["canonicalEntityId"]
+            previous = _catalog_state_text(entity)
+            if action in {"merge_existing", "archive_existing"}:
+                if target_id:
+                    _move_catalog_aliases(
+                        connection,
+                        source_entity=entity,
+                        target_entity_id=target_id,
+                        now=now,
+                    )
+                    if str(entity["entity_type"]) == "device":
+                        connection.execute(
+                            """
+                            UPDATE infrastructure_entities
+                            SET host_entity_id = ?, updated_at = ?
+                            WHERE host_entity_id = ? AND archived_at IS NULL
+                            """,
+                            (target_id, now, entity_id),
+                        )
+                metadata = _load_json(entity["metadata_json"], {})
+                if not isinstance(metadata, dict):
+                    metadata = {}
+                metadata["catalogMaintenance"] = {
+                    "action": action,
+                    "supersededBy": target_id,
+                    "businessDate": date_str,
+                }
+                connection.execute(
+                    """
+                    UPDATE infrastructure_entities
+                    SET metadata_json = ?, archived_at = ?, updated_at = ?
+                    WHERE entity_id = ? AND archived_at IS NULL
+                    """,
+                    (_json(metadata), now, now, entity_id),
+                )
+                counts["merged" if action == "merge_existing" else "archived"] += 1
+                current = f"supersededBy={target_id}" if target_id else "archived"
+            else:
+                lifecycle = item["lifecycleStatus"] or str(entity["lifecycle_status"])
+                health = item["healthStatus"] or str(entity["health_status"])
+                status = item["healthStatus"] or item["lifecycleStatus"] or str(entity["status"])
+                archived_at = now if lifecycle == "retired" else entity["archived_at"]
+                connection.execute(
+                    """
+                    UPDATE infrastructure_entities
+                    SET lifecycle_status = ?, health_status = ?, status = ?,
+                        archived_at = ?, updated_at = ?, last_seen_date = ?
+                    WHERE entity_id = ? AND archived_at IS NULL
+                    """,
+                    (lifecycle, health, status, archived_at, now, date_str, entity_id),
+                )
+                counts["transitioned"] += 1
+                current = f"lifecycle={lifecycle};health={health}"
+            if _insert_catalog_action_event(
+                connection,
+                business_date=date_str,
+                entity_id=entity_id,
+                action=action,
+                reason=item["reason"],
+                previous=previous,
+                current=current,
+                confidence=item["confidence"],
+                source=source,
+                now=now,
+            ):
+                counts["events"] += 1
+    return counts
+
+
+def _normalize_catalog_action(value: Mapping[str, Any]) -> dict[str, Any]:
+    if not isinstance(value, Mapping) or set(value) != {
+        "action", "entityId", "canonicalEntityId", "lifecycleStatus",
+        "healthStatus", "observationIds", "reason", "confidence",
+    }:
+        raise InfrastructureCatalogActionError("catalog action contract is malformed")
+    action = str(value.get("action") or "")
+    entity_id = str(value.get("entityId") or "").strip()
+    canonical_id = str(value.get("canonicalEntityId") or "").strip()
+    lifecycle = str(value.get("lifecycleStatus") or "").strip()
+    health = str(value.get("healthStatus") or "").strip()
+    observation_ids = value.get("observationIds")
+    reason = redact_sensitive_value(value.get("reason"), field_name="reason")
+    confidence = str(value.get("confidence") or "").strip()
+    if action not in CATALOG_ACTIONS or not entity_id:
+        raise InfrastructureCatalogActionError("catalog action identity is invalid")
+    if not isinstance(observation_ids, list) or not observation_ids or any(
+        not isinstance(item, str) or not item for item in observation_ids
+    ) or len(observation_ids) != len(set(observation_ids)):
+        raise InfrastructureCatalogActionError("catalog action observations are invalid")
+    if not reason or len(reason) > 1_000 or confidence != "high":
+        raise InfrastructureCatalogActionError("catalog action authority is insufficient")
+    if action == "merge_existing":
+        if not canonical_id or lifecycle or health:
+            raise InfrastructureCatalogActionError("catalog merge fields are invalid")
+    elif action == "archive_existing":
+        if lifecycle or health:
+            raise InfrastructureCatalogActionError("catalog archive fields are invalid")
+    else:
+        if canonical_id or (not lifecycle and not health):
+            raise InfrastructureCatalogActionError("catalog state transition fields are invalid")
+        if lifecycle and lifecycle not in CATALOG_LIFECYCLE_STATUSES:
+            raise InfrastructureCatalogActionError("catalog lifecycle transition is invalid")
+        if health and health not in CATALOG_HEALTH_STATUSES:
+            raise InfrastructureCatalogActionError("catalog health transition is invalid")
+    return {
+        "action": action,
+        "entityId": entity_id,
+        "canonicalEntityId": canonical_id,
+        "lifecycleStatus": lifecycle,
+        "healthStatus": health,
+        "observationIds": list(observation_ids),
+        "reason": reason,
+        "confidence": confidence,
+    }
+
+
+def _validate_catalog_alias_moves(connection: Any, actions: list[dict[str, Any]]) -> None:
+    merge_targets = {
+        item["entityId"]: item["canonicalEntityId"]
+        for item in actions
+        if item["canonicalEntityId"]
+    }
+    for source_id, target_id in merge_targets.items():
+        source = connection.execute(
+            "SELECT name FROM infrastructure_entities WHERE entity_id = ? AND archived_at IS NULL",
+            (source_id,),
+        ).fetchone()
+        aliases = [str(source["name"])] if source is not None else []
+        aliases.extend(
+            str(row["alias"])
+            for row in connection.execute(
+                "SELECT alias FROM infrastructure_entity_aliases WHERE entity_id = ?",
+                (source_id,),
+            ).fetchall()
+        )
+        for alias in aliases:
+            normalized = _slug(alias)
+            owners = {
+                str(row["entity_id"])
+                for row in connection.execute(
+                    """
+                    SELECT a.entity_id
+                    FROM infrastructure_entity_aliases a
+                    JOIN infrastructure_entities e ON e.entity_id = a.entity_id
+                    WHERE a.normalized_alias = ? AND e.archived_at IS NULL
+                    """,
+                    (normalized,),
+                ).fetchall()
+            }
+            unsafe = {
+                owner for owner in owners
+                if owner not in {source_id, target_id}
+                and merge_targets.get(owner) != target_id
+            }
+            if unsafe:
+                raise InfrastructureCatalogActionError("catalog alias move is ambiguous")
+
+
+def _move_catalog_aliases(
+    connection: Any,
+    *,
+    source_entity: Mapping[str, Any],
+    target_entity_id: str,
+    now: str,
+) -> None:
+    aliases = [str(source_entity["name"])]
+    aliases.extend(
+        str(row["alias"])
+        for row in connection.execute(
+            "SELECT alias FROM infrastructure_entity_aliases WHERE entity_id = ?",
+            (source_entity["entity_id"],),
+        ).fetchall()
+    )
+    for alias in aliases:
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO infrastructure_entity_aliases(entity_id, alias, normalized_alias, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (target_entity_id, redact_sensitive_value(alias, field_name="alias"), _slug(alias), now),
+        )
+    connection.execute(
+        "DELETE FROM infrastructure_entity_aliases WHERE entity_id = ?",
+        (source_entity["entity_id"],),
+    )
+
+
+def _catalog_state_text(entity: Mapping[str, Any]) -> str:
+    return (
+        f"lifecycle={entity['lifecycle_status']};"
+        f"health={entity['health_status']};archived={bool(entity['archived_at'])}"
+    )
+
+
+def _insert_catalog_action_event(
+    connection: Any,
+    *,
+    business_date: str,
+    entity_id: str,
+    action: str,
+    reason: str,
+    previous: str,
+    current: str,
+    confidence: str,
+    source: str,
+    now: str,
+) -> bool:
+    event_key = _stable_id("infra-catalog-event", business_date, entity_id, action, current)
+    cursor = connection.execute(
+        """
+        INSERT OR IGNORE INTO infrastructure_events(
+            event_id, event_key, entity_id, business_date, event_type, summary,
+            field, previous_value, current_value, evidence_json, confidence,
+            source, raw_json, created_at, event_category,
+            normalized_event_type, evidence_contract_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, '{}', ?, 'other', 'updated', ?)
+        """,
+        (
+            _stable_id("IE", event_key), event_key, entity_id, business_date,
+            f"catalog_{action}", redact_sensitive_value(reason, field_name="reason"),
+            "other", previous, current, confidence, source, now,
+            _json({
+                "schema": "actanara.environment-catalog-action.v1",
+                "source": source,
+                "evidenceBound": True,
+            }),
+        ),
+    )
+    return bool(cursor.rowcount)
 
 
 def list_infrastructure_entities(paths: RuntimePaths) -> list[dict[str, Any]]:
@@ -352,6 +777,32 @@ def list_infrastructure_entities(paths: RuntimePaths) -> list[dict[str, Any]]:
     return [_entity_from_row(row) for row in rows]
 
 
+def infrastructure_entity_catalog(paths: RuntimePaths) -> dict[str, dict[str, Any]]:
+    """Return the active, safe identity catalog keyed by authoritative entity ID."""
+
+    entities = list_infrastructure_entities(paths)
+    aliases: dict[str, list[str]] = {}
+    with connect(paths, read_only=True) as connection:
+        rows = connection.execute(
+            """
+            SELECT a.entity_id, a.alias
+            FROM infrastructure_entity_aliases a
+            JOIN infrastructure_entities e ON e.entity_id = a.entity_id
+            WHERE e.archived_at IS NULL
+            ORDER BY a.entity_id, a.normalized_alias
+            """
+        ).fetchall()
+    for row in rows:
+        aliases.setdefault(str(row["entity_id"]), []).append(str(row["alias"]))
+    return {
+        str(entity["entityId"]): {
+            **entity,
+            "aliases": tuple(aliases.get(str(entity["entityId"]), ())),
+        }
+        for entity in entities
+    }
+
+
 def _entity_from_row(row: Any) -> dict[str, Any]:
     metadata = _load_json(row["metadata_json"], {})
     return {
@@ -360,6 +811,11 @@ def _entity_from_row(row: Any) -> dict[str, Any]:
         "name": row["name"],
         "kind": row["kind"],
         "status": row["status"],
+        "subtype": row["subtype"],
+        "lifecycleStatus": row["lifecycle_status"],
+        "healthStatus": row["health_status"],
+        "environment": row["environment"],
+        "exposureScope": row["exposure_scope"],
         "location": row["location"],
         "endpoint": row["endpoint"],
         "port": row["port"],
@@ -397,6 +853,8 @@ def _event_from_row(row: Any) -> dict[str, Any]:
         "name": row["name"],
         "businessDate": row["business_date"],
         "eventType": row["event_type"],
+        "eventCategory": row["event_category"],
+        "normalizedEventType": row["normalized_event_type"],
         "summary": row["summary"],
         "field": row["field"],
         "previousValue": row["previous_value"],
@@ -424,8 +882,15 @@ def recent_infrastructure_events(paths: RuntimePaths, *, limit: int = 50) -> lis
     return [_event_from_row(row) for row in rows]
 
 
-def render_infrastructure_graph_context(paths: RuntimePaths, *, max_entities: int = 40, max_events: int = 20) -> str:
-    entities = list_infrastructure_entities(paths)[:max_entities]
+def render_infrastructure_graph_context(
+    paths: RuntimePaths,
+    *,
+    max_entities: int | None = 40,
+    max_events: int = 20,
+) -> str:
+    entities = list_infrastructure_entities(paths)
+    if max_entities is not None:
+        entities = entities[:max(0, int(max_entities))]
     events = recent_infrastructure_events(paths, limit=max_events)
     if not entities and not events:
         return "Infrastructure active graph is empty. Create new entity rows only with direct technical evidence."

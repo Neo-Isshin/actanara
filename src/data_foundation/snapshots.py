@@ -410,14 +410,17 @@ def _foundation_ai_assets_non_rag_payload(paths: RuntimePaths) -> dict:
         ).fetchall()
         project_rows = connection.execute(
             """
-            SELECT project_id_or_bucket, tool_key, SUM(tokens) AS tokens,
-                   SUM(messages) AS messages, SUM(active_sessions) AS sessions
-            FROM daily_project_usage
-            GROUP BY project_id_or_bucket, tool_key
-            ORDER BY tokens DESC, project_id_or_bucket, tool_key
+            SELECT d.project_id_or_bucket, d.tool_key,
+                   COALESCE(p.canonical_name, '') AS canonical_name,
+                   SUM(d.tokens) AS tokens, SUM(d.messages) AS messages,
+                   SUM(d.active_sessions) AS sessions
+            FROM daily_project_usage d
+            LEFT JOIN projects p
+              ON d.project_id_or_bucket = ('project:' || p.id)
+            GROUP BY d.project_id_or_bucket, d.tool_key, p.canonical_name
+            ORDER BY tokens DESC, d.project_id_or_bucket, d.tool_key
             """
         ).fetchall()
-        workspace_usage = _foundation_workspace_usage_from_events(connection)
         latest_usage_day = connection.execute(
             "SELECT MAX(business_date) FROM daily_tool_usage WHERE tokens > 0 OR messages > 0"
         ).fetchone()[0]
@@ -490,13 +493,12 @@ def _foundation_ai_assets_non_rag_payload(paths: RuntimePaths) -> dict:
         }
         for row in model_rows
     ]
-    if not workspace_usage:
-        workspace_usage = [
-            item
-            for item in (_workspace_usage_item(row) for row in project_rows)
-            if int(item.get("tokens") or 0) >= WORKSPACE_USAGE_MIN_TOKENS
-            and usage_group_display_allowed(str(item.get("name") or ""), str(item.get("tool") or ""))
-        ]
+    workspace_usage = [
+        item
+        for item in (_workspace_usage_item(row) for row in project_rows)
+        if int(item.get("tokens") or 0) >= WORKSPACE_USAGE_MIN_TOKENS
+        and usage_group_display_allowed(str(item.get("name") or ""), str(item.get("tool") or ""))
+    ]
     agents = [
         {
             "name": row["tool_key"],
@@ -546,6 +548,12 @@ def _foundation_ai_assets_non_rag_payload(paths: RuntimePaths) -> dict:
     )
 
 
+def build_foundation_ai_assets_non_rag_payload(paths: RuntimePaths) -> dict:
+    """Build the terminal-pipeline snapshot only from indexed Foundation state."""
+
+    return _foundation_ai_assets_non_rag_payload(paths)
+
+
 def _foundation_infrastructure_payload(paths: RuntimePaths) -> dict:
     try:
         from .infrastructure import dashboard_infrastructure_payload
@@ -558,7 +566,9 @@ def _foundation_infrastructure_payload(paths: RuntimePaths) -> dict:
 def _workspace_usage_item(row) -> dict:
     tool_name, emoji = TOOL_DISPLAY.get(row["tool_key"], (row["tool_key"], ""))
     bucket = str(row["project_id_or_bucket"] or "")
-    name = bucket
+    name = str(row["canonical_name"] or "") if "canonical_name" in row.keys() else ""
+    if not name:
+        name = bucket
     if bucket == "unattributed":
         name = f"{tool_name} unattributed"
     elif bucket.startswith("project:"):

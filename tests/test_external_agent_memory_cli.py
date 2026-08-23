@@ -178,8 +178,16 @@ class ExternalAgentMemoryCliTests(unittest.TestCase):
         self.assertEqual(product.mode, "auto")
         self.assertEqual(product.caller, "")
 
-    def test_auto_search_prefers_available_rag(self):
+    def test_auto_search_returns_strong_curated_result_before_rag(self):
         rag_payload = {"available": True, "results": [{"text": "semantic match"}]}
+        local_payload = {
+            "available": True,
+            "results": [{"text": "curated match"}],
+            "quality": {"status": "strong"},
+            "backend": {"kind": "local-fts", "semantic": False},
+            "capabilities": {"lexical": True, "semantic": False},
+            "fallbackFrom": None,
+        }
         with (
             patch(
                 "data_foundation.external_agent_memory._memory_backend_policy",
@@ -190,15 +198,48 @@ class ExternalAgentMemoryCliTests(unittest.TestCase):
                 "data_foundation.external_agent_memory._search_rag_memory",
                 return_value=rag_payload,
             ) as rag_search,
-            patch("data_foundation.external_agent_memory._search_local_memory") as local_search,
+            patch(
+                "data_foundation.external_agent_memory._search_local_memory",
+                return_value=local_payload,
+            ) as local_search,
+        ):
+            result = search_memory("memory", mode="auto", caller="codex")
+
+        rag_search.assert_not_called()
+        local_search.assert_called_once()
+        self.assertEqual(local_search.call_args.kwargs["filters"], {"sourceSets": ["curated-core"]})
+        self.assertEqual(result["backend"]["collection"], "curated-core")
+        self.assertFalse(result["capabilities"]["semantic"])
+        self.assertIsNone(result.get("fallbackFrom"))
+
+    def test_auto_search_uses_rag_when_curated_result_is_insufficient(self):
+        local_payload = {
+            "available": True,
+            "results": [],
+            "quality": {"status": "insufficient"},
+            "backend": {"kind": "local-fts", "semantic": False},
+        }
+        rag_payload = {"available": True, "results": [{"text": "semantic match"}]}
+        with (
+            patch(
+                "data_foundation.external_agent_memory._memory_backend_policy",
+                return_value=(True, "auto"),
+            ),
+            patch("data_foundation.external_agent_memory._rag_enabled", return_value=(True, None)),
+            patch(
+                "data_foundation.external_agent_memory._search_local_memory",
+                return_value=local_payload,
+            ),
+            patch(
+                "data_foundation.external_agent_memory._search_rag_memory",
+                return_value=rag_payload,
+            ) as rag_search,
         ):
             result = search_memory("memory", mode="auto", caller="codex")
 
         rag_search.assert_called_once()
-        local_search.assert_not_called()
         self.assertEqual(result["backend"]["kind"], "agentic-rag")
-        self.assertTrue(result["capabilities"]["semantic"])
-        self.assertIsNone(result["fallbackFrom"])
+        self.assertEqual(result["backend"]["fallbackFrom"], "curated-core-insufficient")
 
     def test_auto_search_falls_back_when_rag_is_disabled(self):
         local_payload = {
@@ -228,8 +269,8 @@ class ExternalAgentMemoryCliTests(unittest.TestCase):
         local_search.assert_called_once()
         self.assertEqual(local_search.call_args.kwargs["caller"], "codex")
         self.assertEqual(result["backend"]["kind"], "local-fts")
-        self.assertEqual(result["backend"]["fallbackFrom"], "nova-RAG subsystem is disabled by settings.")
-        self.assertEqual(result["fallbackFrom"], "nova-RAG subsystem is disabled by settings.")
+        self.assertEqual(result["backend"]["collection"], "curated-core")
+        self.assertIsNone(result.get("fallbackFrom"))
 
     def test_auto_search_falls_back_when_rag_transport_is_unavailable(self):
         rag_payload = {
@@ -413,7 +454,8 @@ class ExternalAgentMemoryCliTests(unittest.TestCase):
     def test_auto_search_falls_back_for_invalid_rag_response_schema(self):
         local_payload = {
             "available": True,
-            "results": [{"text": "local result"}],
+            "results": [],
+            "quality": {"status": "insufficient"},
             "backend": {"kind": "local-fts", "semantic": False},
             "capabilities": {"lexical": True, "semantic": False},
         }

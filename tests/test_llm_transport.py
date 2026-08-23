@@ -998,6 +998,7 @@ class LLMTransportTests(unittest.TestCase):
             result = technical_pass._call_unified_technical_pass(
                 "2026-05-19",
                 "active graph",
+                "environment graph",
                 entries,
                 {"gemini-cli": 400, "main": 400},
             )
@@ -1005,6 +1006,7 @@ class LLMTransportTests(unittest.TestCase):
         self.assertEqual(llm.call_count, 1)
         self.assertIn("[10:00][main][user]", captured["prompt"])
         self.assertIn("[10:01][gemini-cli][assistant]", captured["prompt"])
+        self.assertIn("environment graph", captured["prompt"])
         self.assertNotIn("Source Hints", captured["prompt"])
 
 

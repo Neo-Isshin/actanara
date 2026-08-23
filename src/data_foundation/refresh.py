@@ -13,7 +13,7 @@ from typing import Callable
 
 from .db import connect, migrate
 from .aggregate import daily_diary_usage_metrics
-from .daily_completeness import evaluate_daily_completeness
+from .daily_completeness import DEFAULT_ZH_DAILY_LLM_CALLS, evaluate_daily_completeness
 from .diary_paths import diary_markdown_paths, diary_report_paths, diary_report_prefix, period_report_path
 from .jobs import (
     begin_ingestion_run,
@@ -23,14 +23,27 @@ from .jobs import (
     set_ingestion_run_status,
     update_ingestion_run_metadata,
 )
-from .diary_markdown import DIARY_PERIOD_PAGE_PROJECTION, materialize_diary_markdown_period_documents, materialize_diary_period_page_snapshot
-from .diary_markdown import materialize_diary_markdown_day
+from .diary_markdown import (
+    DIARY_PERIOD_PAGE_PROJECTION,
+    materialize_diary_markdown_day,
+    materialize_diary_markdown_period_documents,
+    materialize_diary_period_page_snapshot,
+    read_diary_markdown_period_inventory,
+)
 from .paths import RuntimePaths
 from .period_summary import DIARY_PERIOD_SUMMARY_PROJECTION, materialize_period_summary_snapshot
-from .reports import LEGACY_ASSET_PROJECTION, materialize_legacy_asset_projection
+from .reports import (
+    LEGACY_ASSET_PROJECTION,
+    build_foundation_period_asset_projection,
+    materialize_legacy_asset_projection,
+)
 from .reports import read_period_projection
 from .settings import ensure_settings, llm_provider_readiness_error
-from .snapshots import materialize_ai_assets_non_rag_snapshot, read_dashboard_snapshot
+from .snapshots import (
+    build_foundation_ai_assets_non_rag_payload,
+    materialize_ai_assets_non_rag_snapshot,
+    read_dashboard_snapshot,
+)
 from .time import business_now, resolve_timezone
 from .weather import fetch_weather_for_date
 from .workspace_attribution import materialize_workspace_attribution_catalog
@@ -980,10 +993,11 @@ def _materialize_history_ai_assets_snapshot(
     if skip_default_builder:
         return {"status": "skipped", "reason": "custom daily pipeline runner without AI assets builder"}
     try:
+        effective_builder = builder or (lambda: build_foundation_ai_assets_non_rag_payload(paths))
         snapshot_key = materialize_ai_assets_non_rag_snapshot(
             paths,
             run_id,
-            builder=builder,
+            builder=effective_builder,
             business_date=business_date,
         )
         return {"status": "ready", "snapshotKey": snapshot_key}
@@ -1467,7 +1481,12 @@ def _history_backfill_pending_items(
 ) -> list[dict]:
     if paths is None:
         return [
-            {"kind": "diary", "label": _history_diary_label(day), "date": day.isoformat(), "llmCalls": 3}
+            {
+                "kind": "diary",
+                "label": _history_diary_label(day),
+                "date": day.isoformat(),
+                "llmCalls": DEFAULT_ZH_DAILY_LLM_CALLS,
+            }
             for day in dates
         ] + _history_summary_pending_items(None, periods, include_summaries=include_summaries)
     items: list[dict] = []
@@ -1477,7 +1496,11 @@ def _history_backfill_pending_items(
             continue
         missing = [] if not skip_ready else status["missingItems"]
         actions = ["daily-full"] if not skip_ready else status["plannedActions"]
-        llm_calls = 3 if not skip_ready and not status.get("isBlankDay") else int(status.get("llmCalls") or 0)
+        llm_calls = (
+            DEFAULT_ZH_DAILY_LLM_CALLS
+            if not skip_ready and not status.get("isBlankDay")
+            else int(status.get("llmCalls") or 0)
+        )
         if actions:
             items.append(
                 {
@@ -1910,6 +1933,16 @@ def run_pipeline_daily_materialization(
 ) -> dict:
     """Materialize daily Dashboard/Foundation projections from the stable pipeline."""
     migrate(paths)
+    effective_ai_assets_builder = ai_assets_builder or (
+        lambda: build_foundation_ai_assets_non_rag_payload(paths)
+    )
+    effective_period_builder = period_builder or (
+        lambda selected_start, days: build_foundation_period_asset_projection(
+            paths,
+            selected_start,
+            days,
+        )
+    )
     week_start = business_date - timedelta(days=business_date.weekday())
     month_start = business_date.replace(day=1)
     run_id = begin_ingestion_run(
@@ -1946,7 +1979,7 @@ def run_pipeline_daily_materialization(
         dashboard_snapshot_key = materialize_ai_assets_non_rag_snapshot(
             paths,
             run_id,
-            builder=ai_assets_builder,
+            builder=effective_ai_assets_builder,
             business_date=business_date,
         )
         workspace_catalog = materialize_workspace_attribution_catalog(paths)
@@ -1972,13 +2005,12 @@ def run_pipeline_daily_materialization(
                 period_start,
                 business_date,
                 run_id,
-                builder=period_builder,
+                builder=effective_period_builder,
             )
-            period_markdown = materialize_diary_markdown_period_documents(
+            period_markdown = read_diary_markdown_period_inventory(
                 paths,
                 period_start,
                 business_date,
-                source_run_id=run_id,
             )
             page_key = materialize_diary_period_page_snapshot(
                 paths,
@@ -1996,7 +2028,11 @@ def run_pipeline_daily_materialization(
                     "pageProjection": page_key,
                 }
             )
-        completed_summaries = materialize_due_period_summaries(paths, business_date, period_builder=period_builder)
+        completed_summaries = materialize_due_period_summaries(
+            paths,
+            business_date,
+            period_builder=effective_period_builder,
+        )
         _set_refresh_progress(paths, run_id, progress=100, stage="completed", stage_label="Refresh completed")
         finish_ingestion_run(paths, run_id, status="completed")
         return {

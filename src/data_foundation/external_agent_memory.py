@@ -76,10 +76,10 @@ def search_memory(
 ) -> dict[str, Any]:
     """Search memory through the selected backend.
 
-    ``auto`` prefers an enabled nova-RAG service and falls back to the local
-    lexical index when that service is disabled or unavailable. ``rag`` is a
-    strict compatibility path and never falls back. ``local`` bypasses the
-    Dashboard and RAG service entirely.
+    ``auto`` searches Actanara's small authority-backed local collection first
+    and uses nova-RAG only when that collection cannot answer strongly. ``rag``
+    is a strict compatibility path and never falls back. ``local`` bypasses
+    the Dashboard and RAG service entirely.
     """
     normalized_query = str(query or "").strip()
     if not normalized_query:
@@ -145,6 +145,22 @@ def search_memory(
             )
         )
 
+    curated_filters = _curated_search_filters(filters)
+    if curated_filters is not None:
+        curated_result = _annotate_curated_response(
+            _search_local_memory(
+                normalized_query,
+                top_k=bounded_top_k,
+                filters=curated_filters,
+                caller=caller,
+                paths=paths,
+            )
+        )
+        if _memory_result_is_strong(curated_result):
+            return curated_result
+    else:
+        curated_result = None
+
     rag_enabled, disabled_reason = _rag_enabled(paths)
     if rag_enabled:
         rag_result = _annotate_rag_response(
@@ -161,10 +177,18 @@ def search_memory(
             )
         )
         if rag_result.get("available", True):
+            if curated_result is not None:
+                _set_backend_fallback(
+                    rag_result,
+                    fallback_from="curated-core-insufficient",
+                )
             return rag_result
         fallback_from = str(rag_result.get("reason") or "rag-external-unavailable")
     else:
         fallback_from = disabled_reason or "nova-rag-disabled"
+
+    if curated_result is not None and curated_result.get("available", True):
+        return _annotate_fallback(curated_result, fallback_from=fallback_from)
 
     local_result = _search_local_memory(
         normalized_query,
@@ -174,6 +198,40 @@ def search_memory(
         paths=paths,
     )
     return _annotate_fallback(local_result, fallback_from=fallback_from)
+
+
+def _curated_search_filters(filters: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Return default curated filters, preserving explicit collection choices."""
+    selected = dict(filters or {})
+    if any(key in selected for key in ("sourceSets", "source_sets")):
+        return None
+    selected["sourceSets"] = ["curated-core"]
+    return selected
+
+
+def _memory_result_is_strong(result: dict[str, Any]) -> bool:
+    quality = result.get("quality") if isinstance(result.get("quality"), dict) else {}
+    status = str(quality.get("status") or "")
+    if status:
+        return status == "strong"
+    return bool(result.get("results"))
+
+
+def _annotate_curated_response(result: dict[str, Any]) -> dict[str, Any]:
+    backend = result.get("backend") if isinstance(result.get("backend"), dict) else {}
+    result["backend"] = {
+        **backend,
+        "collection": "curated-core",
+        "fallbackPolicy": "nova-rag-on-insufficient",
+    }
+    result["collection"] = "curated-core"
+    return result
+
+
+def _set_backend_fallback(result: dict[str, Any], *, fallback_from: str) -> None:
+    backend = result.get("backend") if isinstance(result.get("backend"), dict) else {}
+    result["backend"] = {**backend, "fallbackFrom": fallback_from}
+    result["fallbackFrom"] = fallback_from
 
 
 def _search_rag_memory(

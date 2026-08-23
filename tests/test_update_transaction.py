@@ -208,6 +208,7 @@ class UpdateTransactionTests(unittest.TestCase):
 
         service_paths = [
             source / "advanced" / "dashboard" / "dashboard_launch_agent.py",
+            source / "advanced" / "dashboard" / "run_managed_dashboard.py",
             source / "advanced" / "dashboard" / "rag_server_launch_agent.py",
             source / "advanced" / "pipeline" / "run_daily_pipeline.py",
             source / "advanced" / "pipeline" / "run_dashboard_foundation_refresh.py",
@@ -3351,6 +3352,8 @@ print -r -- "$reserved"
             self.assertEqual(plist_path.stat().st_mode & 0o777, 0o640)
 
     def test_already_stable_plist_records_durable_binding_without_false_positive(self):
+        from advanced.dashboard import dashboard_launch_agent as dashboard_launcher
+
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp).resolve()
             fixture = self._fixture(root)
@@ -3358,14 +3361,18 @@ print -r -- "$reserved"
             launch_agents.mkdir(parents=True)
             label = "com.actanara.binding-already-stable"
             plist_path = launch_agents / f"{label}.plist"
-            self._write_dashboard_binding_plist(
-                plist_path,
+            payload = dashboard_launcher.build_service_plist(
                 label=label,
-                runtime=fixture["runtime"],
-                source_root=fixture["runtime"] / "app" / "source",
-                venv_root=fixture["runtime"] / ".venv",
-                extra_payload={"StandardOutPath": "/tmp/actanara-releases-archive.log"},
+                python=fixture["runtime"] / ".venv" / "bin" / "python",
+                project_root=fixture["runtime"] / "app" / "source",
+                actanara_home=fixture["runtime"],
+                host="127.0.0.1",
+                port=42173,
+                foundation=True,
+                logs_dir=fixture["runtime"] / "state" / "logs",
             )
+            with plist_path.open("wb") as handle:
+                plistlib.dump(payload, handle, sort_keys=False)
             original = plist_path.read_bytes()
             journal, _calls = self._begin_unloaded_darwin(fixture, root)
             self._prepare_stopped_candidate(fixture, journal)
@@ -3639,18 +3646,23 @@ print -r -- "$reserved"
             legacy = copy.deepcopy(canonical)
             stable_source_text = str(stable_source)
             concrete_source_text = str(concrete_source)
-            dashboard_command = legacy["dashboard"]["ProgramArguments"][2]
-            self.assertEqual(dashboard_command.count(stable_source_text), 2)
-            legacy["dashboard"]["ProgramArguments"][2] = dashboard_command.replace(
-                stable_source_text,
-                concrete_source_text,
-            )
+            legacy["dashboard"]["ProgramArguments"] = [
+                "/bin/zsh",
+                "-lc",
+                (
+                    f"cd {concrete_source} && exec {stable_python} -m uvicorn app.main:app "
+                    f"--app-dir {concrete_source / 'src' / 'dashboard'} "
+                    "--host 127.0.0.1 --port 42173"
+                ),
+            ]
             dashboard_environment = legacy["dashboard"]["EnvironmentVariables"]
             dashboard_environment["ACTANARA_DASHBOARD_PROJECT_ROOT"] = concrete_source_text
             dashboard_environment["PYTHONPATH"] = (
                 f"{concrete_source}:{concrete_source / 'src'}:"
                 f"{concrete_source / 'src' / 'dashboard'}"
             )
+            dashboard_environment.pop("ACTANARA_SCHEDULED_STDOUT_PATH")
+            dashboard_environment.pop("ACTANARA_SCHEDULED_STDERR_PATH")
             legacy["watchdog"]["ProgramArguments"][1] = str(
                 concrete_source
                 / "advanced"
@@ -3690,7 +3702,7 @@ print -r -- "$reserved"
             state = json.loads(journal.read_text(encoding="utf-8"))
             services = {item["label"]: item for item in state["services"]}
             expected_counts = {
-                labels["dashboard"]: (6, 2),
+                labels["dashboard"]: (7, 2),
                 labels["watchdog"]: (1, 1),
                 labels["rag"]: (4, 1),
             }

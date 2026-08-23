@@ -30,7 +30,13 @@ Why: 单端成功误导归因，改用对照路径和双端观察后确认返回
 """
 
 
-def _decision(decision: str = "skill", *, evidence: str = "000001, 000002, 000003, 000004") -> str:
+def _decision(
+    decision: str = "skill",
+    *,
+    evidence: str = "000001, 000002, 000003, 000004",
+    portfolio: str | None = None,
+) -> str:
+    portfolio = portfolio or ("keep" if decision == "skill" else "omit")
     return f"""{harness.REVIEW_MARKER}
 # 对照路径并验证双向流量
 Candidate-ID: candidate-001
@@ -39,6 +45,8 @@ Evidence-Records: {evidence}
 Action-Records: {"000003" if decision == "skill" else "none"}
 Verification-Records: {"000004" if decision == "skill" else "none"}
 Scores: Evidence 5/5 · Value 4/5 · Reuse 5/5 · Program {"5" if decision == "skill" else "2"}/5
+Portfolio: {portfolio}
+Portfolio-Reason: {"该程序有独立触发条件和完成标准。" if portfolio == "keep" else "无需作为独立常驻程序。"}
 Reason: 记录显示同一目标下的困难、决定性转折和观察结果。
 """
 
@@ -167,6 +175,8 @@ class MinimalHarnessTests(unittest.TestCase):
         self.assertIn("程序测试", harness.ADJUDICATION_PROMPT)
         self.assertIn("独立资产测试", harness.ADJUDICATION_PROMPT)
         self.assertIn("压缩测试", harness.ADJUDICATION_PROMPT)
+        self.assertIn("组合准入", harness.ADJUDICATION_PROMPT)
+        self.assertIn("Portfolio: keep|omit", harness.ADJUDICATION_PROMPT)
         self.assertIn("ASCII 小写 kebab-case", harness.CRYSTALLIZATION_PROMPT)
         self.assertIn("调用触发契约", harness.CRYSTALLIZATION_PROMPT)
         self.assertIn("当【可观察触发状态】时", harness.CRYSTALLIZATION_PROMPT)
@@ -176,7 +186,7 @@ class MinimalHarnessTests(unittest.TestCase):
         self.assertIn("Procedure 用 2–6 个有序步骤", harness.CRYSTALLIZATION_PROMPT)
         self.assertIn("闭卷证据测试", harness.CRYSTALLIZATION_PROMPT)
         self.assertIn("{authority_boundary}", harness.CRYSTALLIZATION_PROMPT)
-        self.assertIn("完成态与批内资产组合已经独立核验", harness.CRYSTALLIZATION_SYSTEM)
+        self.assertIn("批内组合准入已经在裁决阶段完成", harness.CRYSTALLIZATION_SYSTEM)
         self.assertIn("人工覆盖不代表完成态", harness.HUMAN_OVERRIDE_CRYSTALLIZATION_SYSTEM)
         self.assertIn("单独调用", harness.PORTFOLIO_PROMPT)
         self.assertIn("不要追求数量", harness.PORTFOLIO_PROMPT)
@@ -348,7 +358,7 @@ Why: 第二条完整因果线索具有独立记录集合。"""
         )
         self.assertEqual(rejected, 0)
         prompt = harness.build_crystallization_prompt(decisions, evidence_stream=stream)
-        self.assertIn("已通过独立完成态和批内资产组合核验", prompt)
+        self.assertIn("裁决阶段的批内组合准入", prompt)
         self.assertNotIn("用户只覆盖了“允许尝试结晶”", prompt)
         self.assertIn("模型只需复制 Review-ID、选择库动作", prompt)
         self.assertEqual(prompt.count("[record 000002"), 1)
@@ -389,6 +399,7 @@ Why: 第二条完整因果线索具有独立记录集合。"""
         source = support.parse_discovery_output(_discovery(), stream=stream)[0][0]
         lesson_raw = _decision().replace("Decision: skill", "Decision: lesson")
         lesson_raw = lesson_raw.replace("Value 4/5", "Value 2/5")
+        lesson_raw = lesson_raw.replace("Portfolio: keep", "Portfolio: omit")
         decisions, rejected = harness.parse_adjudication_output(
             lesson_raw,
             stream=stream,
@@ -511,6 +522,64 @@ Why: 第二条完整因果线索具有独立记录集合。"""
                 "### Discarded Retrieval Records",
             ):
                 self.assertIn(heading, report)
+
+    def test_default_success_path_uses_four_calls_without_portfolio_stage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = initialize_home(Path(tmp) / "Actanara")
+            filtered = (
+                paths.diary_dir
+                / "__diary_daily"
+                / "2026-08-12"
+                / "_filtered"
+                / "codex"
+            )
+            filtered.mkdir(parents=True)
+            filtered.joinpath("unified_daily.jsonl").write_text(
+                "\n".join(
+                    json.dumps(
+                        {
+                            "time": f"10:0{index}",
+                            "role": "assistant",
+                            "content": text,
+                            "conversationId": "a",
+                        }
+                    )
+                    for index, text in enumerate(("goal", "obstacle", "turn", "result"))
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            calls: list[str] = []
+
+            def fake_llm(_prompt, **kwargs):
+                stage = kwargs["stage"]
+                calls.append(stage)
+                return {
+                    "discovery": _discovery(),
+                    "adjudication": _decision(),
+                    "completion-audit": _completion(),
+                    "crystallization": _skill(),
+                }[stage]
+
+            with patch.object(
+                harness,
+                "resolve_llm_provider",
+                return_value={"pipelineGateTokens": 80000},
+            ):
+                result = harness.run_skill_pass(
+                    "2026-08-12",
+                    paths=paths,
+                    llm_call=fake_llm,
+                    library_assets_override=(),
+                )
+
+            self.assertEqual(
+                calls,
+                ["discovery", "adjudication", "completion-audit", "crystallization"],
+            )
+            self.assertEqual(result.llm_calls, 4)
+            self.assertEqual(result.portfolio_tokens, 0)
+            self.assertIsNone(result.portfolio_raw_path)
 
     def test_asset_ledger_preserves_model_classes_and_deterministic_demotions(self):
         stream = _stream()
@@ -644,9 +713,8 @@ Why: 第二条完整因果线索具有独立记录集合。"""
                     "2026-08-12",
                     paths=paths,
                     discovery_raw_override=_discovery(),
-                    adjudication_raw_override=_decision(),
+                    adjudication_raw_override=_decision(portfolio="omit"),
                     completion_raw_override=_completion(),
-                    portfolio_raw_override="",
                     crystallization_raw_override=_skill(),
                     library_assets_override=(),
                 )
@@ -694,8 +762,6 @@ Why: 第二条完整因果线索具有独立记录集合。"""
                     return _decision()
                 if kwargs["stage"] == "completion-audit":
                     return _completion()
-                if kwargs["stage"] == "portfolio":
-                    return _portfolio()
                 return _skill()
 
             with patch.object(
@@ -713,9 +779,9 @@ Why: 第二条完整因果线索具有独立记录集合。"""
 
             self.assertEqual(
                 calls,
-                ["adjudication", "completion-audit", "portfolio", "crystallization"],
+                ["adjudication", "completion-audit", "crystallization"],
             )
-            self.assertEqual(result.llm_calls, 4)
+            self.assertEqual(result.llm_calls, 3)
             self.assertEqual(result.rejected_decisions, 1)
             self.assertEqual([row.decision for row in result.decisions], ["skill"])
             self.assertIsNone(result.adjudication_repair_raw_path)

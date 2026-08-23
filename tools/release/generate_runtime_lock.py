@@ -14,6 +14,7 @@ import os
 import re
 import tempfile
 import tomllib
+from itertools import product
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
@@ -209,7 +210,13 @@ def _marker_environment(
     return environment
 
 
-def _parse_report_requirement(raw: str, *, package: str) -> Requirement:
+def _parse_report_requirement(
+    raw: str,
+    *,
+    package: str,
+    marker_environment: dict[str, str] | None = None,
+    active_extras: set[str] | None = None,
+) -> Requirement:
     try:
         requirement = Requirement(raw)
     except InvalidRequirement as exc:
@@ -226,12 +233,73 @@ def _parse_report_requirement(raw: str, *, package: str) -> Requirement:
         for variable in UNLOCKED_MARKER_VARIABLES
         if re.search(rf"\b{re.escape(variable)}\b", marker_text)
     )
-    if unlocked_variables:
+    if unlocked_variables and not _marker_is_decided_by_lock_identity(
+        requirement,
+        marker_environment=marker_environment,
+        active_extras=active_extras or set(),
+        unlocked_variables=unlocked_variables,
+    ):
         raise LockGenerationError(
             "Requires-Dist marker uses environment values absent from the lock identity "
             f"({package} -> {requirement.name}): {', '.join(unlocked_variables)}"
         )
     return requirement
+
+
+def _marker_is_decided_by_lock_identity(
+    requirement: Requirement,
+    *,
+    marker_environment: dict[str, str] | None,
+    active_extras: set[str],
+    unlocked_variables: list[str],
+) -> bool:
+    """Prove a full-version marker is invariant inside the locked major/minor.
+
+    Platform release/version are intentionally never synthesized.  For Python
+    and implementation full versions, evaluate every relevant patch boundary
+    present in the marker plus low/high sentinels.  The marker is safe only
+    when its result is identical for every candidate and every active extra.
+    This also safely accepts requirements shielded by an inactive extra.
+    """
+
+    if marker_environment is None or requirement.marker is None:
+        return False
+    supported = {"python_full_version", "implementation_version"}
+    if not set(unlocked_variables).issubset(supported):
+        return False
+    python_mm = str(marker_environment.get("python_version") or "")
+    if re.fullmatch(r"3\.(?:11|12|13|14)", python_mm) is None:
+        return False
+    candidates = {f"{python_mm}.0", f"{python_mm}.1", f"{python_mm}.999999"}
+    for major, minor, patch in re.findall(r"\b(\d+)\.(\d+)(?:\.(\d+))?\b", str(requirement.marker)):
+        if f"{major}.{minor}" != python_mm:
+            continue
+        selected_patch = int(patch or 0)
+        candidates.add(f"{python_mm}.{selected_patch}")
+        if selected_patch:
+            candidates.add(f"{python_mm}.{selected_patch - 1}")
+        candidates.add(f"{python_mm}.{selected_patch + 1}")
+    if len(candidates) > 64:
+        return False
+    variables = sorted(set(unlocked_variables))
+    values = sorted(candidates)
+    results: set[bool] = set()
+    for selected in product(values, repeat=len(variables)):
+        environment = dict(marker_environment)
+        environment.update(dict(zip(variables, selected, strict=True)))
+        for extra in ("", *sorted(active_extras)):
+            try:
+                results.add(
+                    _evaluate_metadata_marker(
+                        requirement.marker,
+                        {**environment, "extra": extra},
+                    )
+                )
+            except Exception:
+                return False
+            if len(results) > 1:
+                return False
+    return bool(results)
 
 
 def _requirement_applies(
@@ -309,7 +377,12 @@ def _profile_dependency_closure(
             continue
         processed_extras[name] = frozen_extras
         for raw_requirement in packages[name]["requiresDist"]:
-            requirement = _parse_report_requirement(raw_requirement, package=name)
+            requirement = _parse_report_requirement(
+                raw_requirement,
+                package=name,
+                marker_environment=marker_environment,
+                active_extras=active_extras,
+            )
             if _requirement_applies(requirement, marker_environment, active_extras):
                 add(requirement, parent=name)
     return sorted(selected_extras)

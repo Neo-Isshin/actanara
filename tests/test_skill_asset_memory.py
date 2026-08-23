@@ -12,6 +12,7 @@ from unittest.mock import patch
 from agentic_rag.rag_settings import resolve_rag_settings
 from agentic_rag.rag_v2_indexer import _collect_skill_assets, collect_candidate_chunks
 from data_foundation.daily_completeness import evaluate_daily_completeness
+from data_foundation.environment_assets import write_environment_asset_ledger
 from data_foundation.paths import initialize_home
 from data_foundation.skill_asset_memory import (
     collect_skill_asset_memory_records,
@@ -143,6 +144,11 @@ class SkillAssetMemoryTests(unittest.TestCase):
                     documents=documents,
                 )
                 self._write(paths.home / "artifacts" / "skills", 21, [])
+                write_environment_asset_ledger(
+                    paths,
+                    business_date="2026-08-12",
+                    assets=[],
+                )
                 complete = evaluate_daily_completeness(
                     paths,
                     date(2026, 8, 12),
@@ -150,9 +156,14 @@ class SkillAssetMemoryTests(unittest.TestCase):
                 )
 
             self.assertIn("diary-skill", missing["missingKeys"])
+            self.assertIn("diary-environment", missing["missingKeys"])
+            self.assertEqual(missing["llmCalls"], 6)
             self.assertNotIn("diary-skill", complete["missingKeys"])
+            self.assertNotIn("diary-environment", complete["missingKeys"])
             self.assertTrue(complete["documentsReady"]["skill"])
+            self.assertTrue(complete["documentsReady"]["environment"])
             self.assertIn("diary-skill", complete["existingItems"])
+            self.assertIn("diary-environment", complete["existingItems"])
 
 
 if __name__ == "__main__":

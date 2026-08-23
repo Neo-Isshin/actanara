@@ -22,6 +22,7 @@ Issues = "https://github.com/Neo-Isshin/actanara/issues"
 
 [project.optional-dependencies]
 dashboard = [
+  "cryptography>=45,<46",
   "fastapi>=0.110,<1",
   "uvicorn>=0.29,<1",
   "PyYAML>=6,<7",
@@ -43,6 +44,7 @@ rag-local = [
   "pydantic>=2,<3",
 ]
 dev-test = [
+  "cryptography>=45,<46",
   "fastapi>=0.110,<1",
   "uvicorn>=0.29,<1",
   "PyYAML>=6,<7",

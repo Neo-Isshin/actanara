@@ -12,13 +12,20 @@ from .aggregate import daily_diary_usage_metrics
 from .db import connect
 from .diary_markdown import read_diary_markdown_documents
 from .diary_paths import diary_report_paths
+from .environment_assets import environment_asset_ledger_ready
 from .paths import RuntimePaths
-from .settings import ensure_settings, is_nova_task_enabled
+from .settings import (
+    ensure_settings,
+    is_environment_reconciliation_enabled,
+    is_nova_task_enabled,
+)
 from .skill_asset_memory import skill_asset_ledger_ready
 from .snapshots import read_rag_daily_status_snapshot
 from .time import resolve_timezone
 
 REQUIRED_DIARY_REPORTS = ("narrative", "technical")
+SKILL_PASS_LLM_CALLS = 4
+DEFAULT_ZH_DAILY_LLM_CALLS = 8
 
 
 def evaluate_daily_completeness(paths: RuntimePaths, business_date: date, *, documents: list[dict] | None = None) -> dict[str, Any]:
@@ -48,6 +55,10 @@ def evaluate_daily_completeness(paths: RuntimePaths, business_date: date, *, doc
     report_paths = _report_paths(paths, business_date, required_reports)
     no_activity = _has_no_activity_marker(docs, report_paths)
     skill_required = bool(language_profile != "en" and not no_activity)
+    environment_enabled = _environment_reconciliation_enabled(paths)
+    environment_required = bool(
+        language_profile != "en" and environment_enabled and not no_activity
+    )
     skill_ready = bool(
         not skill_required
         or skill_asset_ledger_ready(paths, business_date.isoformat())
@@ -55,6 +66,10 @@ def evaluate_daily_completeness(paths: RuntimePaths, business_date: date, *, doc
     docs_ready = {report_type: bool(report_paths.get(report_type)) or _doc_present(docs, report_type) for report_type in required_reports}
     if language_profile != "en":
         docs_ready["skill"] = skill_ready
+        docs_ready["environment"] = bool(
+            not environment_required
+            or environment_asset_ledger_ready(paths, business_date.isoformat())
+        )
     materialized = bool(docs) and (_has_no_activity_doc(docs) if no_activity else all(_doc_present(docs, item) for item in required_reports))
     foundation_materialized = _foundation_materialized(paths, business_date)
     sqlite_ready = bool(materialized and foundation_materialized)
@@ -73,6 +88,17 @@ def evaluate_daily_completeness(paths: RuntimePaths, business_date: date, *, doc
             else "Nova-Task is disabled by features.novaTask."
         )
         skipped.append(_skipped("nova-task", "Nova-Task work graph/export", reason))
+    if language_profile != "en" and not environment_required:
+        reason = (
+            "Blank/no-activity days do not require Environment Reconciliation."
+            if no_activity
+            else "Asset Reconciliation is disabled by features.environmentReconciliation."
+        )
+        skipped.append(_skipped(
+            "environment-reconciliation",
+            "Infrastructure and engineering asset reconciliation",
+            reason,
+        ))
     if no_activity:
         if not _has_no_activity_doc(docs) and not any(path.name.endswith("-no-activity.md") for path in report_paths.get("narrative", [])):
             missing.append(_missing("blankday", "blankday/no-activity marker", 1, "daily-full"))
@@ -80,8 +106,12 @@ def evaluate_daily_completeness(paths: RuntimePaths, business_date: date, *, doc
         for report_type, ready in docs_ready.items():
             if not ready:
                 action = "daily-full" if report_type == "narrative" else f"{report_type}-pass"
+                if report_type == "environment":
+                    action = "environment-reconciliation"
                 label = "procedural asset ledger" if report_type == "skill" else f"{report_type} diary"
-                llm_calls = 5 if report_type == "skill" else 1
+                if report_type == "environment":
+                    label = "reconciled infrastructure and engineering asset catalogs"
+                llm_calls = SKILL_PASS_LLM_CALLS if report_type == "skill" else 1
                 missing.append(_missing(f"diary-{report_type}", label, llm_calls, action))
         if not sqlite_ready:
             missing.append(_missing("sqlite-materialization", "SQLite materialization", 0, "daily-materialization"))
@@ -90,7 +120,7 @@ def evaluate_daily_completeness(paths: RuntimePaths, business_date: date, *, doc
         elif not rag_required:
             skipped.append(_skipped("rag-sync", "RAG sync", rag_disabled_reason or "nova-RAG is disabled or unavailable."))
         if nova_task_required and not task_updated:
-            missing.append(_missing("nova-task", "Nova-Task work graph/export", 0, "nova-task-work-graph"))
+            missing.append(_missing("nova-task", "Nova-Task work graph/export", 1, "nova-task-work-graph"))
     existing_items = _existing_items(
         docs,
         report_paths,
@@ -101,6 +131,8 @@ def evaluate_daily_completeness(paths: RuntimePaths, business_date: date, *, doc
         required_reports=required_reports,
         skill_ready=skill_ready,
         skill_required=skill_required,
+        environment_ready=docs_ready.get("environment", False),
+        environment_required=environment_required,
     )
     ready = not missing
     return {
@@ -121,7 +153,15 @@ def evaluate_daily_completeness(paths: RuntimePaths, business_date: date, *, doc
         "plannedActions": _dedupe([item["action"] for item in missing]),
         "existingItems": existing_items,
         "existingData": bool(existing_items),
-        "llmCalls": _estimate_llm_calls(missing),
+        "llmCalls": _estimate_llm_calls(
+            missing,
+            daily_full_calls=(
+                len(required_reports)
+                + (SKILL_PASS_LLM_CALLS if skill_required else 0)
+                + int(nova_task_required)
+                + int(environment_required)
+            ),
+        ),
     }
 
 
@@ -212,6 +252,13 @@ def _nova_task_enabled(paths: RuntimePaths) -> bool:
         return is_nova_task_enabled(paths)
     except Exception:
         # Preserve the existing fail-closed contract when settings cannot be read.
+        return True
+
+
+def _environment_reconciliation_enabled(paths: RuntimePaths) -> bool:
+    try:
+        return is_environment_reconciliation_enabled(paths)
+    except Exception:
         return True
 
 
@@ -319,6 +366,8 @@ def _existing_items(
     required_reports: tuple[str, ...],
     skill_ready: bool,
     skill_required: bool,
+    environment_ready: bool,
+    environment_required: bool,
 ) -> list[str]:
     items: list[str] = []
     if no_activity:
@@ -328,6 +377,8 @@ def _existing_items(
             items.append(f"diary-{report_type}")
     if skill_required and skill_ready:
         items.append("diary-skill")
+    if environment_required and environment_ready:
+        items.append("diary-environment")
     if sqlite_ready:
         items.append("sqlite-materialization")
     if rag_ready:
@@ -345,11 +396,24 @@ def _skipped(key: str, label: str, reason: str) -> dict[str, Any]:
     return {"key": key, "label": label, "reason": reason}
 
 
-def _estimate_llm_calls(missing: list[dict[str, Any]]) -> int:
+def _estimate_llm_calls(
+    missing: list[dict[str, Any]],
+    *,
+    daily_full_calls: int,
+) -> int:
     actions = {item["action"] for item in missing}
     if "daily-full" in actions:
-        return 7
-    return sum(int(item.get("llmCalls") or 0) for item in missing if item.get("action") != "daily-materialization")
+        return daily_full_calls
+    calls_by_action: dict[str, int] = {}
+    for item in missing:
+        action = str(item.get("action") or "")
+        if not action or action == "daily-materialization":
+            continue
+        calls_by_action[action] = max(
+            calls_by_action.get(action, 0),
+            int(item.get("llmCalls") or 0),
+        )
+    return sum(calls_by_action.values())
 
 
 def _dedupe(values: list[str]) -> list[str]:

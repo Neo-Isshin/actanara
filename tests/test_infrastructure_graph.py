@@ -10,6 +10,9 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from data_foundation.db import connect, migrate
 from data_foundation.infrastructure import (
+    InfrastructureCatalogActionError,
+    InfrastructureIdentityError,
+    apply_infrastructure_catalog_actions,
     apply_infrastructure_updates,
     dashboard_infrastructure_payload,
     infrastructure_events_for_date,
@@ -201,6 +204,76 @@ class InfrastructureGraphTests(unittest.TestCase):
             self.assertEqual(raw["currentValue"], "[redacted]")
             self.assertEqual(raw["value"], "[redacted]")
             self.assertNotIn("raw-secret-token", raw_json)
+
+    def test_technical_identity_failure_rolls_back_the_whole_batch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = initialize_home(Path(tmp) / "Actanara")
+            migrate(paths)
+
+            with self.assertRaises(InfrastructureIdentityError):
+                apply_infrastructure_updates(
+                    paths,
+                    "2026-07-03",
+                    [
+                        {
+                            "identityMode": "new",
+                            "entityType": "service",
+                            "name": "new verified service",
+                            "change": "deployed",
+                        },
+                        {
+                            "identityMode": "existing",
+                            "entityId": "infra-missing",
+                            "entityType": "service",
+                            "name": "fabricated service",
+                            "change": "updated",
+                        },
+                    ],
+                    source="technical-pass",
+                )
+
+            self.assertEqual(list_infrastructure_entities(paths), [])
+            self.assertEqual(infrastructure_events_for_date(paths, "2026-07-03"), [])
+
+    def test_catalog_archive_cannot_orphan_active_hosted_services(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = initialize_home(Path(tmp) / "Actanara")
+            migrate(paths)
+            apply_infrastructure_updates(
+                paths,
+                "2026-07-02",
+                [
+                    {"entityType": "device", "name": "Local host", "status": "online"},
+                    {"entityType": "service", "name": "Dashboard", "status": "running"},
+                ],
+            )
+            entities = list_infrastructure_entities(paths)
+            device_id = next(item["entityId"] for item in entities if item["entityType"] == "device")
+            service_id = next(item["entityId"] for item in entities if item["entityType"] == "service")
+            with connect(paths) as connection:
+                connection.execute(
+                    "UPDATE infrastructure_entities SET host_entity_id = ? WHERE entity_id = ?",
+                    (device_id, service_id),
+                )
+
+            with self.assertRaises(InfrastructureCatalogActionError):
+                apply_infrastructure_catalog_actions(
+                    paths,
+                    "2026-07-03",
+                    [{
+                        "action": "archive_existing",
+                        "entityId": device_id,
+                        "canonicalEntityId": "",
+                        "lifecycleStatus": "",
+                        "healthStatus": "",
+                        "observationIds": ["ENV-observation"],
+                        "reason": "The host appears obsolete.",
+                        "confidence": "high",
+                    }],
+                )
+
+            self.assertEqual(len(list_infrastructure_entities(paths)), 2)
+            self.assertEqual(infrastructure_events_for_date(paths, "2026-07-03"), [])
 
 
 if __name__ == "__main__":

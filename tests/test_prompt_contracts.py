@@ -324,11 +324,8 @@ class PromptPayloadContractTests(unittest.TestCase):
         self.assertIn("raw-log", partial)
         self.assertNotIn("hint-json", partial)
         self.assertNotIn("{raw_text}", partial)
-        prompt = (
-            technical_pass.PROMPT_TECHNICAL_INTEGRATION.replace("{{date}}", "2026-05-19")
-            .replace("{date}", "2026-05-19")
-            .replace("{{task_graph_context}}", "graph")
-            .replace("{{raw_text}}", "summary")
+        prompt = technical_pass._build_final_prompt(
+            "2026-05-19", "graph", "ignored-environment-graph", "summary"
         )
         payload = self._request_payload(technical_pass.call_llm, prompt)
         self.assertEqual(payload["system"], technical_pass.SYSTEM_PROMPT)
@@ -345,6 +342,51 @@ class PromptPayloadContractTests(unittest.TestCase):
         self.assertNotIn("任务概览 (Task Summary)", prompt)
         self.assertNotIn("项目进展详情 (Project Details)", prompt)
         self.assertIn("graph", prompt)
+        self.assertNotIn("ignored-environment-graph", prompt)
+        self.assertIn("actanara.environment-observations.v2", prompt)
+        self.assertIn("环境观察私有账本", prompt)
+        self.assertNotIn("identityMode", prompt)
+        self.assertNotIn("existingEntityId", prompt)
+        self.assertNotIn('"state":', prompt)
+        self.assertNotIn('"changeType":', prompt)
+        self.assertNotIn('"version":', prompt)
+        self.assertIn("不得生成 entityId", prompt)
+
+    def test_technical_prompt_modules_exclude_disabled_context_and_contracts(self):
+        catalog = "entityId=infra-first\n" + ("x" * 5000) + "\nentityId=infra-last"
+        task_only = technical_pass._build_final_prompt(
+            "2026-05-19", "task-graph", catalog, "evidence",
+            {"task": True, "environment": False},
+        )
+        self.assertIn("task-graph", task_only)
+        self.assertNotIn("entityId=infra-first", task_only)
+        self.assertNotIn("环境观察", task_only)
+        self.assertNotIn("environment-observations", task_only)
+        environment_only = technical_pass._build_final_prompt(
+            "2026-05-19", "task-graph", catalog, "evidence",
+            {"task": False, "environment": True},
+        )
+        self.assertNotIn("task-graph", environment_only)
+        self.assertNotIn("Nova-Task", environment_only)
+        self.assertIn("environment-observations", environment_only)
+        core_only = technical_pass._build_final_prompt(
+            "2026-05-19", "task-graph", catalog, "evidence",
+            {"task": False, "environment": False},
+        )
+        self.assertNotIn("task-graph", core_only)
+        self.assertNotIn("环境观察", core_only)
+
+        authority = technical_pass._technical_evidence_authority(
+            [
+                {
+                    "_technicalEvidenceId": "E000001",
+                    "source": "codex",
+                    "content": "abcdefgh",
+                }
+            ],
+            {"codex": 4},
+        )
+        self.assertEqual(authority, {"E000001": "abcd..."})
 
     def test_english_technical_payload_preserves_chronicle_contract(self):
         partial = english_technical_payload.partial_prompt(

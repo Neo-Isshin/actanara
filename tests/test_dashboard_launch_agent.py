@@ -46,11 +46,13 @@ class DashboardLaunchAgentTests(unittest.TestCase):
         args = plist["ProgramArguments"]
         env = plist["EnvironmentVariables"]
         self.assertTrue(plist["KeepAlive"])
-        self.assertEqual(args[:2], ["/bin/zsh", "-lc"])
-        self.assertIn("/tmp/venv/bin/python -m uvicorn app.main:app", args[2])
-        self.assertIn("/repo/src/dashboard", args[2])
-        self.assertIn("--host 127.0.0.1", args[2])
-        self.assertIn("--port 3036", args[2])
+        self.assertEqual(args[0], "/tmp/venv/bin/python")
+        self.assertEqual(args[1], "/repo/advanced/dashboard/run_managed_dashboard.py")
+        self.assertEqual(args[args.index("--project-root") + 1], "/repo")
+        self.assertEqual(args[args.index("--app-dir") + 1], "/repo/src/dashboard")
+        self.assertEqual(args[args.index("--host") + 1], "127.0.0.1")
+        self.assertEqual(args[args.index("--port") + 1], "3036")
+        self.assertEqual(args[args.index("--log-path") + 1], "/tmp/logs/dashboard-server.log")
         self.assertEqual(env["ACTANARA_DASHBOARD_PYTHON"], "/tmp/venv/bin/python")
         self.assertEqual(env["ACTANARA_DASHBOARD_PORT"], "3036")
         self.assertEqual(env["ACTANARA_HOME"], "/nova")
@@ -62,6 +64,8 @@ class DashboardLaunchAgentTests(unittest.TestCase):
         self.assertNotIn("ACTANARA_DATA_EXPORT_DIR", env)
         self.assertEqual(env["ACTANARA_DATA_FOUNDATION_ENABLED"], "true")
         self.assertEqual(env["DASHBOARD_READ_SOURCE"], "foundation")
+        self.assertEqual(env["ACTANARA_SCHEDULED_STDOUT_PATH"], "/tmp/logs/dashboard-server.out.log")
+        self.assertEqual(env["ACTANARA_SCHEDULED_STDERR_PATH"], "/tmp/logs/dashboard-server.err.log")
         self.assertEqual(plist["StandardOutPath"], "/tmp/logs/dashboard-server.out.log")
 
     def test_watchdog_plist_restarts_service_on_health_failure(self):
@@ -272,8 +276,13 @@ class DashboardLaunchAgentTests(unittest.TestCase):
             dashboard["EnvironmentVariables"]["ACTANARA_DASHBOARD_PYTHON"],
             str(stable_python),
         )
-        self.assertIn(f"cd {stable_source}", dashboard["ProgramArguments"][2])
-        self.assertNotIn(str(release), dashboard["ProgramArguments"][2])
+        self.assertEqual(dashboard["ProgramArguments"][0], str(stable_python))
+        self.assertEqual(
+            dashboard["ProgramArguments"][1],
+            str(stable_source / "advanced" / "dashboard" / "run_managed_dashboard.py"),
+        )
+        self.assertEqual(dashboard["ProgramArguments"][3], str(stable_source))
+        self.assertNotIn(str(release), " ".join(dashboard["ProgramArguments"]))
         self.assertEqual(
             watchdog["ProgramArguments"][:2],
             [

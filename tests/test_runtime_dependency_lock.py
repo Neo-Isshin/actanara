@@ -652,6 +652,29 @@ class RuntimeDependencyLockTests(unittest.TestCase):
                     package="alpha",
                 )
 
+    def test_generator_accepts_only_full_version_markers_decided_by_major_minor(self):
+        environment = lock_generator._marker_environment("3.13", "arm64", "macos")
+        accepted = lock_generator._parse_report_requirement(
+            "beta>=1; python_full_version >= '3.8' and extra == 'docs'",
+            package="alpha",
+            marker_environment=environment,
+            active_extras=set(),
+        )
+        self.assertFalse(
+            lock_generator._requirement_applies(accepted, environment, set())
+        )
+
+        with self.assertRaisesRegex(
+            lock_generator.LockGenerationError,
+            "absent from the lock identity",
+        ):
+            lock_generator._parse_report_requirement(
+                "beta>=1; python_full_version >= '3.13.5'",
+                package="alpha",
+                marker_environment=environment,
+                active_extras=set(),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

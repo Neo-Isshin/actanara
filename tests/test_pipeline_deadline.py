@@ -18,7 +18,11 @@ os.environ["ACTANARA_SECRET_BACKEND"] = "memory"
 
 from data_foundation.diary_paths import diary_narrative_report_path
 from data_foundation.paths import initialize_home
-from data_foundation.pipeline import PipelineStep, run_daily_pipeline
+from data_foundation.pipeline import (
+    PipelineStep,
+    _stage_artifact_set_is_complete,
+    run_daily_pipeline,
+)
 from data_foundation.pipeline_execution import PipelineExecutionContext
 from data_foundation.pipeline_runs import (
     append_pipeline_step,
@@ -66,6 +70,32 @@ class PipelineDeadlineTests(unittest.TestCase):
         path = root / name
         path.write_text("", encoding="utf-8")
         return path
+
+    def test_technical_retry_requires_observation_only_when_environment_recon_is_enabled(self):
+        technical = {"reportType": "technical"}
+        observation = {"reportType": "environment-observation"}
+
+        self.assertFalse(
+            _stage_artifact_set_is_complete(
+                "technical", [technical], language_profile="zh"
+            )
+        )
+        self.assertTrue(
+            _stage_artifact_set_is_complete(
+                "technical", [technical, observation], language_profile="zh"
+            )
+        )
+        self.assertTrue(
+            _stage_artifact_set_is_complete(
+                "technical", [technical], language_profile="zh",
+                environment_reconciliation_enabled=False,
+            )
+        )
+        self.assertTrue(
+            _stage_artifact_set_is_complete(
+                "technical", [technical], language_profile="en"
+            )
+        )
 
     def test_pre_materializer_receives_context_and_completed_stage_is_recorded_before_timeout(self):
         with tempfile.TemporaryDirectory() as tmp:

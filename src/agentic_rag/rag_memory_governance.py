@@ -11,6 +11,13 @@ from typing import Any
 
 
 SOURCE_SET_POLICIES: dict[str, dict[str, Any]] = {
+    "curated-core": {
+        "authorityRank": 96,
+        "lifecycle": "curated-current",
+        "retention": "authority-backed-projection",
+        "retrievalWeight": 1.18,
+        "canonicalEligible": True,
+    },
     "filtered-dialogue-daily": {
         "authorityRank": 78,
         "lifecycle": "episodic",
@@ -44,6 +51,13 @@ SOURCE_SET_POLICIES: dict[str, dict[str, Any]] = {
         "lifecycle": "discarded-observation",
         "retention": "bounded-retrieval",
         "retrievalWeight": 0.78,
+        "canonicalEligible": False,
+    },
+    "environment-state": {
+        "authorityRank": 84,
+        "lifecycle": "current-environment-state",
+        "retention": "materialized-local-state",
+        "retrievalWeight": 1.03,
         "canonicalEligible": False,
     },
     "foundation-usage-rollups": {

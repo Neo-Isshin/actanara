@@ -61,6 +61,7 @@ DEFAULT_RAG_SERVER_HOST = "127.0.0.1"
 DEFAULT_RAG_SERVER_PORT = 3037
 DEFAULT_RAG_SERVER_HEALTH_PATH = "/health"
 DEFAULT_INDEXING_SOURCE_SETS = (
+    "curated-core",
     "filtered-dialogue-daily",
     "lessons",
     "foundation-usage-rollups",

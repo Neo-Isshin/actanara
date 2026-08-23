@@ -32,7 +32,7 @@ from data_foundation.time import business_today
 from diary_generator import skill_pass_minimal_support as support
 
 
-PROMPT_VERSION = "minimal-v21"
+PROMPT_VERSION = "minimal-v22"
 REVIEW_MARKER = "<!-- actanara-harness-review -->"
 COMPLETION_MARKER = "<!-- actanara-completion-audit -->"
 PORTFOLIO_MARKER = "<!-- actanara-portfolio-keep -->"
@@ -101,7 +101,8 @@ ADJUDICATION_PROMPT = """<candidate_dossiers>
 3. **完成态测试**：从证据中剥离“将要、准备、建议、下一步、正在、计划、应当”等计划性或进行中子句。剩余内容必须仍能指出已经完成的动作，以及该动作之后已经观察到的结果。仅仅定位根因、提出修法、开始实施或声明稍后验证，都不是已解决。诊断类只有在诊断步骤实际执行、对照结果已经出现并足以支持结论时，才可能成为 Skill。
 4. **资产判断**：用下面四个维度评分并决定 Skill、Lesson、Reference 或 Discard。
 5. **全局比较**：比较全部候选。相同 Trigger、机制和完成标准的重复项只保留最完整的一项，其余 Discard；只有 Trigger、决定性机制或 Verification 可以独立成立时才分开。不得把多个机制拼成一个宽泛 Skill。
-6. **完整性复核**：输出前逐个核对上面的 Candidate-ID，每个必须恰好出现一次；低价值或重复项也必须输出 Discard，不能省略。
+6. **组合准入**：仅对决定为 `skill` 的项目判断 `Portfolio: keep|omit`。`keep` 表示它值得作为一项独立常驻程序被未来 Agent 单独调用；若普通推理、相邻候选或更完整程序已经足以替代，写 `omit`。真实、有价值、可复用不等于必须常驻；未准入项仍作为可检索经验保留。Lesson、Reference 和 Discard 必须写 `omit`。
+7. **完整性复核**：输出前逐个核对上面的 Candidate-ID，每个必须恰好出现一次；低价值或重复项也必须输出 Discard，不能省略。
 
 分别判断四个维度，每项 0–5：
 
@@ -133,6 +134,8 @@ ADJUDICATION_PROMPT = """<candidate_dossiers>
 
 `Evidence-Records` 是支持本次裁决的最小记录集合，必须非空。`Action-Records` 只引用明确已经执行的动作或诊断；`Verification-Records` 只引用已经观察到的结果。没有就写 `none`。所有编号只能来自当前 dossier 的 Allowed-Records。
 
+`Portfolio-Reason` 用一句话说明为何该程序必须独立常驻，或为何普通推理、相邻候选/更完整程序足以替代。不要追求入库数量；允许所有 Skill 都 `omit`。
+
 严格格式：
 
 <!-- actanara-harness-review -->
@@ -142,6 +145,8 @@ Evidence-Records: 000001, 000004, 000009
 Action-Records: 000004
 Verification-Records: 000009
 Scores: Evidence 5/5 · Value 5/5 · Reuse 4/5 · Program 5/5
+Portfolio: keep
+Portfolio-Reason: 该程序有独立触发条件和完成标准，不能由相邻候选或普通排障推理替代。
 Reason: 一句指出哪项动作已经完成、哪个结果已经观察，并说明为什么它属于该资产类型。
 """
 
@@ -203,7 +208,7 @@ Why-Standalone: 一句说明它为何必须独立调用、且不被哪类相邻�
 """
 
 
-CRYSTALLIZATION_SYSTEM = """你是程序性记忆写作者。完成态与批内资产组合已经独立核验；你只把保留项与现有 Skill 库比较，再提出新建、增补、已覆盖、冲突或拒绝。现有库只是只读参考，不是工作证据。不得新增候选、改变原始事实、补写未执行步骤，或直接修改任何现有 Skill。"""
+CRYSTALLIZATION_SYSTEM = """你是程序性记忆写作者。完成态已经独立核验，批内组合准入已经在裁决阶段完成；你只把保留项与现有 Skill 库比较，再提出新建、增补、已覆盖、冲突或拒绝。现有库只是只读参考，不是工作证据。不得新增候选、改变原始事实、补写未执行步骤，或直接修改任何现有 Skill。"""
 
 
 HUMAN_OVERRIDE_CRYSTALLIZATION_SYSTEM = """你是程序性记忆写作者。用户可能明确要求把上游 Lesson 送入结晶，但人工覆盖不代表完成态、独立资产价值或批内组合已经通过核验。你必须仅依据所列原始记录重新确认它能形成一条已经执行、由后续结果验证的单一程序；不能确认时选择 reject。现有 Skill 库只是只读参考，不是工作证据。不得新增候选、改变原始事实、补写未执行步骤，或直接修改任何现有 Skill。"""
@@ -304,6 +309,12 @@ _SCORES_RE = re.compile(
     r"Value[ \t]+(?P<value>[0-5])/5[ \t]*·[ \t]*"
     r"Reuse[ \t]+(?P<reuse>[0-5])/5[ \t]*·[ \t]*"
     r"Program[ \t]+(?P<program>[0-5])/5[ \t]*$"
+)
+_PORTFOLIO_DECISION_RE = re.compile(
+    r"(?mi)^Portfolio[ \t]*:[ \t]*(?P<value>keep|omit)[ \t]*$"
+)
+_PORTFOLIO_REASON_RE = re.compile(
+    r"(?mi)^Portfolio-Reason[ \t]*:[ \t]*(?P<value>[^\n]+?)[ \t]*$"
 )
 _REVIEW_ID_RE = re.compile(
     r"(?mi)^Review-ID[ \t]*:[ \t]*(?P<value>review-\d{3})[ \t]*$"
@@ -439,11 +450,13 @@ class HarnessDecision:
     action_records: tuple[int, ...]
     verification_records: tuple[int, ...]
     scores: HarnessScores
+    portfolio_decision: str
+    portfolio_reason: str
     reason: str
 
     @property
-    def crystallizable(self) -> bool:
-        """Apply only the model's declared Skill score contract."""
+    def completion_auditable(self) -> bool:
+        """Apply the factual and score gates before independent completion audit."""
         return (
             self.decision == "skill"
             and bool(self.action_records)
@@ -456,6 +469,11 @@ class HarnessDecision:
             )
             >= 4
         )
+
+    @property
+    def crystallizable(self) -> bool:
+        """Require both the Skill contract and model-authored portfolio admission."""
+        return self.completion_auditable and self.portfolio_decision == "keep"
 
     def markdown(self) -> str:
         return "\n".join(
@@ -479,6 +497,8 @@ class HarnessDecision:
                     or "none"
                 ),
                 self.scores.markdown(),
+                f"Portfolio: {self.portfolio_decision}",
+                f"Portfolio-Reason: {self.portfolio_reason}",
                 f"Reason: {self.reason}",
             ]
         )
@@ -775,6 +795,8 @@ def _parse_decision_block(block: str, *, stream: str) -> HarnessDecision | None:
     action_rows = list(_ACTION_RECORDS_RE.finditer(raw))
     verification_rows = list(_VERIFICATION_RECORDS_RE.finditer(raw))
     score_rows = list(_SCORES_RE.finditer(raw))
+    portfolio_rows = list(_PORTFOLIO_DECISION_RE.finditer(raw))
+    portfolio_reason_rows = list(_PORTFOLIO_REASON_RE.finditer(raw))
     reason_rows = list(_REASON_RE.finditer(raw))
     if len(title_rows) > 1 or any(
         len(rows) != 1
@@ -785,6 +807,8 @@ def _parse_decision_block(block: str, *, stream: str) -> HarnessDecision | None:
             action_rows,
             verification_rows,
             score_rows,
+            portfolio_rows,
+            portfolio_reason_rows,
             reason_rows,
         )
     ):
@@ -807,10 +831,13 @@ def _parse_decision_block(block: str, *, stream: str) -> HarnessDecision | None:
     ):
         return None
     decision = decision_rows[0].group("value").casefold()
+    portfolio_decision = portfolio_rows[0].group("value").casefold()
     # This is a factual authority boundary, not a local value judgment: a
     # Skill body cannot be grounded without at least one performed action and
     # one observed result.  Other decisions remain fully model-authored.
     if decision == "skill" and (not action_records or not verification_records):
+        return None
+    if decision != "skill" and portfolio_decision != "omit":
         return None
     score = score_rows[0]
     records = support._stream_records(stream)
@@ -830,6 +857,8 @@ def _parse_decision_block(block: str, *, stream: str) -> HarnessDecision | None:
             reuse=int(score.group("reuse")),
             program=int(score.group("program")),
         ),
+        portfolio_decision=portfolio_decision,
+        portfolio_reason=portfolio_reason_rows[0].group("value").strip(),
         reason=reason_rows[0].group("value").strip(),
     )
 
@@ -1470,12 +1499,12 @@ def build_crystallization_prompt(
     if accepted_forced:
         authority_boundary = """逐项按 `Authority` 判断证据权威：
 
-- `model-approved`：该项已经通过独立完成态和批内资产组合核验；若写作时仍发现记录无法支持单一程序，选择 `reject`。
+- `model-approved`：该项已经通过独立完成态核验和裁决阶段的批内组合准入；若写作时仍发现记录无法支持单一程序，选择 `reject`。
 - `user-forced-lesson`：用户只覆盖了“允许尝试结晶”这一道入口；它没有因此获得完成态、独立资产价值、批内组合或注册权威。必须从 Action-Records 向后核对 Verification-Records，确认动作已经执行、结果发生在动作之后，并且二者闭合为一条程序；任何一项不能确认都选择 `reject`。
 
 不得把用户选择本身当作成功证据，不得为了服从用户而补齐缺失步骤或结果。"""
     else:
-        authority_boundary = """进入本阶段的 dossier 已通过独立完成态和批内资产组合核验。若写作时仍发现记录无法支持单一程序，可以选择 `reject` 且不写正文；不要补齐缺失步骤。"""
+        authority_boundary = """进入本阶段的 dossier 已通过独立完成态核验和裁决阶段的批内组合准入。若写作时仍发现记录无法支持单一程序，可以选择 `reject` 且不写正文；不要补齐缺失步骤。"""
     dossiers = "\n\n".join(
         f'<approved_skill_dossier id="{item.review_id}">\n'
         f"Review-ID: {item.review_id}\n"
@@ -1800,7 +1829,7 @@ def build_asset_ledger(
         disposition = "adjudicated"
 
         if decision.decision == "skill":
-            if not decision.crystallizable:
+            if not decision.completion_auditable:
                 asset_class = "lesson"
                 disposition = "skill-score-contract-withheld"
             elif audit is None:
@@ -1809,7 +1838,7 @@ def build_asset_ledger(
             elif audit.completion != "verified":
                 asset_class = "lesson"
                 disposition = f"completion-{audit.completion}"
-            elif keep is None:
+            elif not decision.crystallizable or keep is None:
                 asset_class = "lesson"
                 disposition = "portfolio-omitted"
             elif proposal is None:
@@ -1840,7 +1869,7 @@ def build_asset_ledger(
                 scores=decision.scores,
                 completion=audit.completion if audit is not None else None,
                 completion_reason=audit.reason if audit is not None else None,
-                portfolio_reason=keep.reason if keep is not None else None,
+                portfolio_reason=decision.portfolio_reason,
                 library_action=proposal.action if proposal is not None else None,
                 existing_asset_id=(
                     proposal.existing_asset_id if proposal is not None else None
@@ -1880,7 +1909,7 @@ def render_report(result: HarnessResult) -> str:
         f"- Input tokens: {result.input_tokens}",
         f"- Adjudication evidence tokens: {result.adjudication_tokens}",
         f"- Completion audit evidence tokens: {result.completion_tokens}",
-        f"- Portfolio tokens: {result.portfolio_tokens}",
+        f"- Portfolio tokens: {result.portfolio_tokens} (integrated into adjudication)",
         f"- Crystallization evidence tokens: {result.crystallization_tokens}",
         f"- Logical LLM calls: {result.llm_calls}",
         f"- Existing Skill assets scanned: {result.library_assets_scanned}",
@@ -1893,7 +1922,12 @@ def render_report(result: HarnessResult) -> str:
         "- Adjudication stage recovery attempted: "
         + ("yes" if result.adjudication_repair_raw_path is not None else "no"),
         "- Score-inconsistent Skill decisions withheld: "
-        + str(sum(item.decision == "skill" and not item.crystallizable for item in result.decisions)),
+        + str(
+            sum(
+                item.decision == "skill" and not item.completion_auditable
+                for item in result.decisions
+            )
+        ),
         "- Completion audits: "
         + ", ".join(
             f"{value}={sum(item.completion == value for item in result.completion_audits)}"
@@ -2001,7 +2035,10 @@ def run_skill_pass(
     portfolio_raw_path = None
     crystallization_raw_path = crystallization_repair_raw_path = None
     adjudication_stream = completion_stream = crystallization_stream = ""
-    portfolio_prompt_text = ""
+    # ``portfolio_raw_override`` is retained as a no-op compatibility argument
+    # for replay callers from v21.  Portfolio admission is authored in the
+    # adjudication card in v22, so the production path has no portfolio call.
+    _ = portfolio_raw_override
 
     if stream:
         raw_discovery = discovery_raw_override
@@ -2128,8 +2165,11 @@ def run_skill_pass(
                 decisions.sort(key=lambda item: item.candidate_id)
                 rejected_decisions = len(discoveries) - len(decisions)
 
-        approved = [item for item in decisions if item.crystallizable]
-        if approved:
+        completion_candidates = [
+            item for item in decisions if item.completion_auditable
+        ]
+        approved: list[HarnessDecision] = []
+        if completion_candidates:
             source_candidates = [
                 support.DiscoveryCandidate(
                     title=item.title,
@@ -2142,11 +2182,11 @@ def run_skill_pass(
                     record_ids=item.evidence_records,
                     summary=item.reason,
                 )
-                for item in approved
+                for item in completion_candidates
             ]
             completion_stream = support.select_cited_records(stream, source_candidates)
             completion_prompt = build_completion_prompt(
-                approved,
+                completion_candidates,
                 evidence_stream=completion_stream,
             )
             if support.token_count(completion_prompt) > gate:
@@ -2168,11 +2208,11 @@ def run_skill_pass(
             support._persist_raw(completion_raw_path, safe_completion)
             completion_audits, rejected_completion_audits = parse_completion_output(
                 safe_completion,
-                decisions=approved,
+                decisions=completion_candidates,
             )
             if (
                 not completion_audits
-                and rejected_completion_audits == len(approved)
+                and rejected_completion_audits == len(completion_candidates)
                 and (
                     completion_raw_override is None
                     or completion_repair_raw_override is not None
@@ -2195,7 +2235,7 @@ def run_skill_pass(
                 support._persist_raw(completion_repair_raw_path, safe_repair)
                 completion_audits, rejected_completion_audits = parse_completion_output(
                     safe_repair,
-                    decisions=approved,
+                    decisions=completion_candidates,
                 )
 
             verified_review_ids = {
@@ -2204,33 +2244,16 @@ def run_skill_pass(
                 if item.completion == "verified"
             }
             approved = [
-                item for item in approved if item.review_id in verified_review_ids
+                item
+                for item in completion_candidates
+                if item.review_id in verified_review_ids and item.crystallizable
             ]
-
-        if approved:
-            portfolio_prompt_text = build_portfolio_prompt(approved)
-            if support.token_count(portfolio_prompt_text) > gate:
-                raise support.SkillPassError("candidates exceed portfolio gate")
-            raw_portfolio = portfolio_raw_override
-            if raw_portfolio is None:
-                raw_portfolio = llm_call(
-                    portfolio_prompt_text,
-                    system=PORTFOLIO_SYSTEM,
-                    stage="portfolio",
-                    source=portfolio_prompt_text,
-                    paths=selected,
+            portfolio_keeps = [
+                PortfolioKeep(
+                    review_id=item.review_id,
+                    reason=item.portfolio_reason,
                 )
-                calls += 1
-            safe_portfolio = support.redact_discovery_output(raw_portfolio)
-            portfolio_raw_path = raw_output_path(selected, business_date, "portfolio")
-            support._persist_raw(portfolio_raw_path, safe_portfolio)
-            portfolio_keeps, rejected_portfolio_keeps = parse_portfolio_output(
-                safe_portfolio,
-                decisions=approved,
-            )
-            kept_review_ids = {item.review_id for item in portfolio_keeps}
-            approved = [
-                item for item in approved if item.review_id in kept_review_ids
+                for item in approved
             ]
 
         if approved:
@@ -2384,9 +2407,7 @@ def run_skill_pass(
         input_tokens=support.token_count(stream) if stream else 0,
         adjudication_tokens=(support.token_count(adjudication_stream) if adjudication_stream else 0),
         completion_tokens=(support.token_count(completion_stream) if completion_stream else 0),
-        portfolio_tokens=(
-            support.token_count(portfolio_prompt_text) if portfolio_prompt_text else 0
-        ),
+        portfolio_tokens=0,
         crystallization_tokens=(
             support.token_count(crystallization_stream) if crystallization_stream else 0
         ),

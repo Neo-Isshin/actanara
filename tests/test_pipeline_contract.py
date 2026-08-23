@@ -285,6 +285,7 @@ class PipelineCommandContractTests(unittest.TestCase):
                 steps=[PipelineStep("technical", script)],
                 runner=runner,
                 nova_task_materializer=lambda selected, runtime_paths: True,
+                environment_materializer=lambda selected, runtime_paths: True,
             )
 
             self.assertTrue(result.success)
@@ -1080,6 +1081,7 @@ class PipelineCommandContractTests(unittest.TestCase):
                 steps=[PipelineStep("technical", technical), PipelineStep("learning", learning)],
                 runner=runner,
                 nova_task_materializer=nova_task,
+                environment_materializer=lambda *_args, **_kwargs: True,
             )
 
             self.assertTrue(result.success)
@@ -1106,6 +1108,7 @@ class PipelineCommandContractTests(unittest.TestCase):
                 steps=[PipelineStep("technical", technical), PipelineStep("learning", learning)],
                 runner=runner,
                 nova_task_materializer=lambda selected, runtime_paths: self.fail("Nova-Task materializer should be gated"),
+                environment_materializer=lambda *_args, **_kwargs: True,
             )
 
             self.assertTrue(result.success)
@@ -1131,6 +1134,7 @@ class PipelineCommandContractTests(unittest.TestCase):
                 steps=[PipelineStep("technical", technical), PipelineStep("learning", learning)],
                 runner=runner,
                 nova_task_materializer=lambda selected, runtime_paths: False,
+                environment_materializer=lambda *_args, **_kwargs: True,
             )
 
             self.assertTrue(result.success)

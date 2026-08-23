@@ -32,7 +32,7 @@ SKILL_ID = "actanara-rag"
 # Increment this whenever a released canonical template changes. A verified
 # lower version is eligible for automatic backup + upgrade; a same-version
 # mismatch is conservatively treated as customization.
-SKILL_TEMPLATE_VERSION = 2
+SKILL_TEMPLATE_VERSION = 3
 _MANAGED_DIGEST_PLACEHOLDER = "__ACTANARA_TEMPLATE_SHA256__"
 _MANAGED_MARKER_RE = re.compile(
     r"<!-- actanara-managed-skill id=actanara-rag template-version=(?P<version>\d+) "
@@ -385,14 +385,14 @@ def _apply_operation(operation: dict[str, Any], *, paths: RuntimePaths) -> dict[
 def _skill_content(tool: str) -> str:
     content = f"""---
 name: actanara-rag
-description: Use Actanara's read-only cross-agent memory search only when current/user/local evidence and the host Agent Runtime's own memory are insufficient, or when the user explicitly requests Actanara memory.
+description: Use Actanara's read-only curated cross-agent knowledge collection when current/user evidence is insufficient; broader nova-RAG recall is an automatic fallback.
 ---
 
 <!-- actanara-managed-skill id=actanara-rag template-version={SKILL_TEMPLATE_VERSION} template-sha256={_MANAGED_DIGEST_PLACEHOLDER} -->
 
 # Actanara Memory Search
 
-This is one stable auxiliary memory skill with runtime-selected backends. It works both with nova-RAG and with Actanara's local lexical fallback. Use evidence sources in this order:
+This is one stable auxiliary memory skill. Generic Actanara search first checks the small `curated-core` collection (registered procedural Skills, current infrastructure, and current Nova-Task state). It invokes broader nova-RAG recall only when the curated collection is insufficient. Use evidence sources in this order:
 
 1. The current conversation, user-provided material, and local authoritative files.
 2. The host Agent Runtime's built-in or connected memory/history retrieval, when available.
@@ -425,7 +425,7 @@ Never call mutation endpoints. Do not write memories, rebuild indexes, change se
 
 The direct server is loopback-only. `/encode` is an internal token-authorized endpoint and is never available to this external skill, even from a local process. Do not read, request, log, or forward its Runtime-private token.
 
-Every successful generic search reports a `backend` object. Inspect it before deciding how to continue:
+Every successful generic search reports a `backend` object. `backend.collection=curated-core` means the compact authority-backed collection answered directly; `backend.fallbackFrom=curated-core-insufficient` means broader nova-RAG was used. Inspect it before deciding how to continue:
 
 - `backend.kind=agentic-rag` or `backend.semantic=true`: use the bounded semantic/RAG protocol below.
 - `backend.kind=local-fts`, `backend.kind=bounded-scan`, or `backend.semantic=false`: use the lexical fallback protocol below.
@@ -438,7 +438,7 @@ Recommended workflow:
 1. Inspect the current conversation, user-provided material, and local authoritative files first.
 2. Use the host Agent Runtime's own memory/history retrieval next, when it is available.
 3. Continue to Actanara only if those sources are insufficient, or if the user explicitly requested Actanara memory.
-4. If shell access is available, run `actanara search "<query>" --caller {tool} --top-k 8 --json` first. Use `actanara rag search-memory` only for compatibility with older agent instructions.
+4. If shell access is available, run `actanara search "<query>" --caller {tool} --top-k 8 --json` first. It performs curated-first recall automatically. Use `actanara rag search-memory` only for compatibility with older agent instructions or an explicitly requested RAG-only search.
 5. Inspect `backend.kind`, `backend.semantic`, `backend.degraded`, and `backend.fallbackFrom` before selecting a follow-up strategy.
 6. If CLI access is unavailable, use the generic `/api/memory/external/*` contract when present; use `/api/rag/external/*` only as an older-release compatibility fallback.
 7. Answer from the evidence, cite citation IDs or source pointers when possible, and clearly say when memory search is unavailable or no evidence matched.

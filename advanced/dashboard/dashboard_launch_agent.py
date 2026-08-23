@@ -8,7 +8,6 @@ import json
 import os
 import plistlib
 import shutil
-import shlex
 import stat
 import subprocess
 import sys
@@ -22,6 +21,12 @@ sys.dont_write_bytecode = True
 MODULE_PROJECT_ROOT = Path(__file__).absolute().parents[2]
 sys.path.insert(0, str(MODULE_PROJECT_ROOT))
 sys.path.insert(0, str(MODULE_PROJECT_ROOT / "src"))
+
+from data_foundation.scheduled_output import (
+    SCHEDULED_STDERR_PATH_ENV,
+    SCHEDULED_STDOUT_PATH_ENV,
+    rotate_private_output_file,
+)
 
 DEFAULT_ACTANARA_HOME = Path.home() / ".actanara"
 DEFAULT_PROJECT_ROOT = DEFAULT_ACTANARA_HOME / "app" / "source"
@@ -178,33 +183,32 @@ def build_service_plist(
             }
         )
     logs = logs_dir or Path.home() / "Library" / "Logs" / "Actanara"
-    command = " ".join(
-        [
-            "cd",
-            shlex.quote(str(project_root)),
-            "&&",
-            "exec",
-            shlex.quote(str(python)),
-            "-m",
-            "uvicorn",
-            "app.main:app",
-            "--app-dir",
-            shlex.quote(str(project_root / "src" / "dashboard")),
-            "--host",
-            shlex.quote(host),
-            "--port",
-            str(port),
-        ]
-    )
+    stdout_path = logs / "dashboard-server.out.log"
+    stderr_path = logs / "dashboard-server.err.log"
+    env["ACTANARA_SCHEDULED_STDOUT_PATH"] = str(stdout_path)
+    env["ACTANARA_SCHEDULED_STDERR_PATH"] = str(stderr_path)
     return {
         "Label": label,
-        "ProgramArguments": ["/bin/zsh", "-lc", command],
+        "ProgramArguments": [
+            str(python),
+            str(project_root / "advanced" / "dashboard" / "run_managed_dashboard.py"),
+            "--project-root",
+            str(project_root),
+            "--app-dir",
+            str(project_root / "src" / "dashboard"),
+            "--host",
+            host,
+            "--port",
+            str(port),
+            "--log-path",
+            str(logs / "dashboard-server.log"),
+        ],
         "EnvironmentVariables": env,
         "RunAtLoad": True,
         "KeepAlive": True,
         "ThrottleInterval": 10,
-        "StandardOutPath": str(logs / "dashboard-server.out.log"),
-        "StandardErrorPath": str(logs / "dashboard-server.err.log"),
+        "StandardOutPath": str(stdout_path),
+        "StandardErrorPath": str(stderr_path),
     }
 
 
@@ -220,6 +224,8 @@ def build_watchdog_plist(
     logs_dir: Path | None = None,
 ) -> dict:
     logs = logs_dir or Path.home() / "Library" / "Logs" / "Actanara"
+    stdout_path = logs / "dashboard-watchdog.out.log"
+    stderr_path = logs / "dashboard-watchdog.err.log"
     return {
         "Label": label,
         "ProgramArguments": [
@@ -235,12 +241,14 @@ def build_watchdog_plist(
         "EnvironmentVariables": {
             "ACTANARA_HOME": str(actanara_home),
             "PYTHONDONTWRITEBYTECODE": "1",
+            SCHEDULED_STDOUT_PATH_ENV: str(stdout_path),
+            SCHEDULED_STDERR_PATH_ENV: str(stderr_path),
         },
         "RunAtLoad": True,
         "StartInterval": interval,
         "ThrottleInterval": 10,
-        "StandardOutPath": str(logs / "dashboard-watchdog.out.log"),
-        "StandardErrorPath": str(logs / "dashboard-watchdog.err.log"),
+        "StandardOutPath": str(stdout_path),
+        "StandardErrorPath": str(stderr_path),
     }
 
 
@@ -256,6 +264,15 @@ def check_health(url: str, timeout: float = 5.0) -> bool:
             return 200 <= int(response.status) < 300
     except Exception:
         return False
+
+
+def _rotate_managed_check_output() -> None:
+    for key in (SCHEDULED_STDOUT_PATH_ENV, SCHEDULED_STDERR_PATH_ENV):
+        raw_path = str(os.getenv(key) or "").strip()
+        if not raw_path:
+            continue
+        path = Path(raw_path)
+        rotate_private_output_file(path, allowed_parent=path.parent)
 
 
 def launchctl(*args: str) -> subprocess.CompletedProcess[str]:
@@ -377,8 +394,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "uninstall":
         return uninstall_agents(args)
     if args.command == "check":
+        _rotate_managed_check_output()
         if check_health(args.url):
-            print(f"healthy: {args.url}")
             return 0
         print(f"unhealthy: {args.url}", file=sys.stderr)
         if args.restart:

@@ -98,6 +98,7 @@ class PipelineRunsTests(unittest.TestCase):
                     runner=runner,
                     pre_materializer=lambda *_args, **_kwargs: True,
                     nova_task_materializer=lambda *_args, **_kwargs: True,
+                    environment_materializer=lambda *_args, **_kwargs: True,
                     post_materializer=lambda *_args, **_kwargs: True,
                 )
 
@@ -111,6 +112,7 @@ class PipelineRunsTests(unittest.TestCase):
             "[OK] Generate diary · Technical notes",
             "[OK] Generate diary · Lessons learned",
             "[OK] Refresh tasks",
+                "[OK] Refresh assets",
             "[OK] Update search memory",
             "[OK] Daily diary complete",
         ):

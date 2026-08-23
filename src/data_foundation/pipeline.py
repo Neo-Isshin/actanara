@@ -31,6 +31,7 @@ from .diary_paths import diary_report_paths, diary_technical_report_path
 from .db import migrate
 from .ingest import run_shadow_ingestion
 from .jobs import begin_ingestion_run, finish_ingestion_run
+from .environment_reconciliation import run_environment_reconciliation
 from .nova_task import export_task_board_markdown, reconcile_workspace_project_anchors
 from .nova_task_work_graph_reconciliation import run_work_graph_reconciliation
 from .paths import RuntimePaths, initialize_home, load_paths
@@ -46,6 +47,7 @@ from .pipeline_runs import (
 )
 from .refresh import run_pipeline_blank_day_materialization, run_pipeline_daily_materialization
 from .settings import (
+    is_environment_reconciliation_enabled,
     is_nova_task_enabled,
     llm_provider_readiness_error,
     resolve_memory_search_settings,
@@ -217,6 +219,7 @@ PRODUCTION_STEPS = ZH_PRODUCTION_STEPS
 Runner = Callable[..., subprocess.CompletedProcess[str]]
 PreMaterializer = Callable[..., bool]
 NovaTaskMaterializer = Callable[..., bool]
+EnvironmentMaterializer = Callable[..., bool]
 PostMaterializer = Callable[..., bool]
 
 
@@ -378,6 +381,59 @@ def _skill_artifact_paths(paths: RuntimePaths, date_str: str) -> tuple[Path, ...
     return tuple(result)
 
 
+def _environment_artifact_paths(paths: RuntimePaths, date_str: str) -> tuple[Path, ...]:
+    root = paths.home / "artifacts" / "environment"
+    target = root / f"environment-assets-v1-{date_str}.json"
+    try:
+        root_metadata = root.lstat()
+        metadata = target.lstat()
+    except (FileNotFoundError, OSError):
+        return ()
+    if (
+        root.is_symlink()
+        or not stat.S_ISDIR(root_metadata.st_mode)
+        or root_metadata.st_uid != os.geteuid()
+        or target.is_symlink()
+        or not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or metadata.st_nlink != 1
+        or metadata.st_mode & 0o077
+    ):
+        return ()
+    return (target,)
+
+
+def _environment_observation_artifact_paths(paths: RuntimePaths, date_str: str) -> tuple[Path, ...]:
+    root = paths.home / "artifacts" / "environment"
+    candidates = (
+        root / f"environment-observations-v2-{date_str}.json",
+        root / f"environment-observations-v1-{date_str}.json",
+    )
+    try:
+        root_metadata = root.lstat()
+    except (FileNotFoundError, OSError):
+        return ()
+    target = next((item for item in candidates if item.exists() or item.is_symlink()), None)
+    if target is None:
+        return ()
+    try:
+        metadata = target.lstat()
+    except OSError:
+        return ()
+    if (
+        root.is_symlink()
+        or not stat.S_ISDIR(root_metadata.st_mode)
+        or root_metadata.st_uid != os.geteuid()
+        or target.is_symlink()
+        or not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or metadata.st_nlink != 1
+        or metadata.st_mode & 0o077
+    ):
+        return ()
+    return (target,)
+
+
 def _pipeline_artifact_paths(paths: RuntimePaths, date_str: str, *, language_profile: str = "zh") -> dict:
     narrative = diary_report_paths(paths.diary_dir, date_str, "narrative", language_profile=language_profile)
     technical = diary_report_paths(paths.diary_dir, date_str, "technical", language_profile=language_profile)
@@ -390,6 +446,10 @@ def _pipeline_artifact_paths(paths: RuntimePaths, date_str: str, *, language_pro
         result["learning"] = [str(path) for path in learning]
     else:
         result["skill"] = [str(path) for path in _skill_artifact_paths(paths, date_str)]
+        result["environmentObservation"] = [
+            str(path) for path in _environment_observation_artifact_paths(paths, date_str)
+        ]
+        result["environment"] = [str(path) for path in _environment_artifact_paths(paths, date_str)]
     return result
 
 
@@ -467,7 +527,8 @@ _NON_REUSABLE_PIPELINE_STAGES = {
 _REPORT_TYPES_BY_STAGE = {
     "narrative": {"narrative"},
     "blank-narrative": {"narrative"},
-    "technical": {"technical"},
+    "technical": {"technical", "environment-observation"},
+    "environment-reconciliation": {"environment"},
     "learning": {"learning"},
     "skill": {"skill"},
 }
@@ -562,6 +623,44 @@ def _pipeline_artifact_proof_map(
                 "byteSize": int(after.st_size),
                 "reportType": "skill",
             }
+    for path in _environment_artifact_paths(paths, date_str) if language_profile != "en" else ():
+        try:
+            before = path.stat()
+            content = path.read_bytes()
+            after = path.stat()
+        except (FileNotFoundError, OSError):
+            continue
+        if (
+            (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+            != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+            or len(content) != after.st_size
+        ):
+            continue
+        proofs[str(path)] = {
+            "path": str(path),
+            "sha256": hashlib.sha256(content).hexdigest(),
+            "byteSize": int(after.st_size),
+            "reportType": "environment",
+        }
+    for path in _environment_observation_artifact_paths(paths, date_str) if language_profile != "en" else ():
+        try:
+            before = path.stat()
+            content = path.read_bytes()
+            after = path.stat()
+        except (FileNotFoundError, OSError):
+            continue
+        if (
+            (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+            != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+            or len(content) != after.st_size
+        ):
+            continue
+        proofs[str(path)] = {
+            "path": str(path),
+            "sha256": hashlib.sha256(content).hexdigest(),
+            "byteSize": int(after.st_size),
+            "reportType": "environment-observation",
+        }
     return proofs
 
 
@@ -596,6 +695,29 @@ def _proofs_are_current(
     return True
 
 
+def _stage_artifact_set_is_complete(
+    stage_id: str,
+    proofs: object,
+    *,
+    language_profile: str,
+    environment_reconciliation_enabled: bool = True,
+) -> bool:
+    if not isinstance(proofs, list):
+        return False
+    observed = {
+        str(proof.get("reportType") or "")
+        for proof in proofs
+        if isinstance(proof, dict)
+    }
+    if stage_id == "technical":
+        required = {"technical"}
+        if language_profile != "en" and environment_reconciliation_enabled:
+            required.add("environment-observation")
+        return required.issubset(observed)
+    required = _REPORT_TYPES_BY_STAGE.get(stage_id)
+    return True if not required else bool(required & observed)
+
+
 def _retry_committed_stage_ids(
     parent_run: dict | None,
     *,
@@ -603,6 +725,7 @@ def _retry_committed_stage_ids(
     business_date: str,
     language_profile: str,
     nova_task_enabled: bool,
+    environment_reconciliation_enabled: bool,
     step_manifest: list[str],
     step_contract: list[dict[str, Any]],
     pipeline_contract_hash: str | None,
@@ -614,6 +737,7 @@ def _retry_committed_stage_ids(
         metadata.get("stageContractVersion") != 2
         or str(metadata.get("languageProfile") or "") != language_profile
         or metadata.get("novaTaskEnabled") is not nova_task_enabled
+        or metadata.get("environmentReconciliationEnabled") is not environment_reconciliation_enabled
         or metadata.get("stepManifest") != step_manifest
         or metadata.get("stepContract") != step_contract
         or not pipeline_contract_hash
@@ -645,6 +769,12 @@ def _retry_committed_stage_ids(
         if is_committed
         and status in {"completed", "skipped"}
         and _proofs_are_current(proofs, current_proofs)
+        and _stage_artifact_set_is_complete(
+            stage_id,
+            proofs,
+            language_profile=language_profile,
+            environment_reconciliation_enabled=environment_reconciliation_enabled,
+        )
     }
     return "native", committed
 
@@ -992,6 +1122,21 @@ def materialize_nova_task_outputs(date_str: str, paths: RuntimePaths | None = No
         return False
 
 
+def materialize_environment_asset_outputs(date_str: str, paths: RuntimePaths | None = None) -> bool:
+    """Reconcile Technical evidence against infrastructure and artifact authority."""
+
+    selected = paths or load_paths()
+    try:
+        run_environment_reconciliation(
+            selected,
+            business_date=date.fromisoformat(date_str),
+        )
+        return True
+    except Exception:
+        _print_pipeline_status("[!]", "Refresh assets", "Infrastructure and engineering assets could not be reconciled.")
+        return False
+
+
 def prepare_diary_foundation_inputs(date_str: str, paths: RuntimePaths | None = None) -> bool:
     """Materialize and gate selected diary Foundation readers before narrative assembly."""
     target = date.fromisoformat(date_str)
@@ -1156,6 +1301,7 @@ def run_daily_pipeline(
     runner: Runner = subprocess.run,
     pre_materializer: PreMaterializer = prepare_diary_foundation_inputs,
     nova_task_materializer: NovaTaskMaterializer = materialize_nova_task_outputs,
+    environment_materializer: EnvironmentMaterializer = materialize_environment_asset_outputs,
     post_materializer: PostMaterializer = materialize_pipeline_foundation_outputs,
     reuse_foundation_inputs: bool = False,
     retry_of_run_id: int | None = None,
@@ -1177,6 +1323,9 @@ def run_daily_pipeline(
     )
     language_profile = str(pipeline_settings.get("languageProfile") or "zh")
     nova_task_enabled = is_nova_task_enabled(selected)
+    environment_reconciliation_enabled = bool(
+        language_profile != "en" and is_environment_reconciliation_enabled(selected)
+    )
     step_manifest = [_pipeline_step_id(step) for step in active_steps]
     if any(re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", stage_id) is None for stage_id in step_manifest):
         raise ValueError("pipeline stage IDs must use 1-64 lowercase letters, digits, or hyphens")
@@ -1199,6 +1348,7 @@ def run_daily_pipeline(
         business_date=target_date,
         language_profile=language_profile,
         nova_task_enabled=nova_task_enabled,
+        environment_reconciliation_enabled=environment_reconciliation_enabled,
         step_manifest=step_manifest,
         step_contract=step_contract,
         pipeline_contract_hash=pipeline_contract_hash,
@@ -1238,6 +1388,7 @@ def run_daily_pipeline(
                 "stageContractVersion": 2,
                 "languageProfile": language_profile,
                 "novaTaskEnabled": nova_task_enabled,
+                "environmentReconciliationEnabled": environment_reconciliation_enabled,
                 "skillPassEnabled": any(_is_skill_step(step) for step in active_steps),
                 "stepManifest": step_manifest,
                 "stepContract": step_contract,
@@ -1679,6 +1830,65 @@ def run_daily_pipeline(
                     _print_pipeline_status("[OK]", "Refresh tasks")
                 elif not nova_task_ready:
                     _print_pipeline_status("[!]", "Refresh tasks", "Continuing without task updates.")
+
+                execution_context.checkpoint("environment-reconciliation:before")
+                environment_reused = reuse_stage(
+                    "environment-reconciliation",
+                    "Asset Reconciliation",
+                )
+                if environment_reused:
+                    environment_ready = True
+                elif not environment_reconciliation_enabled:
+                    _print_pipeline_status("[-]", "Refresh assets", "Not enabled.")
+                    append_stage(
+                        name="Asset Reconciliation",
+                        stage_id="environment-reconciliation",
+                        status="skipped",
+                        committed=True,
+                        reason="Asset reconciliation is disabled by settings",
+                    )
+                    environment_ready = True
+                else:
+                    environment_artifacts_before = artifact_proof_map()
+                    environment_started_at = datetime.now().astimezone().isoformat()
+                    environment_started_monotonic = monotonic_clock()
+                    with _pipeline_llm_environment(ledger_run_id, "environment-reconciliation"):
+                        environment_ready = _call_materializer(
+                            environment_materializer,
+                            target_date,
+                            selected,
+                            execution_context,
+                        )
+                    environment_completed_at = datetime.now().astimezone().isoformat()
+                    environment_duration = max(
+                        0.0,
+                        float(monotonic_clock()) - float(environment_started_monotonic),
+                    )
+                    environment_artifacts_after = artifact_proof_map()
+                    append_stage(
+                        name="Asset Reconciliation",
+                        stage_id="environment-reconciliation",
+                        status="completed" if environment_ready else "failed",
+                        committed=environment_ready,
+                        artifact_proofs=_stage_artifact_proofs(
+                            "environment-reconciliation",
+                            environment_artifacts_before,
+                            environment_artifacts_after,
+                        ),
+                        started_at=environment_started_at,
+                        completed_at=environment_completed_at,
+                        duration_seconds=environment_duration,
+                    )
+                execution_context.checkpoint("environment-reconciliation:after")
+                if not environment_ready:
+                    return fail_run(
+                        failed_step="Asset Reconciliation",
+                        failure_class="content_parse",
+                        stage_id="environment-reconciliation",
+                        append_outcome=False,
+                    )
+                if environment_reconciliation_enabled and not environment_reused:
+                    _print_pipeline_status("[OK]", "Refresh assets")
         completed_artifacts = artifact_paths()
         current_artifact_proofs = artifact_proof_map()
         invalid_reused_stages = sorted(

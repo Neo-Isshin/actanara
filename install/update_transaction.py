@@ -2105,6 +2105,8 @@ def _plist_service_kind(payload: dict[str, Any], label: str) -> str:
     joined = " ".join(item for item in arguments if isinstance(item, str)).lower() if isinstance(arguments, list) else ""
     if "rag_server_launch_agent.py" in joined or "agentic_rag/embedding_server.py" in joined:
         return "rag"
+    if "run_managed_dashboard.py" in joined:
+        return "dashboard"
     if "dashboard_launch_agent.py" in joined:
         return "watchdog" if " check " in f" {joined} " or label.endswith("watchdog") else "dashboard"
     if "uvicorn" in joined and "app.main" in joined:
@@ -2370,7 +2372,43 @@ def _normalize_dashboard_arguments(
     *,
     roots: dict[str, Path],
     counts: dict[str, int],
+    log_path: str,
 ) -> list[str]:
+    if (
+        isinstance(arguments, list)
+        and len(arguments) == 12
+        and all(isinstance(item, str) for item in arguments)
+        and arguments[2] == "--project-root"
+        and arguments[4] == "--app-dir"
+        and arguments[6] == "--host"
+        and arguments[8] == "--port"
+        and arguments[10] == "--log-path"
+    ):
+        normalized = list(arguments)
+        if not normalized[9].isdigit() or not 1 <= int(normalized[9]) <= 65535:
+            raise TransactionError("managed dashboard service port is invalid")
+        if not normalized[7].strip() or any(character.isspace() for character in normalized[7]):
+            raise TransactionError("managed dashboard service host is invalid")
+        for index, field in (
+            (0, "dashboard Python"),
+            (1, "dashboard runner"),
+            (3, "dashboard project root"),
+            (5, "dashboard app directory"),
+        ):
+            normalized[index] = _rebind_service_path(
+                normalized[index], field=field, roots=roots, counts=counts
+            )
+        expected_runner = roots["sourceStable"] / "advanced" / "dashboard" / "run_managed_dashboard.py"
+        if normalized[0] != str(roots["venvStable"] / "bin" / "python"):
+            raise TransactionError("managed dashboard Python is not the stable venv pointer")
+        if normalized[1] != str(expected_runner):
+            raise TransactionError("managed dashboard runner is not the stable source pointer")
+        if normalized[3] != str(roots["sourceStable"]):
+            raise TransactionError("managed dashboard project root is not the stable source pointer")
+        if normalized[5] != str(roots["sourceStable"] / "src" / "dashboard"):
+            raise TransactionError("managed dashboard app directory is not candidate-bound")
+        normalized[11] = log_path
+        return normalized
     if (
         not isinstance(arguments, list)
         or len(arguments) != 3
@@ -2409,15 +2447,57 @@ def _normalize_dashboard_arguments(
         raise TransactionError("managed dashboard Python is not the stable venv pointer")
     if app_dir != str(roots["sourceStable"] / "src" / "dashboard"):
         raise TransactionError("managed dashboard app directory is not candidate-bound")
-    normalized_tokens = list(tokens)
-    normalized_tokens[1] = project_root
-    normalized_tokens[4] = python
-    normalized_tokens[9] = app_dir
-    command = " ".join(
-        token if token == "&&" else shlex.quote(token)
-        for token in normalized_tokens
+    if not tokens[11].strip() or any(character.isspace() for character in tokens[11]):
+        raise TransactionError("managed dashboard service host is invalid")
+    runner = _rebind_service_path(
+        str(roots["sourceStable"] / "advanced" / "dashboard" / "run_managed_dashboard.py"),
+        field="dashboard runner",
+        roots=roots,
+        counts=counts,
     )
-    return ["/bin/zsh", "-lc", command]
+    return [
+        python,
+        runner,
+        "--project-root",
+        project_root,
+        "--app-dir",
+        app_dir,
+        "--host",
+        tokens[11],
+        "--port",
+        tokens[13],
+        "--log-path",
+        log_path,
+    ]
+
+
+def _normalize_dashboard_output_contract(
+    payload: dict[str, Any],
+    *,
+    roots: dict[str, Path],
+) -> tuple[str, str, str]:
+    stdout_value = payload.get("StandardOutPath")
+    stderr_value = payload.get("StandardErrorPath")
+    if stdout_value is None and stderr_value is None:
+        logs_dir = roots["runtime"] / "state" / "logs"
+    elif stdout_value is None or stderr_value is None:
+        raise TransactionError("managed dashboard output path contract is incomplete")
+    else:
+        stdout = Path(_strict_service_path(stdout_value, field="dashboard stdout"))
+        stderr = Path(_strict_service_path(stderr_value, field="dashboard stderr"))
+        if (
+            stdout.name != "dashboard-server.out.log"
+            or stderr.name != "dashboard-server.err.log"
+            or stdout.parent != stderr.parent
+        ):
+            raise TransactionError("managed dashboard output path contract is invalid")
+        logs_dir = stdout.parent
+    stdout_path = str(logs_dir / "dashboard-server.out.log")
+    stderr_path = str(logs_dir / "dashboard-server.err.log")
+    log_path = str(logs_dir / "dashboard-server.log")
+    payload["StandardOutPath"] = stdout_path
+    payload["StandardErrorPath"] = stderr_path
+    return stdout_path, stderr_path, log_path
 
 
 def _normalize_direct_arguments(
@@ -2502,8 +2582,14 @@ def _normalize_service_plist_payload(
     kind = str(service.get("kind") or "")
     counts = {"source": 0, "venv": 0}
     if kind == "dashboard":
+        dashboard_stdout, dashboard_stderr, dashboard_log = (
+            _normalize_dashboard_output_contract(normalized, roots=roots)
+        )
         normalized["ProgramArguments"] = _normalize_dashboard_arguments(
-            normalized.get("ProgramArguments"), roots=roots, counts=counts
+            normalized.get("ProgramArguments"),
+            roots=roots,
+            counts=counts,
+            log_path=dashboard_log,
         )
     else:
         normalized["ProgramArguments"] = _normalize_direct_arguments(
@@ -2539,6 +2625,15 @@ def _normalize_service_plist_payload(
             raise TransactionError("managed dashboard environment is missing the stable source binding")
         if environment.get("ACTANARA_DASHBOARD_PYTHON") != str(roots["venvStable"] / "bin" / "python"):
             raise TransactionError("managed dashboard environment is missing the stable venv binding")
+        dashboard_arguments = normalized["ProgramArguments"]
+        environment.update(
+            {
+                "ACTANARA_DASHBOARD_HOST": dashboard_arguments[7],
+                "ACTANARA_DASHBOARD_PORT": dashboard_arguments[9],
+                "ACTANARA_SCHEDULED_STDOUT_PATH": dashboard_stdout,
+                "ACTANARA_SCHEDULED_STDERR_PATH": dashboard_stderr,
+            }
+        )
 
     if kind == "watchdog" and "PYTHONPATH" in environment:
         raise TransactionError(f"managed watchdog service has an unexpected PYTHONPATH: {service['label']}")

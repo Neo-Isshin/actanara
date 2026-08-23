@@ -27,6 +27,7 @@ RETIRED_SOURCE_SETS = {"legacy-diary-daily"}
 try:
     from data_foundation.diary_markdown import parse_diary_markdown
     from data_foundation.diary_paths import diary_report_paths, diary_report_type_for_filename, iter_diary_markdown_files
+    from data_foundation.environment_assets import collect_environment_memory_records
     from data_foundation.memory_corpus import CorpusCollector, collect_memory_corpus, lessons_read_paths
     from data_foundation.nova_task import _extract_nova_task_payload
     from data_foundation.skill_asset_memory import collect_skill_asset_memory_records
@@ -36,6 +37,7 @@ except ImportError:  # pragma: no cover - direct script fallback
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from data_foundation.diary_markdown import parse_diary_markdown  # type: ignore
     from data_foundation.diary_paths import diary_report_paths, diary_report_type_for_filename, iter_diary_markdown_files  # type: ignore
+    from data_foundation.environment_assets import collect_environment_memory_records  # type: ignore
     from data_foundation.memory_corpus import CorpusCollector, collect_memory_corpus, lessons_read_paths  # type: ignore
     from data_foundation.nova_task import _extract_nova_task_payload  # type: ignore
     from data_foundation.skill_asset_memory import collect_skill_asset_memory_records  # type: ignore
@@ -293,6 +295,7 @@ def collect_candidate_chunks(
         settings,
         source_sets,
         (
+            CorpusCollector(("curated-core",), _collect_curated_core),
             CorpusCollector(("filtered-dialogue-daily",), _collect_filtered_dialogue_daily),
             CorpusCollector(("lessons",), _collect_lessons),
             CorpusCollector(("lessons",), _collect_skill_assets),
@@ -301,6 +304,7 @@ def collect_candidate_chunks(
             CorpusCollector(("diary-markdown-sections", "diary-markdown"), _collect_diary_markdown_sections),
             CorpusCollector(("diary-markdown-embedded-json",), _collect_diary_markdown_embedded_json),
             CorpusCollector(("technical-report-task-events", "technical-reports"), _collect_technical_report_task_events),
+            CorpusCollector(("technical-report-task-events", "technical-reports"), _collect_environment_assets),
             CorpusCollector(
                 ("nova-task-work-graph-events",),
                 lambda selected: _collect_nova_task_work_graph_events(
@@ -326,6 +330,163 @@ def collect_candidate_chunks(
         ),
         retired_source_sets=RETIRED_SOURCE_SETS,
     )
+
+
+def _collect_curated_core(
+    settings: RagSettings,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Project the small authority-backed corpus used before broad recall."""
+
+    from data_foundation.infrastructure import infrastructure_entity_catalog
+    from data_foundation.engineering_artifacts import active_engineering_artifacts
+    from data_foundation.paths import runtime_paths_for_home
+    from diary_generator.skill_pass_minimal_harness import load_existing_skill_library
+
+    runtime_paths = runtime_paths_for_home(settings.runtime_home)
+    source_set = "curated-core"
+    chunks: list[dict[str, Any]] = []
+    source_counts: dict[tuple[Path, str], int] = {}
+
+    for asset in load_existing_skill_library(runtime_paths):
+        source_path = runtime_paths.home / "assets" / "skills" / asset.name / "SKILL.md"
+        text = "\n".join(
+            (
+                f"Registered Skill: {asset.name}",
+                f"When to use: {asset.description}",
+                asset.body,
+            )
+        )
+        chunks.append(
+            _chunk_payload(
+                source_set=source_set,
+                text=text,
+                layer="curated",
+                date=None,
+                agent="skill-pass",
+                source_path=source_path,
+                line_number=1,
+                stable_id=f"curated-{asset.asset_id}",
+                source_type="registered-procedural-skill",
+                provenance={
+                    "authority": "Actanara canonical registered Skill library",
+                    "assetType": "registered-skill",
+                    "skillName": asset.name,
+                },
+            )
+        )
+        source_counts[(source_path, "registered-procedural-skill")] = 1
+
+    catalog = infrastructure_entity_catalog(runtime_paths)
+    infrastructure_path = runtime_paths.db_path
+    for entity_id, entity in sorted(catalog.items()):
+        text = "\n".join(
+            value
+            for value in (
+                f"Current infrastructure: {entity.get('name') or entity_id}",
+                f"Type: {entity.get('entityType') or 'unknown'}",
+                f"Kind: {entity.get('kind') or 'unknown'}",
+                f"Lifecycle: {entity.get('lifecycleStatus') or entity.get('status') or 'unknown'}",
+                f"Health: {entity.get('healthStatus') or 'unknown'}",
+                f"Last seen: {entity.get('lastSeenDate') or 'unknown'}",
+            )
+            if value
+        )
+        chunks.append(
+            _chunk_payload(
+                source_set=source_set,
+                text=text,
+                layer="curated",
+                date=entity.get("lastSeenDate"),
+                agent="environment-reconciliation",
+                source_path=infrastructure_path,
+                line_number=1,
+                stable_id=f"curated-{entity_id}",
+                source_type="current-infrastructure-catalog",
+                provenance={
+                    "authority": "Foundation active infrastructure entity catalog",
+                    "assetType": "current-infrastructure",
+                    "entityId": entity_id,
+                },
+            )
+        )
+        key = (infrastructure_path, "current-infrastructure-catalog")
+        source_counts[key] = source_counts.get(key, 0) + 1
+
+    artifact_path = runtime_paths.db_path
+    for artifact in active_engineering_artifacts(runtime_paths):
+        if artifact.get("status") not in {"produced", "verified"}:
+            continue
+        artifact_id = str(artifact.get("artifactId") or "")
+        text = "\n".join(
+            value
+            for value in (
+                f"Current engineering artifact: {artifact.get('name') or artifact_id}",
+                f"Type: {artifact.get('artifactType') or 'other'}",
+                f"Status: {artifact.get('status') or 'unknown'}",
+                f"Version: {artifact.get('version') or 'unspecified'}",
+                f"Project: {artifact.get('project') or 'unassigned'}",
+                f"Summary: {artifact.get('summary') or ''}",
+                "Locator: available from the Actanara engineering artifact catalog.",
+            )
+            if value
+        )
+        chunks.append(
+            _chunk_payload(
+                source_set=source_set,
+                text=text,
+                layer="curated",
+                date=artifact.get("lastSeenDate"),
+                agent="asset-reconciliation",
+                project=artifact.get("project") or None,
+                source_path=artifact_path,
+                line_number=1,
+                stable_id=f"curated-{artifact_id}",
+                source_type="current-engineering-artifact-catalog",
+                provenance={
+                    "authority": "Foundation active engineering artifact catalog",
+                    "assetType": "current-engineering-artifact",
+                    "artifactId": artifact_id,
+                },
+            )
+        )
+        key = (artifact_path, "current-engineering-artifact-catalog")
+        source_counts[key] = source_counts.get(key, 0) + 1
+
+    task_chunks, _task_sources = _collect_task_board_snapshot(settings)
+    for row in task_chunks:
+        provenance = row.get("provenance") if isinstance(row.get("provenance"), dict) else {}
+        if provenance.get("recordType") == "task-item" and provenance.get("done") is True:
+            continue
+        source_path = Path(str(row.get("sourcePath") or _task_board_path(settings)))
+        chunks.append(
+            _chunk_payload(
+                source_set=source_set,
+                text=str(row.get("text") or ""),
+                layer="curated",
+                date=row.get("date"),
+                agent=row.get("agent"),
+                project=row.get("project"),
+                source_path=source_path,
+                line_number=int(row.get("lineNumber") or 1),
+                stable_id=f"curated-task-{row.get('id')}",
+                source_type="current-task-state",
+                provenance={
+                    **provenance,
+                    "authority": "Nova-Task current board projection",
+                    "assetType": "current-task",
+                },
+            )
+        )
+        key = (source_path, "current-task-state")
+        source_counts[key] = source_counts.get(key, 0) + 1
+
+    sources = [
+        _source_record(source_set, path, count, source_type=source_type)
+        for (path, source_type), count in sorted(
+            source_counts.items(), key=lambda item: (str(item[0][0]), item[0][1])
+        )
+    ]
+    return chunks, sources
 
 
 def _collect_agent_native_memory(
@@ -508,6 +669,51 @@ def _collect_skill_assets(settings: RagSettings) -> tuple[list[dict[str, Any]], 
             path,
             count,
             source_type="skill-asset-ledger-jsonl",
+        )
+        for (path, source_set), count in sorted(
+            counts.items(), key=lambda item: (str(item[0][0]), item[0][1])
+        )
+    ]
+    return chunks, sources
+
+
+def _collect_environment_assets(settings: RagSettings) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Read encrypted Technical ledgers and expose generalized local memory."""
+
+    from data_foundation.paths import runtime_paths_for_home
+
+    records, _source_paths = collect_environment_memory_records(
+        runtime_paths_for_home(settings.runtime_home)
+    )
+    chunks: list[dict[str, Any]] = []
+    counts: dict[tuple[Path, str], int] = {}
+    for record in records:
+        source_set = "environment-state"
+        chunks.append(
+            _chunk_payload(
+                source_set=source_set,
+                text=record.text,
+                layer="environment",
+                date=record.business_date,
+                agent="technical-pass",
+                source_path=record.source_path,
+                line_number=1,
+                stable_id=record.record_id,
+                source_type="encrypted-environment-ledger",
+                provenance={
+                    "authority": "Technical Pass evidence-bound local projection; exact locators remain encrypted.",
+                    "assetClass": record.asset_class,
+                },
+            )
+        )
+        key = (record.source_path, source_set)
+        counts[key] = counts.get(key, 0) + 1
+    sources = [
+        _source_record(
+            source_set,
+            path,
+            count,
+            source_type="encrypted-environment-ledger",
         )
         for (path, source_set), count in sorted(
             counts.items(), key=lambda item: (str(item[0][0]), item[0][1])

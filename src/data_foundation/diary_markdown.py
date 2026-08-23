@@ -421,6 +421,40 @@ def materialize_diary_markdown_period_documents(
     }
 
 
+def read_diary_markdown_period_inventory(
+    paths: RuntimePaths,
+    start_date: date,
+    end_date: date,
+) -> dict:
+    """Return an already-materialized period inventory without reparsing files."""
+    language_profile = _pipeline_language_profile(paths)
+    with connect(paths, read_only=True) as connection:
+        rows = connection.execute(
+            """
+            SELECT document_key, report_type, relative_path
+            FROM diary_markdown_documents
+            WHERE business_date BETWEEN ? AND ? AND status = 'ready'
+            ORDER BY business_date, report_type, relative_path
+            """,
+            (start_date.isoformat(), end_date.isoformat()),
+        ).fetchall()
+    keys = [
+        str(row["document_key"])
+        for row in rows
+        if diary_report_type_for_filename(
+            Path(str(row["relative_path"] or "")).name,
+            language_profile=language_profile,
+        )
+        == str(row["report_type"] or "")
+    ]
+    return {
+        "start": start_date.isoformat(),
+        "end": end_date.isoformat(),
+        "documents": len(keys),
+        "documentKeys": keys,
+    }
+
+
 def _document_matches_language_profile(document, language_profile: str) -> bool:
     relative_path = str(document["relative_path"] or "")
     report_type = diary_report_type_for_filename(Path(relative_path).name, language_profile=language_profile)

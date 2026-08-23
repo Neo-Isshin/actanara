@@ -84,6 +84,7 @@ FEATURE_DEFAULTS = {
     "rag": True,
     "embeddingServer": False,
     "novaTask": True,
+    "environmentReconciliation": True,
     "taskAuditSink": False,
     "llmGeneration": True,
 }
@@ -323,6 +324,7 @@ SETTINGS_AUTHORITY_GROUPS = (
             {"path": "features.rag", "defaultSource": "default_settings"},
             {"path": "features.embeddingServer", "defaultSource": "default_settings"},
             {"path": "features.novaTask", "defaultSource": "default_settings"},
+            {"path": "features.environmentReconciliation", "defaultSource": "default_settings"},
             {"path": "features.taskAuditSink", "defaultSource": "legacy_compat; runtimeSources.taskAuditSink is production authority"},
             {"path": "features.llmGeneration", "defaultSource": "default_settings"},
         ),
@@ -2846,6 +2848,10 @@ def native_memory_policy_digest(
 
 def is_nova_task_enabled(paths: RuntimePaths | None = None) -> bool:
     return resolve_feature_flags(paths).get("novaTask", True)
+
+
+def is_environment_reconciliation_enabled(paths: RuntimePaths | None = None) -> bool:
+    return resolve_feature_flags(paths).get("environmentReconciliation", True)
 
 
 def external_tool_access_summary(paths: RuntimePaths | None = None) -> dict:

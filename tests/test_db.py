@@ -37,7 +37,12 @@ EXPECTED_MIGRATIONS = [
     "0017_infrastructure_graph",
     "0018_pipeline_runs",
     "0019_pipeline_llm_attribution",
+    "0020_skill_promotion",
     "0021_ingestion_artifact_indexes",
+    "0022_skill_experience_authority",
+    "0023_infrastructure_taxonomy",
+    "0024_environment_deliverables",
+    "0025_engineering_artifacts",
 ]
 
 
@@ -66,7 +71,11 @@ class FoundationDatabaseTests(unittest.TestCase):
                 for version, record in declared.items()
                 if record["rollbackClass"] == "breaking"
             },
-            {"0014_nova_task_status_vocabulary", "0016_nova_task_node_management"},
+            {
+                "0014_nova_task_status_vocabulary",
+                "0016_nova_task_node_management",
+                "0023_infrastructure_taxonomy",
+            },
         )
 
     def test_migration_is_repeatable_and_registry_lifecycle_is_audit_friendly(self):
@@ -364,7 +373,12 @@ db.migrate()
                     "0017_infrastructure_graph",
                     "0018_pipeline_runs",
                     "0019_pipeline_llm_attribution",
+                    "0020_skill_promotion",
                     "0021_ingestion_artifact_indexes",
+                    "0022_skill_experience_authority",
+                    "0023_infrastructure_taxonomy",
+                "0024_environment_deliverables",
+                "0025_engineering_artifacts",
                 ],
             )
             with connect(paths) as connection:

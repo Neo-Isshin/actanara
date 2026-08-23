@@ -93,6 +93,7 @@ from data_foundation.settings import (
     resolve_external_tool_paths,
     resolve_general_settings,
     is_nova_task_enabled,
+    is_environment_reconciliation_enabled,
     llm_provider_readiness_error,
     resolve_llm_provider,
     resolve_pipeline_settings,
@@ -622,6 +623,17 @@ class RuntimeSettingsTests(unittest.TestCase):
 
             self.assertFalse(resolve_feature_flags(paths)["novaTask"])
             self.assertFalse(is_nova_task_enabled(paths))
+
+    def test_environment_reconciliation_feature_flag_defaults_on_and_can_be_disabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = initialize_home(Path(tmp) / "Actanara", legacy_diary_root=Path(tmp) / "Diary")
+            self.assertTrue(resolve_feature_flags(paths)["environmentReconciliation"])
+            self.assertTrue(is_environment_reconciliation_enabled(paths))
+
+            write_settings({"features": {"environmentReconciliation": False}}, paths)
+
+            self.assertFalse(resolve_feature_flags(paths)["environmentReconciliation"])
+            self.assertFalse(is_environment_reconciliation_enabled(paths))
 
     def test_llm_provider_preset_uses_catalog_metadata_and_redacts_secret(self):
         with _persistent_secret_store_for_test(), tempfile.TemporaryDirectory() as tmp:

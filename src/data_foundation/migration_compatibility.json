@@ -3,7 +3,7 @@
   "policy": "rollback-compatible-additive-only",
   "preCommitWriterContract": "prior-reader-compatible-v1",
   "minimumReadableSchema": "unversioned",
-  "maximumReadableSchema": "0021_ingestion_artifact_indexes",
+  "maximumReadableSchema": "0025_engineering_artifacts",
   "migrations": [
     {
       "version": "0001_initial",
@@ -101,8 +101,33 @@
       "rollbackClass": "rollback-compatible-additive"
     },
     {
+      "version": "0020_skill_promotion",
+      "sha256": "882c8a27663356d07a1cc29eb40763e856ef6520a99ba08d57d7964754357044",
+      "rollbackClass": "rollback-compatible-additive"
+    },
+    {
       "version": "0021_ingestion_artifact_indexes",
       "sha256": "6b9a53bf1e361dab9bd4553c307c728100a21c77390a6da5af13daa6eb3c1dfd",
+      "rollbackClass": "rollback-compatible-additive"
+    },
+    {
+      "version": "0022_skill_experience_authority",
+      "sha256": "736c8e8f6c7b47a6a021af934404d46d1f7bc6ac08d61a9edbb1f6fc8199e4d0",
+      "rollbackClass": "rollback-compatible-additive"
+    },
+    {
+      "version": "0023_infrastructure_taxonomy",
+      "sha256": "98b7a64832561e985bbab2830c6c419e07db9cb2f862f02eb8c5a5a4bba20314",
+      "rollbackClass": "breaking"
+    },
+    {
+      "version": "0024_environment_deliverables",
+      "sha256": "c0b0b757349efa933bbc7995fd7bf6abe3b9986abc8b230cf48f521efacfb892",
+      "rollbackClass": "rollback-compatible-additive"
+    },
+    {
+      "version": "0025_engineering_artifacts",
+      "sha256": "c4c20c35ee8d8f1ddc5187784852dacf9a903400282f9d951cc5d70ecfc1e7bc",
       "rollbackClass": "rollback-compatible-additive"
     }
   ]

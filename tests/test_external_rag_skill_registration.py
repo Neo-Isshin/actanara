@@ -201,7 +201,10 @@ class ExternalRagSkillRegistrationTests(unittest.TestCase):
             plan = plan_rag_skill_registration({"tools": ["codex"]}, paths=paths)
             self.assertEqual(plan["operations"][0]["status"], "upgrade")
             self.assertTrue(plan["operations"][0]["managed"])
-            self.assertEqual(plan["operations"][0]["installedTemplateVersion"], 1)
+            self.assertEqual(
+                plan["operations"][0]["installedTemplateVersion"],
+                SKILL_TEMPLATE_VERSION - 1,
+            )
             self.assertEqual(len(plan["willWrite"]), 1)
 
             with patch.dict("os.environ", {"ACTANARA_HOME": str(paths.home)}, clear=False):
@@ -210,7 +213,10 @@ class ExternalRagSkillRegistrationTests(unittest.TestCase):
                 )
 
             self.assertEqual(result["results"][0]["result"], "upgraded")
-            self.assertEqual(result["results"][0]["previousInstalledTemplateVersion"], 1)
+            self.assertEqual(
+                result["results"][0]["previousInstalledTemplateVersion"],
+                SKILL_TEMPLATE_VERSION - 1,
+            )
             self.assertEqual(result["results"][0]["installedTemplateVersion"], SKILL_TEMPLATE_VERSION)
             self.assertFalse(result["results"][0]["upgradeAvailable"])
             self.assertEqual(existing.read_text(encoding="utf-8"), registration._skill_content("codex"))

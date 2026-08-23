@@ -83,7 +83,12 @@ from data_foundation.diary_markdown import DIARY_PERIOD_PAGE_PROJECTION, materia
 from data_foundation.jobs import begin_ingestion_run
 from data_foundation.paths import initialize_home
 from data_foundation.period_summary import DIARY_PERIOD_SUMMARY_PROJECTION
-from data_foundation.reports import materialize_legacy_asset_projection, read_period_projection, write_period_projection
+from data_foundation.reports import (
+    build_foundation_period_asset_projection,
+    materialize_legacy_asset_projection,
+    read_period_projection,
+    write_period_projection,
+)
 from data_foundation.settings import write_settings
 from data_foundation.snapshots import write_rag_daily_status_snapshot
 from data_foundation.nova_task import create_task_node
@@ -136,6 +141,77 @@ class PeriodReportProjectionTests(unittest.TestCase):
             projection = read_period_projection(paths, start, end)
             self.assertEqual(projection["metrics"], _fixture_metrics())
             self.assertEqual(projection["projectionType"], "legacy-dashboard-assets-v1")
+
+    def test_pipeline_period_builder_uses_foundation_rollups_not_usage_source_scans(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, run_id = self._home(Path(tmp))
+            with connect(paths) as connection:
+                connection.execute(
+                    """
+                    INSERT INTO tool_sources(
+                        tool_key, display_name, adapter_version, capabilities_json,
+                        enabled, created_at, updated_at
+                    ) VALUES ('codex', 'Codex', 'fixture', '{}', 1,
+                              '2026-06-22T00:00:00Z', '2026-06-22T00:00:00Z')
+                    """
+                )
+                project_id = connection.execute(
+                    """
+                    INSERT INTO projects(canonical_name, canonical_root, enabled, created_at, updated_at)
+                    VALUES ('actanara', '/workspace/actanara', 1, '2026-06-22T00:00:00Z', '2026-06-22T00:00:00Z')
+                    """
+                ).lastrowid
+                connection.execute(
+                    """
+                    INSERT INTO daily_project_usage(
+                        business_date, project_id_or_bucket, tool_key, tokens,
+                        messages, active_sessions, evidence_confidence, source_run_id
+                    ) VALUES (?, ?, 'codex', 20000000, 3, 1, 'high', ?)
+                    """,
+                    ("2026-06-22", f"project:{project_id}", run_id),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO daily_model_usage(
+                        business_date, model_key, tool_key, tokens, messages, sessions, source_run_id
+                    ) VALUES ('2026-06-22', 'fixture-model', 'codex', 20000000, 3, 1, ?)
+                    """,
+                    (run_id,),
+                )
+
+            with (
+                patch.object(
+                    diary,
+                    "_period_diary_rollup",
+                    return_value={"kpi": {"totalTokens": 20000000}},
+                ) as rollup,
+                patch.object(
+                    diary,
+                    "_period_asset_breakdown",
+                    side_effect=AssertionError("raw usage source scanner called"),
+                ),
+                patch.object(
+                    diary,
+                    "_get_rag_memory_stats",
+                    side_effect=AssertionError("live memory scanner called"),
+                ),
+                patch.object(
+                    diary,
+                    "_session_memory_stats",
+                    side_effect=AssertionError("live session scanner called"),
+                ),
+            ):
+                projection = build_foundation_period_asset_projection(
+                    paths,
+                    date(2026, 6, 22),
+                    7,
+                )
+
+            self.assertEqual(projection["workspaceUsage"][0]["name"], "actanara")
+            self.assertEqual(projection["workspaceUsage"][0]["tokens"], 20000000)
+            self.assertEqual(projection["models"][0]["name"], "fixture-model")
+            self.assertEqual(projection["memoryStats"]["sessionFiles"], 0)
+            rollup.assert_not_called()
 
     def test_current_week_partial_projection_is_labeled_week(self):
         with tempfile.TemporaryDirectory() as tmp:

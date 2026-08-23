@@ -45,6 +45,7 @@ from data_foundation.refresh import (
     run_projection_refresh,
 )
 from data_foundation.daily_completeness import evaluate_daily_completeness
+from data_foundation.environment_assets import write_environment_asset_ledger
 from data_foundation.reports import LEGACY_ASSET_PROJECTION, read_period_projection, write_period_projection
 from data_foundation.settings import write_llm_provider, write_settings
 from data_foundation.snapshots import materialize_diary_tasks_snapshot, read_dashboard_snapshot
@@ -65,6 +66,11 @@ class ProjectionRefreshTests(unittest.TestCase):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("", encoding="utf-8")
         target.chmod(0o600)
+        write_environment_asset_ledger(
+            paths,
+            business_date=business_date,
+            assets=[],
+        )
         return target
 
     def test_dashboard_write_paths_preserve_selected_generated_diary_root(self):
@@ -719,7 +725,7 @@ No activity today.
         self.assertEqual(plan["periodCount"], 5)
         self.assertEqual(plan["pendingDiaryDays"], 32)
         self.assertEqual(plan["pendingSummaryReports"], 5)
-        self.assertEqual(plan["llmCallCount"], 101)
+        self.assertEqual(plan["llmCallCount"], 261)
         self.assertEqual(
             [(item["kind"], item["start"], item["end"]) for item in plan["periods"]],
             [
@@ -765,7 +771,7 @@ No activity today.
             self.assertIn("2026-05月报", labels)
             self.assertEqual(plan["pendingDiaryDays"], 31)
             self.assertEqual(plan["pendingSummaryReports"], 2)
-            self.assertEqual(plan["llmCallCount"], 92)
+            self.assertEqual(plan["llmCallCount"], 248)
 
     def test_history_backfill_reuses_ready_periods_and_records_progress(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1576,7 +1582,7 @@ No activity today.
                 ["daily:2026-04-02"],
             )
             self.assertEqual(retry["metadata"]["dailyPipelineDays"], 1)
-            self.assertEqual(retry["metadata"]["llmCallCount"], 3)
+            self.assertEqual(retry["metadata"]["llmCallCount"], 8)
 
     def test_history_backfill_refreshes_ai_assets_snapshot_when_daily_pipeline_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
