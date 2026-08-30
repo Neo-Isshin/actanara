@@ -27,7 +27,7 @@ class DashboardArchiveRouteTests(unittest.TestCase):
 
     def test_archive_static_assets_are_packaged_separately(self):
         archive = ROOT / "src/dashboard/app/static/archive"
-        for name in ("index.html", "style.css", "app.js"):
+        for name in ("index.html", "style.css", "editorial.css", "extended.css", "app.js", "archive-extended.js", "daily-console.css", "daily-console.js"):
             self.assertTrue((archive / name).is_file(), name)
         package_config = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
         self.assertIn('"static/archive/*.html"', package_config)

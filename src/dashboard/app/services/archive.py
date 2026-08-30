@@ -705,10 +705,10 @@ def _canonical_skill_inventory(paths: RuntimePaths) -> dict[str, Any]:
 
 
 _ARCHIVE_QUOTES = (
-    ("把今天的工作，变成明天可以复用的能力。", "Actanara Archive"),
-    ("可靠的系统，不只保存结果，也保存结果为何可信。", "Actanara Archive"),
-    ("经验被验证之后，才开始成为可迁移的实践。", "Actanara Archive"),
-    ("清楚的边界，让长期演进成为可能。", "Actanara Archive"),
+    ("把今天的工作，变成明天可以复用的能力。", "Actanara · 每日摘录"),
+    ("可靠的系统不仅保存结果，也记录结果为何可信。", "Actanara · 每日摘录"),
+    ("经验只有经过验证，才能成为可复用的做法。", "Actanara · 每日摘录"),
+    ("明确边界，系统才能持续演进。", "Actanara · 每日摘录"),
 )
 
 
@@ -742,9 +742,13 @@ def _daily_quote(items: list[dict[str, Any]], *, quote_date: date | None = None)
         sentence = re.split(r"(?<=[。！？.!?])\s*", full_text, maxsplit=1)[0].strip()
         excerpt = sentence if len(sentence) >= 12 else full_text
         excerpt = _public_text(excerpt, maximum=180)
+        source_label = {
+            "experience": "Skill Pass · 经验",
+            "practice": "Skill Pass · 实践",
+        }.get(str(item.get("type")), "Skill Pass")
         return {
             "text": excerpt,
-            "source": f"Skill Pass {str(item.get('type')).title()}",
+            "source": source_label,
             "date": selected_date.isoformat(),
             "assetId": item.get("id"),
         }

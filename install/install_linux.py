@@ -609,8 +609,13 @@ def _validate_plan(plan: InstallPlan, args: argparse.Namespace) -> dependency_co
         "src/dashboard/app/static/index.html",
         "src/dashboard/app/static/archive/index.html",
         "src/dashboard/app/static/archive/style.css",
+        "src/dashboard/app/static/archive/editorial.css",
+        "src/dashboard/app/static/archive/extended.css",
+        "src/dashboard/app/static/archive/daily-console.css",
         "src/dashboard/app/static/archive/archive-api.js",
         "src/dashboard/app/static/archive/app.js",
+        "src/dashboard/app/static/archive/archive-extended.js",
+        "src/dashboard/app/static/archive/daily-console.js",
     )
     missing = [name for name in required if not (plan.source_root / name).is_file()]
     if missing:

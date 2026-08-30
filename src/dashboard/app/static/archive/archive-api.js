@@ -36,15 +36,15 @@
         payload = null;
       }
       if (!response.ok) {
-        const error = new Error(payload?.error || `HTTP ${response.status}`);
+        const error = new Error(`请求失败（HTTP ${response.status}）`);
         error.status = response.status;
         error.payload = payload;
         throw error;
       }
-      if (!payload || typeof payload !== 'object') throw new Error('Archive API returned an invalid response.');
+      if (!payload || typeof payload !== 'object') throw new Error('本地数据服务返回了无法识别的数据。');
       return payload;
     } catch (error) {
-      if (error?.name === 'AbortError') throw new Error('Archive API request timed out.');
+      if (error?.name === 'AbortError') throw new Error('本地数据服务响应超时，请稍后重试。');
       throw error;
     } finally {
       window.clearTimeout(timeout);
@@ -79,12 +79,17 @@
   }
 
   async function asset(assetId) {
-    if (!assetId) throw new Error('Missing asset identifier.');
+    if (!assetId) throw new Error('缺少资产标识，无法读取详情。');
     return request(`${BASE}/assets/${encodeURIComponent(assetId)}`);
   }
 
   async function searchMemory(query, source = 'all') {
-    const sourceKinds = source === 'all' ? undefined : [source];
+    const sourceAliases = {
+      diary: ['diary-markdown-sections', 'diary-markdown-embedded-json'],
+      native: ['agent-native-memory', 'agent-native-instructions'],
+      task: ['task-board-snapshot', 'nova-task-work-graph-events', 'technical-report-task-events']
+    };
+    const sourceKinds = source === 'all' ? undefined : (sourceAliases[source] || [source]);
     return request('/api/memory/search', {
       method: 'POST',
       body: { query, topK: 12, mode: 'local', filters: sourceKinds ? { sourceSets: sourceKinds } : {} }
@@ -92,9 +97,9 @@
   }
 
   async function diary(businessDate) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(businessDate || ''))) throw new Error('Invalid diary date.');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(businessDate || ''))) throw new Error('日记日期格式无效。');
     return request(`/api/diary/${encodeURIComponent(businessDate)}`);
   }
 
-  window.LivingArchiveApi = Object.freeze({ load, asset, searchMemory, diary });
+  window.LivingArchiveApi = Object.freeze({ load, asset, searchMemory, diary, request });
 })();

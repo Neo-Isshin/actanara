@@ -1694,8 +1694,13 @@ wizard_core_dependency_gate() {
     "src/dashboard/app/static/js/app.js"
     "src/dashboard/app/static/archive/index.html"
     "src/dashboard/app/static/archive/style.css"
+    "src/dashboard/app/static/archive/editorial.css"
+    "src/dashboard/app/static/archive/extended.css"
+    "src/dashboard/app/static/archive/daily-console.css"
     "src/dashboard/app/static/archive/archive-api.js"
     "src/dashboard/app/static/archive/app.js"
+    "src/dashboard/app/static/archive/archive-extended.js"
+    "src/dashboard/app/static/archive/daily-console.js"
   )
 
   if ensure_python_bin; then
@@ -3869,6 +3874,15 @@ run_installer_preflight() {
     "advanced/pipeline/run_dashboard_foundation_refresh.py"
     "src/dashboard/app/main.py"
     "src/dashboard/app/static/index.html"
+    "src/dashboard/app/static/archive/index.html"
+    "src/dashboard/app/static/archive/style.css"
+    "src/dashboard/app/static/archive/editorial.css"
+    "src/dashboard/app/static/archive/extended.css"
+    "src/dashboard/app/static/archive/daily-console.css"
+    "src/dashboard/app/static/archive/archive-api.js"
+    "src/dashboard/app/static/archive/app.js"
+    "src/dashboard/app/static/archive/archive-extended.js"
+    "src/dashboard/app/static/archive/daily-console.js"
     "src/data_foundation/migrations/0001_initial.sql"
   )
   local parent=""
