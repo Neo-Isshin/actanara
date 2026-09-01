@@ -810,18 +810,171 @@ def _call_final_integration(agent_results):
     return None
 
 
+def _chronological_unified_entries(all_entries_by_agent):
+    """Build one stable, cross-Agent evidence stream for the business day."""
+
+    unified = []
+    sequence = 0
+    for agent, entries in all_entries_by_agent.items():
+        for entry in entries:
+            copied = dict(entry)
+            copied["_narrativeAgent"] = str(agent)
+            copied["_narrativeSequence"] = sequence
+            sequence += 1
+            unified.append(copied)
+    unified.sort(
+        key=lambda item: (
+            str(item.get("time") or ""),
+            str(item.get("_narrativeAgent") or ""),
+            int(item.get("_narrativeSequence") or 0),
+        )
+    )
+    return unified
+
+
+def build_unified_raw_text(entries, max_chars=TRUNCATE_SEQUENCE[0]):
+    lines = []
+    for entry in entries:
+        agent = str(entry.get("_narrativeAgent") or entry.get("source") or "unknown")
+        role = str(entry.get("role") or "")
+        timestamp = str(entry.get("time") or "")
+        content = _smart_truncate_content(entry.get("content", ""), max_chars)
+        lines.append(f"[{timestamp}] [Agent: {agent}] {role}: {content}")
+    return "\n".join(lines)
+
+
+def _unified_integration_prompt(entries):
+    raw_text = build_unified_raw_text(entries)
+    return PROMPT_INTEGRATION.replace("{raw_text}", raw_text)
+
+
+def _unified_partial_prompt(entries, label):
+    raw_text = build_unified_raw_text(entries)
+    return PROMPT_PARTIAL.replace("{agent_info}", label).replace("{raw_text}", raw_text)
+
+
+def _plan_unified_day(entries):
+    prompt = _unified_integration_prompt(entries)
+    tokens = get_token_count(prompt)
+    if tokens <= QUALITY_GATE_TOKENS:
+        return {"prompt": prompt, "tokens": tokens}
+    print(
+        f"   [UNIFIED-GATE] full-day prompt estimated {tokens:,} tokens > "
+        f"{QUALITY_GATE_TOKENS:,}; splitting the chronological stream.",
+        flush=True,
+    )
+    return None
+
+
+def _largest_unified_gate_fitting_prefix(entries, label):
+    best = 0
+    low, high = 1, len(entries)
+    while low <= high:
+        midpoint = (low + high) // 2
+        prompt = _unified_partial_prompt(entries[:midpoint], label)
+        if get_token_count(prompt) <= QUALITY_GATE_TOKENS:
+            best = midpoint
+            low = midpoint + 1
+        else:
+            high = midpoint - 1
+    return best
+
+
+def _split_unified_entries_by_gate(entries):
+    chunks = []
+    index = 0
+    while index < len(entries):
+        if len(chunks) + 1 >= MAX_GATE_SPLIT_CHUNKS:
+            chunks.append(entries[index:])
+            break
+        label = f"全日跨 Agent 时间流 #{len(chunks) + 1}"
+        size = _largest_unified_gate_fitting_prefix(entries[index:], label)
+        if size <= 0:
+            size = 1
+        chunks.append(entries[index:index + size])
+        index += size
+    return chunks
+
+
+def _execute_unified_chunks(chunks):
+    plans = [
+        {
+            "index": index,
+            "label": f"全日跨 Agent 时间流 #{index + 1}",
+            "entries": chunk,
+        }
+        for index, chunk in enumerate(chunks)
+    ]
+    summaries = {}
+    max_workers = min(PIPELINE_CONCURRENCY, len(plans)) or 1
+
+    def execute(plan):
+        prompt = _unified_partial_prompt(plan["entries"], plan["label"])
+        return call_llm(prompt, label=plan["label"])
+
+    if max_workers == 1:
+        for plan in plans:
+            result = execute(plan)
+            if not result:
+                return None
+            summaries[plan["index"]] = _clean_partial_summary(result)
+    else:
+        print(
+            f"   [PARALLEL] executing {len(plans)} unified narrative chunks "
+            f"with concurrency={max_workers}.",
+            flush=True,
+        )
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(execute, plan): plan for plan in plans}
+            for future in as_completed(futures):
+                plan = futures[future]
+                try:
+                    result = future.result()
+                except ProviderChainError:
+                    raise
+                except Exception as exc:
+                    print(f"   [PARALLEL] {plan['label']} failed: {exc}", flush=True)
+                    result = None
+                if not result:
+                    return None
+                summaries[plan["index"]] = _clean_partial_summary(result)
+    return [summaries[index] for index in sorted(summaries)]
+
+
 def generate_diary_with_fallback(all_entries_by_agent):
     print("\n>>> Narrative Pass: V4.0 Quality-Gated Detail Mode")
     print(f">>> Narrative Gate: max {QUALITY_GATE_TOKENS:,} tokens/call, concurrency={PIPELINE_CONCURRENCY}")
-    agent_results = {}
-    for agent, entries in all_entries_by_agent.items():
-        if not entries: continue
-        sorted_ents = sorted(entries, key=lambda x: x.get('time', '00:00'))
-        result = _generate_agent_summary(agent, sorted_ents)
-        if result:
-            agent_results[agent] = result
+    entries = _chronological_unified_entries(all_entries_by_agent)
+    if not entries:
+        return ""
 
-    return _call_final_integration(agent_results)
+    direct = _plan_unified_day(entries)
+    if direct is not None:
+        print(
+            f">>> Narrative unified stream: entries={len(entries)}, "
+            f"prompt≈{direct['tokens']:,} tokens, calls=1",
+            flush=True,
+        )
+        return call_llm(
+            direct["prompt"],
+            True,
+            label="unified daily narrative",
+        )
+
+    chunks = _split_unified_entries_by_gate(entries)
+    print(
+        f"   [UNIFIED-GATE] split {len(entries)} entries into {len(chunks)} "
+        "chronological chunks.",
+        flush=True,
+    )
+    summaries = _execute_unified_chunks(chunks)
+    if not summaries:
+        return None
+    combined = "\n\n".join(
+        f"=== 全日时间片 #{index + 1} ===\n{summary}"
+        for index, summary in enumerate(summaries)
+    )
+    return _call_final_integration({"全日跨 Agent 时间流": combined})
 
 def write_narrative_report(date_str):
     entries = load_filtered_entries(date_str)

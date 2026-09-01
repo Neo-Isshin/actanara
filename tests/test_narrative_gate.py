@@ -22,6 +22,53 @@ def _entry(hour: int, index: int) -> dict:
 
 
 class NarrativeGatePlanningTests(unittest.TestCase):
+    def test_full_day_under_gate_uses_one_call_even_when_agent_exceeds_40_messages(self):
+        entries = {
+            "codex": [_entry(9, index) for index in range(60)],
+            "claude-code": [_entry(10, index) for index in range(4)],
+        }
+        with (
+            patch.object(narrative_pass, "get_token_count", return_value=100),
+            patch.object(narrative_pass, "call_llm", return_value="final diary") as call,
+            patch.object(
+                narrative_pass,
+                "_generate_agent_summary",
+                side_effect=AssertionError("legacy per-Agent splitting must not run"),
+            ),
+            redirect_stdout(io.StringIO()),
+        ):
+            result = narrative_pass.generate_diary_with_fallback(entries)
+
+        self.assertEqual(result, "final diary")
+        call.assert_called_once()
+        prompt, is_integration = call.call_args.args[:2]
+        self.assertTrue(is_integration)
+        self.assertEqual(call.call_args.kwargs["label"], "unified daily narrative")
+        self.assertIn("[Agent: codex]", prompt)
+        self.assertIn("[Agent: claude-code]", prompt)
+
+    def test_over_gate_uses_global_chunks_then_one_final_integration(self):
+        entries = {
+            "codex": [_entry(9, index) for index in range(4)],
+            "claude-code": [_entry(10, index) for index in range(4)],
+        }
+        unified = narrative_pass._chronological_unified_entries(entries)
+        chunks = [unified[:4], unified[4:]]
+        with (
+            patch.object(narrative_pass, "_plan_unified_day", return_value=None),
+            patch.object(narrative_pass, "_split_unified_entries_by_gate", return_value=chunks),
+            patch.object(narrative_pass, "_execute_unified_chunks", return_value=["first", "second"]) as execute,
+            patch.object(narrative_pass, "_call_final_integration", return_value="final diary") as integrate,
+            redirect_stdout(io.StringIO()),
+        ):
+            result = narrative_pass.generate_diary_with_fallback(entries)
+
+        self.assertEqual(result, "final diary")
+        execute.assert_called_once_with(chunks)
+        integrated = integrate.call_args.args[0]["全日跨 Agent 时间流"]
+        self.assertIn("=== 全日时间片 #1 ===\nfirst", integrated)
+        self.assertIn("=== 全日时间片 #2 ===\nsecond", integrated)
+
     def test_agent_summary_preflights_window_plan_before_llm_calls(self):
         entries = []
         for hour, count in ((0, 3), (8, 3), (14, 3), (18, 3), (20, 3), (22, 20), (23, 20)):
