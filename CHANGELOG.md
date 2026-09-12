@@ -4,6 +4,51 @@ All notable public changes to Actanara are documented here.
 
 ## Unreleased
 
+## [1.8.0] - 2026-09-12
+
+### Added
+
+- Ship the asset-first Alpine Observatory Dashboard with authenticated,
+  read-only inventories for completed tasks, learning records, canonical
+  Skills, generated documents, and review proposals. Counts retain their
+  source and scope instead of combining overlapping records into one total.
+- Add exact generated-document and canonical-Skill reading, recent-outcome
+  search, a mobile report/date picker, and browser-local language selection.
+- Add Skill Pass procedural assets, evidence-based Lesson/Skill review,
+  canonical Skill generation and registration, and an independently available
+  Living Archive preview with operational workflows.
+
+### Changed
+
+- Move daily and cumulative Token use, message/cache statistics, model and
+  workspace rankings, 30-day activity and report usage into a dedicated
+  **Usage & activity** menu, preserving their data, detail controls and sharing.
+- Put saved outcomes and reusable knowledge first; keep Skill proposals
+  distinct from registered assets and keep indexing separate from asset counts.
+- Preserve the existing authenticated history-generation, background-task,
+  message, settings, LLM, backup and retrieval workflows in the new interface.
+- Make narrative input more compact, restore incremental ingestion, and use a
+  unified daily gate for narrative generation.
+
+### Fixed
+
+- Preserve exact day/month navigation across reload and browser history;
+  prevent stale monthly usage from appearing under a newly requested month.
+- Keep report-usage links valid after reopening a diary, avoid duplicate chart
+  IDs, and render charts when their usage view becomes visible.
+- Prevent delayed background-task responses from overwriting other dialogs;
+  retain expanded job details and distinguish request failures from empty inboxes.
+- Support Enter and result-limit validation in memory search, retain review
+  date controls on empty/error states, and improve mobile labels and keyboard access.
+
+### Compatibility
+
+- Retain `/dashboard`, `/dashboard-classic`, `/dashboard-preview` and `/tasks`.
+  The Nova-Task page itself is unchanged by the Dashboard redesign.
+- Keep macOS/Linux installation and update contracts, existing data stores,
+  permission checks and explicit confirmation requirements. Display-language
+  changes do not change the pipeline's report-generation language.
+
 ## [1.7.0] - 2026-07-29
 
 ### Added

@@ -1,12 +1,12 @@
 # Living Archive Dashboard
 
 The Living Archive is an opt-in Dashboard surface that coexists with the
-original Actanara Dashboard.
+main Actanara Dashboard.
 
 ## Routes
 
-- `/dashboard` — original Dashboard (default)
-- `/dashboard-classic` — permanent recovery alias for the original Dashboard
+- `/dashboard` — asset-first Alpine Observatory Dashboard (default)
+- `/dashboard-classic` — compatibility alias for the full operational Dashboard
 - `/dashboard-preview` — Living Archive preview
 - `/tasks` — Nova-Task, unchanged
 
@@ -17,15 +17,16 @@ operator messages. Task decisions, Lesson crystallization, Skill registration,
 and message acknowledgement use the existing authenticated APIs and explicit
 confirmation boundaries.
 
-The new UI lives under `src/dashboard/app/static/archive/`. It does not import
-or modify the original Dashboard HTML, CSS, JavaScript, or Nova-Task page.
+The Archive preview lives under `src/dashboard/app/static/archive/`. It remains
+independent of the main Dashboard's asset-first integration described in
+`docs/dashboard-assets.md`, and of the Nova-Task page.
 
 ## Selected design system
 
 The preview uses **馆藏简报**, a quiet editorial ledger with compact page
 introductions, warm paper tones, restrained semantic color, and denser
 first-view reporting. It is the single Archive presentation rather than a
-user-facing theme choice. The original Dashboard remains independently
+user-facing theme choice. The main Dashboard remains independently
 available through `/dashboard` and `/dashboard-classic`.
 
 The archive metaphor is visual only. Functional Chinese copy uses explicit

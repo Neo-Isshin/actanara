@@ -86,9 +86,20 @@ class DashboardStaticContractTests(unittest.TestCase):
         self.assertIn('role="status" aria-live="polite"', script)
         self.assertIn("tc-degraded-inline", css)
 
-    def test_ai_assets_kpis_are_data_driven(self):
+    def test_usage_kpis_are_data_driven_and_retained_in_the_usage_menu(self):
         script = (ROOT / "src" / "dashboard" / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
+        html = (ROOT / "src" / "dashboard" / "app" / "static" / "index.html").read_text(encoding="utf-8")
         css = (ROOT / "src" / "dashboard" / "app" / "static" / "css" / "style.css").read_text(encoding="utf-8")
+        usage = html.split('<div id="page-overview"', 1)[1].split('<div id="page-foundation-ops"', 1)[0]
+        assets = html.split('<div id="page-static"', 1)[1].split('<div id="diary-pages"', 1)[0]
+        for widget in ("aaKpi", "aaTools", "aaHeatmapWrap", "aaToolChart", "aaModelChart", "aaAgentTable", "aiAssetsShareBtn"):
+            with self.subTest(widget=widget):
+                self.assertIn(f'id="{widget}"', usage)
+                self.assertNotIn(f'id="{widget}"', assets)
+                self.assertEqual(html.count(f'id="{widget}"'), 1)
+        self.assertIn('id="usageHistoryLoading" role="status"', usage)
+        self.assertIn('id="usageHistoryRefreshBtn"', usage)
+        self.assertIn('id="usagePeriodContent"', usage)
         self.assertIn("function aaRecentActivityDate(value)", script)
         self.assertIn("function aaActiveToolCount(tools, windowDays = 30)", script)
         self.assertIn("aaActiveToolCount(tools, 30)", script)
@@ -107,6 +118,31 @@ class DashboardStaticContractTests(unittest.TestCase):
         self.assertIn("if (typeof window.Chart !== 'function') return;", charts_body)
         self.assertLess(charts_body.index("renderHeatmap(d.trend30d || [])"), charts_body.index("typeof window.Chart"))
         self.assertLess(charts_body.index("typeof window.Chart"), charts_body.index("new Chart"))
+        self.assertIn("usagePage && !usagePage.classList.contains('active')", charts_body)
+
+    def test_asset_home_reads_saved_outcomes_and_retains_real_actions(self):
+        static = ROOT / "src" / "dashboard" / "app" / "static"
+        html = (static / "index.html").read_text(encoding="utf-8")
+        script = (static / "js" / "dashboard.js").read_text(encoding="utf-8")
+        home = html.split('<div id="page-home"', 1)[1].split('<div id="page-overview"', 1)[0]
+        self.assertNotIn("dashboard-welcome", home)
+        self.assertIn('id="dashboardMetrics"', home)
+        self.assertIn('id="dashboardSummaryStatus"', home)
+        self.assertIn('id="dashboardAssetSearch"', home)
+        self.assertIn('id="dashboardAssetType"', home)
+        self.assertIn('id="dashboardReview"', home)
+        self.assertIn('id="dashboardSources"', home)
+        self.assertIn('onclick="loadAssetDashboard(true)"', home)
+        self.assertIn('onclick="openDashboardReportIndex()"', home)
+        self.assertIn('onclick="openAiAssetsBackupModal()"', home)
+        self.assertIn("fetch('/api/dashboard/summary'", script)
+        self.assertIn("actanara.dashboard-summary.v1", script)
+        self.assertIn("if(assetDashboardPending) return assetDashboardPending", script)
+        metrics = script.split("function dashMetricMarkup(payload)", 1)[1].split("async function loadAssetDashboard", 1)[0]
+        for category in ("completedTasks", "lessons", "skills", "reports"):
+            self.assertIn(category, metrics)
+        self.assertNotIn("totalTokens", metrics)
+        self.assertNotIn('id="aaKpi"', home)
 
     def test_diary_navigation_can_hide_foundation_blank_days(self):
         html = (ROOT / "src" / "dashboard" / "app" / "static" / "index.html").read_text(encoding="utf-8")
@@ -123,18 +159,27 @@ class DashboardStaticContractTests(unittest.TestCase):
         self.assertIn('data-diary-date="${escapeHtml(d.fullDate)}"', script)
         self.assertIn("async function restoreDynamicDiaryPageFromHash()", script)
         self.assertIn("requestedHash.match(/^page-day-(\\d{4})$/)", script)
-        self.assertIn("await showDiaryByDate(nav.dataset.diaryDate, nav)", script)
+        self.assertIn("const routeParams = new URLSearchParams(location.search)", script)
+        self.assertIn("const dateParam = routeParams.get('day')", script)
+        self.assertIn("const fullDate = exactDate || nav?.dataset.diaryDate", script)
+        self.assertIn("await showDiaryByDate(fullDate, nav)", script)
         self.assertIn("requestedHash === 'page-monthly-overview'", script)
-        self.assertIn("const monthId = nav?.dataset.monthId || now.getFullYear()", script)
+        self.assertIn("const monthParam = routeParams.get('month')", script)
+        self.assertIn("const monthId = exactMonth || nav?.dataset.monthId || now.getFullYear()", script)
         self.assertIn("loadMonthlyReportById(monthId, nav)", script)
         self.assertIn("requestedHash.match(/^page-report-(\\d{4}-W\\d{2})$/)", script)
         self.assertIn("await loadReport(reportId, nav)", script)
         self.assertIn("location.hash !== '#' && await restoreDynamicDiaryPageFromHash()", script)
         self.assertIn("window.addEventListener('hashchange', () =>", script)
+        self.assertIn("window.addEventListener('popstate', () =>", script)
+        self.assertIn("function setDashboardRoute(pageId, params = {})", script)
+        self.assertIn("url.searchParams.set('day', date)", script)
+        self.assertIn("url.searchParams.set('month', month)", script)
         self.assertIn("initFromHash().catch(e => console.error('hashchange restore error:', e))", script)
         self.assertIn("page.dataset.diaryRequestedDate = fullDate", script)
         self.assertIn("monthlyPage.dataset.monthRequestedId = mk", script)
-        self.assertIn("page?.dataset.diaryRequestedDate === nav.dataset.diaryDate", script)
+        self.assertIn("page?.dataset.diaryRequestedDate === fullDate", script)
+        self.assertIn("Number(page.dataset.diaryRequestId) !== request", script)
         self.assertIn("page?.dataset.monthRequestedId === monthId", script)
         self.assertIn("const page = requestedPage || fallbackPage", script)
         self.assertIn("window.history.replaceState(null, '', location.pathname + location.search + '#page-home')", script)
@@ -284,18 +329,23 @@ class DashboardStaticContractTests(unittest.TestCase):
                 html = (base / "index.html").read_text(encoding="utf-8")
                 css = (base / "css" / "style.css").read_text(encoding="utf-8")
                 self.assertEqual((base / "banner.png").read_bytes(), expected_bytes)
-                self.assertEqual(html.count(f'src="{source}"'), 2)
-                self.assertEqual(html.count('width="1378" height="313"'), 2)
+                banner_count = 1 if name == "runtime" else 2
+                self.assertEqual(html.count(f'src="{source}"'), banner_count)
+                self.assertEqual(html.count('width="1378" height="313"'), banner_count)
 
                 sidebar = css.split(".sidebar-brand-banner {", 1)[1].split("}", 1)[0]
-                welcome = css.split(".dashboard-welcome-banner {", 1)[1].split("}", 1)[0]
                 self.assertIn("width: 156px", sidebar)
                 self.assertIn("max-height: 44px", sidebar)
                 self.assertIn("height: auto", sidebar)
                 self.assertIn("object-fit: contain", sidebar)
-                self.assertIn("width: min(780px, 82vw)", welcome)
-                self.assertIn("height: auto", welcome)
-                self.assertIn("object-fit: contain", welcome)
+                if name == "static-demo":
+                    welcome = css.split(".dashboard-welcome-banner {", 1)[1].split("}", 1)[0]
+                    self.assertIn("width: min(780px, 82vw)", welcome)
+                    self.assertIn("height: auto", welcome)
+                    self.assertIn("object-fit: contain", welcome)
+                else:
+                    self.assertNotIn('class="dashboard-welcome-banner"', html)
+                    self.assertIn('id="dashboardMetrics"', html)
 
     def test_dashboard_sse_status_aggregates_transport_and_source_health(self):
         scripts = {
@@ -321,10 +371,14 @@ class DashboardStaticContractTests(unittest.TestCase):
                 self.assertIn("connectSSE('/events/tokens',", connections)
                 self.assertIn("connectSSE('/events/tasks',", connections)
 
-    def test_ai_tool_coming_soon_card(self):
+    def test_usage_tool_cards_only_render_detected_tools(self):
         script = (ROOT / "src" / "dashboard" / "app" / "static" / "js" / "app.js").read_text(encoding="utf-8")
-        self.assertIn("更多 AI 工具支持 coming soon", script)
-        self.assertIn("aa-tool-coming-soon", script)
+        cards = script.split("// B: Tools", 1)[1].split("// C & D: Charts", 1)[0]
+        self.assertIn("el('aaTools').innerHTML = tools.map(t =>", cards)
+        self.assertIn("t.usageStatus === 'unavailable'", cards)
+        self.assertIn("t.usageStatus === 'local-partial'", cards)
+        self.assertNotIn("aa-tool-coming-soon", cards)
+        self.assertNotIn("moreAiToolsSoon", cards)
 
     def test_foundation_ops_uses_scoped_bento_surface_styles(self):
         html = (ROOT / "src" / "dashboard" / "app" / "static" / "index.html").read_text(encoding="utf-8")
@@ -441,7 +495,11 @@ class DashboardStaticContractTests(unittest.TestCase):
         self.assertIn("data.highFrequencyTopics || data.topTopics", script)
         self.assertIn("暂无 LLM 高频主题", script)
         self.assertNotIn("+ reportFreshnessSuffix(data.dataFreshness)", script)
-        self.assertLess(script.index("⏱️</span> 时间投入"), script.index("⚡</span> 周度使用趋势"))
+        weekly = script.split("async function loadReport(reportId, navEl)", 1)[1].split("const MR_PREFIX", 1)[0]
+        self.assertIn("timeInvestment: '活动时段记录'", script)
+        self.assertIn("timeInvestment: 'Recorded Activity Periods'", script)
+        self.assertLess(weekly.index("labels.timeInvestment"), weekly.index("labels.usageTrend"))
+        self.assertIn("organizeDashboardUsage()", weekly)
         self.assertGreater(script.index("_summaryDetailsSection"), script.index("_lessons"))
         self.assertIn('#diary-pages [id^="page-report-"].page.active', css)
         self.assertIn('#diary-pages [id^="page-report-"] .wr-summary-quote', css)
@@ -489,12 +547,20 @@ class DashboardStaticContractTests(unittest.TestCase):
         self.assertIn("const DASHBOARD_SHELL_TEXT", script)
         self.assertIn("function applyStaticDashboardText(profile)", script)
         self.assertIn("const labels = { ...dashboardText(profile), ...dashboardShellText(profile), ...aiAssetsText(profile) }", script)
+        label_application = script.split("function applyStaticDashboardText(profile)", 1)[1].split("function rememberDashboardSettings", 1)[0]
+        self.assertIn("profile = ACTANARA_DISPLAY_LANGUAGE_PROFILE || profile", label_application)
+        self.assertNotIn("assetDashboardText(", label_application)
+        self.assertIn("decorateDashboardUi()", label_application)
+        self.assertIn("localStorage.setItem('actanara.dashboard.language', language)", script)
+        locale_switch = script.split("function setDashboardDisplayLanguage(language)", 1)[1].split("function openMobileUtilities", 1)[0]
+        self.assertNotIn("fetch(", locale_switch)
+        self.assertNotIn("ACTANARA_PIPELINE_LANGUAGE_PROFILE =", locale_switch)
         self.assertIn("function updateMonthlyReportLabels()", script)
         self.assertIn("document.documentElement.lang = dashboardLanguageProfile(profile) === 'en' ? 'en-US' : 'zh-CN'", script)
         self.assertIn("applyStaticDashboardText(ACTANARA_PIPELINE_LANGUAGE_PROFILE)", script)
         self.assertIn("ensureDashboardLanguageProfile().then(profile => applyStaticDashboardText(profile))", script)
         self.assertIn("AI Assets Overview", script)
-        self.assertIn("Foundation Ops", script)
+        self.assertIn("Data Maintenance · Foundation", script)
         self.assertIn("Generate Historical Data", script)
         self.assertIn('data-i18n="navTodayOverview"', html)
         self.assertIn('data-i18n="foundationOpsTitle"', html)
@@ -530,8 +596,8 @@ class DashboardStaticContractTests(unittest.TestCase):
         self.assertIn("profileLabel: 'Profile'", script)
         self.assertIn("labels.documentFallback", script)
         self.assertIn("assetLabels.tokenUnit", script)
-        self.assertIn('当日实时总览', html)
-        self.assertIn('Foundation 运维', html)
+        self.assertIn("navTodayOverview: '用量与活动'", script)
+        self.assertIn("navFoundationOps: '数据维护 · Foundation'", script)
         self.assertIn('搜索 Actanara 长期记忆', html)
 
     def test_ai_assets_infrastructure_panel_limits_devices_and_services(self):
@@ -832,18 +898,20 @@ class DashboardStaticContractTests(unittest.TestCase):
         self.assertIn('id="page-overview" class="page"', html)
         self.assertIn("sidebar-brand-banner", html)
         self.assertNotIn(">ACTANARA</", html)
-        self.assertEqual(html.count('src="/static/banner.png"'), 2)
+        self.assertEqual(html.count('src="/static/banner.png"'), 1)
         self.assertIn("ragExternalSources", script)
         self.assertIn("previewRagExternalSources", script)
         self.assertIn("/api/rag/external-sources/plan", script)
         self.assertIn(".doc is unsupported", script)
         self.assertIn("sidebar-brand-home", html)
-        self.assertIn("dashboard-welcome", html)
-        home_block = html.split('id="page-home"', 1)[1].split('id="page-overview"', 1)[0]
-        overview_block = html.split('id="page-overview"', 1)[1].split('id="page-static"', 1)[0]
-        self.assertIn("dashboard-welcome", home_block)
+        self.assertIn('id="dashboardMetrics"', html)
+        home_block = html.split('<div id="page-home"', 1)[1].split('<div id="page-overview"', 1)[0]
+        overview_block = html.split('<div id="page-overview"', 1)[1].split('<div id="page-foundation-ops"', 1)[0]
+        self.assertIn('id="dashboardSummaryStatus"', home_block)
+        self.assertIn('onclick="loadAssetDashboard(true)"', home_block)
+        self.assertNotIn("dashboard-welcome", home_block)
         self.assertNotIn("dashboard-welcome", overview_block)
-        self.assertIn("welcomeTagline", script)
+        self.assertIn('id="usageHistory"', overview_block)
         self.assertIn("|| 'page-home'", script)
         self.assertIn("ragStartServerBtn", html)
         self.assertIn("function ragSearchStartServer()", script)

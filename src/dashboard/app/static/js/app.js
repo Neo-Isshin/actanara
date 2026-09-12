@@ -144,6 +144,8 @@ let ACTANARA_MODAL_GENERATION = 0;
 let MSGBOX_STATE = { items: [], attentionCount: 0, count: 0 };
 let BACKGROUND_TASK_STATE = { activeCount: 0, tasks: [], active: [] };
 let backgroundTasksTimer = null;
+let BACKGROUND_TASK_MODAL_GENERATION = 0;
+let BACKGROUND_TASK_MODAL_REQUEST = 0;
 let HISTORY_BACKFILL_SELECTED_PERIODS = [];
 let HISTORY_BACKFILL_PICKER_PERIODS = [];
 let HISTORY_BACKFILL_LAST_PLAN = null;
@@ -151,9 +153,16 @@ let HISTORY_BACKFILL_LAST_PLAN_KEY = '';
 let HISTORY_BACKFILL_LAST_PLAN_PAYLOAD = null;
 let HISTORY_BACKFILL_PENDING_SELECTION = new Set();
 let RAG_PRODUCTION_SYNC_BUSY = false;
+let RAG_PAGE_SEARCH_REQUEST = 0;
 let MEMORY_SKILL_PLAN_GENERATION = 0;
 let ACTANARA_DASHBOARD_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Hong_Kong';
 let ACTANARA_PIPELINE_LANGUAGE_PROFILE = 'zh';
+let ACTANARA_DISPLAY_LANGUAGE_PROFILE = (() => {
+  try {
+    const value = localStorage.getItem('actanara.dashboard.language');
+    return value === 'en' || value === 'zh' ? value : null;
+  } catch (_) { return null; }
+})();
 let ACTANARA_SETTINGS_LOADED = false;
 let ACTANARA_LAST_SETTINGS = null;
 let LLM_PROVIDER_CHAIN_DRAFT = null;
@@ -208,7 +217,7 @@ const DASHBOARD_TEXT = {
     monthlyPulseRhythm: '节奏',
     monthlyPulseQuality: '效率',
     monthlyPulseReliability: '稳定性',
-    timeInvestment: '时间投入',
+    timeInvestment: '活动时段记录',
     usageTrend: '周度使用趋势',
     monthlyUsageTrend: '月度使用趋势',
     periodUsageTrend: '周期使用趋势',
@@ -224,17 +233,17 @@ const DASHBOARD_TEXT = {
     highFrequencyTopics: '高频主题',
     topicSource: '由周报总结 LLM 基于本周期数据提炼；生成或更新总结后刷新。',
     taskCompletion: '任务完成率',
-    workloadComparison: '工作强度',
+    workloadComparison: '活动量对比',
     scheduledJobs: '定时任务',
     knowledgeBase: '知识库',
     weeklyKnowledgePeriod: '本周',
     monthlyKnowledgePeriod: '本月',
     tasksOutcomes: '任务与成果',
-    lessons: '教训与经验',
+    lessons: '学习经验',
     noTopics: '暂无 LLM 高频主题；请先生成总结快照。',
-    snapshotMissingTitle: '该周期的 Foundation 快照缺失',
+    snapshotMissingTitle: '该周期的报告数据尚未生成',
     snapshotMissingDesc: '页面已停止实时重算，避免长时间卡住。点击按钮后会在后台重新聚合数据，完成后自动刷新本页。',
-    diarySnapshotMissingTitle: '该日的 Foundation 快照缺失',
+    diarySnapshotMissingTitle: '该日的日记数据尚未生成',
     diarySnapshotMissingDesc: '页面已停止读取 Markdown 回退，避免长时间卡住。点击按钮后会在后台重新聚合当天数据，完成后自动刷新本页。',
     rebuildData: '重新聚合数据',
     source: '来源',
@@ -383,7 +392,7 @@ const DASHBOARD_TEXT = {
     monthlyPulseRhythm: 'Rhythm',
     monthlyPulseQuality: 'Efficiency',
     monthlyPulseReliability: 'Reliability',
-    timeInvestment: 'Time Investment',
+    timeInvestment: 'Recorded Activity Periods',
     usageTrend: 'Weekly Usage Trend',
     monthlyUsageTrend: 'Monthly Usage Trend',
     periodUsageTrend: 'Period Usage Trend',
@@ -399,7 +408,7 @@ const DASHBOARD_TEXT = {
     highFrequencyTopics: 'High-Frequency Topics',
     topicSource: 'Extracted by the report-summary LLM from current-period data; refresh after generating or updating the summary.',
     taskCompletion: 'Task Completion Rate',
-    workloadComparison: 'Workload',
+    workloadComparison: 'Activity Volume Comparison',
     scheduledJobs: 'Scheduled Jobs',
     knowledgeBase: 'Knowledge Base',
     weeklyKnowledgePeriod: 'Weekly',
@@ -407,9 +416,9 @@ const DASHBOARD_TEXT = {
     tasksOutcomes: 'Tasks and Outcomes',
     lessons: 'Lessons and Experience',
     noTopics: 'No LLM high-frequency topics yet; generate a summary snapshot first.',
-    snapshotMissingTitle: 'Foundation snapshot is missing for this period',
+    snapshotMissingTitle: 'Report data has not been generated for this period',
     snapshotMissingDesc: 'Live recomputation is disabled to avoid long waits. Rebuild data in the background, then this page will refresh automatically.',
-    diarySnapshotMissingTitle: 'Foundation snapshot is missing for this day',
+    diarySnapshotMissingTitle: 'Diary data has not been generated for this day',
     diarySnapshotMissingDesc: 'Markdown fallback is disabled to avoid long waits. Rebuild this day in the background, then this page will refresh automatically.',
     rebuildData: 'Rebuild Data',
     source: 'Source',
@@ -530,10 +539,10 @@ const DASHBOARD_SHELL_TEXT = {
     documentTitle: 'Actanara',
     sseConnecting: '⏳ 连接中',
     navOverview: '总览',
-    navTodayOverview: '当日实时总览',
+    navTodayOverview: '用量与活动',
     navAiAssets: 'AI 资产',
     navTaskBoardBeta: '任务看板 (Beta) ↗',
-    navFoundationOps: 'Foundation 运维',
+    navFoundationOps: '数据维护 · Foundation',
     mobileMore: '更多',
     mobileMoreTitle: '更多工具',
     settingsButton: '⚙️ 设置',
@@ -541,13 +550,13 @@ const DASHBOARD_SHELL_TEXT = {
     llmButton: '🔑 LLM',
     llmTitle: '日记生成 LLM Provider',
     githubTitle: '在新标签页打开 Actanara GitHub 项目主页',
-    i18nTitle: '中英文切换待实现',
+    i18nTitle: '切换界面语言',
     historyBackfill: '生成历史数据',
     backgroundTasksMonitor: '后台任务监控',
     backgroundTasks: '后台任务',
     messagesTitle: '消息与待处理事项',
     messagesShort: '消息',
-    overviewTitle: '当日实时总览',
+    overviewTitle: '用量与活动',
     loadingDots: '加载中...',
     loadingEllipsis: '加载中…',
     realtimeMonitoring: '实时监控',
@@ -577,26 +586,26 @@ const DASHBOARD_SHELL_TEXT = {
     input: '输入',
     output: '输出',
     waitingRealtimeUsage: '等待实时消耗数据...',
-    foundationOpsTitle: 'Foundation 运维',
-    foundationOpsSubtitle: 'Daily QA、快照刷新与 job 状态',
-    dailyQaSubtitle: '按业务日期检查日记产物、Foundation 输入与 pipeline 恢复状态',
-    readQa: '读取 QA',
+    foundationOpsTitle: '数据维护 · Foundation',
+    foundationOpsSubtitle: '检查数据完整性、重新生成页面数据并查看后台任务',
+    dailyQaSubtitle: '按日期检查日记文件、来源数据与生成流程状态',
+    readQa: '检查当天数据',
     dailyPipelineResult: '当天管线结果',
-    dailyPipelineSubtitle: '按业务日期查看最新运行、生成文件、lesson 与 task evidence 指标',
+    dailyPipelineSubtitle: '查看当天的生成结果、落盘文件、学习经验和任务证据',
     readMetrics: '读取指标',
     repairAudit: '修复执行审计',
-    repairAuditSubtitle: '最近的 allowlisted Daily QA repair runs；非 allowlisted 动作仍保持 manual-only',
+    repairAuditSubtitle: '查看已执行的自动修复；其他操作需按建议手动处理',
     reload: '重新读取',
     refreshToday: '刷新今日',
     refreshWeek: '刷新本周',
     refreshMonth: '刷新本月',
     reloadStatus: '重新读取状态',
-    historicalBackfill: '历史 Backfill',
+    historicalBackfill: '补齐历史数据',
     start: '开始',
     end: '结束',
-    submitBackfill: '提交 Backfill',
+    submitBackfill: '开始补齐',
     latestFailed: '最近失败',
-    ragSubtitle: 'Actanara v2 长期记忆',
+    ragSubtitle: '检索与索引管理',
     readStatus: '读取状态…',
     startRagServer: '启动 Server',
     stopRagServer: '停止 Server',
@@ -607,12 +616,12 @@ const DASHBOARD_SHELL_TEXT = {
     notReadYet: '尚未读取',
     ragSearchPlaceholder: '搜索 Actanara 长期记忆',
     search: '搜索',
-    projectOptional: 'project，可选',
-    sourceSetsOptional: 'sourceSets，逗号分隔，可选',
-    lifecycleOptional: 'lifecycle，逗号分隔，可选',
+    projectOptional: '项目（可选）',
+    sourceSetsOptional: 'sourceSets（逗号分隔，可选）',
+    lifecycleOptional: '生命周期状态（逗号分隔，可选）',
     waitingSearch: '等待搜索',
     aiAssetsTitle: 'AI 资产总览',
-    aiAssetsSubtitle: '全维度数据概览 · 自动采集',
+    aiAssetsSubtitle: '查看可复用成果、学习经验、Skill 与长期记忆',
     refresh: '刷新',
     backgroundUpdate: '后台更新',
     loadingAiAssets: '正在加载 AI 资产数据…',
@@ -624,13 +633,13 @@ const DASHBOARD_SHELL_TEXT = {
     modelLabel: '模型',
     messages: '消息数',
     lastActive: '最后活跃',
-    assetAccumulation: '资产积累',
+    assetAccumulation: '报告与记忆',
     diaryStats: '日记统计',
     infrastructure: '基础设施（beta）',
     storageUsage: '存储使用',
     taskOverview: '任务总览',
     agentConfigPanel: 'Agent 配置面板',
-    proceduralAssets: '程序性资产复核',
+    proceduralAssets: '经验与 Skill 复核',
     skillLibrary: 'Skill 库',
     toolConfig: '工具配置',
     runtimeRegistry: '运行环境登记',
@@ -650,10 +659,10 @@ const DASHBOARD_SHELL_TEXT = {
     documentTitle: 'Actanara',
     sseConnecting: '⏳ Connecting',
     navOverview: 'Overview',
-    navTodayOverview: 'Today Live Overview',
+    navTodayOverview: 'Usage & Activity',
     navAiAssets: 'AI Assets',
     navTaskBoardBeta: 'Task Board (Beta) ↗',
-    navFoundationOps: 'Foundation Ops',
+    navFoundationOps: 'Data Maintenance · Foundation',
     mobileMore: 'More',
     mobileMoreTitle: 'More Tools',
     settingsButton: '⚙️ Settings',
@@ -661,13 +670,13 @@ const DASHBOARD_SHELL_TEXT = {
     llmButton: '🔑 LLM',
     llmTitle: 'Diary Generation LLM Provider',
     githubTitle: 'Open the Actanara GitHub project home in a new tab',
-    i18nTitle: 'Language switching pending',
+    i18nTitle: 'Change interface language',
     historyBackfill: 'Generate Historical Data',
     backgroundTasksMonitor: 'Background Task Monitor',
     backgroundTasks: 'Background Tasks',
     messagesTitle: 'Messages and Action Items',
     messagesShort: 'Messages',
-    overviewTitle: 'Today Live Overview',
+    overviewTitle: 'Usage & Activity',
     loadingDots: 'Loading...',
     loadingEllipsis: 'Loading...',
     realtimeMonitoring: 'Live monitoring',
@@ -697,26 +706,26 @@ const DASHBOARD_SHELL_TEXT = {
     input: 'input',
     output: 'output',
     waitingRealtimeUsage: 'Waiting for live usage data...',
-    foundationOpsTitle: 'Foundation Ops',
-    foundationOpsSubtitle: 'Daily QA, snapshot refresh, and job status',
-    dailyQaSubtitle: 'Check diary artifacts, Foundation inputs, and pipeline recovery status by business date',
-    readQa: 'Read QA',
+    foundationOpsTitle: 'Data Maintenance · Foundation',
+    foundationOpsSubtitle: 'Check data completeness, regenerate page data, and review background jobs',
+    dailyQaSubtitle: 'Check diary files, source data, and generation status for a selected date',
+    readQa: 'Check Daily Data',
     dailyPipelineResult: 'Daily Pipeline Result',
-    dailyPipelineSubtitle: 'View the latest run, generated files, lessons, and task evidence metrics by business date',
+    dailyPipelineSubtitle: 'Review daily generation results, saved files, lessons, and task evidence',
     readMetrics: 'Read Metrics',
     repairAudit: 'Repair Execution Audit',
-    repairAuditSubtitle: 'Recent allowlisted Daily QA repair runs; non-allowlisted actions remain manual-only',
+    repairAuditSubtitle: 'Review automated repairs; other recommended actions require manual handling',
     reload: 'Reload',
     refreshToday: 'Refresh Today',
     refreshWeek: 'Refresh This Week',
     refreshMonth: 'Refresh This Month',
     reloadStatus: 'Reload Status',
-    historicalBackfill: 'Historical Backfill',
+    historicalBackfill: 'Fill Historical Data Gaps',
     start: 'Start',
     end: 'End',
-    submitBackfill: 'Submit Backfill',
+    submitBackfill: 'Start Backfill',
     latestFailed: 'Latest Failed',
-    ragSubtitle: 'Actanara v2 long-term memory',
+    ragSubtitle: 'Search and Index Management',
     readStatus: 'Read Status...',
     startRagServer: 'Start Server',
     stopRagServer: 'Stop Server',
@@ -727,12 +736,12 @@ const DASHBOARD_SHELL_TEXT = {
     notReadYet: 'Not read yet',
     ragSearchPlaceholder: 'Search Actanara long-term memory',
     search: 'Search',
-    projectOptional: 'project, optional',
-    sourceSetsOptional: 'sourceSets, comma-separated, optional',
-    lifecycleOptional: 'lifecycle, comma-separated, optional',
+    projectOptional: 'Project (optional)',
+    sourceSetsOptional: 'Source sets (comma-separated, optional)',
+    lifecycleOptional: 'Lifecycle states (comma-separated, optional)',
     waitingSearch: 'Waiting for search',
     aiAssetsTitle: 'AI Assets Overview',
-    aiAssetsSubtitle: 'Full-dimensional data overview · automatic collection',
+    aiAssetsSubtitle: 'Reusable outcomes, lessons, Skills, and long-term memory',
     refresh: 'Refresh',
     backgroundUpdate: 'Background Update',
     loadingAiAssets: 'Loading AI Assets data...',
@@ -744,13 +753,13 @@ const DASHBOARD_SHELL_TEXT = {
     modelLabel: 'Model',
     messages: 'Messages',
     lastActive: 'Last Active',
-    assetAccumulation: 'Asset Accumulation',
+    assetAccumulation: 'Reports & Memory',
     diaryStats: 'Diary Stats',
     infrastructure: 'Infrastructure (Beta)',
     storageUsage: 'Storage Usage',
     taskOverview: 'Task Overview',
     agentConfigPanel: 'Agent Configuration Panel',
-    proceduralAssets: 'Procedural Asset Review',
+    proceduralAssets: 'Lesson & Skill Review',
     skillLibrary: 'Skill Library',
     toolConfig: 'Tool Configuration',
     runtimeRegistry: 'Runtime Registry',
@@ -768,8 +777,7 @@ const DASHBOARD_SHELL_TEXT = {
   },
 };
 
-// Static contract anchors for layout-order tests:
-// ⏱️</span> 时间投入 precedes ⚡</span> 周度使用趋势 in the weekly report layout.
+// Activity records describe observed events, not measured working hours.
 
 const FOUNDATION_TEXT = {
   zh: {
@@ -2299,7 +2307,7 @@ const AI_ASSETS_TEXT = {
     linesUnit: '行',
     skillsLibrary: '技能库',
     skillAssetsLoading: '正在读取 Skill Pass 资产账本…',
-    skillAssetsEmpty: '尚无 Skill Pass 资产账本。Base Pipeline 成功运行后会在这里显示程序性资产。',
+    skillAssetsEmpty: '当前日期没有经验或技能提案。可选择其他日期，或在生成历史记录后刷新。',
     skillAssetsFailed: 'Skill Pass 资产账本读取失败：',
     skillAssetsTitle: 'Skill Pass 程序性资产',
     skillAssetsBoundary: 'Skill 提案默认勾选；Lesson 默认不勾选，但可由用户强制结晶。点击生成后，最终 create/extend 草案会写入 Actanara 主库并自动注册到已检测且受支持的本机 Agent；covered/conflict/reject 不执行写入。',
@@ -2544,7 +2552,7 @@ const AI_ASSETS_TEXT = {
     linesUnit: 'lines',
     skillsLibrary: 'Skill Library',
     skillAssetsLoading: 'Reading the Skill Pass asset ledger...',
-    skillAssetsEmpty: 'No Skill Pass asset ledger is available. A successful Base Pipeline run will publish procedural assets here.',
+    skillAssetsEmpty: 'No lessons or Skill proposals for this date. Choose another date, or generate historical records and refresh.',
     skillAssetsFailed: 'Failed to read the Skill Pass asset ledger: ',
     skillAssetsTitle: 'Skill Pass Procedural Assets',
     skillAssetsBoundary: 'Skill proposals are selected by default. Lessons are not selected by default but may be force-crystallized by the user. On Generate, finalized create/extend drafts are written to the Actanara canonical library and registered with detected supported local Agents; covered/conflict/reject perform no write.',
@@ -2611,7 +2619,7 @@ const AI_ASSETS_TEXT = {
 };
 
 function dashboardLanguageProfile(value) {
-  const raw = String(value || ACTANARA_PIPELINE_LANGUAGE_PROFILE || 'zh').toLowerCase();
+  const raw = String(value || ACTANARA_DISPLAY_LANGUAGE_PROFILE || ACTANARA_PIPELINE_LANGUAGE_PROFILE || 'zh').toLowerCase();
   return raw.startsWith('en') ? 'en' : 'zh';
 }
 
@@ -2644,6 +2652,7 @@ function aiAssetsText(profile) {
 }
 
 function applyStaticDashboardText(profile) {
+  profile = ACTANARA_DISPLAY_LANGUAGE_PROFILE || profile;
   const labels = { ...dashboardText(profile), ...dashboardShellText(profile), ...aiAssetsText(profile) };
   document.documentElement.lang = dashboardLanguageProfile(profile) === 'en' ? 'en-US' : 'zh-CN';
   if (labels.documentTitle) document.title = labels.documentTitle;
@@ -2673,23 +2682,24 @@ function applyStaticDashboardText(profile) {
     }
   });
   renderSseConnectionStatus();
+  if (typeof decorateDashboardUi === 'function') decorateDashboardUi();
 }
 
 function rememberDashboardSettings(settings) {
   ACTANARA_LAST_SETTINGS = settings || null;
   const pipeline = settings && settings.pipeline ? settings.pipeline : {};
-  ACTANARA_PIPELINE_LANGUAGE_PROFILE = dashboardLanguageProfile(pipeline.languageProfile);
+  ACTANARA_PIPELINE_LANGUAGE_PROFILE = dashboardLanguageProfile(pipeline.languageProfile || 'zh');
   ACTANARA_SETTINGS_LOADED = true;
   applyStaticDashboardText(ACTANARA_PIPELINE_LANGUAGE_PROFILE);
 }
 
 async function ensureDashboardLanguageProfile() {
-  if (ACTANARA_SETTINGS_LOADED) return ACTANARA_PIPELINE_LANGUAGE_PROFILE;
+  if (ACTANARA_SETTINGS_LOADED) return dashboardLanguageProfile();
   try {
     const res = await fetch('/api/settings');
     if (res.ok) rememberDashboardSettings(await res.json());
   } catch (e) {}
-  return ACTANARA_PIPELINE_LANGUAGE_PROFILE;
+  return dashboardLanguageProfile();
 }
 
 async function refreshBackgroundTaskButton() {
@@ -2699,7 +2709,7 @@ async function refreshBackgroundTaskButton() {
     BACKGROUND_TASK_STATE = await res.json();
     renderBackgroundTaskButton(BACKGROUND_TASK_STATE);
   } catch (e) {
-    renderBackgroundTaskButton({activeCount: 0, tasks: [], error: e.message});
+    renderBackgroundTaskButton({...BACKGROUND_TASK_STATE, error: e.message});
   }
 }
 
@@ -2708,6 +2718,13 @@ function renderBackgroundTaskButton(state) {
   const count = document.getElementById('taskMonitorCount');
   if (!button || !count) return;
   const labels = foundationText();
+  if (state.error) {
+    count.textContent = '—';
+    button.title = aiAssetsText().readFailed + state.error;
+    button.dataset.state = 'error';
+    return;
+  }
+  button.dataset.state = 'ready';
   const active = Number(state.activeCount || 0);
   button.classList.toggle('has-active', active > 0);
   count.textContent = String(active);
@@ -2817,7 +2834,7 @@ function renderPipelineStageDetail(stage, labels) {
     ? '<div class="pipeline-artifacts"><b>' + escapeHtml(labels.artifacts) + ' · ' + escapeHtml(stage.artifactCommitted ? labels.committed : labels.notCommitted) + '</b>' + artifacts.map(path => '<code>' + escapeHtml(path) + '</code>').join('') + '</div>'
     : '';
   const failure = [stage.failureClass, stage.errorSummary].filter(Boolean).join(' · ');
-  return '<details class="pipeline-stage-row">' +
+  return '<details class="pipeline-stage-row" data-stage-id="' + encodeURIComponent(stage.stageId || stage.name || '') + '">' +
     '<summary><span><b>' + escapeHtml(stage.name || stage.stageId || labels.details) + '</b><small>' + escapeHtml(stage.stageId || '') + '</small></span>' +
       '<span class="task-monitor-status ' + escapeHtml(stage.status || 'unknown') + '">' + escapeHtml(backgroundTaskStatusLabel(stage.status)) + '</span>' +
       '<span>' + escapeHtml(labels.duration) + ' ' + escapeHtml(formatPipelineTaskDuration(stage, labels)) + '</span>' +
@@ -2863,7 +2880,7 @@ function renderBackgroundTaskItem(task) {
     labels.started + formatBackgroundTaskTime(task.startedAt),
     labels.completed + formatBackgroundTaskTime(task.completedAt)
   ].join(' · ');
-  return '<div class="task-monitor-item">' +
+  return '<div class="task-monitor-item" data-task-id="' + encodeURIComponent((task.source || '') + ':' + (task.id || task.title || '')) + '">' +
     '<div class="task-monitor-head"><div class="task-monitor-title">' + escapeHtml(task.title || task.id || labels.backgroundTask) + '</div><span class="task-monitor-status ' + escapeHtml(status) + '">' + escapeHtml(backgroundTaskStatusLabel(status)) + '</span></div>' +
     '<div class="task-monitor-subtitle">' + escapeHtml(task.subtitle || '') + '</div>' +
     '<div class="settings-progress"><div class="settings-progress-bar ' + (status === 'failed' ? 'failed' : '') + '" style="width:' + progress + '%"></div></div>' +
@@ -2954,26 +2971,52 @@ function renderBackgroundTasksModal(state) {
   return summary + breakdown + body;
 }
 
-async function refreshBackgroundTasksModal() {
+async function refreshBackgroundTasksModal(generation = BACKGROUND_TASK_MODAL_GENERATION) {
   const body = document.getElementById('modal-body');
-  if (!body) return;
+  if (!body || !generation || !dashboardModalGenerationIsCurrent(generation)) return;
+  const request = ++BACKGROUND_TASK_MODAL_REQUEST;
   try {
     const res = await fetch('/api/background-tasks?limit=30');
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    BACKGROUND_TASK_STATE = await res.json();
+    const state = await res.json();
+    if (!dashboardModalGenerationIsCurrent(generation) || request !== BACKGROUND_TASK_MODAL_REQUEST) return;
+    BACKGROUND_TASK_STATE = state;
     renderBackgroundTaskButton(BACKGROUND_TASK_STATE);
+    const detailKey = el => (el.closest('[data-task-id]')?.dataset.taskId || '') + ':' + (el.dataset.stageId || 'run');
+    const expanded = new Set(Array.from(body.querySelectorAll('details[open]')).map(detailKey));
+    const focused = document.activeElement?.closest('summary')?.parentElement;
+    const focusedKey = focused && body.contains(focused) ? detailKey(focused) : null;
+    const scrollTop = body.scrollTop;
     body.innerHTML = renderBackgroundTasksModal(BACKGROUND_TASK_STATE);
+    body.querySelectorAll('details').forEach(detail => {
+      detail.open = expanded.has(detailKey(detail));
+      if (focusedKey === detailKey(detail)) detail.querySelector('summary')?.focus({preventScroll: true});
+    });
+    body.scrollTop = scrollTop;
   } catch (e) {
-    body.innerHTML = '<div class="fo-job-error">' + escapeHtml(operatorText().backgroundTasksReadFailed + e.message) + '</div>';
+    if (!dashboardModalGenerationIsCurrent(generation) || request !== BACKGROUND_TASK_MODAL_REQUEST) return;
+    let error = body.querySelector('[data-task-monitor-error]');
+    if (!error) {
+      error = document.createElement('div');
+      error.className = 'fo-job-error';
+      error.dataset.taskMonitorError = 'true';
+      error.setAttribute('role', 'alert');
+      body.prepend(error);
+    }
+    error.textContent = operatorText().backgroundTasksReadFailed + e.message;
+    body.querySelector('.wr-loading')?.remove();
   }
 }
 
 async function openBackgroundTasksModal() {
   const labels = operatorText();
-  openModal(labels.backgroundTasksTitle, '<div class="wr-loading"><div class="wr-spinner"></div><span>' + escapeHtml(labels.readingBackgroundTasks) + '</span></div>');
+  const generation = openModal(labels.backgroundTasksTitle, '<div class="wr-loading"><div class="wr-spinner"></div><span>' + escapeHtml(labels.readingBackgroundTasks) + '</span></div>');
+  BACKGROUND_TASK_MODAL_GENERATION = generation;
   if (backgroundTasksTimer) clearInterval(backgroundTasksTimer);
-  await refreshBackgroundTasksModal();
-  backgroundTasksTimer = setInterval(refreshBackgroundTasksModal, 5000);
+  await refreshBackgroundTasksModal(generation);
+  if (dashboardModalGenerationIsCurrent(generation)) {
+    backgroundTasksTimer = setInterval(() => refreshBackgroundTasksModal(generation), 5000);
+  }
 }
 
 function historyBackfillMonthValue(date) {
@@ -3368,6 +3411,7 @@ function toggleHistoryBackfillSchedule() {
 
 function replaceModalContent(title, content) {
   const modal = document.getElementById('modal');
+  if (backgroundTasksTimer) { clearInterval(backgroundTasksTimer); backgroundTasksTimer = null; }
   ACTANARA_MODAL_GENERATION += 1;
   if (!modal.classList.contains('active')) ACTANARA_MODAL_RETURN_FOCUS = document.activeElement;
   document.getElementById('modal-title').textContent = title;
@@ -3385,8 +3429,11 @@ async function refreshMsgbox() {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     MSGBOX_STATE = await res.json();
     renderMsgboxButton(MSGBOX_STATE);
+    return true;
   } catch (e) {
-    renderMsgboxButton({count: 0, attentionCount: 0, error: e.message});
+    MSGBOX_STATE = {...MSGBOX_STATE, error: e.message};
+    renderMsgboxButton(MSGBOX_STATE);
+    return false;
   }
 }
 
@@ -3395,6 +3442,13 @@ function renderMsgboxButton(state) {
   const button = document.getElementById('msgboxButton');
   const count = document.getElementById('msgboxCount');
   if (!button || !count) return;
+  if (state.error) {
+    count.textContent = '—';
+    button.title = aiAssetsText().readFailed + state.error;
+    button.dataset.state = 'error';
+    return;
+  }
+  button.dataset.state = 'ready';
   const attention = Number(state.attentionCount || 0);
   const total = Number(state.count || 0);
   button.classList.toggle('has-attention', attention > 0);
@@ -3414,7 +3468,8 @@ function renderMsgboxItem(item) {
   const actionButton = item.actionLabel
     ? '<button class="wr-export-btn" onclick="handleMsgboxActionPayload(\'' + encodeURIComponent(JSON.stringify(action)) + '\')">' + escapeHtml(item.actionLabel) + '</button>'
     : '';
-  const readButton = '<button class="wr-export-btn secondary" onclick="markMsgboxRead(\'' + escapeHtml(item.id || '') + '\')">' + escapeHtml(operatorText().read) + '</button>';
+  const encodedId = encodeURIComponent(item.id || '').replace(/'/g, '%27');
+  const readButton = '<button type="button" class="wr-export-btn secondary" onclick="markMsgboxRead(decodeURIComponent(\'' + encodedId + '\'))">' + escapeHtml(operatorText().read) + '</button>';
   const details = item.details ? '<pre class="settings-json-preview">' + escapeHtml(JSON.stringify(item.details, null, 2)) + '</pre>' : '';
   return '<div class="msgbox-item ' + escapeHtml(item.severity || 'info') + '">' +
     '<div class="msgbox-item-title"><span>' + escapeHtml(item.title || item.type || operatorText().message) + '</span><span class="fo-status fo-status-' + escapeHtml(item.severity || 'info') + '">' + msgboxSeverityLabel(item.severity) + '</span></div>' +
@@ -3466,40 +3521,56 @@ function handleMsgboxAction(action) {
 
 async function handleMsgboxApiPost(action) {
   const body = document.getElementById('modal-body');
+  const generation = ACTANARA_MODAL_GENERATION;
   try {
     const res = await fetch(action.url, { method: 'POST' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
     if (action.refreshBackgroundTasks) await refreshBackgroundTaskButton();
     await refreshMsgbox();
-    if (body) {
+    if (body && dashboardModalGenerationIsCurrent(generation)) {
       body.innerHTML = '<div class="fo-empty">' + escapeHtml(action.successMessage || operatorText().actionSubmitted) + (data.runId ? ' · Run #' + escapeHtml(data.runId) : '') + '</div>';
     }
   } catch (e) {
-    if (body) body.innerHTML = '<div class="fo-job-error">' + escapeHtml(operatorText().actionFailed + (e.message || e)) + '</div>';
+    if (body && dashboardModalGenerationIsCurrent(generation)) body.innerHTML = '<div class="fo-job-error">' + escapeHtml(operatorText().actionFailed + (e.message || e)) + '</div>';
   }
 }
 
 async function markMsgboxRead(messageId) {
   if (!messageId) return;
-  const res = await fetch('/api/msgbox/' + encodeURIComponent(messageId) + '/read', { method: 'POST' });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  await refreshMsgbox();
+  const generation = ACTANARA_MODAL_GENERATION;
+  try {
+    const res = await fetch('/api/msgbox/' + encodeURIComponent(messageId) + '/read', { method: 'POST' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    await refreshMsgbox();
+    if (dashboardModalGenerationIsCurrent(generation)) document.getElementById('modal-body').innerHTML = renderMsgboxContent();
+  } catch (error) {
+    if (!dashboardModalGenerationIsCurrent(generation)) return;
+    const body = document.getElementById('modal-body');
+    body.querySelector('[data-msgbox-action-error]')?.remove();
+    const notice = document.createElement('div');
+    notice.className = 'fo-job-error';
+    notice.dataset.msgboxActionError = 'true';
+    notice.setAttribute('role', 'alert');
+    notice.textContent = operatorText().actionFailed + error.message;
+    body.prepend(notice);
+  }
+}
+
+function renderMsgboxContent() {
+  const labels = operatorText();
+  const error = MSGBOX_STATE.error ? '<div class="fo-job-error" role="alert">' + escapeHtml(aiAssetsText().readFailed + MSGBOX_STATE.error) + '</div><button type="button" class="wr-export-btn" onclick="openMsgboxModal()">' + escapeHtml(aiAssetsText().retry) + '</button>' : '';
   const items = Array.isArray(MSGBOX_STATE.items) ? MSGBOX_STATE.items : [];
-  document.getElementById('modal-body').innerHTML = items.length
+  return error + (items.length
     ? '<div class="msgbox-list">' + items.map(renderMsgboxItem).join('') + '</div>'
-    : '<div class="fo-empty">' + escapeHtml(operatorText().noMessages) + '</div>';
+    : MSGBOX_STATE.error ? '' : '<div class="fo-empty">' + escapeHtml(labels.noMessages) + '</div>');
 }
 
 async function openMsgboxModal() {
   const labels = operatorText();
-  openModal(labels.messagesTitle, '<div class="wr-loading"><div class="wr-spinner"></div><span>' + escapeHtml(labels.readingMessages) + '</span></div>');
+  const generation = openModal(labels.messagesTitle, '<div class="wr-loading"><div class="wr-spinner"></div><span>' + escapeHtml(labels.readingMessages) + '</span></div>');
   await refreshMsgbox();
-  const items = Array.isArray(MSGBOX_STATE.items) ? MSGBOX_STATE.items : [];
-  const body = items.length
-    ? '<div class="msgbox-list">' + items.map(renderMsgboxItem).join('') + '</div>'
-    : '<div class="fo-empty">' + escapeHtml(labels.noMessages) + '</div>';
-  document.getElementById('modal-body').innerHTML = body;
+  if (dashboardModalGenerationIsCurrent(generation)) document.getElementById('modal-body').innerHTML = renderMsgboxContent();
 }
 
 /* ═══ Privacy-safe local PNG sharing ═══ */
@@ -4227,11 +4298,12 @@ async function loadReport(reportId, navEl) {
   let page = document.getElementById(pageId);
   if (page) {
     page.classList.add('active');
-    location.hash = pageId;
+    setDashboardRoute(pageId);
     focusDashboardRoute(page);
     return;
   }
   // Create page
+  document.getElementById('usage-for-' + pageId)?.remove();
   page = document.createElement('div');
   page.id = pageId;
   page.className = 'page';
@@ -4274,7 +4346,7 @@ async function loadReport(reportId, navEl) {
   document.getElementById('diary-pages').appendChild(page);
   hydrateShareIcons(page);
   page.classList.add('active');
-  location.hash = pageId;
+  setDashboardRoute(pageId);
   focusDashboardRoute(page);
 
   // Calculate start date from week identifier
@@ -4314,6 +4386,8 @@ async function loadReport(reportId, navEl) {
     wrRenderSummaryTopics(prefix, data.summaryTopics);
     wrRenderAgentWork(prefix, data.agentWork, data.hourlyHeatmap);
     wrRenderLessons(prefix, data.lessons);
+    if (typeof organizeDashboardUsage === 'function') organizeDashboardUsage();
+    if (typeof decorateDashboardUi === 'function') decorateDashboardUi();
   } catch (e) {
     document.getElementById(prefix + '_loading').innerHTML = '<span style="color:var(--ruby)">❌ ' + escapeHtml(labels.loadFailed) + escapeHtml(e.message) + '</span>';
   }
@@ -4330,6 +4404,7 @@ function updateMonthlyReportLabels() {
 }
 
 function loadMonthlyReportById(mk, navEl) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(mk || ''))) return;
   const labels = dashboardText();
   updateMonthlyReportLabels();
   // mk = '2026-05'
@@ -4348,6 +4423,8 @@ function loadMonthlyReportById(mk, navEl) {
   const content = document.getElementById(MR_PREFIX + '_content');
   if (loading) loading.style.display = '';
   if (content) content.style.display = 'none';
+  const movedUsage = document.getElementById('usage-for-page-monthly-overview');
+  if (movedUsage) movedUsage.hidden = true;
   if (loading) loading.innerHTML = '<div class="wr-spinner"></div><span>' + escapeHtml(labels.loadingMonthly) + '</span>';
   clearSharePayload(MR_PREFIX, 'mrShareBtn');
   const notice = document.getElementById(MR_PREFIX + '_refreshNotice');
@@ -4390,7 +4467,6 @@ async function loadMonthlyReport(mk) {
     const data = await res.json();
     if (requestToken !== MR_REQUEST_TOKEN || MR_CURRENT_MONTH !== mk) return;
 
-    MR_LOADED[mk] = true;
     registerReportSharePayload(MR_PREFIX, 'monthly', data, {
       start: startDate,
       end: shareAddDays(startDate, daysInMonth - 1),
@@ -4419,8 +4495,15 @@ async function loadMonthlyReport(mk) {
     wrRenderSummaryTopics(MR_PREFIX, data.summaryTopics);
     mrRenderHeatmap(data.assetHourlyHeatmap || data.hourlyHeatmap);
     wrRenderLessons(MR_PREFIX, data.lessons);
+    MR_LOADED[mk] = true;
+    document.getElementById('page-monthly-overview').dataset.monthRenderedId = mk;
+    const movedUsage = document.getElementById('usage-for-page-monthly-overview');
+    if (movedUsage) movedUsage.hidden = false;
+    if (typeof organizeDashboardUsage === 'function') organizeDashboardUsage();
+    if (typeof decorateDashboardUi === 'function') decorateDashboardUi();
   } catch (e) {
     if (requestToken !== MR_REQUEST_TOKEN || MR_CURRENT_MONTH !== mk) return;
+    MR_LOADED[mk] = false;
     loading.innerHTML = '<span style="color:var(--ruby)">❌ ' + escapeHtml(labels.loadFailed) + escapeHtml(e.message) + '</span>';
   }
 }
@@ -5641,6 +5724,7 @@ function getISOWeek(date) {
 // ─── 日记内容动态渲染 ─────────────────────────────────
 // 点击侧边栏日记 → 切换页面并加载内容
 async function showDiaryByDate(fullDate, navEl) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fullDate || ''))) return;
   const labels = dashboardText();
   const date = fullDate.slice(5).replace('-', '');
   const pageId = `page-day-${date}`;
@@ -5651,11 +5735,22 @@ async function showDiaryByDate(fullDate, navEl) {
   document.querySelectorAll('.nav-item').forEach(n => n.removeAttribute('aria-current'));
   document.querySelectorAll('.nav-item-dot').forEach(d => d.classList.remove('active'));
 
-  const page = document.getElementById(pageId);
+  let page = document.getElementById(pageId);
+  if (!page) {
+    page = document.createElement('div');
+    page.id = pageId;
+    page.className = 'page';
+    page.innerHTML = '<div class="page-header"><div class="page-title"></div><div class="page-subtitle"></div></div><div id="diary-content-' + date + '" class="page-body diary-page-body"></div>';
+    document.getElementById('diary-pages').appendChild(page);
+  }
   if (page) {
     page.classList.add('active');
     page.dataset.diaryRequestedDate = fullDate;
+    page.querySelector('.page-title').textContent = fullDate + ' ' + labels.diaryNavDiary;
+    page.querySelector('.page-subtitle').textContent = fullDate;
   }
+  const request = Number(page.dataset.diaryRequestId || 0) + 1;
+  page.dataset.diaryRequestId = String(request);
 
   // 高亮侧边栏
   if (navEl) {
@@ -5665,19 +5760,23 @@ async function showDiaryByDate(fullDate, navEl) {
     if (dot) dot.classList.add('active');
   }
 
-  location.hash = pageId;
+  setDashboardRoute(pageId, {day: fullDate});
   document.querySelectorAll('.nav-item:not(.active)').forEach(item => item.removeAttribute('aria-current'));
   focusDashboardRoute(page);
 
   // 加载内容
   const contentEl = document.getElementById('diary-content-' + date);
   if (!contentEl) return;
+  document.getElementById('usage-for-' + pageId)?.remove();
+  page.querySelector('[data-view-period-usage]')?.remove();
   contentEl.innerHTML = '<div style="padding:20px;color:var(--gray)">' + escapeHtml(labels.loadingDiary) + '</div>';
 
   try {
     const res = await fetch(`/api/diary/${fullDate}`);
+    if (page.dataset.diaryRequestedDate !== fullDate || Number(page.dataset.diaryRequestId) !== request) return;
     if (!res.ok) { contentEl.innerHTML = labels.updateFailed; return; }
     const d = await res.json();
+    if (page.dataset.diaryRequestedDate !== fullDate || Number(page.dataset.diaryRequestId) !== request) return;
     if (dashboardStateFailed(d)) {
       contentEl.innerHTML = '<div style="padding:20px;color:var(--error)" role="alert">' + escapeHtml(labels.updateFailed + ': ' + dashboardStateSummary(d)) + '</div>';
       return;
@@ -5687,7 +5786,10 @@ async function showDiaryByDate(fullDate, navEl) {
       return;
     }
     renderDiaryContent(date, d);
+    if (typeof organizeDashboardUsage === 'function') organizeDashboardUsage();
+    if (typeof decorateDashboardUi === 'function') decorateDashboardUi();
   } catch (e) {
+    if (page.dataset.diaryRequestedDate !== fullDate || Number(page.dataset.diaryRequestId) !== request) return;
     contentEl.innerHTML = '<div style="padding:20px;color:var(--error)">' + escapeHtml(labels.updateFailed + ': ' + e.message) + '</div>';
   }
 }
@@ -6144,7 +6246,7 @@ function renderDiaryContent(shortDate, d) {
 
   // ── 4. Token 小时分布 ──
   const heatmap = hourlyHeatmap(hourlyTokens, maxHourly);
-  const heatmapHtml = `<div class="section"><div class="section-title"><span class="section-title-num">${sec()}</span> ${escapeHtml(labels.hourlyTokens)}</div>${heatmap}</div>`;
+  const heatmapHtml = `<div class="section dash-diary-usage"><div class="section-title"><span class="section-title-num">${sec()}</span> ${escapeHtml(labels.hourlyTokens)}</div>${heatmap}</div>`;
 
   // ── 5. 重要提醒 ──
   let remindersHtml = '';
@@ -6236,7 +6338,38 @@ function renderDiaryContent(shortDate, d) {
   container.innerHTML = `<div class="diary-content-stack">${kpiCards}${summaryHtml}${agentHtml}${heatmapHtml}${remindersHtml}${lessonsHtml}${infraHtml}${notesHtml}${rawHtml}</div>`;
 }
 
+function setDashboardRoute(pageId, params = {}) {
+  const url = new URL(location.href);
+  url.searchParams.delete('day');
+  url.searchParams.delete('month');
+  const page = document.getElementById(pageId);
+  if (pageId.startsWith('page-day-')) {
+    const date = params.day || page?.dataset.diaryRequestedDate;
+    if (date) url.searchParams.set('day', date);
+  }
+  if (pageId === 'page-monthly-overview') {
+    const month = params.month || page?.dataset.monthRequestedId;
+    if (month) url.searchParams.set('month', month);
+  }
+  url.hash = pageId;
+  if (url.href !== location.href) history.pushState(null, '', url.href);
+}
+
+function loadDashboardRouteData(id) {
+  if ((id === 'home' || id === 'static') && typeof loadAssetDashboard === 'function') loadAssetDashboard();
+  if (id === 'static' || id === 'overview') aaEnsureAssetsLoaded();
+  if (id === 'static') loadSkillAssetReview();
+  if (id === 'static' && typeof loadCanonicalSkills === 'function') loadCanonicalSkills();
+  if (id === 'overview') fetchTokenClock();
+  if (id === 'foundation-ops') loadFoundationOps();
+  if (id === 'rag-search') loadRagSearchPage();
+  if (typeof organizeDashboardUsage === 'function') organizeDashboardUsage();
+  if (typeof decorateDashboardUi === 'function') decorateDashboardUi();
+}
+
 function showPage(id, navEl) {
+  if (!document.getElementById('page-' + id)) id = 'home';
+  navEl = navEl || Array.from(document.querySelectorAll('.nav-item[data-page-id]')).find(item => item.dataset.pageId === 'page-' + id);
   // Update page display
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -6254,10 +6387,9 @@ function showPage(id, navEl) {
   setMobileNavActive(id);
   document.querySelectorAll('.nav-item:not(.active)').forEach(item => item.removeAttribute('aria-current'));
   // Update URL hash for browser back/forward support
-  location.hash = 'page-' + id;
-  if (id === 'static') aaEnsureAssetsLoaded();
-  if (id === 'foundation-ops') loadFoundationOps();
-  if (id === 'rag-search') loadRagSearchPage();
+  setDashboardRoute('page-' + id);
+  document.querySelectorAll('.page').forEach(item => item.setAttribute('aria-hidden', item === page ? 'false' : 'true'));
+  loadDashboardRouteData(id);
   focusDashboardRoute(page);
 }
 
@@ -6288,33 +6420,37 @@ function showPageFromHash() {
   });
   setMobileNavActive(navHash);
   document.querySelectorAll('.page').forEach(item => item.setAttribute('aria-hidden', item === page ? 'false' : 'true'));
-  if (hash === 'page-static') aaEnsureAssetsLoaded();
-  if (hash === 'page-foundation-ops') loadFoundationOps();
-  if (hash === 'page-rag-search') loadRagSearchPage();
+  loadDashboardRouteData(navHash);
   focusDashboardRoute(page);
 }
 
 async function restoreDynamicDiaryPageFromHash() {
   const requestedHash = location.hash.replace('#', '');
+  const routeParams = new URLSearchParams(location.search);
   const dayMatch = requestedHash.match(/^page-day-(\d{4})$/);
   if (dayMatch) {
+    const dateParam = routeParams.get('day');
+    const exactDate = /^\d{4}-\d{2}-\d{2}$/.test(dateParam || '') && dateParam.slice(5).replace('-', '') === dayMatch[1] ? dateParam : null;
     const nav = Array.from(document.querySelectorAll('.nav-item[data-diary-date]'))
-      .find(item => item.dataset.pageId === requestedHash);
-    if (nav?.dataset.diaryDate) {
+      .find(item => exactDate ? item.dataset.diaryDate === exactDate : item.dataset.pageId === requestedHash);
+    const fullDate = exactDate || nav?.dataset.diaryDate;
+    if (fullDate) {
       const page = document.getElementById(requestedHash);
-      if (page?.dataset.diaryRequestedDate === nav.dataset.diaryDate) {
+      if (page?.dataset.diaryRequestedDate === fullDate) {
         showPageFromHash();
         return true;
       }
-      await showDiaryByDate(nav.dataset.diaryDate, nav);
+      await showDiaryByDate(fullDate, nav);
       return true;
     }
   }
   if (requestedHash === 'page-monthly-overview') {
+    const monthParam = routeParams.get('month');
+    const exactMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(monthParam || '') ? monthParam : null;
     const nav = Array.from(document.querySelectorAll('.nav-item[data-month-id]'))
-      .find(item => item.dataset.pageId === requestedHash);
+      .find(item => exactMonth ? item.dataset.monthId === exactMonth : item.dataset.pageId === requestedHash);
     const now = new Date();
-    const monthId = nav?.dataset.monthId || now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    const monthId = exactMonth || nav?.dataset.monthId || now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
     const page = document.getElementById('page-monthly-overview');
     if (page?.dataset.monthRequestedId === monthId) {
       showPageFromHash();
@@ -6346,6 +6482,7 @@ function setMobileNavActive(id) {
 function focusDashboardRoute(page) {
   document.querySelectorAll('.page').forEach(item => item.setAttribute('aria-hidden', item === page ? 'false' : 'true'));
   if (!page) return;
+  setMobileNavActive(page.id.replace(/^page-/, ''));
   const heading = page.querySelector('.page-title') || page;
   if (heading.classList.contains('page-title')) {
     heading.setAttribute('role', 'heading');
@@ -6423,6 +6560,7 @@ function trapDashboardDialogFocus(event, panel) {
 }
 
 function openModal(title, content) {
+  if (backgroundTasksTimer) { clearInterval(backgroundTasksTimer); backgroundTasksTimer = null; }
   if (ACTANARA_SHARE_PREVIEW.state !== 'closed') releaseActanaraSharePreview();
   const modal = document.getElementById('modal');
   const generation = ++ACTANARA_MODAL_GENERATION;
@@ -6473,14 +6611,38 @@ function modalBack() {
 }
 
 function openI18nTodo() {
-  const labels = operatorText();
-  openModal(labels.i18nSwitch, '<div class="settings-note">' + escapeHtml(labels.i18nTodo) + '</div>');
+  const en = dashboardLanguageProfile() === 'en';
+  openModal(en ? 'Interface Language' : '界面语言',
+    '<p class="settings-note">' + (en ? 'This preference applies to this browser. Generated reports keep their existing language.' : '设置仅作用于当前浏览器，已生成报告的语言保持原样。') + '</p>' +
+    '<div class="settings-actions"><button type="button" class="wr-export-btn' + (!en ? '' : ' secondary') + '" aria-pressed="' + !en + '" onclick="setDashboardDisplayLanguage(\'zh\')">简体中文</button>' +
+    '<button type="button" class="wr-export-btn' + (en ? '' : ' secondary') + '" aria-pressed="' + en + '" onclick="setDashboardDisplayLanguage(\'en\')">English</button></div>');
+}
+
+function setDashboardDisplayLanguage(language) {
+  if (language !== 'en' && language !== 'zh') return;
+  ACTANARA_DISPLAY_LANGUAGE_PROFILE = language;
+  try {
+    localStorage.setItem('actanara.dashboard.language', language);
+    location.reload();
+  } catch (_) {
+    applyStaticDashboardText(language);
+    closeModal();
+    if (_aaState.data) { aaDestroyCharts(); aaRender(_aaState.data); }
+    loadDashboardRouteData(document.querySelector('.page.active')?.id.replace(/^page-/, '') || 'home');
+  }
 }
 
 function openMobileUtilities() {
   const labels = dashboardShellText();
   openModal(labels.mobileMoreTitle, `
     <div class="mobile-utility-grid">
+      <button type="button" class="utility-btn" data-mobile-action="reports" onclick="openDashboardReportIndex()">${escapeHtml(dashboardLanguageProfile() === 'en' ? 'Reports & Diary' : '报告与日记')}</button>
+      <a class="utility-btn utility-link" data-mobile-action="tasks" href="/tasks">${escapeHtml(labels.taskBoard)}</a>
+      <button type="button" class="utility-btn" data-mobile-action="background-tasks" onclick="openBackgroundTasksModal()">${escapeHtml(labels.backgroundTasks)}</button>
+      <button type="button" class="utility-btn" data-mobile-action="messages" onclick="openMsgboxModal()">${escapeHtml(labels.messagesTitle)}</button>
+      <button type="button" class="utility-btn" data-mobile-action="history" onclick="openHistoryBackfillModal()">${escapeHtml(labels.historyBackfill)}</button>
+      <button type="button" class="utility-btn" data-mobile-action="rag" onclick="openDashboardPage('rag-search')">nova-RAG</button>
+      <button type="button" class="utility-btn" data-mobile-action="maintenance" onclick="openDashboardPage('foundation-ops')">${escapeHtml(labels.navFoundationOps)}</button>
       <button type="button" class="utility-btn" data-mobile-action="settings" onclick="openSettingsModal()">${escapeHtml(labels.settingsButton)}</button>
       <button type="button" class="utility-btn" data-mobile-action="llm" onclick="openLlmProviderModal()">${escapeHtml(labels.llmButton)}</button>
       <a class="utility-btn utility-btn-muted utility-link" data-mobile-action="github" href="${ACTANARA_GITHUB_URL}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(labels.githubTitle)}" aria-label="${escapeHtml(labels.githubTitle)}">GitHub</a>
@@ -9552,7 +9714,8 @@ async function runRagPageSearch() {
   const t = ragUiText();
   const box = document.getElementById('ragPageSearchResults');
   const query = document.getElementById('ragPageSearchQuery')?.value || '';
-  const topK = Number(document.getElementById('ragPageSearchTopK')?.value || 8);
+  const limitInput = document.getElementById('ragPageSearchTopK');
+  const topK = Number(limitInput?.value || 8);
   const project = document.getElementById('ragPageSearchProject')?.value || '';
   const sourceSets = _csvValues(document.getElementById('ragPageSearchSourceSets')?.value || '');
   const lifecycle = _csvValues(document.getElementById('ragPageSearchLifecycle')?.value || '');
@@ -9560,6 +9723,15 @@ async function runRagPageSearch() {
     if (box) box.innerHTML = '<div class="fo-job-error">' + escapeHtml(t.searchQueryRequired) + '</div>';
     return;
   }
+  const limitMessage = dashboardLanguageProfile() === 'en' ? 'Choose a whole number from 1 to 20 for the result limit.' : '结果数量需为 1 到 20 之间的整数。';
+  limitInput?.setCustomValidity('');
+  if (!Number.isInteger(topK) || topK < 1 || topK > 20) {
+    limitInput?.setCustomValidity(limitMessage);
+    limitInput?.reportValidity();
+    if (box) box.innerHTML = '<div class="fo-job-error" role="alert">' + escapeHtml(limitMessage) + '</div>';
+    return;
+  }
+  const request = ++RAG_PAGE_SEARCH_REQUEST;
   if (box) box.innerHTML = '<div class="settings-note">' + escapeHtml(t.searching) + '</div>';
   try {
     const payload = {query, topK, includeGovernance: true, mode: 'auto', caller: 'dashboard'};
@@ -9573,6 +9745,7 @@ async function runRagPageSearch() {
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
+    if (request !== RAG_PAGE_SEARCH_REQUEST) return;
     const backend = data.backend || {};
     const backendNotice = '<div class="settings-note" role="status"><b>' +
       escapeHtml(t.searchBackend) + '</b> ' + escapeHtml(backend.kind || 'unknown') +
@@ -9587,6 +9760,7 @@ async function runRagPageSearch() {
     if (box) box.innerHTML = backendNotice +
       (rows || '<div class="settings-note">' + escapeHtml(t.noResults) + '</div>');
   } catch (e) {
+    if (request !== RAG_PAGE_SEARCH_REQUEST) return;
     if (box) box.innerHTML = '<div class="fo-job-error">' + escapeHtml(t.searchFailed + e.message) + '</div>';
   }
 }
@@ -10700,6 +10874,7 @@ function renderRealtimeWorkspaces(workspaces, updatedAt) {
 }
 
 function fetchTokenClock() {
+  if (!document.getElementById('page-overview')?.classList.contains('active') || document.hidden) return;
   fetch('/api/token-clock').then(async r => {
     const data = await r.json();
     if (!r.ok || dashboardStateFailed(data)) throw new Error(dashboardStateSummary(data));
@@ -10716,7 +10891,9 @@ function fetchTokenClock() {
 let _aaCharts = { trend: null, model: null, tool: null };
 let _aaState = { data: null, skillTab: 'global', infraExpanded: { devices: false, services: false }, infraActivityItems: [] };
 let _aaSkillAssetState = { payload: null, selected: new Set(), loading: false, generating: false, error: '' };
+let _aaSkillReviewPending = null;
 let _aaLoading = false;
+let _aaPendingPromise = null;
 const AA_INFRA_CARD_LIMIT = 6;
 
 function aaFmtTokens(n) {
@@ -10763,11 +10940,13 @@ function renderAACharts(d) {
   const labels = dashboardText();
   const assetLabels = aiAssetsText();
   const tools = d.tools || [];
-  if (!tools.length) return;
-
   // Heatmap for 30-day trend
   renderHeatmap(d.trend30d || []);
+  // Charts need a visible canvas after moving historical usage to its own page.
+  const usagePage = document.getElementById('aaToolChart')?.closest('.page');
+  if (usagePage && !usagePage.classList.contains('active')) return;
   if (typeof window.Chart !== 'function') return;
+  aaDestroyCharts();
 
   // Agent / workspace consumption bar chart
   const workspaces = d.workspaceUsage || [];
@@ -10953,7 +11132,7 @@ function aaSkillAssetCard(item, labels) {
       '<div class="aa-skill-asset-draft-description">' + escapeHtml(item.skillDescription) + '</div>' +
       '<pre>' + escapeHtml(item.skillMarkdown) + '</pre></div>'
     : '';
-  return '<article class="aa-skill-asset-card" data-asset-class="' + escapeHtml(assetClass) + '">' +
+  return '<article class="aa-skill-asset-card" data-review-id="' + escapeHtml(item.reviewId) + '" data-asset-class="' + escapeHtml(assetClass) + '">' +
     '<div class="aa-skill-asset-head">' + checkbox +
       '<div class="aa-skill-asset-heading"><div class="aa-skill-asset-tags"><span class="aa-skill-asset-class">' + escapeHtml(classLabel) + '</span>' +
       (item.humanOverride === true ? '<span class="aa-skill-asset-disposition">' + escapeHtml(labels.skillAssetsHumanOverride) + '</span>' : '') +
@@ -10971,12 +11150,17 @@ function renderSkillAssetReview() {
   const target = document.getElementById('aaSkillAssetReview');
   if (!target) return;
   const labels = aiAssetsText();
+  const datePicker = document.getElementById('aaSkillAssetDate');
+  if (datePicker) {
+    datePicker.disabled = _aaSkillAssetState.generating;
+    if (!_aaSkillAssetState.loading && _aaSkillAssetState.payload?.businessDate) datePicker.value = _aaSkillAssetState.payload.businessDate;
+  }
   if (_aaSkillAssetState.loading) {
     target.innerHTML = '<div class="aa-skill-assets-empty">' + escapeHtml(labels.skillAssetsLoading) + '</div>';
     return;
   }
   if (_aaSkillAssetState.error) {
-    target.innerHTML = '<div class="aa-skill-assets-empty aa-skill-assets-error">' + escapeHtml(labels.skillAssetsFailed + _aaSkillAssetState.error) + '</div>';
+    target.innerHTML = '<div class="aa-skill-assets-empty aa-skill-assets-error" role="alert">' + escapeHtml(labels.skillAssetsFailed + _aaSkillAssetState.error) + '</div><button type="button" class="wr-export-btn" onclick="loadSkillAssetReview(document.getElementById(\'aaSkillAssetDate\')?.value || null)">' + escapeHtml(labels.retry) + '</button>';
     return;
   }
   const payload = _aaSkillAssetState.payload;
@@ -11007,13 +11191,22 @@ function aaToggleSkillAssetSelection(reviewId, selected) {
   renderSkillAssetReview();
 }
 
-async function loadSkillAssetReview() {
-  if (_aaSkillAssetState.loading) return;
+async function loadSkillAssetReview(businessDate = null) {
+  if (_aaSkillAssetState.generating) return;
+  if (_aaSkillAssetState.loading) {
+    await _aaSkillReviewPending;
+    if (businessDate && businessDate !== _aaSkillAssetState.payload?.businessDate) return loadSkillAssetReview(businessDate);
+    return;
+  }
+  if (businessDate && !/^\d{4}-\d{2}-\d{2}$/.test(businessDate)) return;
+  if (businessDate && document.getElementById('aaSkillAssetDate')) document.getElementById('aaSkillAssetDate').value = businessDate;
+  let finishReview;
+  _aaSkillReviewPending = new Promise(resolve => { finishReview = resolve; });
   _aaSkillAssetState.loading = true;
   _aaSkillAssetState.error = '';
   renderSkillAssetReview();
   try {
-    const response = await fetch('/api/ai-assets/skill-assets');
+    const response = await fetch('/api/ai-assets/skill-assets' + (businessDate ? '?businessDate=' + encodeURIComponent(businessDate) : ''));
     const payload = await response.json();
     if (!response.ok || !['ready', 'empty'].includes(payload.status)) throw new Error(payload.error || ('HTTP ' + response.status));
     const items = aaSkillAssetItems(payload);
@@ -11026,6 +11219,8 @@ async function loadSkillAssetReview() {
   } finally {
     _aaSkillAssetState.loading = false;
     renderSkillAssetReview();
+    finishReview();
+    _aaSkillReviewPending = null;
   }
 }
 
@@ -11097,18 +11292,30 @@ async function generateAndRegisterSelectedSkillAssets() {
 
 async function loadAiAssets() {
   const labels = aiAssetsText();
-  if (_aaLoading) return;
+  if (_aaLoading) return _aaPendingPromise;
   _aaLoading = true;
+  let finishLoad;
+  _aaPendingPromise = new Promise(resolve => { finishLoad = resolve; });
   const loading = document.getElementById('aiAssetsLoading');
   const content = document.getElementById('aiAssetsContent');
   const btn = document.getElementById('aiAssetsRefreshBtn');
   const timeEl = document.getElementById('aiAssetsUpdateTime');
-  if (!loading || !content) { _aaLoading = false; return; }
+  const usageLoading = document.getElementById('usageHistoryLoading');
+  const usageButton = document.getElementById('usageHistoryRefreshBtn');
+  const usageUpdatedAt = document.getElementById('usageHistoryUpdatedAt');
+  if (!loading || !content) { _aaLoading = false; finishLoad(null); _aaPendingPromise = null; return; }
 
   loading.style.display = 'flex';
   content.style.display = 'none';
   clearSharePayload('ai-assets', 'aiAssetsShareBtn');
   if (btn) btn.textContent = labels.loading;
+  if (btn) btn.disabled = true;
+  if (usageButton) usageButton.disabled = true;
+  if (usageLoading) {
+    usageLoading.style.display = 'block';
+    usageLoading.setAttribute('role', 'status');
+    usageLoading.textContent = labels.loading;
+  }
 
   try {
     const res = await fetch('/api/ai-assets');
@@ -11123,26 +11330,38 @@ async function loadAiAssets() {
       content.style.display = 'none';
       if (btn) btn.textContent = labels.refresh;
       if (timeEl) timeEl.textContent = '';
+      if (usageLoading) usageLoading.textContent = labels.noData;
       return;
     }
     if (state.status === 'degraded') {
       loading.style.display = 'flex';
       loading.setAttribute('role', 'status');
       loading.textContent = labels.degraded + dashboardStateSummary(d);
+      if (usageLoading) usageLoading.textContent = labels.degraded + dashboardStateSummary(d);
     } else {
       loading.style.display = 'none';
       loading.removeAttribute('role');
+      if (usageLoading) usageLoading.style.display = 'none';
     }
     content.style.display = 'block';
     if (btn) btn.textContent = labels.refresh;
     if (timeEl) timeEl.textContent = labels.updatedAt + new Date().toLocaleTimeString() + foundationFreshnessSuffix(d.dataFreshness && d.dataFreshness.aiAssets);
+    if (usageUpdatedAt && timeEl) usageUpdatedAt.textContent = timeEl.textContent;
     aaDestroyCharts();
     aaRender(d);
   } catch (e) {
     loading.innerHTML = '<span style="color:var(--ruby)">❌ ' + escapeHtml(labels.loadFailed + e.message) + '</span>';
     if (btn) btn.textContent = labels.retry;
+    if (usageLoading) {
+      usageLoading.setAttribute('role', 'alert');
+      usageLoading.textContent = labels.loadFailed + e.message;
+    }
   } finally {
     _aaLoading = false;
+    finishLoad(_aaState.data);
+    _aaPendingPromise = null;
+    if (btn) btn.disabled = false;
+    if (usageButton) usageButton.disabled = false;
   }
 }
 
@@ -12082,13 +12301,12 @@ async function foundationBackfillRange() {
 }
 
 function aaEnsureAssetsLoaded() {
-  const page = document.getElementById('page-static');
-  if (!page || !page.classList.contains('active')) return;
+  const page = document.querySelector('#page-static.active, #page-overview.active');
+  if (!page) return;
   const content = document.getElementById('aiAssetsContent');
-  const loading = document.getElementById('aiAssetsLoading');
   const hasData = content && content.style.display === 'block' && _aaState.data;
-  const failed = loading && loading.innerHTML.startsWith('❌');
-  if (!hasData && !failed) loadAiAssets();
+  if (!hasData) loadAiAssets();
+  else if (page.id === 'page-overview') requestAnimationFrame(() => renderAACharts(_aaState.data));
 }
 
 function toggleAaInfrastructure(kind) {
@@ -12245,6 +12463,7 @@ function aaRender(d) {
     { icon:'🤖', label:labels.agentInstances, value: Number(d.agentCount ?? (d.agents||[]).length).toLocaleString(), note: labels.agentInstancesNote },
     { icon:'📅', label:labels.activeDays, value: Number(d.activeDayCount || 0).toLocaleString() + ' ' + labels.dayUnit },
   ].map(k => '<div class="aa-kpi-card"><div class="aa-kpi-icon">' + k.icon + '</div><div class="aa-kpi-label">' + k.label + '</div><div class="aa-kpi-value">' + k.value + '</div>' + (k.note ? '<div class="aa-kpi-note">' + escapeHtml(k.note) + '</div>' : '') + '</div>').join('');
+  if (typeof renderAssetInventorySummary === 'function') renderAssetInventorySummary(d);
 
   // B: Tools
   const maxTokens = Math.max(...tools.map(t => t.allTimeTokens), 1);
@@ -12263,7 +12482,7 @@ function aaRender(d) {
         '<div class="aa-tool-bar-track"><div class="aa-tool-bar-fill" style="width:' + pct + '%; background:' + aaToolColor(t.name) + '"></div></div>' +
         '<div class="aa-tool-dates"><span>' + escapeHtml(labels.firstActive) + (t.firstActivity||'—') + '</span><span>' + escapeHtml(labels.lastActive) + (t.lastActivity||'—') + '</span></div>' +
       '</div>';
-  }).join('') + '<div class="aa-tool-card aa-tool-coming-soon"><div class="aa-tool-coming-soon-icon">＋</div><div>' + escapeHtml(labels.moreAiToolsSoon) + '</div></div>';
+  }).join('');
 
   // C & D: Charts (heatmap + dual bar)
   if (typeof renderAACharts === 'function') renderAACharts(d);
@@ -12303,6 +12522,7 @@ function aaRender(d) {
 
   // L: Skill Pass review projection (read-only; no registration side effects)
   void loadSkillAssetReview();
+  if (typeof decorateDashboardUi === 'function') decorateDashboardUi();
 }
 
 function switchSkillTab(type) {
@@ -13239,6 +13459,11 @@ function aaToast(msg, type) {
 }
 
 document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.isComposing && e.target.matches('#ragPageSearchQuery, #ragPageSearchTopK, #ragPageSearchProject, #ragPageSearchSourceSets, #ragPageSearchLifecycle')) {
+    e.preventDefault();
+    runRagPageSearch();
+    return;
+  }
   const roleButton = e.target.closest && e.target.closest('[role="button"]:not(button):not(a)');
   if (roleButton && (e.key === 'Enter' || e.key === ' ')) {
     e.preventDefault();
@@ -13713,8 +13938,14 @@ initFromHash().catch(e => console.error('initFromHash error:', e));
 window.addEventListener('hashchange', () => {
   initFromHash().catch(e => console.error('hashchange restore error:', e));
 });
+window.addEventListener('popstate', () => {
+  initFromHash().catch(e => console.error('history restore error:', e));
+});
 
 document.addEventListener('input', recordAdvancedSettingsDirty);
+document.addEventListener('input', event => {
+  if (event.target.id === 'ragPageSearchTopK') event.target.setCustomValidity('');
+});
 document.addEventListener('change', recordAdvancedSettingsDirty);
 document.addEventListener('input', recordSettingsLlmDirty);
 document.addEventListener('change', recordSettingsLlmDirty);

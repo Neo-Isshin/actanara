@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.routers import archive, diary, tasks, metrics, ai_assets, settings, foundation_ops
+from app.routers import dashboard_summary
 from app.services import scheduler
 from app.services.dashboard_security import (
     DASHBOARD_CSRF_COOKIE,
@@ -119,6 +120,7 @@ app.include_router(ai_assets.router, prefix="/api", tags=["AI Assets"])
 app.include_router(settings.router, prefix="/api", tags=["Settings"])
 app.include_router(foundation_ops.router, prefix="/api", tags=["Foundation Ops"])
 app.include_router(archive.router, prefix="/api", tags=["Living Archive"])
+app.include_router(dashboard_summary.router, prefix="/api", tags=["Dashboard"])
 app.include_router(metrics.events_router, tags=["Events"])
 app.include_router(ai_assets.events_router, tags=["Events"])
 
@@ -133,7 +135,7 @@ async def dashboard():
 
 @app.get("/dashboard-classic")
 async def dashboard_classic():
-    """Permanent recovery route for the original Dashboard."""
+    """Compatibility alias retaining the full operational Dashboard."""
     return RedirectResponse(url="/static/index.html")
 
 

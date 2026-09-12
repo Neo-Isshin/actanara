@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Actanara Dashboard 设计方案</title>
+  <meta name="description" content="Actanara 主 Dashboard 的三个布局与视觉方向原型。">
+  <link rel="icon" href="../dashboard-demo/favicon.ico">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body data-concept="observatory">
+  <svg class="icon-sprite" aria-hidden="true">
+    <symbol id="i-observe" viewBox="0 0 24 24"><path d="M3 12h4l2.2-6 4.1 12 2.4-6H21"/><circle cx="12" cy="12" r="9"/></symbol>
+    <symbol id="i-assets" viewBox="0 0 24 24"><path d="M4 7.5 12 3l8 4.5-8 4.5-8-4.5Z"/><path d="m4 12 8 4.5 8-4.5M4 16.5 12 21l8-4.5"/></symbol>
+    <symbol id="i-journal" viewBox="0 0 24 24"><path d="M5 3h11a3 3 0 0 1 3 3v15H8a3 3 0 0 1-3-3V3Z"/><path d="M8 3v15a3 3 0 0 0-3 3M11 8h5M11 12h5"/></symbol>
+    <symbol id="i-memory" viewBox="0 0 24 24"><path d="M12 3a4 4 0 0 0-4 4v1a4 4 0 0 0-2 7.5A4.5 4.5 0 0 0 14 19V7a4 4 0 0 0-2-4Z"/><path d="M14 8a3 3 0 0 1 4.5 2.6A3.5 3.5 0 0 1 18 17a4 4 0 0 1-4 2M8 8a3 3 0 0 0 3 3M7 15a4 4 0 0 0 4-1"/></symbol>
+    <symbol id="i-foundation" viewBox="0 0 24 24"><path d="M4 20h16M6 20V9h12v11M4 9l8-5 8 5M9 13h6M9 16h6"/></symbol>
+    <symbol id="i-task" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m4 6 .8.8L6.5 5M4 12l.8.8L6.5 11M4 18l.8.8 1.7-1.8"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM10 21h4"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M14 7l5 5-5 5"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 2 1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8L12 2Z"/><path d="m19 16 .7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7L19 16Z"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21h-4v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3.1 14H3v-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.5V3h4v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1h.1v4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8M15 8l2 2M17 6l2 2"/></symbol>
+    <symbol id="i-language" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.5 3.8 9S14.5 18.5 12 21c-2.5-2.5-3.8-5.5-3.8-9S9.5 5.5 12 3Z"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 6v5h-5M4 18v-5h5"/><path d="M18.2 9A7 7 0 0 0 6.3 6.3L4 9M5.8 15A7 7 0 0 0 17.7 17.7L20 15"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.5M8.2 13.2l7.6 4.5"/></symbol>
+    <symbol id="i-backup" viewBox="0 0 24 24"><path d="M5 5h12l2 2v12H5V5Z"/><path d="M8 5v5h8V5M8 19v-6h8v6"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+  </svg>
+
+  <nav class="concept-switcher" aria-label="设计方案">
+    <span class="concept-switcher__label">主页面方案</span>
+    <button class="concept-switcher__button is-active" type="button" data-concept-target="observatory">
+      <b>A</b><span>星野总控台</span>
+    </button>
+    <button class="concept-switcher__button" type="button" data-concept-target="archive">
+      <b>B</b><span>工作档案</span>
+    </button>
+    <button class="concept-switcher__button" type="button" data-concept-target="signal">
+      <b>C</b><span>信号地图</span>
+    </button>
+  </nav>
+
+  <main class="concept-screen concept-observatory is-active" data-concept-screen="observatory">
+    <aside class="obs-rail">
+      <a class="obs-brand" href="#" aria-label="Actanara 首页">
+        <img src="../dashboard-demo/banner.png" alt="Actanara">
+      </a>
+      <div class="obs-live"><span></span>本地数据已连接</div>
+
+      <nav class="obs-nav" aria-label="主导航">
+        <p>工作台</p>
+        <a class="obs-nav-link is-active" href="#" data-demo-route="当日实时总览"><svg><use href="#i-observe"/></svg><span>今日观测</span><em>LIVE</em></a>
+        <a class="obs-nav-link" href="#" data-demo-route="AI 资产总览"><svg><use href="#i-assets"/></svg><span>AI 资产</span><strong>94</strong></a>
+        <a class="obs-nav-link" href="#" data-demo-route="Nova-Task 任务看板"><svg><use href="#i-task"/></svg><span>任务看板</span><strong>12</strong></a>
+        <p>记录</p>
+        <button class="obs-nav-toggle" type="button" aria-expanded="true" data-nav-toggle>
+          <svg><use href="#i-journal"/></svg><span>日记与报告</span><svg class="obs-nav-chevron"><use href="#i-chevron"/></svg>
+        </button>
+        <div class="obs-nav-children" data-nav-children>
+          <a href="#" data-demo-route="2026 年 8 月月报">月度总览</a>
+          <a href="#" data-demo-route="W35 周报">W35 · 08/25—08/31</a>
+          <a href="#" data-demo-route="08-31 日记">08-31 日记</a>
+          <a href="#" data-demo-route="08-30 日记">08-30 日记</a>
+        </div>
+        <a class="obs-nav-link" href="#" data-demo-route="长期记忆检索"><svg><use href="#i-memory"/></svg><span>长期记忆</span></a>
+        <p>系统</p>
+        <a class="obs-nav-link" href="#" data-demo-route="nova-RAG"><svg><use href="#i-search"/></svg><span>nova-RAG</span><i class="status-ok"></i></a>
+        <a class="obs-nav-link" href="#" data-demo-route="Foundation 运维"><svg><use href="#i-foundation"/></svg><span>Foundation</span><i class="status-ok"></i></a>
+      </nav>
+
+      <div class="obs-rail-foot">
+        <div class="obs-runtime-mini">
+          <span>8</span>
+          <p><b>Agent Runtime</b><small>5 个今日活跃</small></p>
+        </div>
+        <div class="obs-utility-grid">
+          <button type="button" data-demo-action="打开系统设置"><svg><use href="#i-settings"/></svg>设置</button>
+          <button type="button" data-demo-action="打开 LLM Provider 配置"><svg><use href="#i-key"/></svg>LLM</button>
+          <a href="https://github.com/Neo-Isshin/actanara" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <button type="button" data-demo-action="切换到 English"><svg><use href="#i-language"/></svg>中 / EN</button>
+        </div>
+      </div>
+    </aside>
+
+    <section class="obs-main">
+      <header class="obs-topbar">
+        <div>
+          <p class="obs-date">2026 年 8 月 31 日 · 周一</p>
+          <h1>今日观测</h1>
+        </div>
+        <div class="obs-top-actions">
+          <label class="obs-search"><svg><use href="#i-search"/></svg><input data-demo-search aria-label="搜索记忆、任务与会话" placeholder="搜索记忆、任务与会话"></label>
+          <button class="obs-task-button" type="button" data-dialog-open="tasksDialog"><i></i><span>后台任务</span><b data-task-count>2</b></button>
+          <button class="obs-icon-button" type="button" aria-label="消息与待处理事项" data-dialog-open="messagesDialog"><svg><use href="#i-bell"/></svg><span>2</span></button>
+          <button class="obs-primary" type="button" data-dialog-open="historyDialog"><svg><use href="#i-spark"/></svg>生成历史数据</button>
+        </div>
+      </header>
+
+      <div class="obs-status-line">
+        <span class="obs-status-line__mark"></span>
+        <p><b>运行平稳</b> · Foundation ready · nova-RAG ready</p>
+        <div><span>资产快照</span><b data-snapshot-time>10:42:18</b><span>语言</span><b>简体中文</b></div>
+      </div>
+
+      <section class="obs-kpis" aria-label="今日关键指标">
+        <article><span>任务落盘</span><strong>18</strong><small>7 条包含完整证据</small></article>
+        <article><span>学习经验</span><strong>42</strong><small>11 条达到复用标准</small></article>
+        <article><span>Skill 资产</span><strong>7</strong><small><b>3 条可注册</b></small></article>
+        <article><span>报告产物</span><strong>3</strong><small>日记、周报与技术进展</small></article>
+        <article><span>可复用记忆</span><strong>24</strong><small>已进入长期记忆</small></article>
+      </section>
+
+      <section class="obs-asset-toolbar" aria-label="AI 资产操作">
+        <div>
+          <span>ASSET INVENTORY</span>
+          <p><b>资产库存</b><small>Foundation 快照 · 94 项今日新增</small></p>
+        </div>
+        <label>范围<select aria-label="资产时间范围"><option>今天</option><option>最近 7 天</option><option>最近 30 天</option></select></label>
+        <div class="obs-asset-actions">
+          <button type="button" data-demo-action="asset-refresh"><svg><use href="#i-refresh"/></svg>刷新</button>
+          <button type="button" data-demo-action="asset-update">后台更新</button>
+          <button type="button" data-demo-action="asset-share"><svg><use href="#i-share"/></svg>分享图片</button>
+          <button type="button" data-demo-action="asset-backup"><svg><use href="#i-backup"/></svg>数据备份</button>
+        </div>
+      </section>
+
+      <div class="obs-workspace-grid">
+        <section class="obs-panel obs-pulse">
+          <header class="obs-panel-head">
+            <div><span>资产沉淀</span><h2>今日新增 AI 资产</h2></div>
+            <div class="obs-segments" role="group" aria-label="图表指标">
+              <button class="is-active" type="button">全部</button><button type="button">任务</button><button type="button">知识</button>
+            </div>
+          </header>
+          <div class="obs-chart" aria-label="24 小时 AI 资产沉淀趋势图">
+            <div class="obs-chart-scale"><span>48</span><span>32</span><span>16</span><span>0</span></div>
+            <svg viewBox="0 0 900 250" preserveAspectRatio="none" role="img" aria-label="凌晨至当前形成的 AI 资产数量">
+              <defs><linearGradient id="obs-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f6f79" stop-opacity=".3"/><stop offset="1" stop-color="#2f6f79" stop-opacity="0"/></linearGradient></defs>
+              <path class="grid" d="M0 25H900M0 87H900M0 149H900M0 211H900"/>
+              <path class="area" d="M0 218 C55 215 65 197 110 200 S170 223 215 208 S286 176 330 184 S390 129 438 144 S508 202 548 178 S606 55 655 94 S708 185 754 143 S829 34 900 70 L900 250 L0 250Z"/>
+              <path class="line" d="M0 218 C55 215 65 197 110 200 S170 223 215 208 S286 176 330 184 S390 129 438 144 S508 202 548 178 S606 55 655 94 S708 185 754 143 S829 34 900 70"/>
+              <line class="now-line" x1="900" y1="24" x2="900" y2="224"/><circle class="now-dot" cx="900" cy="70" r="6"/>
+            </svg>
+            <div class="obs-chart-hours"><span>00</span><span>04</span><span>08</span><span>12</span><span>16</span><span>20</span><span>现在</span></div>
+          </div>
+          <footer class="obs-chart-foot">
+            <p><i></i><span>今日新增</span><b>94</b><small>已通过资产判断</small></p>
+            <p><i></i><span>待复核</span><b>11</b><small>Skill 与 Lesson</small></p>
+            <a href="#" data-demo-route="Skill Pass 资产账本">打开资产账本 <svg><use href="#i-arrow"/></svg></a>
+          </footer>
+        </section>
+
+        <aside class="obs-attention">
+          <header><div><span>行动队列</span><h2>需要处理</h2></div><b>3</b></header>
+          <button class="obs-attention-item is-warning" type="button" data-demo-action="打开 Skill 提案复核">
+            <i></i><span><b>3 条 Skill 提案待复核</b><small>证据与复用评分已经齐备</small></span><svg><use href="#i-arrow"/></svg>
+          </button>
+          <button class="obs-attention-item" type="button" data-demo-action="打开 Lesson 结晶队列">
+            <i></i><span><b>8 条经验可以结晶</b><small>可转为可注册的程序性资产</small></span><svg><use href="#i-arrow"/></svg>
+          </button>
+          <button class="obs-attention-item" type="button" data-demo-action="打开缺少证据的任务">
+            <i></i><span><b>3 条任务缺少证据</b><small>Nova-Task · 最近检测于 10:39</small></span><svg><use href="#i-arrow"/></svg>
+          </button>
+          <a href="#" data-demo-route="程序性资产复核">进入资产复核队列</a>
+        </aside>
+
+        <section class="obs-panel obs-runtimes">
+          <header class="obs-panel-head">
+            <div><span>来源证据 · 非资产</span><h2>运行轨迹</h2></div>
+            <a href="#" data-demo-route="运行轨迹与 Token 消耗分析">打开完整消耗分析</a>
+          </header>
+          <div class="obs-runtime-table">
+            <div class="obs-runtime-row obs-runtime-row--head"><span>Runtime</span><span>今日 Token</span><span>会话</span><span>最近活动</span><span>状态</span></div>
+            <div class="obs-runtime-row"><span><i class="runtime-mark codex">CX</i><b>Codex</b></span><span>241.0M</span><span>18</span><span>2 分钟前</span><span><em></em>活跃</span></div>
+            <div class="obs-runtime-row"><span><i class="runtime-mark claude">CL</i><b>Claude Code</b></span><span>92.4M</span><span>9</span><span>14 分钟前</span><span><em></em>活跃</span></div>
+            <div class="obs-runtime-row"><span><i class="runtime-mark gemini">GM</i><b>Gemini CLI</b></span><span>58.7M</span><span>6</span><span>1 小时前</span><span><em></em>活跃</span></div>
+            <div class="obs-runtime-row"><span><i class="runtime-mark openclaw">OC</i><b>OpenClaw</b></span><span>26.5M</span><span>4</span><span>3 小时前</span><span class="is-muted"><em></em>空闲</span></div>
+          </div>
+        </section>
+
+        <section class="obs-panel obs-memory-feed">
+          <header class="obs-panel-head">
+            <div><span>最新沉淀</span><h2>可复用资产</h2></div>
+            <a href="#" data-demo-route="AI 资产总览">进入 AI 资产</a>
+          </header>
+          <ol>
+            <li><time>10:38</time><i></i><div><b>Linux release gate 任务落盘</b><p>完成状态、文件变化与 7 条直接证据已经关联</p><span>完成任务</span><span>证据完整</span></div></li>
+            <li><time>09:52</time><i></i><div><b>nova-RAG readiness 经验沉淀</b><p>提炼本地 CPU profile 与 cloud provider 的选择边界</p><span>学习经验</span><span>可复用</span></div></li>
+            <li><time>08:41</time><i></i><div><b>release-readiness-check Skill</b><p>由 3 条重复操作路径结晶，等待用户确认注册</p><span>Skill 提案</span><span>待复核</span></div></li>
+          </ol>
+        </section>
+      </div>
+    </section>
+
+    <nav class="obs-mobile-dock" aria-label="移动端导航">
+      <button class="is-active" type="button" data-demo-action="打开今日观测"><svg><use href="#i-observe"/></svg><span>总览</span></button>
+      <button type="button" data-demo-action="打开 AI 资产"><svg><use href="#i-assets"/></svg><span>资产</span></button>
+      <button type="button" data-demo-action="打开 nova-RAG"><svg><use href="#i-search"/></svg><span>RAG</span></button>
+      <button type="button" data-demo-action="打开 Foundation"><svg><use href="#i-foundation"/></svg><span>运维</span></button>
+      <button type="button" data-demo-action="打开更多工具"><svg><use href="#i-more"/></svg><span>更多</span></button>
+    </nav>
+  </main>
+
+  <main class="concept-screen concept-archive" data-concept-screen="archive">
+    <aside class="arc-index">
+      <a class="arc-brand" href="#" aria-label="Actanara 首页"><img src="../dashboard-demo/banner.png" alt="Actanara"></a>
+      <label class="arc-search"><svg><use href="#i-search"/></svg><input aria-label="检索档案" placeholder="检索全部工作档案"></label>
+      <nav class="arc-primary-nav" aria-label="档案导航">
+        <a class="is-active" href="#"><span>00</span><b>工作档案</b></a>
+        <a href="#"><span>01</span><b>实时总览</b></a>
+        <a href="#"><span>02</span><b>AI 资产</b><em>94</em></a>
+        <a href="#"><span>03</span><b>长期记忆</b></a>
+        <a href="#"><span>04</span><b>Foundation</b></a>
+      </nav>
+      <section class="arc-calendar">
+        <header><span>时间索引</span><b>2026</b></header>
+        <ol>
+          <li><button type="button"><span>八月</span><em>31</em></button><div><a class="is-active" href="#">W35 · 08/25—08/31</a><a href="#">W34 · 08/18—08/24</a><a href="#">月度总览</a></div></li>
+          <li><button type="button"><span>七月</span><em>31</em></button></li>
+          <li><button type="button"><span>六月</span><em>30</em></button></li>
+        </ol>
+      </section>
+      <footer class="arc-index-foot"><span><i></i>Foundation 数据完整</span><button type="button">系统设置</button></footer>
+    </aside>
+
+    <section class="arc-page">
+      <header class="arc-masthead">
+        <div class="arc-masthead-title">
+          <p>ACTANARA / WORK ARCHIVE / 2026—W35</p>
+          <h1>本周工作档案</h1>
+          <span>2026 年 8 月 25 日—8 月 31 日 · 7 天</span>
+        </div>
+        <div class="arc-masthead-actions">
+          <button type="button">更新资产</button><button class="is-dark" type="button">生成本周总结</button>
+        </div>
+      </header>
+
+      <section class="arc-ledger" aria-label="本周摘要">
+        <div><span>任务落盘</span><b>18</b><small>7 条含完整证据</small></div>
+        <div><span>学习经验</span><b>42</b><small>11 条达到复用标准</small></div>
+        <div><span>Skill 资产</span><b class="is-good">7</b><small>3 条可注册</small></div>
+        <div><span>报告产物</span><b>9</b><small>日记 7 · 周报 1 · 技术进展 1</small></div>
+        <div><span>可复用记忆</span><b>24</b><small>已进入长期记忆</small></div>
+      </section>
+      <p class="arc-trace-note"><b>来源轨迹，不计入资产：</b>312 个 Session · 1.82B Token · 18,304 次 API 调用 · 5 个活跃 Runtime</p>
+
+      <div class="arc-content-grid">
+        <article class="arc-story">
+          <header class="arc-section-head"><div><span>01 / WEEKLY NARRATIVE</span><h2>本周叙事</h2></div><small>生成于 10:25 · Foundation ready</small></header>
+          <p class="arc-story-lead">本周的核心不是完成了多少次调用，而是把 Linux 发布路径从“可以运行”推进到“可以被验证、恢复并长期维护”。</p>
+          <div class="arc-story-body">
+            <p>团队围绕 Actanara Linux 发行门禁完成了一轮连续收敛。安装器的 staging、原子提升和失败恢复路径被重新验证；Dashboard、调度任务与 nova-RAG 的用户级 systemd 边界也获得了更清晰的证据链。</p>
+            <p>与此同时，跨 Runtime 的资产归因继续稳定：Codex 和 Claude Code 贡献了主要工程活动，Gemini CLI 参与了文档核对，最终形成 42 条可复用记忆与 18 个完成任务。</p>
+          </div>
+          <blockquote><span>本周观察</span>高产出已经不是问题。下一阶段的重点是让每个结论都能沿着 Session、文件变化和任务证据被重新找到。</blockquote>
+
+          <section class="arc-day-rhythm">
+            <header class="arc-section-head"><div><span>02 / ASSET RHYTHM</span><h2>一周资产沉淀</h2></div><div class="arc-tabs" data-demo-tabs><button class="is-active" type="button">全部资产</button><button type="button">任务</button><button type="button">知识</button></div></header>
+            <div class="arc-bars" aria-label="本周每天形成的资产数量">
+              <div><span style="--h:42%"></span><b>25</b><small>周二</small></div>
+              <div><span style="--h:66%"></span><b>26</b><small>周三</small></div>
+              <div><span style="--h:38%"></span><b>27</b><small>周四</small></div>
+              <div><span style="--h:91%"></span><b>28</b><small>周五</small></div>
+              <div><span style="--h:57%"></span><b>29</b><small>周六</small></div>
+              <div><span style="--h:76%"></span><b>30</b><small>周日</small></div>
+              <div class="is-today"><span style="--h:84%"></span><b>31</b><small>今天</small></div>
+            </div>
+          </section>
+
+          <section class="arc-progress">
+            <header class="arc-section-head"><div><span>03 / WORKSTREAMS</span><h2>主要工作线</h2></div><a href="#">打开完整任务视图</a></header>
+            <div class="arc-progress-row"><span>01</span><div><b>Linux release gate 与安装事务</b><small>9 项完成 · 2 项活动中</small></div><em><i style="--w:82%"></i></em><strong>82%</strong></div>
+            <div class="arc-progress-row"><span>02</span><div><b>nova-RAG readiness 与索引边界</b><small>6 项完成 · 1 项等待验证</small></div><em><i style="--w:71%"></i></em><strong>71%</strong></div>
+            <div class="arc-progress-row"><span>03</span><div><b>Dashboard 主页面设计研究</b><small>3 个方向进入 Demo</small></div><em><i style="--w:48%"></i></em><strong>48%</strong></div>
+          </section>
+        </article>
+
+        <aside class="arc-docket">
+          <section>
+            <header><span>本周索引</span><b>INDEX</b></header>
+            <a href="#"><strong>18</strong><span>已完成任务<small>其中 7 条含完整证据</small></span></a>
+            <a href="#"><strong>42</strong><span>长期记忆<small>技术 24 · 决策 11 · 经验 7</small></span></a>
+            <a href="#"><strong>09</strong><span>活跃 Workspace<small>3 个高强度工作区</small></span></a>
+          </section>
+          <section class="arc-runtime-list">
+            <header><span>运行轨迹 · 非资产</span><b>RUNTIME</b></header>
+            <div><span>Codex</span><em><i style="--w:62%"></i></em><b>62%</b></div>
+            <div><span>Claude Code</span><em><i style="--w:21%"></i></em><b>21%</b></div>
+            <div><span>Gemini CLI</span><em><i style="--w:11%"></i></em><b>11%</b></div>
+            <div><span>其他</span><em><i style="--w:6%"></i></em><b>6%</b></div>
+          </section>
+          <section class="arc-evidence-list">
+            <header><span>最新证据</span><b>EVIDENCE</b></header>
+            <ol>
+              <li><time>10:38</time><a href="#">release generation 原子提升验证通过</a></li>
+              <li><time>09:52</time><a href="#">RAG CPU profile readiness 响应完成</a></li>
+              <li><time>08:41</time><a href="#">Dashboard 设计语言调研归档</a></li>
+              <li><time>昨日</time><a href="#">systemd user unit drift 测试补齐</a></li>
+            </ol>
+          </section>
+          <section class="arc-search-memory">
+            <span>长期记忆</span><h3>从本周工作中继续查找</h3>
+            <label><svg><use href="#i-search"/></svg><input aria-label="搜索本周记忆" placeholder="例如：安装失败恢复"></label>
+            <button type="button">在 nova-RAG 中检索</button>
+          </section>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <main class="concept-screen concept-signal" data-concept-screen="signal">
+    <header class="sig-header">
+      <a class="sig-brand" href="#"><img src="../dashboard-demo/banner.png" alt="Actanara"></a>
+      <nav aria-label="主导航"><a class="is-active" href="#">信号图</a><a href="#">资产</a><a href="#">报告</a><a href="#">记忆</a><a href="#">Foundation</a></nav>
+      <div class="sig-header-actions"><button type="button"><svg><use href="#i-search"/></svg>检索</button><button type="button"><i></i>2 个后台任务</button><button class="is-primary" type="button">生成历史数据</button></div>
+    </header>
+
+    <section class="sig-main">
+      <header class="sig-titlebar">
+        <div><p>AI ASSET NETWORK · 2026/08/31 10:42</p><h1>AI 资产形成地图</h1><span>区分工作轨迹、证据与真正可复用的资产。</span></div>
+        <div class="sig-title-stats"><p><span>任务落盘</span><b>18</b></p><p><span>学习经验</span><b>42</b></p><p><span>Skill 待复核</span><b class="is-warn">3</b></p></div>
+      </header>
+
+      <div class="sig-network">
+        <section class="sig-sources">
+          <header><span>01</span><div><b>工作轨迹</b><small>Session、Token 与工具活动，不计为资产</small></div><em>5 / 8 ACTIVE</em></header>
+          <div class="sig-source-list">
+            <button class="is-active" type="button"><i class="codex">CX</i><span><b>Codex</b><small>18 sessions · 241.0M</small></span><em><s style="--w:88%"></s></em></button>
+            <button type="button"><i class="claude">CL</i><span><b>Claude Code</b><small>9 sessions · 92.4M</small></span><em><s style="--w:52%"></s></em></button>
+            <button type="button"><i class="gemini">GM</i><span><b>Gemini CLI</b><small>6 sessions · 58.7M</small></span><em><s style="--w:36%"></s></em></button>
+            <button type="button"><i class="openclaw">OC</i><span><b>OpenClaw</b><small>4 sessions · 26.5M</small></span><em><s style="--w:21%"></s></em></button>
+            <button type="button"><i class="other">+4</i><span><b>其他 Runtime</b><small>已连接 · 今日低活动</small></span><em><s style="--w:8%"></s></em></button>
+          </div>
+        </section>
+
+        <section class="sig-flow">
+          <header><span>02</span><div><b>证据与资产判断</b><small>Foundation 归因、提炼与复用评估</small></div><em><i></i>HEALTHY</em></header>
+          <div class="sig-flow-canvas">
+            <svg viewBox="0 0 600 520" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M0 72 C130 72 112 162 242 162"/><path d="M0 171 C138 171 108 215 242 215"/><path d="M0 270 C136 270 110 268 242 268"/><path d="M0 369 C138 369 108 321 242 321"/><path d="M0 468 C135 468 112 374 242 374"/>
+              <path d="M358 162 C470 162 445 92 600 92"/><path d="M358 215 C475 215 450 195 600 195"/><path d="M358 268 C480 268 450 298 600 298"/><path d="M358 321 C475 321 455 401 600 401"/>
+            </svg>
+            <div class="sig-core-node"><span>FOUNDATION</span><b>94</b><small>资产候选</small><i></i></div>
+            <div class="sig-core-stages"><span><b>证据关联</b><small>78 项</small></span><span><b>价值判断</b><small>53 项</small></span><span><b>复用评估</b><small>24 项</small></span></div>
+          </div>
+          <footer><span>数据完整度 <b>99.2%</b></span><span>最近快照 <b>10:42:18</b></span><a href="#">打开 Foundation 运维</a></footer>
+        </section>
+
+        <section class="sig-outputs">
+          <header><span>03</span><div><b>AI 资产</b><small>已经落盘、可回顾并能够复用</small></div><em>94 TODAY</em></header>
+          <div class="sig-output-list">
+            <a href="#"><i><svg><use href="#i-task"/></svg></i><span><b>任务落盘</b><small>状态、结果与证据形成可回溯工作单元</small></span><strong>18</strong></a>
+            <a href="#"><i><svg><use href="#i-memory"/></svg></i><span><b>学习经验</b><small>从问题、决策与结果中提炼复用结论</small></span><strong>42</strong></a>
+            <a href="#"><i><svg><use href="#i-spark"/></svg></i><span><b>Skill 资产</b><small>3 条可注册 · 4 条继续观察</small></span><strong>7</strong></a>
+            <a href="#"><i><svg><use href="#i-journal"/></svg></i><span><b>报告与长期记忆</b><small>报告 3 · Canonical memory 24</small></span><strong>27</strong></a>
+          </div>
+        </section>
+      </div>
+
+      <section class="sig-timeline">
+        <header><div><span>04</span><b>今日信号时间线</b></div><div class="sig-tabs" data-demo-tabs><button class="is-active" type="button">全部</button><button type="button">关键事件</button><button type="button">异常</button></div></header>
+        <div class="sig-events">
+          <article><time>10:38:24</time><i class="is-memory"></i><div><span>MEMORY</span><b>7 条工程证据写入本周工作档案</b><small>actanara-linux · Codex · 4 sessions</small></div></article>
+          <article><time>10:21:07</time><i></i><div><span>PIPELINE</span><b>Daily QA 完成，所有 projection ready</b><small>Foundation · 2026-08-31</small></div></article>
+          <article><time>09:52:16</time><i class="is-asset"></i><div><span>ASSET</span><b>nova-RAG readiness 边界更新</b><small>技术决策 · 2 sources</small></div></article>
+          <article><time>08:41:03</time><i class="is-warn"></i><div><span>ATTENTION</span><b>3 条 Nova-Task 缺少直接证据</b><small>建议检查关联 Session</small></div></article>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <dialog class="obs-dialog" id="historyDialog" aria-labelledby="historyDialogTitle">
+    <form method="dialog" data-history-form>
+      <header class="obs-dialog-head">
+        <div><span>HISTORY BACKFILL</span><h2 id="historyDialogTitle">生成历史数据</h2><p>先预览待生成的日记、周报、月报与预计模型调用，再加入后台队列。</p></div>
+        <button type="submit" value="cancel" aria-label="关闭"><svg><use href="#i-close"/></svg></button>
+      </header>
+      <div class="obs-dialog-body">
+        <div class="obs-history-range"><label>开始日期<input type="date" value="2026-08-25"></label><span>至</span><label>结束日期<input type="date" value="2026-08-31"></label></div>
+        <fieldset class="obs-history-options">
+          <legend>生成内容</legend>
+          <label><input type="checkbox" checked><span><b>叙事日记</b><small>7 个业务日期</small></span><em>7 次</em></label>
+          <label><input type="checkbox" checked><span><b>技术进展与智慧沉淀</b><small>从工作证据生成结构化资产</small></span><em>14 次</em></label>
+          <label><input type="checkbox" checked><span><b>周报总结</b><small>W35 · 08/25—08/31</small></span><em>1 次</em></label>
+          <label><input type="checkbox"><span><b>月报总结</b><small>仅在周期完整时建议生成</small></span><em>1 次</em></label>
+        </fieldset>
+        <div class="obs-history-estimate"><span>预计模型调用</span><b>22</b><small>执行前仍可在后台任务中取消</small></div>
+      </div>
+      <footer class="obs-dialog-foot"><button type="submit" value="cancel">取消</button><button class="is-primary" type="submit" value="queue">加入后台队列</button></footer>
+    </form>
+  </dialog>
+
+  <dialog class="obs-dialog" id="tasksDialog" aria-labelledby="tasksDialogTitle">
+    <form method="dialog">
+      <header class="obs-dialog-head">
+        <div><span>BACKGROUND TASKS</span><h2 id="tasksDialogTitle">后台任务</h2><p>查看资产投影、RAG 索引与报告生成进度。</p></div>
+        <button type="submit" value="cancel" aria-label="关闭"><svg><use href="#i-close"/></svg></button>
+      </header>
+      <div class="obs-dialog-body">
+        <div class="obs-task-summary"><span><b>2</b>运行中</span><span><b>1</b>排队</span><span><b>14</b>已完成</span><span><b>0</b>失败</span></div>
+        <div class="obs-task-list">
+          <article><header><span><i></i><b>AI 资产快照更新</b></span><em>运行中</em></header><p>Foundation 正在重建 2026-08-31 的资产投影。</p><div><i style="--w:68%"></i></div><footer><small>68% · 已处理 64 / 94 项</small><button type="button" data-demo-action="查看资产更新详情">查看详情</button></footer></article>
+          <article><header><span><i></i><b>nova-RAG Production Sync</b></span><em>运行中</em></header><p>将 24 条 canonical memory 写入候选索引。</p><div><i style="--w:42%"></i></div><footer><small>42% · building candidate</small><button type="button" data-demo-action="查看 RAG Sync 详情">查看详情</button></footer></article>
+          <article class="is-queued"><header><span><i></i><b>W35 周报总结</b></span><em>排队</em></header><p>等待资产快照更新完成后开始。</p><footer><small>依赖：AI 资产快照更新</small><button type="button" data-demo-action="取消 W35 周报任务">取消</button></footer></article>
+        </div>
+      </div>
+      <footer class="obs-dialog-foot"><button type="submit" value="close">关闭</button><button class="is-primary" type="button" data-demo-action="刷新后台任务状态">刷新状态</button></footer>
+    </form>
+  </dialog>
+
+  <dialog class="obs-dialog" id="messagesDialog" aria-labelledby="messagesDialogTitle">
+    <form method="dialog">
+      <header class="obs-dialog-head">
+        <div><span>MESSAGES &amp; REVIEW</span><h2 id="messagesDialogTitle">消息与待处理事项</h2><p>只保留需要确认、复核或恢复的事项。</p></div>
+        <button type="submit" value="cancel" aria-label="关闭"><svg><use href="#i-close"/></svg></button>
+      </header>
+      <div class="obs-dialog-body obs-message-list">
+        <article><i class="is-warning"></i><div><span>资产复核</span><b>3 条 Skill 提案等待确认</b><p>证据、完整性与复用评分已经齐备。</p><small>10:39 · Skill Pass</small></div><button type="button" data-demo-action="打开 Skill 提案复核">复核</button></article>
+        <article><i></i><div><span>Nova-Task</span><b>3 条完成任务缺少直接证据</b><p>建议检查关联 Session 或文件变化。</p><small>09:58 · task evidence</small></div><button type="button" data-demo-action="打开缺少证据的任务">查看</button></article>
+        <article><i class="is-info"></i><div><span>系统</span><b>nova-RAG 活动索引可以更新</b><p>24 条新 canonical memory 尚未进入活动索引。</p><small>09:52 · RAG readiness</small></div><button type="button" data-demo-action="运行 RAG Sync">同步</button></article>
+      </div>
+      <footer class="obs-dialog-foot"><button type="button" data-demo-action="全部标为已读">全部标为已读</button><button class="is-primary" type="submit" value="close">完成</button></footer>
+    </form>
+  </dialog>
+
+  <div class="obs-toast" role="status" aria-live="polite" data-demo-toast></div>
+
+  <script src="./demo.js"></script>
+</body>
+</html>

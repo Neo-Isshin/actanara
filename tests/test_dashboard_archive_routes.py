@@ -11,17 +11,17 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "src" / "dashboard"))
 
 
-CLASSIC_ASSET_SHA256 = {
-    "src/dashboard/app/static/index.html": "7c53d367b2764320db3e0aed07af3d34766acdbb6cb59ed82d31860abf9dd6ae",
+PRESERVED_ASSET_SHA256 = {
     "src/dashboard/app/static/css/style.css": "e664cbc2c7b28283ea0b3daea4b359ab3ffdceed8c9ca932a4c74e15e4975c07",
-    "src/dashboard/app/static/js/app.js": "a144874d193ff22e0dddda41fae109184169627f96ba2b190c539750384e20f6",
     "src/dashboard/app/static/tasks.html": "71407fd1521a798e2a3ef8654eed0fc524aea065352ec9d424e2f82fbcc5e986",
 }
 
 
 class DashboardArchiveRouteTests(unittest.TestCase):
-    def test_classic_dashboard_assets_remain_byte_identical_to_archive_baseline(self):
-        for relative, expected in CLASSIC_ASSET_SHA256.items():
+    def test_nova_task_and_legacy_styles_remain_byte_identical_to_baseline(self):
+        # The main Dashboard is now intentionally redesigned. The independent
+        # Nova-Task page and legacy component stylesheet remain unchanged.
+        for relative, expected in PRESERVED_ASSET_SHA256.items():
             payload = (ROOT / relative).read_bytes()
             self.assertEqual(hashlib.sha256(payload).hexdigest(), expected, relative)
 

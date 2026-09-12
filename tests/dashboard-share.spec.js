@@ -421,7 +421,8 @@ async function openMonthlyPreview(page, language, evidenceFilename = "") {
 }
 
 async function openAiAssetsPreview(page, language, evidenceFilename = "") {
-  await page.evaluate(() => showPage("static"));
+  // Aggregate usage sharing lives beside the retained usage metrics.
+  await page.evaluate(() => showPage("overview"));
   const button = page.locator("#aiAssetsShareBtn");
   await expect(button).toBeEnabled({ timeout: 20_000 });
   await button.click();
