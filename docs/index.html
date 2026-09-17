@@ -3,8 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Actanara is a non-invasive local AI operations layer that connects your AI tools, automatically summarizes your work, and turns scattered memory into searchable, reusable AI assets.">
+  <meta name="description" content="Actanara saves task outcomes, lessons, Skills and reports from your AI tools as reusable local assets. Explore the v1.8.0 asset-first Dashboard demo, with usage and activity in a separate view.">
   <title>Actanara - Local AI Operations Runtime</title>
+  <link rel="icon" href="dashboard-demo/favicon.ico">
   <style>
     :root {
       color-scheme: light;
@@ -211,6 +212,7 @@
       display: block;
       border-radius: 18px;
     }
+    .hero-visual figcaption { margin-top:12px; text-align:center; color:var(--muted); font-size:13px; }
 
     .section {
       padding: 88px 0;
@@ -562,13 +564,14 @@
     <header class="hero">
       <div class="hero-inner">
         <div>
-          <div class="eyebrow">Actanara · Non-invasive cross-tool AI asset layer</div>
+          <div class="eyebrow">Actanara v1.8.0 · Your work becomes reusable assets</div>
           <h1>Actanara</h1>
           <p class="lead">
-            打通你的所有 AI 工具，自动为你总结工作，并沉淀专属于你的可检索、可复用 AI 资产。Actanara 作为外挂式本地运行层，把分散在工具、CLI 和 agent 中的记忆、任务、经验与总结收拢进用户自己的 Foundation、Dashboard 与 Nova-RAG。
+            让 Agent 完成的工作留下来。Actanara 把分散的任务成果、学习经验、可复用技能与报告保存在本地。新版 Dashboard 以资产为首页，用独立的「用量与活动」菜单保留 Token、模型和工作区分析。
           </p>
           <div class="hero-actions">
             <a class="button primary" href="#install">开始安装</a>
+            <a class="button secondary" href="dashboard-demo/?lang=zh#page-home">体验新版 Dashboard</a>
             <a class="button secondary" href="#features">查看系统功能</a>
           </div>
           <div class="hero-meta" aria-label="Project highlights">
@@ -578,7 +581,8 @@
           </div>
         </div>
         <figure class="hero-visual">
-          <img src="assets/actanara-product.svg" alt="Actanara dashboard product mockup">
+          <a href="dashboard-demo/?lang=zh#page-home"><img src="assets/dashboard/dashboard-home.png" alt="Actanara v1.8.0 Dashboard with sample data"></a>
+          <figcaption>v1.8.0 真实界面 · 演示数据 · 点击体验</figcaption>
         </figure>
       </div>
     </header>
@@ -597,13 +601,13 @@
         </article>
         <article class="feature-card">
           <div class="feature-icon">02</div>
-          <h3>统一 AI 资产层</h3>
-          <p>将工具、CLI、agents、sessions、usage events、tasks、reports 和生成日记规范化到用户本地 Foundation 边界中。</p>
+          <h3>资产优先的 Dashboard</h3>
+          <p>分别展示任务成果、学习记录、主技能库和报告；技能提案单独复核。Token、消息和缓存是工作轨迹，不重复计为可复用资产。</p>
         </article>
         <article class="feature-card">
           <div class="feature-icon">03</div>
-          <h3>自动工作总结</h3>
-          <p>Dashboard 与日记管线把分散 AI 活动自动整理为 daily summaries、period reports、technical progress、learning notes 和 task evidence。</p>
+          <h3>经验与技能沉淀</h3>
+          <p>从工作证据中生成日记、技术进展和经验，复核 Skill Pass 提案，再由用户确认生成与注册技能。</p>
         </article>
         <article class="feature-card">
           <div class="feature-icon">04</div>

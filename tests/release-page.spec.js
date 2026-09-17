@@ -13,7 +13,7 @@ test("release page renders core content", async ({ page }) => {
 
   await expect(page).toHaveTitle("Actanara - Local AI Operations Runtime");
   await expect(page.getByRole("heading", { name: "Actanara", level: 1 })).toBeVisible();
-  const productImage = page.getByRole("img", { name: "Actanara dashboard product mockup" });
+  const productImage = page.getByRole("img", { name: "Actanara v1.8.0 Dashboard with sample data" });
   await expect(productImage).toBeVisible();
   const imageState = await productImage.evaluate(image => ({
     complete: image.complete,
@@ -205,7 +205,7 @@ test("release page has no horizontal overflow", async ({ page }) => {
   expect(overflow).toBeLessThanOrEqual(1);
 });
 
-test("static dashboard demo exposes the curated real Dashboard pages", async ({ page }) => {
+test("static dashboard demo exposes the v1.8 asset-first Dashboard pages", async ({ page }, testInfo) => {
   test.slow();
   await page.goto(dashboardDemoUrl);
 
@@ -214,21 +214,58 @@ test("static dashboard demo exposes the curated real Dashboard pages", async ({ 
     await page.evaluate(value => window.applyStaticDashboardText(value), profile);
     await expect(page).toHaveTitle("Actanara");
   }
-  await expect(page.locator("#page-overview")).toBeVisible();
-  await expect(page.locator("#page-overview .page-title")).toHaveText("当日实时总览");
+  await expect(page.locator("#page-home")).toBeVisible();
+  await expect(page.locator("#dashboardMetrics")).toContainText("任务成果");
+  await expect(page.locator("#dashboardRecent .dash-asset-row")).toHaveCount(12);
+  await expect(page.locator("#page-home")).not.toContainText("9.52B");
+  await expect(page.locator(".demo-notice")).toContainText("v1.8.0");
+  await page.evaluate(() => window.showPage("overview"));
+  await expect(page.locator("#page-overview .page-title")).toHaveText("用量与活动");
   await expect(page.locator("#agentTableContainer")).toContainText("活跃");
   await expect(page.locator("#agentTableContainer")).not.toContainText("undefined");
 
-  await expect(page.locator(".sidebar-bottom-nav")).toBeHidden();
-  await expect(page.locator(".sidebar-utility")).toBeHidden();
-  await expect(page.locator('#month-nav .nav-item[onclick*="loadMonthlyReportById"]')).toHaveCount(0);
+  if (testInfo.project.name === 'chromium-desktop') {
+    await expect(page.locator(".sidebar-bottom-nav")).toBeVisible();
+    await expect(page.locator(".sidebar-utility")).toBeVisible();
+  } else await expect(page.locator('.mobile-bottom-nav')).toBeVisible();
+  await expect(page.locator('#month-nav .nav-item[onclick*="loadMonthlyReportById"]')).toHaveCount(1);
 
   await page.evaluate(() => window.showPage("static"));
   await expect(page.locator("#page-static")).toBeVisible();
   await expect(page.locator("#page-static .page-title")).toHaveText("AI 资产总览");
-  await expect(page.locator("#aaDevices .aa-device-card")).toHaveCount(2);
+  await expect(page.locator('#dashboardCanonicalSkillList [data-dash-skill]')).toHaveCount(2);
+  await page.locator('#dashboardCanonicalSkillList [data-dash-skill]').first().click();
+  await expect(page.locator('#modal-body')).toContainText('Verify restored files');
+  await page.keyboard.press('Escape');
+  await expect(page.locator("#aaDevices .aa-device-name").filter({hasText: 'Mac mini (Isshin)'})).toHaveCount(1);
+  await expect(page.locator("#aaDevices .aa-device-name").filter({hasText: '华硕路由器'})).toHaveCount(1);
   await expect(page.locator("#aaDevices")).toContainText("Mac mini (Isshin)");
   await expect(page.locator("#aaDevices")).toContainText("华硕路由器");
+
+  await page.evaluate(() => window.showPage('home'));
+  await page.locator('#dashboardAssetSearch').fill('备份');
+  await expect(page.locator('#dashboardRecent .dash-asset-row')).toHaveCount(1);
+  await page.locator('#dashboardAssetSearch').fill('');
+  await page.locator('#dashboardAssetType').selectOption('report');
+  await expect(page.locator('#dashboardRecent .dash-asset-row')).toHaveCount(6);
+  await page.locator('#dashboardRecent .dash-asset-row').first().click();
+  await page.locator('[data-dash-open-record]').click();
+  await expect(page.locator('#modal-body')).toContainText('在线演示文档，非真实运行记录');
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => window.showPage('rag-search'));
+  await page.locator('#ragPageSearchQuery').fill('验证');
+  await page.locator('#ragPageSearchQuery').press('Enter');
+  await expect(page.locator('#ragPageSearchResults')).toContainText('demo-lexical');
+  await expect(page.locator('#ragPageSearchResults')).toContainText('恢复完成不等于恢复验证通过');
+  const mutation = await page.evaluate(async () => {
+    const response = await fetch('/api/ai-assets/refresh', {method: 'POST'});
+    return {status: response.status, body: await response.json()};
+  });
+  expect(mutation.status).toBe(403);
+  expect(mutation.body.code).toBe('demo-read-only');
+  await page.locator('#historyBackfillButton').click();
+  await expect(page.locator('#modal-body')).toContainText('这项操作需要连接本地');
+  await page.keyboard.press('Escape');
 
   await page.evaluate(() => window.loadReport("2026-W27"));
   await expect(page.locator("#page-report-2026-W27")).toBeVisible({ timeout: 10_000 });
@@ -312,7 +349,11 @@ test("static dashboard demo uses local assets and excludes private hosts, machin
     "index.html",
     "tasks.html",
     "css/style.css",
+    "css/dashboard.css",
+    "css/demo.css",
     "js/app.js",
+    "js/dashboard.js",
+    "js/demo-assets.js",
     "js/autorefresh.js",
     "js/static-mock.js",
   ];

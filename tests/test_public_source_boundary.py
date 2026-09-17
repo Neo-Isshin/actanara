@@ -47,6 +47,7 @@ class PublicSourceBoundaryTests(unittest.TestCase):
                 "dashboard-nova-task.png",
                 "dashboard-weekly-full.png",
                 "dashboard-weekly-overview.png",
+                "dashboard-usage.png",
             },
         )
         for path in dashboard_assets.iterdir():

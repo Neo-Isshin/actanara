@@ -5,7 +5,7 @@
 <p align="center">
   <strong>Your agents do valuable work. Actanara makes sure it does not disappear with the session.</strong>
   <br>
-  Turn sessions, tasks, and evidence from Codex, Claude Code, Gemini CLI, OpenClaw, Hermes, OpenCode, Antigravity, and Cursor into local assets you can find, reuse, and revisit.
+  Save task outcomes, lessons, reusable Skills, and reports from work across Codex, Claude Code, Gemini CLI, OpenClaw, Hermes, OpenCode, Antigravity, and Cursor.
 </p>
 
 <p align="center">
@@ -16,26 +16,28 @@
 <p align="center">
   <a href="https://neo-isshin.github.io/actanara/"><img src="https://img.shields.io/badge/Website-GitHub%20Pages-2563EB" alt="Website"></a>
   <a href="https://github.com/Neo-Isshin/actanara/releases/latest"><img src="https://img.shields.io/github/v/release/Neo-Isshin/actanara?display_name=tag&amp;sort=semver" alt="Latest stable Release"></a>
-  <a href="https://neo-isshin.github.io/actanara/dashboard-demo/"><img src="https://img.shields.io/badge/Demo-interactive-7C3AED" alt="Interactive Dashboard Demo"></a>
+  <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-home"><img src="https://img.shields.io/badge/Demo-interactive-7C3AED" alt="Interactive Dashboard Demo"></a>
   <a href="#linux-support"><img src="https://img.shields.io/badge/Linux-Debian%20x64%20verified-FCC624?logo=linux&amp;logoColor=111827" alt="Linux support: verified on Debian x86_64"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-16A34A" alt="License"></a>
   <a href="https://discord.gg/JvJHngZWz"><img src="https://img.shields.io/badge/Discord-Join-5865F2" alt="Discord"></a>
 </p>
 
 <p align="center">
-  <a href="https://neo-isshin.github.io/actanara/dashboard-demo/"><strong>Try the Interactive Dashboard</strong></a> ·
+  <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-home"><strong>Try the Interactive Dashboard</strong></a> ·
   <a href="#install-actanara"><strong>Install Actanara</strong></a> ·
   <a href="#linux-support"><strong>Linux Support</strong></a> ·
   <a href="docs/local-operations-runbook.md">Operations Runbook</a>
 </p>
 
 <p align="center">
-  <a href="https://neo-isshin.github.io/actanara/dashboard-demo/">
-    <img src="docs/assets/dashboard/dashboard-ai-assets-overview.png" alt="Real Actanara local Dashboard showing AI assets across agent runtimes" width="920">
+  <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-home">
+    <img src="docs/assets/dashboard/dashboard-home.png" alt="Actanara v1.8.0 asset overview with task outcomes, lessons, saved Skills and reports; sample data" width="920">
   </a>
 </p>
 
-<p align="center"><sub><b>Real local Dashboard</b> · select the image to explore the interactive demo</sub></p>
+<p align="center"><sub><b>v1.8.0 asset-first Dashboard · sample data</b> · select the image to explore the interactive demo</sub></p>
+
+v1.8.0 puts saved outcomes, lessons and Skills on the home page. Token use, messages, cache statistics and model rankings remain available under **Usage & activity**. Skill proposals are distinct from saved Skills, and source-specific counts are not added into a potentially duplicated asset total. [Release notes](https://github.com/Neo-Isshin/actanara/releases/tag/v1.8.0).
 
 ## What Actanara gives you
 
@@ -75,7 +77,7 @@ Linux supports guarded fresh install, source-only refresh, locked dependency
 upgrade, and confirmed repair of an existing Runtime. Linux update
 transactions preserve the prior systemd user-unit state and fail closed on
 definition drift or non-Actanara units. New here? You can explore the
-[interactive Dashboard demo](https://neo-isshin.github.io/actanara/dashboard-demo/)
+[interactive Dashboard demo](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-home)
 before installing.
 
 When the Linux public entrypoint finds an existing managed Runtime, a run with
@@ -216,11 +218,22 @@ Read-only Retrieval for External Runtimes
 
 ## 📊 Dashboard, Screenshots, and Interactive Demo
 
-The Dashboard is Actanara's primary operating surface: daily, weekly, and monthly diaries; live overview with token usage and AI-asset metrics; Foundation operations and data repair; background tasks and messages; LLM Provider and scheduling settings; Memory Search status; the Nova-Task board with evidence review; and, when RAG is enabled, semantic search and retrieval-quality views.
+The Dashboard starts with saved work and retains usage analysis, retrieval, backups and maintenance.
 
-### 🖼️ Real Dashboard Screenshots
+| Entry | What you can do |
+| :--- | :--- |
+| **Asset overview** | Search recent outcomes, learning records, Skill proposals and reports, with source-specific counts. |
+| **AI Assets** | Read canonical Skill Markdown, review proposals by date, and browse installed Skills and tool configuration. |
+| **Usage & activity** | Inspect daily/lifetime tokens, messages, cache, models and workspaces; open usage associated with a report. |
+| **Diaries & reports** | Review daily, weekly and monthly work with exact-date links that survive reload and browser history. |
+| **Memory search · nova-RAG** | Find past experience using local lexical retrieval, or semantic search with configured nova-RAG. |
+| **Data maintenance · Foundation** | Check data completeness, generation and recovery; use separate background-task, message and backup controls. |
 
-The screenshots below come from the real Actanara Dashboard during development and operation, preserving the project's own design and components.
+Nova-Task retains its independent task-management page. Switching the interface language does not change the report-generation language.
+
+### 🖼️ Dashboard Screenshots
+
+The updated Dashboard screenshots render the production frontend with public sample data; they are not current local usage measurements. Nova-Task retains its existing screenshot and interface.
 
 <details>
 <summary><strong>Expand the Dashboard home</strong></summary>
@@ -267,6 +280,17 @@ The screenshots below come from the real Actanara Dashboard during development a
 </details>
 
 <details>
+<summary><strong>Expand the separate Usage &amp; activity page</strong></summary>
+
+<p align="center">
+  <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-overview">
+    <img src="docs/assets/dashboard/dashboard-usage.png" alt="Independent usage view retains Tokens, messages, cache and model rankings; sample data" width="100%">
+  </a>
+</p>
+
+</details>
+
+<details>
 <summary><strong>Expand the nova-RAG status and retrieval interface</strong></summary>
 
 <p align="center">
@@ -279,10 +303,14 @@ The screenshots below come from the real Actanara Dashboard during development a
 
 ### ▶️ Interactive Demo
 
-The [Dashboard Static Demo](https://neo-isshin.github.io/actanara/dashboard-demo/) preserves the real Dashboard HTML, CSS, and interaction code, replacing only backend APIs with static data, so it never connects to or modifies your local runtime. The version-controlled snapshot is also available at [`docs/dashboard-demo/index.html`](docs/dashboard-demo/index.html) and can be opened from a local checkout.
+The [v1.8.0 interactive demo](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-home) reuses the production HTML, CSS and interaction code with public sample data. Filter outcomes, read Skills and reports, inspect usage, try text search and switch languages. Task-state edits and message acknowledgements affect page memory only. Generation, registration, backups, configuration and service operations require an installed runtime. The demo never accesses local runtime data, credentials or private files.
+
+[Asset overview](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-home) · [Skills & proposals](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-static) · [Usage & activity](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-overview) · [W27 report](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-report-2026-W27) · [Task board](https://neo-isshin.github.io/actanara/dashboard-demo/tasks.html)
+
+Open [`docs/dashboard-demo/index.html`](docs/dashboard-demo/index.html) from a checkout, or read the [demo scope and synchronization guide](docs/dashboard-demo/README.md).
 
 <p align="center">
-  ▶ <a href="https://neo-isshin.github.io/actanara/dashboard-demo/"><strong>Open the Real Dashboard Static Demo</strong></a>
+  ▶ <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-home"><strong>Open the v1.8.0 Interactive Demo</strong></a>
 </p>
 
 ### Common Commands

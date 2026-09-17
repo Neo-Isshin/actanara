@@ -4,15 +4,18 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Actanara</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<link rel="icon" href="banner.png">
 <script src="js/vendor/chart.umd.min.js"></script>
 <script src="js/vendor/marked.min.js"></script>
-<script src="js/static-mock.js"></script>
 
+<!-- ═══════════════════ 自动刷新（独立 script 块） ═══════════════════ -->
+<script src="js/demo-assets.js"></script>
+<script src="js/static-mock.js"></script>
   <link rel="stylesheet" href="css/style.css?v=20260720-banner1">
+  <link rel="stylesheet" href="css/dashboard.css?v=20260907">
+  <link rel="stylesheet" href="css/demo.css">
 </head>
-<body>
+<body class="asset-dashboard public-demo">
 
 <!-- ═══════════════════ SIDEBAR ═══════════════════ -->
 <aside class="sidebar">
@@ -28,37 +31,43 @@
 
     <!-- 总览 -->
     <div class="nav-section">
-      <div class="nav-section-title open" onclick="toggleSection(this)">
-        📊 <span data-i18n="navOverview">总览</span>
+      <div class="nav-section-title open" role="button" tabindex="0" aria-expanded="true" onclick="toggleSection(this)">
+        <span data-dash-icon="layers" aria-hidden="true"></span><span data-dash-text="workspace">工作台</span>
         <span class="arrow">›</span>
       </div>
       <div class="nav-items open">
-        <div class="nav-item active" onclick="showPage('overview', this)">
-          <span class="nav-item-dot active"></span>
-          <span data-i18n="navTodayOverview">当日实时总览</span>
+        <button type="button" class="nav-item active" data-page-id="page-home" onclick="showPage('home', this)">
+          <span data-dash-icon="home" aria-hidden="true"></span><span data-dash-text="home">资产总览</span>
+        </button>
+        <div class="nav-item" data-page-id="page-overview" role="button" tabindex="0" onclick="showPage('overview', this)">
+          <span data-dash-icon="activity" aria-hidden="true"></span>
+          <span data-i18n="navTodayOverview">用量与活动</span>
         </div>
-        <div class="nav-item" onclick="showPage('static', this)">
-          <span class="nav-item-dot"></span>
-          <span data-i18n="navAiAssets">AI 资产</span>
+        <div class="nav-item" data-page-id="page-static" role="button" tabindex="0" onclick="showPage('static', this)">
+          <span data-dash-icon="layers" aria-hidden="true"></span>
+          <span data-i18n="navAiAssets">资产与技能</span>
         </div>
         <a class="nav-item" href="tasks.html" style="text-decoration:none">
-          <span style="width:6px;height:6px;border-radius:50%;background:var(--border);flex-shrink:0"></span>
-          📋 <span data-i18n="navTaskBoardBeta">任务看板 (Beta) ↗</span>
+          <span data-dash-icon="task" aria-hidden="true"></span><span data-i18n="navTaskBoardBeta">任务看板 ↗</span>
         </a>
       </div>
     </div>
 
     <!-- 月份导航（动态生成） -->
+    <div class="dash-nav-label" data-dash-text="reports">日记与报告</div>
+    <label class="diary-nav-filter">
+      <input type="checkbox" id="hideInactiveDiaryDays" onchange="setHideInactiveDiaryDays(this.checked)">
+      <span data-i18n="diaryNavHideInactive">隐藏无活动日期</span>
+    </label>
     <div id="month-nav"></div>
 
   </nav>
   <div class="sidebar-bottom-nav">
-    <div class="nav-item nav-item-strong" onclick="showPage('rag-search', this)">
-      <span class="nav-item-dot"></span>
-      nova-RAG
+    <div class="nav-item nav-item-strong" data-page-id="page-rag-search" role="button" tabindex="0" onclick="showPage('rag-search', this)">
+      <span data-dash-icon="search" aria-hidden="true"></span><span data-dash-text="memoryNav">记忆检索 · nova-RAG</span>
     </div>
-    <div class="nav-item nav-item-strong" onclick="showPage('foundation-ops', this)">
-      <span class="nav-item-dot"></span>
+    <div class="nav-item nav-item-strong" data-page-id="page-foundation-ops" role="button" tabindex="0" onclick="showPage('foundation-ops', this)">
+      <span data-dash-icon="settings" aria-hidden="true"></span>
       <span data-i18n="navFoundationOps">Foundation 运维</span>
     </div>
   </div>
@@ -70,8 +79,33 @@
   </div>
 </aside>
 
+<nav class="mobile-bottom-nav" aria-label="Mobile navigation">
+  <button type="button" class="mobile-nav-item active" data-mobile-page="home" onclick="showPage('home')" aria-label="Home">
+    <span class="mobile-nav-icon" data-dash-icon="home"></span><span data-dash-text="home">资产总览</span>
+  </button>
+  <button type="button" class="mobile-nav-item" data-mobile-page="overview" onclick="showPage('overview')" aria-label="Overview">
+    <span class="mobile-nav-icon">⌁</span><span data-i18n="navTodayOverview">当日实时总览</span>
+  </button>
+  <button type="button" class="mobile-nav-item" data-mobile-page="static" onclick="showPage('static')" aria-label="AI Assets">
+    <span class="mobile-nav-icon">◇</span><span data-i18n="navAiAssets">AI 资产</span>
+  </button>
+  <button type="button" class="mobile-nav-item" data-mobile-page="rag-search" onclick="showPage('rag-search')" aria-label="nova-RAG">
+    <span class="mobile-nav-icon">⌕</span><span>RAG</span>
+  </button>
+  <button type="button" class="mobile-nav-item" data-mobile-page="foundation-ops" onclick="showPage('foundation-ops')" aria-label="Foundation Ops">
+    <span class="mobile-nav-icon">⚙</span><span data-i18n="navFoundationOps">Foundation 运维</span>
+  </button>
+  <button type="button" class="mobile-nav-item" data-mobile-utility onclick="openMobileUtilities()" aria-haspopup="dialog" aria-label="更多" data-i18n-aria-label="mobileMore">
+    <span class="mobile-nav-icon">•••</span><span data-i18n="mobileMore">更多</span>
+  </button>
+</nav>
+
 <!-- ═══════════════════ MAIN ═══════════════════ -->
 <main class="main">
+  <aside class="demo-notice" aria-label="Demo information"><b>v1.8.0 · Interactive demo / 在线演示</b><span>示例数据 · 不连接本机 · 生成、注册与服务操作需安装后使用 / Sample data; no local runtime access.</span><a href="https://github.com/Neo-Isshin/actanara/releases/latest" target="_blank" rel="noopener noreferrer">安装 / Install ↗</a></aside>
+  <header class="dash-global-bar">
+    <button class="dash-report-index" type="button" onclick="openDashboardReportIndex()"><span data-dash-icon="book"></span><span data-dash-text="reports">日记与报告</span></button>
+    <span class="dash-global-caption" data-dash-text="localWorkspace">本地工作资产</span>
   <button type="button" class="history-backfill-button" id="historyBackfillButton" onclick="openHistoryBackfillModal()" title="生成历史数据" data-i18n-title="historyBackfill">
     <span data-i18n="historyBackfill">生成历史数据</span>
   </button>
@@ -85,13 +119,37 @@
     <span data-i18n="messagesShort">消息</span>
     <b id="msgboxCount">0</b>
   </button>
+  </header>
 
   <!-- ┌─ 首页 ── -->
   <div id="page-home" class="page active">
-    <div class="dashboard-welcome" id="dashboardWelcome">
-      <img class="dashboard-welcome-banner" src="banner.png" alt="Actanara" width="1378" height="313" draggable="false">
-      <div class="dashboard-welcome-title" data-i18n="welcomeTagline">专属于你的AI资产，是你这个时代最重要的资产</div>
-      <div class="dashboard-welcome-meta">Copyright © Actanara · Neo-Isshin · nxc8335@gmail.com</div>
+    <header class="dash-page-head">
+      <div><div class="page-title" data-dash-text="home">资产总览</div><p class="page-subtitle" data-dash-text="homeDescription">找回已完成的工作，复用经验与技能。</p></div>
+      <button type="button" class="dash-button" id="dashboardRefresh" onclick="loadAssetDashboard(true)"><span data-dash-icon="refresh"></span><span data-dash-text="refresh">刷新</span></button>
+    </header>
+    <div id="dashboardSummaryStatus" class="dash-load-status" role="status" aria-live="polite" data-dash-text="loading">正在读取已保存的资产…</div>
+    <div id="dashboardMetrics" class="dash-metrics" aria-busy="true"></div>
+    <div class="dash-home-grid">
+      <section class="dash-surface dash-recent">
+        <header class="dash-surface-head"><h2 data-dash-text="recent">最近保存的成果</h2><button class="dash-text-button" type="button" onclick="showPage('static')" data-dash-text="browse">浏览资产与技能</button></header>
+        <div class="dash-filter-bar">
+          <label class="dash-search"><span data-dash-icon="search"></span><input id="dashboardAssetSearch" type="search" data-dash-placeholder="searchAssets" placeholder="搜索成果标题" aria-label="搜索成果标题"></label>
+          <label><span class="dash-sr-only" data-dash-text="assetType">资产类型</span><select id="dashboardAssetType" aria-label="资产类型"><option value="all" data-dash-text="all">全部类型</option><option value="task" data-dash-text="tasks">任务成果</option><option value="lesson" data-dash-text="lessons">学习经验</option><option value="skill" data-dash-text="skillRecords">技能与提案</option><option value="report" data-dash-text="reports">日记与报告</option></select></label>
+        </div>
+        <div id="dashboardRecent" class="dash-recent-list"></div>
+        <footer class="dash-surface-foot" data-dash-text="recentNote">仅展示已保存的记录；各类资产可能关联，不合计为一个总数。</footer>
+      </section>
+      <aside class="dash-home-side">
+        <section class="dash-surface"><header class="dash-surface-head"><h2 data-dash-text="review">复核与处理</h2></header><div id="dashboardReview"></div></section>
+        <section class="dash-surface"><header class="dash-surface-head"><h2 data-dash-text="quickAccess">继续工作</h2></header>
+          <div class="dash-quick-links">
+            <button type="button" onclick="showPage('rag-search')"><span data-dash-icon="search"></span><span><b data-dash-text="searchMemory">检索过去的经验</b><small data-dash-text="searchMemoryNote">按关键词查找来源与相关记录</small></span><span aria-hidden="true">↗</span></button>
+            <button type="button" onclick="openDashboardReportIndex()"><span data-dash-icon="book"></span><span><b data-dash-text="readReports">回顾日记与报告</b><small data-dash-text="readReportsNote">按日、周、月查看工作记录</small></span><span aria-hidden="true">→</span></button>
+            <button type="button" onclick="openAiAssetsBackupModal()"><span data-dash-icon="save"></span><span><b data-dash-text="backup">备份本地资产</b><small data-dash-text="backupNote">选择备份范围并验证备份</small></span><span aria-hidden="true">→</span></button>
+          </div>
+        </section>
+      </aside>
+      <section class="dash-source-section"><header class="dash-surface-head"><h2 data-dash-text="sourceStatus">数据来源状态</h2><button type="button" class="dash-text-button" onclick="showPage('foundation-ops')" data-dash-text="maintenance">数据维护</button></header><div id="dashboardSources" class="dash-source-list"></div></section>
     </div>
   </div>
 
@@ -165,6 +223,44 @@
         <div class="chart-card" style="padding:40px;text-align:center;color:var(--slate)">⏳ <span data-i18n="waitingRealtimeUsage">等待实时消耗数据...</span></div>
       </div>
     </div>
+    <section id="usageHistory" class="dash-usage-history"><header class="dash-surface-head"><h2 data-dash-text="historyUsage">累计用量与近 30 天活动</h2><button id="usageHistoryRefreshBtn" type="button" class="dash-button" onclick="loadAiAssets()" data-dash-text="refresh">刷新</button></header>        <button type="button" class="wr-export-btn share-trigger-btn" id="aiAssetsShareBtn" onclick="openAiAssetsSharePreview()" disabled>
+          <span class="share-button-icon" data-share-icon="share" aria-hidden="true"></span><span data-dash-text="shareUsage">分享用量图片</span>
+        </button><div id="usageHistoryLoading" role="status"></div><div id="usageHistoryUpdatedAt" class="settings-note"></div>
+      <!-- Section A: 顶部核心数字 -->
+      <div class="aa-kpi-grid" id="aaKpi"></div>
+
+      <!-- Section B: 工具消耗对比 -->
+      <div class="section">
+        <div class="section-title"><span class="section-title-num">01</span> <span data-i18n="toolComparison">工具消耗对比</span></div>
+        <div class="aa-tools-grid" id="aaTools"></div>
+      </div>
+
+      <!-- Section C: 30 天热力图 -->
+      <div class="section">
+        <div class="section-title"><span class="section-title-num">02</span> <span data-i18n="trend30d">30 天趋势</span></div>
+        <div id="aaHeatmapWrap" class="aa-heatmap-wrap aa-surface-card" style="padding:20px;overflow:visible"></div>
+      </div>
+
+      <!-- Section D: 工具 & 模型排行（两张柱形图） -->
+      <div class="aa-two-col">
+        <div class="section">
+          <div class="section-title"><span class="section-title-num">03</span> <span data-i18n="aiAssetsWorkspaceRanking">Agent / Workspace 消耗排行</span></div>
+          <div class="chart-card" style="padding:20px"><div class="wr-chart-box medium" style="height:320px"><canvas id="aaToolChart"></canvas></div></div>
+        </div>
+        <div class="section">
+          <div class="section-title"><span class="section-title-num">04</span> <span data-i18n="aiAssetsModelTokenRanking">模型 Token 消耗排行</span></div>
+          <div class="chart-card" style="padding:20px"><div class="wr-chart-box medium" style="height:320px"><canvas id="aaModelChart"></canvas></div></div>
+        </div>
+      </div>
+
+      <!-- Section E: Agent 列表 -->
+      <div class="section">
+        <div class="section-title"><span class="section-title-num">05</span> <span data-i18n="aiAssetsAgentList">Agent 列表</span></div>
+        <div class="aa-table-shell" style="overflow-x:auto"><table class="data-table" id="aaAgentTable"><thead><tr><th>Agent</th><th data-i18n="modelLabel">模型</th><th>Sessions</th><th data-i18n="messages">消息数</th><th data-i18n="lastActive">最后活跃</th><th>Host</th></tr></thead><tbody></tbody></table></div>
+      </div>
+
+    </section>
+    <section id="usagePeriodReports"><header class="dash-surface-head"><h2 data-dash-text="periodUsage">日记与报告中的用量</h2><button type="button" class="dash-text-button" onclick="openDashboardReportIndex()" data-dash-text="selectReport">选择报告</button></header><p class="settings-note" data-dash-text="periodUsageNote">打开日记、周报或月报后，相应的使用统计将在此保留。</p><div id="usagePeriodContent"></div></section>
   </div>
 
   <!-- ┌─ Foundation 运维 ── -->
@@ -260,6 +356,21 @@
       <div class="page-subtitle" id="ragSearchSubtitle" data-i18n="ragSubtitle">Actanara v2 长期记忆</div>
       <div class="page-badge">nova-RAG v2</div>
     </div>
+    <div class="fo-panel">
+      <div class="fo-panel-title" data-dash-text="searchMemory">检索过去的经验</div>
+      <div class="rag-search-bar">
+        <input id="ragPageSearchQuery" placeholder="搜索 Actanara 长期记忆" data-i18n-placeholder="ragSearchPlaceholder" aria-label="搜索记忆" data-dash-label="searchMemory">
+        <input id="ragPageSearchTopK" type="number" min="1" max="20" value="8" title="返回结果数量" aria-label="返回结果数量" data-dash-label="resultLimit">
+        <button class="wr-export-btn" onclick="runRagPageSearch()" data-i18n="search">搜索</button>
+      </div>
+      <div class="rag-search-filters">
+        <input id="ragPageSearchProject" placeholder="project，可选" data-i18n-placeholder="projectOptional">
+        <input id="ragPageSearchSourceSets" placeholder="sourceSets，逗号分隔，可选" data-i18n-placeholder="sourceSetsOptional">
+        <input id="ragPageSearchLifecycle" placeholder="lifecycle，逗号分隔，可选" data-i18n-placeholder="lifecycleOptional">
+      </div>
+      <div id="ragPageSearchResults" class="settings-runtime-status rag-search-results" data-i18n="waitingSearch">等待搜索</div>
+    </div>
+    <h2 class="dash-operations-title" data-dash-text="indexManagement">索引与服务管理</h2>
     <div class="fo-toolbar">
       <button class="wr-export-btn" id="ragPowerBtn" onclick="toggleNovaRagPower()" data-i18n="readStatus">读取状态…</button>
       <button class="wr-export-btn" id="ragStartServerBtn" onclick="ragSearchStartServer()" data-i18n="startRagServer">启动 Server</button>
@@ -275,21 +386,7 @@
     <div id="ragSearchCoverage" class="settings-runtime-status" style="display:none;margin-bottom:12px" data-i18n="notReadYet">尚未读取</div>
     <div id="ragSearchStatus" class="settings-runtime-status" style="margin-bottom:12px" data-i18n="loadingEllipsis">加载中…</div>
     <div class="fo-panel">
-      <div class="fo-panel-title">Search</div>
-      <div class="rag-search-bar">
-        <input id="ragPageSearchQuery" placeholder="搜索 Actanara 长期记忆" data-i18n-placeholder="ragSearchPlaceholder">
-        <input id="ragPageSearchTopK" type="number" min="1" max="20" value="8" title="Top K">
-        <button class="wr-export-btn" onclick="runRagPageSearch()" data-i18n="search">搜索</button>
-      </div>
-      <div class="rag-search-filters">
-        <input id="ragPageSearchProject" placeholder="project，可选" data-i18n-placeholder="projectOptional">
-        <input id="ragPageSearchSourceSets" placeholder="sourceSets，逗号分隔，可选" data-i18n-placeholder="sourceSetsOptional">
-        <input id="ragPageSearchLifecycle" placeholder="lifecycle，逗号分隔，可选" data-i18n-placeholder="lifecycleOptional">
-      </div>
-      <div id="ragPageSearchResults" class="settings-runtime-status rag-search-results" data-i18n="waitingSearch">等待搜索</div>
-    </div>
-    <div class="fo-panel">
-      <div class="fo-panel-title">Settings</div>
+      <div class="fo-panel-title" data-dash-text="indexSettings">索引设置</div>
       <div id="ragSearchSettings" class="settings-runtime-status" data-i18n="loadingEllipsis">加载中…</div>
     </div>
   </div>
@@ -302,6 +399,9 @@
       <div class="page-subtitle" id="mr_sub" data-i18n="loadingEllipsis">加载中…</div>
       <div class="wr-summary-quote" id="mr_summaryQuote" style="display:none"></div>
       <button class="wr-export-btn" onclick="window.print()" title="导出 / 打印" data-i18n-title="exportPrintTitle">🖨️ <span data-i18n="exportPrint">导出</span></button>
+      <button type="button" class="wr-export-btn share-trigger-btn" id="mrShareBtn" onclick="openReportSharePreview('monthly', 'mr')" disabled>
+        <span class="share-button-icon" data-share-icon="share" aria-hidden="true"></span><span data-i18n="sharePng">分享图片</span>
+      </button>
       <button class="wr-export-btn" id="mrRefreshAssetsBtn" onclick="refreshMonthlyAssets()" title="在后台重建资产投影" data-i18n="refreshAssets" data-i18n-title="refreshAssetsTitle">更新资产</button>
     </div>
     <div class="wr-loading" id="mr_loading"><div class="wr-spinner"></div><span data-i18n="loadingMonthly">正在读取月报快照…</span></div>
@@ -341,46 +441,42 @@
         <div class="page-badge">📊 AI Assets</div>
         <button id="aiAssetsRefreshBtn" onclick="loadAiAssets()" style="background:var(--white);border:1px solid var(--border);color:var(--navy);font-size:12px;padding:4px 12px;border-radius:6px;cursor:pointer;transition:all 0.15s;display:inline-flex;align-items:center;gap:4px" onmouseover="this.style.borderColor='var(--purple-light)'" onmouseout="this.style.borderColor='var(--border)'">🔄 <span data-i18n="refresh">刷新</span></button>
         <button id="aiAssetsSnapshotRefreshBtn" onclick="refreshAiAssetsSnapshot()" style="background:var(--white);border:1px solid var(--border);color:var(--navy);font-size:12px;padding:4px 12px;border-radius:6px;cursor:pointer;transition:all 0.15s;display:inline-flex;align-items:center;gap:4px" onmouseover="this.style.borderColor='var(--purple-light)'" onmouseout="this.style.borderColor='var(--border)'" data-i18n="backgroundUpdate">后台更新</button>
+
+        <button type="button" class="wr-export-btn" id="aiAssetsBackupBtn" onclick="openAiAssetsBackupModal()">
+          <span class="share-button-icon" data-share-icon="archive" aria-hidden="true"></span><span data-i18n="dataBackup">数据备份</span>
+        </button>
         <span id="aiAssetsUpdateTime" style="font-size:11px;color:var(--slate)"></span>
       </div>
     </div>
 
+    <section id="assetCoreContent">
+      <div id="assetInventorySummary" class="dash-metrics"></div>
+      <nav class="dash-section-links" aria-label="资产分类"><button type="button" onclick="openAssetDashboardSection('dashboardCanonicalSkills')" data-dash-text="skills">已保存技能</button><button type="button" onclick="openAssetDashboardSection('aaSkillAssetReview')" data-dash-text="skillRecords">技能与提案</button><button type="button" onclick="openAssetDashboardSection('aaSkillLib')" data-dash-text="installedSkills">已安装技能</button><button type="button" onclick="openAssetDashboardSection('aaDiary')" data-dash-text="reports">日记与报告</button><button type="button" onclick="openAssetDashboardSection('aaAgentPanel')" data-dash-text="agentSettings">Agent 配置</button><button type="button" onclick="openAssetDashboardSection('aaStorage')" data-dash-text="storageTools">存储与工具</button></nav>
+      <section id="dashboardCanonicalSkills" class="dash-surface section">
+        <header class="dash-surface-head"><h2 data-dash-text="skills">已保存技能</h2><button type="button" class="dash-text-button" onclick="loadCanonicalSkills(true)" data-dash-text="refresh">刷新</button></header>
+        <div class="dash-filter-bar"><label class="dash-search"><span data-dash-icon="search"></span><input id="dashboardSkillSearch" type="search" placeholder="搜索主技能库" data-dash-placeholder="searchSkills" aria-label="搜索主技能库"></label></div>
+        <div id="dashboardCanonicalSkillList" class="dash-recent-list" role="region" aria-label="已保存技能列表"></div>
+        <footer id="dashboardCanonicalSkillPages" class="dash-surface-foot"></footer>
+      </section>
+      <!-- Section L: 程序性资产复核 -->
+      <div class="section">
+        <div class="section-title"><span class="section-title-num">10</span> <span data-i18n="proceduralAssets">程序性资产复核</span></div>
+        <label class="dash-date-field"><span data-dash-text="reviewDate">复核日期</span><input type="date" id="aaSkillAssetDate" onchange="loadSkillAssetReview(this.value)"></label>
+        <div class="aa-composite-surface" id="aaSkillAssetReview">
+          <div class="aa-skill-assets-empty">正在读取 Skill Pass 资产账本…</div>
+        </div>
+      </div>
+
+    </section>
     <div id="aiAssetsLoading" style="display:flex;align-items:center;justify-content:center;gap:12px;padding:80px;color:var(--slate);font-size:14px">
       <div class="wr-spinner"></div><span data-i18n="loadingAiAssets">正在加载 AI 资产数据…</span>
     </div>
 
     <div id="aiAssetsContent" style="display:none">
-      <!-- Section A: 顶部核心数字 -->
-      <div class="aa-kpi-grid" id="aaKpi"></div>
-
-      <!-- Section B: 工具消耗对比 -->
+      <!-- Section M: Skill 库 -->
       <div class="section">
-        <div class="section-title"><span class="section-title-num">01</span> <span data-i18n="toolComparison">工具消耗对比</span></div>
-        <div class="aa-tools-grid" id="aaTools"></div>
-      </div>
-
-      <!-- Section C: 30 天热力图 -->
-      <div class="section">
-        <div class="section-title"><span class="section-title-num">02</span> <span data-i18n="trend30d">30 天趋势</span></div>
-        <div id="aaHeatmapWrap" class="aa-heatmap-wrap aa-surface-card" style="padding:20px;overflow:visible"></div>
-      </div>
-
-      <!-- Section D: 工具 & 模型排行（两张柱形图） -->
-      <div class="aa-two-col">
-        <div class="section">
-          <div class="section-title"><span class="section-title-num">03</span> <span data-i18n="aiAssetsWorkspaceRanking">Agent / Workspace 消耗排行</span></div>
-          <div class="chart-card" style="padding:20px"><div class="wr-chart-box medium" style="height:320px"><canvas id="aaToolChart"></canvas></div></div>
-        </div>
-        <div class="section">
-          <div class="section-title"><span class="section-title-num">04</span> <span data-i18n="aiAssetsModelTokenRanking">模型 Token 消耗排行</span></div>
-          <div class="chart-card" style="padding:20px"><div class="wr-chart-box medium" style="height:320px"><canvas id="aaModelChart"></canvas></div></div>
-        </div>
-      </div>
-
-      <!-- Section E: Agent 列表 -->
-      <div class="section">
-        <div class="section-title"><span class="section-title-num">05</span> <span data-i18n="aiAssetsAgentList">Agent 列表</span></div>
-        <div class="aa-table-shell" style="overflow-x:auto"><table class="data-table" id="aaAgentTable"><thead><tr><th>Agent</th><th data-i18n="modelLabel">模型</th><th>Sessions</th><th data-i18n="messages">消息数</th><th data-i18n="lastActive">最后活跃</th><th>Host</th></tr></thead><tbody></tbody></table></div>
+        <div class="section-title"><span class="section-title-num">11</span> <span data-i18n="skillLibrary">Skill 库</span></div>
+        <div class="aa-composite-surface" id="aaSkillLib"></div>
       </div>
 
       <!-- Section F: 资产积累 -->
@@ -412,14 +508,14 @@
 
       <!-- Section H: 基础设施 -->
       <div class="section">
-        <div class="section-title"><span class="section-title-num">07</span> <span data-i18n="infrastructure">基础设施</span></div>
-        <div class="aa-devices-grid" id="aaDevices"></div>
+        <div class="section-title"><span class="section-title-num">07</span> <span data-i18n="infrastructure">基础设施（beta）</span></div>
+        <div class="aa-infra-shell" id="aaDevices"></div>
       </div>
 
       <!-- Section I: 存储使用 -->
       <div class="section">
         <div class="section-title"><span class="section-title-num">08</span> <span data-i18n="storageUsage">存储使用</span></div>
-        <div class="chart-card" style="padding:20px" id="aaStorage"></div>
+        <div class="aa-storage-cards" id="aaStorage"></div>
       </div>
 
       <!-- Section J: 任务总览（TODO: 待实现） -->
@@ -434,15 +530,9 @@
         <div id="aaAgentPanel"></div>
       </div>
 
-      <!-- Section L: Skill 库 -->
+      <!-- Section N: 工具配置 -->
       <div class="section">
-        <div class="section-title"><span class="section-title-num">10</span> <span data-i18n="skillLibrary">Skill 库</span></div>
-        <div class="aa-composite-surface" id="aaSkillLib"></div>
-      </div>
-
-      <!-- Section M: 工具配置 -->
-      <div class="section">
-        <div class="section-title"><span class="section-title-num">11</span> <span data-i18n="toolConfig">工具配置</span></div>
+        <div class="section-title"><span class="section-title-num">12</span> <span data-i18n="toolConfig">工具配置</span></div>
         <div class="aa-toolconfig-shell">
           <div class="aa-toolconfig-toolbar">
             <div class="aa-toolconfig-toolbar-title" data-i18n="runtimeRegistry">运行环境登记</div>
@@ -462,8 +552,8 @@
   </div>
 
   <!-- ── Agent 文档编辑模态框 ── -->
-  <div id="aaDocModal" class="aa-modal-overlay" style="display:none" onclick="if(event.target===this)closeDocModal()">
-    <div class="aa-modal">
+  <div id="aaDocModal" class="aa-modal-overlay" style="display:none" aria-hidden="true" onclick="if(event.target===this)closeDocModal()">
+    <div class="aa-modal" role="dialog" aria-modal="true" aria-labelledby="aaDocModalTitle" tabindex="-1">
       <div class="aa-modal-header">
         <button type="button" id="aaModalBack" class="aa-modal-back" onclick="aaModalBack()" aria-label="返回" data-i18n-aria-label="back" style="display:none">
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4.5 6.5 9l4.5 4.5"/><path d="M7 9h7"/></svg>
@@ -585,20 +675,20 @@
 </main>
 
 <!-- ═══════════════════ MODAL / SUBPAGE ═══════════════════ -->
-<div class="modal-overlay" id="modal">
-  <div class="modal-panel" id="modal-panel">
+<div class="modal-overlay" id="modal" aria-hidden="true">
+  <div class="modal-panel" id="modal-panel" role="dialog" aria-modal="true" aria-labelledby="modal-title" tabindex="-1">
     <div class="modal-header">
-      <button class="modal-back" onclick="modalBack()" data-i18n="modalBack">← 返回</button>
+      <button type="button" class="modal-back" onclick="modalBack()" data-i18n="modalBack">← 返回</button>
       <div class="modal-title" id="modal-title"></div>
-      <button class="modal-close" onclick="closeModal()">×</button>
+      <button type="button" class="modal-close" onclick="closeModal()" aria-label="关闭" data-i18n-aria-label="close">×</button>
     </div>
     <div class="modal-body" id="modal-body"></div>
   </div>
 </div>
 
 
-  <div id="aaEditorOverlay" class="aa-editor-overlay" onclick="if(event.target===this)closeEditor()">
-    <div class="aa-editor-modal">
+  <div id="aaEditorOverlay" class="aa-editor-overlay" aria-hidden="true" onclick="if(event.target===this)closeEditor()">
+    <div class="aa-editor-modal" role="dialog" aria-modal="true" aria-labelledby="aaEditorTitle" tabindex="-1">
       <div class="aa-editor-header">
         <div class="aa-editor-title" id="aaEditorTitle">Editor</div>
         <button class="modal-close" onclick="closeEditor()" aria-label="关闭" data-i18n-aria-label="close" style="color:#888; background:none; border:none; font-size:20px; cursor:pointer">✕</button>
@@ -613,6 +703,7 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=20260714-dashboard-status1"></script>
+  <script src="js/dashboard.js?v=20260907"></script>
+<script src="js/app.js?v=20260714-dashboard-status1"></script>
 </body>
 </html>

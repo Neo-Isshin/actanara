@@ -329,7 +329,7 @@ class DashboardStaticContractTests(unittest.TestCase):
                 html = (base / "index.html").read_text(encoding="utf-8")
                 css = (base / "css" / "style.css").read_text(encoding="utf-8")
                 self.assertEqual((base / "banner.png").read_bytes(), expected_bytes)
-                banner_count = 1 if name == "runtime" else 2
+                banner_count = 1
                 self.assertEqual(html.count(f'src="{source}"'), banner_count)
                 self.assertEqual(html.count('width="1378" height="313"'), banner_count)
 
@@ -338,14 +338,8 @@ class DashboardStaticContractTests(unittest.TestCase):
                 self.assertIn("max-height: 44px", sidebar)
                 self.assertIn("height: auto", sidebar)
                 self.assertIn("object-fit: contain", sidebar)
-                if name == "static-demo":
-                    welcome = css.split(".dashboard-welcome-banner {", 1)[1].split("}", 1)[0]
-                    self.assertIn("width: min(780px, 82vw)", welcome)
-                    self.assertIn("height: auto", welcome)
-                    self.assertIn("object-fit: contain", welcome)
-                else:
-                    self.assertNotIn('class="dashboard-welcome-banner"', html)
-                    self.assertIn('id="dashboardMetrics"', html)
+                self.assertNotIn('class="dashboard-welcome-banner"', html)
+                self.assertIn('id="dashboardMetrics"', html)
 
     def test_dashboard_sse_status_aggregates_transport_and_source_health(self):
         scripts = {

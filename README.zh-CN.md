@@ -5,7 +5,7 @@
 <p align="center">
   <strong>Agent 完成了有价值的工作——Actanara 让这些成果不再随 Session 消失。</strong>
   <br>
-  把 Codex、Claude Code、Gemini CLI、OpenClaw、Hermes、OpenCode、Antigravity 和 Cursor 的会话、任务与证据，留成你能查、能复用、能回顾的本地资产。
+  从 Codex、Claude Code、Gemini CLI、OpenClaw、Hermes、OpenCode、Antigravity 和 Cursor 的工作记录中，保存任务成果、学习经验、可复用技能与报告。
 </p>
 
 <p align="center">
@@ -16,26 +16,28 @@
 <p align="center">
   <a href="https://neo-isshin.github.io/actanara/"><img src="https://img.shields.io/badge/Website-GitHub%20Pages-2563EB" alt="Website"></a>
   <a href="https://github.com/Neo-Isshin/actanara/releases/latest"><img src="https://img.shields.io/github/v/release/Neo-Isshin/actanara?display_name=tag&amp;sort=semver" alt="最新稳定 Release"></a>
-  <a href="https://neo-isshin.github.io/actanara/dashboard-demo/"><img src="https://img.shields.io/badge/Demo-在线交互-7C3AED" alt="在线交互 Dashboard Demo"></a>
+  <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-home"><img src="https://img.shields.io/badge/Demo-在线交互-7C3AED" alt="在线交互 Dashboard Demo"></a>
   <a href="#linux-support"><img src="https://img.shields.io/badge/Linux-Debian%20x64%20verified-FCC624?logo=linux&amp;logoColor=111827" alt="Linux 支持：已在 Debian x86_64 验证"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-16A34A" alt="License"></a>
   <a href="https://discord.gg/JvJHngZWz"><img src="https://img.shields.io/badge/Discord-加入-5865F2" alt="Discord"></a>
 </p>
 
 <p align="center">
-  <a href="https://neo-isshin.github.io/actanara/dashboard-demo/"><strong>体验在线 Dashboard</strong></a> ·
+  <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-home"><strong>体验在线 Dashboard</strong></a> ·
   <a href="#install-actanara"><strong>安装 Actanara</strong></a> ·
   <a href="#linux-support"><strong>Linux 支持</strong></a> ·
   <a href="docs/local-operations-runbook.zh-CN.md">中文操作 Runbook</a>
 </p>
 
 <p align="center">
-  <a href="https://neo-isshin.github.io/actanara/dashboard-demo/">
-    <img src="docs/assets/dashboard/dashboard-ai-assets-overview.png" alt="Actanara 真实本地 Dashboard，统一展示多个 Agent Runtime 的 AI 资产" width="920">
+  <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-home">
+    <img src="docs/assets/dashboard/dashboard-home.png" alt="Actanara v1.8.0 资产总览：任务成果、学习经验、已保存技能和报告；画面使用演示数据" width="920">
   </a>
 </p>
 
-<p align="center"><sub><b>真实本地 Dashboard</b> · 点击图片进入在线交互 Demo</sub></p>
+<p align="center"><sub><b>v1.8.0 资产优先 Dashboard · 演示数据</b> · 点击图片进入在线交互 Demo</sub></p>
+
+v1.8.0 把任务成果、经验与技能放到首页，Token、消息、缓存及模型排行保留在独立的「用量与活动」菜单。技能提案与已保存技能分别展示，各类记录按来源统计，不合计成一个可能重复的资产总数。[查看版本说明](https://github.com/Neo-Isshin/actanara/releases/tag/v1.8.0)。
 
 ## Actanara 能为你留下什么
 
@@ -73,7 +75,7 @@ curl -fsSL https://github.com/Neo-Isshin/actanara/releases/latest/download/insta
 全新安装与更新行为；Linux 支持受保护的全新安装、仅源码刷新、按锁升级，
 以及经明确确认的已有 Runtime 修复。Linux 更新事务会保持原有 systemd
 user unit 状态，遇到定义漂移或非 Actanara unit 时保守失败。第一次了解 Actanara？可以先体验
-[在线 Dashboard Demo](https://neo-isshin.github.io/actanara/dashboard-demo/)，再决定是否安装。
+[在线 Dashboard Demo](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-home)，再决定是否安装。
 
 Linux 公开入口发现已有 managed Runtime 时：存在控制终端会先展示固定到
 精确 commit 的升级计划，再询问是否执行；没有控制终端则以状态码 2
@@ -209,11 +211,22 @@ Memory Search → 本地词法索引
 
 ## 📊 Dashboard、截图与交互 Demo
 
-Dashboard 是 Actanara 的主要操作界面：每日/每周/每月日记、实时概览与 Token 用量、AI 资产指标、Foundation 操作与数据修复、后台任务和消息、LLM Provider 与调度设置、Memory Search 状态、Nova-Task 任务看板，以及启用 RAG 后的语义检索视图。
+Dashboard 以已保存的工作成果为入口，并保留用量分析、检索、备份与维护能力。
 
-### 🖼️ 真实 Dashboard 截图
+| 入口 | 可以做什么 |
+| :--- | :--- |
+| **资产总览** | 搜索近期任务成果、学习记录、技能提案和报告，查看每类资产的数据来源。 |
+| **AI 资产** | 阅读主技能库原文、复核指定日期的经验与技能提案、浏览已安装技能和工具配置。 |
+| **用量与活动** | 查看当日及累计 Token、消息、缓存、模型和工作区排行；从报告跳转查看对应使用记录。 |
+| **日记与报告** | 按日、周、月回顾成果；准确日期链接可刷新、分享和前进后退。 |
+| **记忆检索 · nova-RAG** | 检索过去的经验；本地词法检索可用，语义检索需要配置 nova-RAG。 |
+| **数据维护 · Foundation** | 检查数据完整性、生成状态与恢复记录；后台任务、消息和备份有独立入口。 |
 
-以下截图来自 Actanara 真实的开发与运行界面，沿用项目本身的设计与组件。
+Nova-Task 保持独立的任务操作页面。界面语言可切换中英文，不会改变报告生成语言。
+
+### 🖼️ Dashboard 截图
+
+新版 Dashboard 截图由真实前端代码配合公开演示数据生成，不代表本机实时运行指标。Nova-Task 保留原有截图与界面。
 
 <details>
 <summary><strong>展开 Dashboard 首页</strong></summary>
@@ -260,6 +273,17 @@ Dashboard 是 Actanara 的主要操作界面：每日/每周/每月日记、实�
 </details>
 
 <details>
+<summary><strong>展开独立的用量与活动页面</strong></summary>
+
+<p align="center">
+  <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-overview">
+    <img src="docs/assets/dashboard/dashboard-usage.png" alt="独立用量页面保留 Token、消息、缓存与模型排行，使用演示数据" width="100%">
+  </a>
+</p>
+
+</details>
+
+<details>
 <summary><strong>展开 nova-RAG 状态与检索</strong></summary>
 
 <p align="center">
@@ -272,10 +296,14 @@ Dashboard 是 Actanara 的主要操作界面：每日/每周/每月日记、实�
 
 ### ▶️ 在线交互 Demo
 
-<a href="https://neo-isshin.github.io/actanara/dashboard-demo/"><strong>Dashboard 静态 Demo</strong></a>保存了真实 Dashboard 的 HTML、CSS 与交互代码，只把后端 API 替换为静态数据，因此不会连接或改写你的本地 Runtime。Demo 也随仓库保存在 [`docs/dashboard-demo/index.html`](docs/dashboard-demo/index.html)，可从本地打开。
+<a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-home"><strong>v1.8.0 在线 Demo</strong></a>直接复用新版 Dashboard 的 HTML、CSS 与交互代码，后端由公开示例数据替代。可以筛选资产、阅读技能和报告、查看用量、体验文本检索与语言切换。任务状态和消息已读只改变当前页面内存；生成、注册、备份、设置和服务管理需要安装后使用。Demo 不访问本机 Runtime、凭证或私有文件。
+
+[资产总览](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-home) · [主技能库与提案](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-static) · [用量与活动](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-overview) · [W27 周报](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-report-2026-W27) · [任务看板](https://neo-isshin.github.io/actanara/dashboard-demo/tasks.html)
+
+本地也可打开 [`docs/dashboard-demo/index.html`](docs/dashboard-demo/index.html)。[演示范围与同步方式](docs/dashboard-demo/README.md)。
 
 <p align="center">
-  ▶ <a href="https://neo-isshin.github.io/actanara/dashboard-demo/"><strong>打开真实 Dashboard 静态 Demo</strong></a>
+  ▶ <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-home"><strong>打开 v1.8.0 在线 Demo</strong></a>
 </p>
 
 ### 常用命令

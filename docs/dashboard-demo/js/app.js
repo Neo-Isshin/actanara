@@ -18,28 +18,168 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
+const ACTANARA_CSRF_COOKIE = 'actanara_dashboard_csrf';
+const ACTANARA_CSRF_HEADER = 'X-Actanara-CSRF';
 const ACTANARA_GITHUB_URL = 'https://github.com/Neo-Isshin/actanara';
+const ACTANARA_NATIVE_FETCH = window.fetch.bind(window);
+
+function actanaraCookie(name) {
+  const prefix = encodeURIComponent(name) + '=';
+  return document.cookie.split(';').map(part => part.trim()).find(part => part.startsWith(prefix))?.slice(prefix.length) || '';
+}
+
+function actanaraSameOriginRequest(input) {
+  try {
+    const url = typeof input === 'string' ? input : (input && input.url) || '';
+    return new URL(url, window.location.href).origin === window.location.origin;
+  } catch (e) {
+    return false;
+  }
+}
+
+window.fetch = function(input, init) {
+  const next = { ...(init || {}) };
+  if (actanaraSameOriginRequest(input)) {
+    next.credentials = next.credentials || 'same-origin';
+    const method = String(next.method || (input && input.method) || 'GET').toUpperCase();
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+      const headers = new Headers(next.headers || (input && input.headers) || {});
+      const csrf = decodeURIComponent(actanaraCookie(ACTANARA_CSRF_COOKIE));
+      if (csrf && !headers.has(ACTANARA_CSRF_HEADER)) headers.set(ACTANARA_CSRF_HEADER, csrf);
+      next.headers = headers;
+    }
+  }
+  return ACTANARA_NATIVE_FETCH(input, next);
+};
+
+function sanitizeDashboardUrl(value) {
+  const text = String(value || '').trim();
+  if (!text) return false;
+  try {
+    const url = new URL(text, window.location.href);
+    return ['http:', 'https:', 'mailto:'].includes(url.protocol);
+  } catch (e) {
+    return false;
+  }
+}
+
+function sanitizeDashboardHtml(html) {
+  const allowedTags = new Set(['a','blockquote','br','code','del','em','h1','h2','h3','h4','h5','h6','hr','li','ol','p','pre','strong','table','tbody','td','th','thead','tr','ul']);
+  const allowedAttrs = {
+    a: new Set(['href', 'title', 'target', 'rel']),
+    code: new Set(['class']),
+    th: new Set(['align']),
+    td: new Set(['align'])
+  };
+  const template = document.createElement('template');
+  template.innerHTML = String(html || '');
+  const nodes = [];
+  const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT);
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  nodes.forEach(node => {
+    const tag = node.tagName.toLowerCase();
+    if (!allowedTags.has(tag)) {
+      node.replaceWith(document.createTextNode(node.textContent || ''));
+      return;
+    }
+    Array.from(node.attributes).forEach(attr => {
+      const name = attr.name.toLowerCase();
+      const allowed = allowedAttrs[tag] && allowedAttrs[tag].has(name);
+      if (!allowed || name.startsWith('on') || name === 'style' || name === 'srcdoc') {
+        node.removeAttribute(attr.name);
+        return;
+      }
+      if ((name === 'href' || name === 'src') && !sanitizeDashboardUrl(attr.value)) {
+        node.removeAttribute(attr.name);
+      }
+    });
+    if (tag === 'a') {
+      node.setAttribute('rel', 'noopener noreferrer');
+      if (node.getAttribute('target') && !['_blank', '_self'].includes(node.getAttribute('target'))) {
+        node.removeAttribute('target');
+      }
+    }
+  });
+  return template.innerHTML;
+}
+
+function renderSafeMarkdown(markdown) {
+  const text = String(markdown || '');
+  const html = window.marked && typeof marked.parse === 'function'
+    ? marked.parse(text)
+    : escapeHtml(text).replace(/\n/g, '<br>');
+  return sanitizeDashboardHtml(html);
+}
+
+function dashboardStateOf(payload) {
+  return payload && typeof payload.dashboardState === 'object'
+    ? payload.dashboardState
+    : {schemaVersion: 0, status: 'ready', sourceErrors: []};
+}
+
+function dashboardStateFailed(payload) {
+  return ['error', 'unavailable'].includes(dashboardStateOf(payload).status);
+}
+
+function dashboardStateSummary(payload) {
+  const state = dashboardStateOf(payload);
+  const errors = Array.isArray(state.sourceErrors) ? state.sourceErrors : [];
+  return errors.map(item => {
+    if (!item || typeof item !== 'object') return '';
+    const source = String(item.source || '').trim();
+    const code = String(item.code || '').trim();
+    return source && code ? source + ': ' + code : code || source;
+  }).filter(Boolean).join(', ') || state.status;
+}
 
 function toggleSection(el) {
   el.classList.toggle('open');
   const items = el.nextElementSibling;
   if (items) items.classList.toggle('open');
+  el.setAttribute('aria-expanded', el.classList.contains('open') ? 'true' : 'false');
 }
 
 let modalHistory = [];
+let ACTANARA_MODAL_GENERATION = 0;
 let MSGBOX_STATE = { items: [], attentionCount: 0, count: 0 };
 let BACKGROUND_TASK_STATE = { activeCount: 0, tasks: [], active: [] };
 let backgroundTasksTimer = null;
+let BACKGROUND_TASK_MODAL_GENERATION = 0;
+let BACKGROUND_TASK_MODAL_REQUEST = 0;
 let HISTORY_BACKFILL_SELECTED_PERIODS = [];
 let HISTORY_BACKFILL_PICKER_PERIODS = [];
 let HISTORY_BACKFILL_LAST_PLAN = null;
 let HISTORY_BACKFILL_LAST_PLAN_KEY = '';
 let HISTORY_BACKFILL_LAST_PLAN_PAYLOAD = null;
+let HISTORY_BACKFILL_PENDING_SELECTION = new Set();
 let RAG_PRODUCTION_SYNC_BUSY = false;
+let RAG_PAGE_SEARCH_REQUEST = 0;
+let MEMORY_SKILL_PLAN_GENERATION = 0;
 let ACTANARA_DASHBOARD_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Hong_Kong';
 let ACTANARA_PIPELINE_LANGUAGE_PROFILE = 'zh';
+let ACTANARA_DISPLAY_LANGUAGE_PROFILE = (() => {
+  try {
+    const value = localStorage.getItem('actanara.dashboard.language');
+    return value === 'en' || value === 'zh' ? value : null;
+  } catch (_) { return null; }
+})();
 let ACTANARA_SETTINGS_LOADED = false;
-const DASHBOARD_RESTART_COMMAND = 'python3 advanced/dashboard/dashboard_launch_agent.py check --restart';
+let ACTANARA_LAST_SETTINGS = null;
+let LLM_PROVIDER_CHAIN_DRAFT = null;
+let ACTANARA_SETTINGS_ADVANCED = false;
+let ACTANARA_SETTINGS_FORM_DRAFT = {};
+let ACTANARA_SETTINGS_LLM_DIRTY = false;
+let ACTANARA_SETTINGS_ADVANCED_DIRTY = new Set();
+let ACTANARA_SETTINGS_ADVANCED_BASELINE = new Map();
+let ACTANARA_DIARY_NAV_READY = null;
+let ACTANARA_STARTUP_PREVIEWS = {};
+let ACTANARA_MODAL_RETURN_FOCUS = null;
+let ACTANARA_DOC_MODAL_RETURN_FOCUS = null;
+let ACTANARA_EDITOR_RETURN_FOCUS = null;
+let ACTANARA_TOKEN_CLOCK_READY = false;
+let ACTANARA_TOKEN_SUMMARY_READY = false;
+let NOVA_TASK_BOARD_READY = false;
+const DASHBOARD_RESTART_COMMAND = 'actanara dashboard restart';
 
 const DASHBOARD_TEXT = {
   zh: {
@@ -51,6 +191,7 @@ const DASHBOARD_TEXT = {
     diaryNavLoading: '点击侧边栏日期加载',
     diaryNavWeeklyOverview: '周报总览',
     diaryNavMonthlyOverview: '月报总览',
+    diaryNavHideInactive: '隐藏无活动日期',
     detailedDiary: '详细日记',
     saveChanges: '保存修改',
     exportPrint: '导出',
@@ -76,7 +217,7 @@ const DASHBOARD_TEXT = {
     monthlyPulseRhythm: '节奏',
     monthlyPulseQuality: '效率',
     monthlyPulseReliability: '稳定性',
-    timeInvestment: '时间投入',
+    timeInvestment: '活动时段记录',
     usageTrend: '周度使用趋势',
     monthlyUsageTrend: '月度使用趋势',
     periodUsageTrend: '周期使用趋势',
@@ -92,17 +233,17 @@ const DASHBOARD_TEXT = {
     highFrequencyTopics: '高频主题',
     topicSource: '由周报总结 LLM 基于本周期数据提炼；生成或更新总结后刷新。',
     taskCompletion: '任务完成率',
-    workloadComparison: '工作强度',
+    workloadComparison: '活动量对比',
     scheduledJobs: '定时任务',
     knowledgeBase: '知识库',
     weeklyKnowledgePeriod: '本周',
     monthlyKnowledgePeriod: '本月',
     tasksOutcomes: '任务与成果',
-    lessons: '教训与经验',
+    lessons: '学习经验',
     noTopics: '暂无 LLM 高频主题；请先生成总结快照。',
-    snapshotMissingTitle: '该周期的 Foundation 快照缺失',
+    snapshotMissingTitle: '该周期的报告数据尚未生成',
     snapshotMissingDesc: '页面已停止实时重算，避免长时间卡住。点击按钮后会在后台重新聚合数据，完成后自动刷新本页。',
-    diarySnapshotMissingTitle: '该日的 Foundation 快照缺失',
+    diarySnapshotMissingTitle: '该日的日记数据尚未生成',
     diarySnapshotMissingDesc: '页面已停止读取 Markdown 回退，避免长时间卡住。点击按钮后会在后台重新聚合当天数据，完成后自动刷新本页。',
     rebuildData: '重新聚合数据',
     source: '来源',
@@ -178,6 +319,43 @@ const DASHBOARD_TEXT = {
     totalTokenMetric: '总 Token',
     totalMessageMetric: '总消息',
     cacheRateMetric: '缓存率',
+    sharePng: '分享图片',
+    sharePreviewTitle: '分享图片预览',
+    sharePreparing: '正在本地生成 PNG…',
+    shareCopyPng: '复制 PNG',
+    shareDownloadPng: '保存 PNG',
+    shareRetry: '重试',
+    shareCopied: 'PNG 已复制到剪贴板。',
+    shareClipboardUnavailable: '当前浏览器无法复制图片，请使用“保存 PNG”。',
+    shareCopyFailed: '复制失败，请使用“保存 PNG”。',
+    shareDownloadStarted: '已开始保存 PNG。',
+    shareDownloadFailed: '无法保存 PNG，请重试。',
+    shareRenderFailed: 'PNG 生成失败，请重试。',
+    sharePrivacyNote: '图片仅在当前浏览器生成，不会上传；只包含聚合数据。',
+    shareThemeLight: '浅色',
+    shareThemeDark: '深色',
+    sharePreviewAlt: 'Actanara 聚合数据分享图片预览',
+    shareRange: '时间范围',
+    shareTrend: '趋势',
+    shareOutcomes: '成果',
+    shareWeeklyTitle: 'Actanara 周度进展',
+    shareMonthlyTitle: 'Actanara 月度进展',
+    shareAssetsTitle: 'Actanara AI 资产概览',
+    shareMetricTokens: '聚合 Token',
+    shareMetricMessages: '消息数',
+    shareMetricSessions: '活跃 Sessions',
+    shareMetricCacheRate: '缓存率',
+    shareMetricActiveDays: '活跃天数',
+    shareMetricActiveSystems: '活跃系统',
+    shareOutcomeCompleted: '已完成任务',
+    shareOutcomeRagDelta: 'nova-RAG 增量',
+    shareOutcomeCronRate: '定时任务成功率',
+    shareOutcomeDiaries: '日记累计',
+    shareOutcomeRagEntries: 'nova-RAG 条目',
+    shareSummaryReport: (days, completed) => `本周期覆盖 ${days} 天，完成 ${completed} 项任务；下方仅展示聚合变化。`,
+    shareSummaryAssets: (days, systems) => `最近 ${days} 天趋势与 ${systems} 个活跃系统的聚合概览。`,
+    shareComparedPrevious: '较上一周期',
+    shareGeneratedLocally: '本地生成 · 隐私字段已排除',
   },
   en: {
     dayUnit: 'days',
@@ -188,6 +366,7 @@ const DASHBOARD_TEXT = {
     diaryNavLoading: 'Click a date in the sidebar to load',
     diaryNavWeeklyOverview: 'Weekly Overview',
     diaryNavMonthlyOverview: 'Monthly Overview',
+    diaryNavHideInactive: 'Hide inactive dates',
     detailedDiary: 'Detailed Diary',
     saveChanges: 'Save Changes',
     exportPrint: 'Export',
@@ -213,7 +392,7 @@ const DASHBOARD_TEXT = {
     monthlyPulseRhythm: 'Rhythm',
     monthlyPulseQuality: 'Efficiency',
     monthlyPulseReliability: 'Reliability',
-    timeInvestment: 'Time Investment',
+    timeInvestment: 'Recorded Activity Periods',
     usageTrend: 'Weekly Usage Trend',
     monthlyUsageTrend: 'Monthly Usage Trend',
     periodUsageTrend: 'Period Usage Trend',
@@ -229,7 +408,7 @@ const DASHBOARD_TEXT = {
     highFrequencyTopics: 'High-Frequency Topics',
     topicSource: 'Extracted by the report-summary LLM from current-period data; refresh after generating or updating the summary.',
     taskCompletion: 'Task Completion Rate',
-    workloadComparison: 'Workload',
+    workloadComparison: 'Activity Volume Comparison',
     scheduledJobs: 'Scheduled Jobs',
     knowledgeBase: 'Knowledge Base',
     weeklyKnowledgePeriod: 'Weekly',
@@ -237,9 +416,9 @@ const DASHBOARD_TEXT = {
     tasksOutcomes: 'Tasks and Outcomes',
     lessons: 'Lessons and Experience',
     noTopics: 'No LLM high-frequency topics yet; generate a summary snapshot first.',
-    snapshotMissingTitle: 'Foundation snapshot is missing for this period',
+    snapshotMissingTitle: 'Report data has not been generated for this period',
     snapshotMissingDesc: 'Live recomputation is disabled to avoid long waits. Rebuild data in the background, then this page will refresh automatically.',
-    diarySnapshotMissingTitle: 'Foundation snapshot is missing for this day',
+    diarySnapshotMissingTitle: 'Diary data has not been generated for this day',
     diarySnapshotMissingDesc: 'Markdown fallback is disabled to avoid long waits. Rebuild this day in the background, then this page will refresh automatically.',
     rebuildData: 'Rebuild Data',
     source: 'Source',
@@ -315,6 +494,43 @@ const DASHBOARD_TEXT = {
     totalTokenMetric: 'Total Tokens',
     totalMessageMetric: 'Total Messages',
     cacheRateMetric: 'Cache Rate',
+    sharePng: 'Share PNG',
+    sharePreviewTitle: 'Share Image Preview',
+    sharePreparing: 'Generating PNG locally...',
+    shareCopyPng: 'Copy PNG',
+    shareDownloadPng: 'Save PNG',
+    shareRetry: 'Retry',
+    shareCopied: 'PNG copied to the clipboard.',
+    shareClipboardUnavailable: 'Image clipboard is unavailable; use “Save PNG”.',
+    shareCopyFailed: 'Copy failed; use “Save PNG”.',
+    shareDownloadStarted: 'PNG save started.',
+    shareDownloadFailed: 'PNG could not be saved. Try again.',
+    shareRenderFailed: 'PNG generation failed. Try again.',
+    sharePrivacyNote: 'The image is generated only in this browser and contains aggregate data only.',
+    shareThemeLight: 'Light',
+    shareThemeDark: 'Dark',
+    sharePreviewAlt: 'Actanara aggregate data share image preview',
+    shareRange: 'Time Range',
+    shareTrend: 'Trend',
+    shareOutcomes: 'Outcomes',
+    shareWeeklyTitle: 'Actanara Weekly Progress',
+    shareMonthlyTitle: 'Actanara Monthly Progress',
+    shareAssetsTitle: 'Actanara AI Assets Overview',
+    shareMetricTokens: 'Aggregate Tokens',
+    shareMetricMessages: 'Messages',
+    shareMetricSessions: 'Active Sessions',
+    shareMetricCacheRate: 'Cache Rate',
+    shareMetricActiveDays: 'Active Days',
+    shareMetricActiveSystems: 'Active Systems',
+    shareOutcomeCompleted: 'Completed Tasks',
+    shareOutcomeRagDelta: 'nova-RAG Growth',
+    shareOutcomeCronRate: 'Scheduled Job Success',
+    shareOutcomeDiaries: 'Diary Entries',
+    shareOutcomeRagEntries: 'nova-RAG Entries',
+    shareSummaryReport: (days, completed) => `${days} days covered and ${completed} tasks completed; only aggregate changes are shown below.`,
+    shareSummaryAssets: (days, systems) => `Aggregate trends across the last ${days} days and ${systems} active systems.`,
+    shareComparedPrevious: 'vs previous period',
+    shareGeneratedLocally: 'Generated locally · private fields excluded',
   },
 };
 
@@ -323,22 +539,24 @@ const DASHBOARD_SHELL_TEXT = {
     documentTitle: 'Actanara',
     sseConnecting: '⏳ 连接中',
     navOverview: '总览',
-    navTodayOverview: '当日实时总览',
+    navTodayOverview: '用量与活动',
     navAiAssets: 'AI 资产',
     navTaskBoardBeta: '任务看板 (Beta) ↗',
-    navFoundationOps: 'Foundation 运维',
+    navFoundationOps: '数据维护 · Foundation',
+    mobileMore: '更多',
+    mobileMoreTitle: '更多工具',
     settingsButton: '⚙️ 设置',
     settingsTitle: '系统设置',
     llmButton: '🔑 LLM',
     llmTitle: '日记生成 LLM Provider',
     githubTitle: '在新标签页打开 Actanara GitHub 项目主页',
-    i18nTitle: '中英文切换待实现',
+    i18nTitle: '切换界面语言',
     historyBackfill: '生成历史数据',
     backgroundTasksMonitor: '后台任务监控',
     backgroundTasks: '后台任务',
     messagesTitle: '消息与待处理事项',
     messagesShort: '消息',
-    overviewTitle: '当日实时总览',
+    overviewTitle: '用量与活动',
     loadingDots: '加载中...',
     loadingEllipsis: '加载中…',
     realtimeMonitoring: '实时监控',
@@ -350,6 +568,7 @@ const DASHBOARD_SHELL_TEXT = {
     cacheHitRate: '缓存命中率',
     currentRate: '当前速率',
     activeTools: '活跃工具',
+    active: '活跃',
     tokenUnit: 'tokens',
     messageUnitShort: 'msgs',
     token24h: '24 小时 Token 消耗',
@@ -359,34 +578,34 @@ const DASHBOARD_SHELL_TEXT = {
     noWorkspaceUsageToday: '今日暂无 Agent / Workspace 消耗数据',
     todayTokens: '今日 Tokens',
     currentHour: '当前小时',
-    active: '活跃',
     usedToday: '今日使用',
     realtimeUpdatedAt: '更新于 ',
     todayDetails: '今日 · 点击查看详情',
+    tokenClockDegraded: (count, sources) => `部分来源不可用（${count}）：${sources || 'unknown'}`,
     protocolTotal: '协议总量',
     input: '输入',
     output: '输出',
     waitingRealtimeUsage: '等待实时消耗数据...',
-    foundationOpsTitle: 'Foundation 运维',
-    foundationOpsSubtitle: 'Daily QA、快照刷新与 job 状态',
-    dailyQaSubtitle: '按业务日期检查日记产物、Foundation 输入与 pipeline 恢复状态',
-    readQa: '读取 QA',
+    foundationOpsTitle: '数据维护 · Foundation',
+    foundationOpsSubtitle: '检查数据完整性、重新生成页面数据并查看后台任务',
+    dailyQaSubtitle: '按日期检查日记文件、来源数据与生成流程状态',
+    readQa: '检查当天数据',
     dailyPipelineResult: '当天管线结果',
-    dailyPipelineSubtitle: '按业务日期查看最新运行、生成文件、lesson 与 task evidence 指标',
+    dailyPipelineSubtitle: '查看当天的生成结果、落盘文件、学习经验和任务证据',
     readMetrics: '读取指标',
     repairAudit: '修复执行审计',
-    repairAuditSubtitle: '最近的 allowlisted Daily QA repair runs；非 allowlisted 动作仍保持 manual-only',
+    repairAuditSubtitle: '查看已执行的自动修复；其他操作需按建议手动处理',
     reload: '重新读取',
     refreshToday: '刷新今日',
     refreshWeek: '刷新本周',
     refreshMonth: '刷新本月',
     reloadStatus: '重新读取状态',
-    historicalBackfill: '历史 Backfill',
+    historicalBackfill: '补齐历史数据',
     start: '开始',
     end: '结束',
-    submitBackfill: '提交 Backfill',
+    submitBackfill: '开始补齐',
     latestFailed: '最近失败',
-    ragSubtitle: 'Actanara v2 长期记忆',
+    ragSubtitle: '检索与索引管理',
     readStatus: '读取状态…',
     startRagServer: '启动 Server',
     stopRagServer: '停止 Server',
@@ -397,12 +616,12 @@ const DASHBOARD_SHELL_TEXT = {
     notReadYet: '尚未读取',
     ragSearchPlaceholder: '搜索 Actanara 长期记忆',
     search: '搜索',
-    projectOptional: 'project，可选',
-    sourceSetsOptional: 'sourceSets，逗号分隔，可选',
-    lifecycleOptional: 'lifecycle，逗号分隔，可选',
+    projectOptional: '项目（可选）',
+    sourceSetsOptional: 'sourceSets（逗号分隔，可选）',
+    lifecycleOptional: '生命周期状态（逗号分隔，可选）',
     waitingSearch: '等待搜索',
     aiAssetsTitle: 'AI 资产总览',
-    aiAssetsSubtitle: '全维度数据概览 · 自动采集',
+    aiAssetsSubtitle: '查看可复用成果、学习经验、Skill 与长期记忆',
     refresh: '刷新',
     backgroundUpdate: '后台更新',
     loadingAiAssets: '正在加载 AI 资产数据…',
@@ -414,12 +633,13 @@ const DASHBOARD_SHELL_TEXT = {
     modelLabel: '模型',
     messages: '消息数',
     lastActive: '最后活跃',
-    assetAccumulation: '资产积累',
+    assetAccumulation: '报告与记忆',
     diaryStats: '日记统计',
-    infrastructure: '基础设施',
+    infrastructure: '基础设施（beta）',
     storageUsage: '存储使用',
     taskOverview: '任务总览',
     agentConfigPanel: 'Agent 配置面板',
+    proceduralAssets: '经验与 Skill 复核',
     skillLibrary: 'Skill 库',
     toolConfig: '工具配置',
     runtimeRegistry: '运行环境登记',
@@ -439,22 +659,24 @@ const DASHBOARD_SHELL_TEXT = {
     documentTitle: 'Actanara',
     sseConnecting: '⏳ Connecting',
     navOverview: 'Overview',
-    navTodayOverview: 'Today Live Overview',
+    navTodayOverview: 'Usage & Activity',
     navAiAssets: 'AI Assets',
     navTaskBoardBeta: 'Task Board (Beta) ↗',
-    navFoundationOps: 'Foundation Ops',
+    navFoundationOps: 'Data Maintenance · Foundation',
+    mobileMore: 'More',
+    mobileMoreTitle: 'More Tools',
     settingsButton: '⚙️ Settings',
     settingsTitle: 'System Settings',
     llmButton: '🔑 LLM',
     llmTitle: 'Diary Generation LLM Provider',
     githubTitle: 'Open the Actanara GitHub project home in a new tab',
-    i18nTitle: 'Language switching pending',
+    i18nTitle: 'Change interface language',
     historyBackfill: 'Generate Historical Data',
     backgroundTasksMonitor: 'Background Task Monitor',
     backgroundTasks: 'Background Tasks',
     messagesTitle: 'Messages and Action Items',
     messagesShort: 'Messages',
-    overviewTitle: 'Today Live Overview',
+    overviewTitle: 'Usage & Activity',
     loadingDots: 'Loading...',
     loadingEllipsis: 'Loading...',
     realtimeMonitoring: 'Live monitoring',
@@ -466,6 +688,7 @@ const DASHBOARD_SHELL_TEXT = {
     cacheHitRate: 'Cache Hit Rate',
     currentRate: 'Current Rate',
     activeTools: 'Active Tools',
+    active: 'Active',
     tokenUnit: 'tokens',
     messageUnitShort: 'msgs',
     token24h: '24h Token Usage',
@@ -475,34 +698,34 @@ const DASHBOARD_SHELL_TEXT = {
     noWorkspaceUsageToday: 'No Agent / Workspace usage data today',
     todayTokens: 'Today Tokens',
     currentHour: 'Current Hour',
-    active: 'Active',
     usedToday: 'Used today',
     realtimeUpdatedAt: 'Updated at ',
     todayDetails: 'Today · click for details',
+    tokenClockDegraded: (count, sources) => `Partial sources unavailable (${count}): ${sources || 'unknown'}`,
     protocolTotal: 'Protocol total',
     input: 'input',
     output: 'output',
     waitingRealtimeUsage: 'Waiting for live usage data...',
-    foundationOpsTitle: 'Foundation Ops',
-    foundationOpsSubtitle: 'Daily QA, snapshot refresh, and job status',
-    dailyQaSubtitle: 'Check diary artifacts, Foundation inputs, and pipeline recovery status by business date',
-    readQa: 'Read QA',
+    foundationOpsTitle: 'Data Maintenance · Foundation',
+    foundationOpsSubtitle: 'Check data completeness, regenerate page data, and review background jobs',
+    dailyQaSubtitle: 'Check diary files, source data, and generation status for a selected date',
+    readQa: 'Check Daily Data',
     dailyPipelineResult: 'Daily Pipeline Result',
-    dailyPipelineSubtitle: 'View the latest run, generated files, lessons, and task evidence metrics by business date',
+    dailyPipelineSubtitle: 'Review daily generation results, saved files, lessons, and task evidence',
     readMetrics: 'Read Metrics',
     repairAudit: 'Repair Execution Audit',
-    repairAuditSubtitle: 'Recent allowlisted Daily QA repair runs; non-allowlisted actions remain manual-only',
+    repairAuditSubtitle: 'Review automated repairs; other recommended actions require manual handling',
     reload: 'Reload',
     refreshToday: 'Refresh Today',
     refreshWeek: 'Refresh This Week',
     refreshMonth: 'Refresh This Month',
     reloadStatus: 'Reload Status',
-    historicalBackfill: 'Historical Backfill',
+    historicalBackfill: 'Fill Historical Data Gaps',
     start: 'Start',
     end: 'End',
-    submitBackfill: 'Submit Backfill',
+    submitBackfill: 'Start Backfill',
     latestFailed: 'Latest Failed',
-    ragSubtitle: 'Actanara v2 long-term memory',
+    ragSubtitle: 'Search and Index Management',
     readStatus: 'Read Status...',
     startRagServer: 'Start Server',
     stopRagServer: 'Stop Server',
@@ -513,12 +736,12 @@ const DASHBOARD_SHELL_TEXT = {
     notReadYet: 'Not read yet',
     ragSearchPlaceholder: 'Search Actanara long-term memory',
     search: 'Search',
-    projectOptional: 'project, optional',
-    sourceSetsOptional: 'sourceSets, comma-separated, optional',
-    lifecycleOptional: 'lifecycle, comma-separated, optional',
+    projectOptional: 'Project (optional)',
+    sourceSetsOptional: 'Source sets (comma-separated, optional)',
+    lifecycleOptional: 'Lifecycle states (comma-separated, optional)',
     waitingSearch: 'Waiting for search',
     aiAssetsTitle: 'AI Assets Overview',
-    aiAssetsSubtitle: 'Full-dimensional data overview · automatic collection',
+    aiAssetsSubtitle: 'Reusable outcomes, lessons, Skills, and long-term memory',
     refresh: 'Refresh',
     backgroundUpdate: 'Background Update',
     loadingAiAssets: 'Loading AI Assets data...',
@@ -530,12 +753,13 @@ const DASHBOARD_SHELL_TEXT = {
     modelLabel: 'Model',
     messages: 'Messages',
     lastActive: 'Last Active',
-    assetAccumulation: 'Asset Accumulation',
+    assetAccumulation: 'Reports & Memory',
     diaryStats: 'Diary Stats',
-    infrastructure: 'Infrastructure',
+    infrastructure: 'Infrastructure (Beta)',
     storageUsage: 'Storage Usage',
     taskOverview: 'Task Overview',
     agentConfigPanel: 'Agent Configuration Panel',
+    proceduralAssets: 'Lesson & Skill Review',
     skillLibrary: 'Skill Library',
     toolConfig: 'Tool Configuration',
     runtimeRegistry: 'Runtime Registry',
@@ -553,8 +777,7 @@ const DASHBOARD_SHELL_TEXT = {
   },
 };
 
-// Static contract anchors for layout-order tests:
-// ⏱️</span> 时间投入 precedes ⚡</span> 周度使用趋势 in the weekly report layout.
+// Activity records describe observed events, not measured working hours.
 
 const FOUNDATION_TEXT = {
   zh: {
@@ -807,7 +1030,36 @@ const RAG_UI_TEXT = {
     noActiveProfile: 'no active profile',
     policy: 'local/cloud/model/dimension 由基座 profile 锁定；变更请走“迁移RAG基座/模式”。语言跟随 Actanara 全局 locale。',
     timeHalfLife: '时间半衰期',
+    cloudProviderCredential: '云端 Embedding Provider Key',
+    cloudProviderCredentialPlaceholder: '仅在轮换或首次配置时输入',
+    cloudProviderCredentialConfigured: '密钥已安全保存；此处不会回显。留空即保留现有密钥。',
+    cloudProviderCredentialMissing: '尚未配置云端 Embedding Key。',
+    cloudProviderCredentialReentry: '旧 Keychain 密钥无法读取；请在此重新输入一次。',
     saveInstantParams: '保存即时参数',
+    externalSourcesTitle: '外部内容源',
+    externalSourcesNote: '仅解析你明确配置的本地路径。Dry-run 不写 settings 或 index；正式构建仍只写 nova-RAG v2 candidate store。',
+    externalSourcesEnabled: '启用外部内容源',
+    externalSourcesMode: '来源组合模式',
+    externalSourcesSupplement: '补充默认来源',
+    externalSourcesReplace: '替换默认来源',
+    externalSourcesPaths: '路径（每行一个绝对路径）',
+    externalSourcesRecursive: '递归扫描目录',
+    externalSourcesInclude: 'Include patterns（每行一个）',
+    externalSourcesExclude: 'Exclude patterns（每行一个）',
+    externalSourcesSymlink: '符号链接策略',
+    externalSourcesSymlinkReject: '全部拒绝',
+    externalSourcesSymlinkWithinRoot: '仅允许根目录内目标',
+    externalSourcesMaxFileBytes: '单文件上限（bytes）',
+    externalSourcesMaxTotalBytes: '总读取上限（bytes）',
+    externalSourcesMaxFiles: '文件数量上限',
+    externalSourcesDocUnsupported: '.doc 不受支持；请先转换为 .docx、PDF 或纯文本。',
+    externalSourcesDryRun: 'Dry-run 解析预览',
+    externalSourcesPlanning: '正在扫描与解析外部内容源…',
+    externalSourcesPlanReady: 'Dry-run 完成',
+    externalSourcesPlanFailed: 'Dry-run 失败: ',
+    externalSourcesNoRecords: '当前计划没有文件记录。',
+    externalSourcesSummary: '解析摘要',
+    externalSourcesBlocked: '需要处理',
     refreshStatus: '刷新 nova-RAG 状态…',
     refreshFailed: '刷新失败: ',
     enabling: '启用中…',
@@ -862,6 +1114,7 @@ const RAG_UI_TEXT = {
     searchFailed: '搜索失败: ',
     searchQueryRequired: '请输入搜索内容。',
     searchUnavailable: '检索不可用: ',
+    partialResults: '部分来源不可用，以下为可用结果。',
     readingStatus: '读取 nova-RAG 状态…',
     readingSettings: '读取 nova-RAG 设置…',
     statusReadFailed: '状态读取失败: ',
@@ -877,6 +1130,21 @@ const RAG_UI_TEXT = {
     activeRun: 'Active Run',
     chunks: 'Chunks',
     documents: 'Documents',
+    localMemoryTitle: '本地轻量记忆',
+    localMemoryNote: '无需 Embedding 或模型服务；nova-RAG 不可用时，auto 检索会回退到此可重建的 SQLite FTS 索引。',
+    localMemoryBackend: '后端',
+    localMemoryIndex: '索引',
+    localMemorySources: '来源',
+    localMemoryDocuments: '文档',
+    localMemorySyncedAt: '同步时间',
+    localMemoryCapabilities: '能力',
+    syncLocalMemory: '同步本地索引',
+    rebuildLocalMemory: '重建本地索引',
+    syncingLocalMemory: '正在同步本地记忆索引…',
+    rebuildingLocalMemory: '正在重建本地记忆索引…',
+    localMemoryActionFailed: '本地记忆索引操作失败: ',
+    localMemoryStatusFailed: '本地记忆状态读取失败: ',
+    searchBackend: '检索后端',
     enabled: 'enabled',
     disabled: 'disabled',
     available: 'available',
@@ -912,8 +1180,13 @@ const RAG_UI_TEXT = {
     migrationSubmitFailed: '迁移提交失败: ',
     confirmMigrationFallback: '确认迁移并加入后台任务',
     externalSkillTitle: '注册外部 Agent Memory Skill',
-    externalSkillNote: '将 nova-RAG 作为 read-only global skill 注册到 OpenClaw、Claude Code、Codex、Gemini CLI、Hermes。默认 dry-run；实际安装需要确认短语。',
-    externalSkillPolicy: 'read-only；不允许 memory write、index run、server lifecycle mutation。',
+    externalSkillNote: '将后端无关的 Actanara Memory Skill 注册到本机已检测且支持的 Agent。Skill 会自动选择 nova-RAG 或本地轻量检索。',
+    externalSkillPolicy: 'read-only；只写入明确勾选的工具，并保护定制 Skill 与更新版本。',
+    externalSkillTargets: '注册目标',
+    externalSkillTargetsNote: '这里只显示本机已检测且支持全局 Skill 的工具。请明确勾选需要注册的目标。',
+    selectRegistrationTarget: '请至少选择一个注册目标。',
+    detectedUnsupportedTools: '已检测但暂不支持全局 Skill：',
+    registrationAvailable: '可注册',
     overwriteSkill: '覆盖已有 skill（会先备份）',
     refreshPlan: '刷新计划',
     installSkill: '安装 Skill',
@@ -941,7 +1214,36 @@ const RAG_UI_TEXT = {
     noActiveProfile: 'no active profile',
     policy: 'The base profile locks local/cloud/model/dimension. Use “Migrate RAG profile/mode” for changes. Language follows the global Actanara locale.',
     timeHalfLife: 'Recency Half-Life',
+    cloudProviderCredential: 'Cloud Embedding Provider Key',
+    cloudProviderCredentialPlaceholder: 'Enter only for first-time setup or rotation',
+    cloudProviderCredentialConfigured: 'The key is stored securely and is never displayed. Leave this blank to keep it.',
+    cloudProviderCredentialMissing: 'No cloud embedding key is configured.',
+    cloudProviderCredentialReentry: 'The legacy Keychain value is unreadable. Enter the key here once.',
     saveInstantParams: 'Save Runtime Parameters',
+    externalSourcesTitle: 'External Content Sources',
+    externalSourcesNote: 'Only explicitly configured local paths are parsed. Dry-run writes neither settings nor indexes; real builds remain restricted to the nova-RAG v2 candidate store.',
+    externalSourcesEnabled: 'Enable external content sources',
+    externalSourcesMode: 'Source composition mode',
+    externalSourcesSupplement: 'Supplement default sources',
+    externalSourcesReplace: 'Replace default sources',
+    externalSourcesPaths: 'Paths (one absolute path per line)',
+    externalSourcesRecursive: 'Scan directories recursively',
+    externalSourcesInclude: 'Include patterns (one per line)',
+    externalSourcesExclude: 'Exclude patterns (one per line)',
+    externalSourcesSymlink: 'Symlink policy',
+    externalSourcesSymlinkReject: 'Reject all symlinks',
+    externalSourcesSymlinkWithinRoot: 'Allow targets within root only',
+    externalSourcesMaxFileBytes: 'Per-file limit (bytes)',
+    externalSourcesMaxTotalBytes: 'Total read limit (bytes)',
+    externalSourcesMaxFiles: 'File-count limit',
+    externalSourcesDocUnsupported: '.doc is unsupported; convert it to .docx, PDF, or plain text first.',
+    externalSourcesDryRun: 'Dry-run Parse Preview',
+    externalSourcesPlanning: 'Scanning and parsing external content sources...',
+    externalSourcesPlanReady: 'Dry-run complete',
+    externalSourcesPlanFailed: 'Dry-run failed: ',
+    externalSourcesNoRecords: 'The current plan has no file records.',
+    externalSourcesSummary: 'Parse Summary',
+    externalSourcesBlocked: 'Needs attention',
     refreshStatus: 'Refreshing nova-RAG status...',
     refreshFailed: 'Refresh failed: ',
     enabling: 'Enabling...',
@@ -996,6 +1298,7 @@ const RAG_UI_TEXT = {
     searchFailed: 'Search failed: ',
     searchQueryRequired: 'Enter a search query.',
     searchUnavailable: 'Search unavailable: ',
+    partialResults: 'Some sources are unavailable; showing the available results.',
     readingStatus: 'Reading nova-RAG status...',
     readingSettings: 'Reading nova-RAG settings...',
     statusReadFailed: 'Status read failed: ',
@@ -1011,6 +1314,21 @@ const RAG_UI_TEXT = {
     activeRun: 'Active Run',
     chunks: 'Chunks',
     documents: 'Documents',
+    localMemoryTitle: 'Local Memory Fallback',
+    localMemoryNote: 'Requires no embedding or model service. Auto search falls back to this rebuildable SQLite FTS index when nova-RAG is unavailable.',
+    localMemoryBackend: 'Backend',
+    localMemoryIndex: 'Index',
+    localMemorySources: 'Sources',
+    localMemoryDocuments: 'Documents',
+    localMemorySyncedAt: 'Synced',
+    localMemoryCapabilities: 'Capabilities',
+    syncLocalMemory: 'Sync Local Index',
+    rebuildLocalMemory: 'Rebuild Local Index',
+    syncingLocalMemory: 'Syncing the local memory index...',
+    rebuildingLocalMemory: 'Rebuilding the local memory index...',
+    localMemoryActionFailed: 'Local memory index action failed: ',
+    localMemoryStatusFailed: 'Local memory status failed: ',
+    searchBackend: 'Search backend',
     enabled: 'enabled',
     disabled: 'disabled',
     available: 'available',
@@ -1046,8 +1364,13 @@ const RAG_UI_TEXT = {
     migrationSubmitFailed: 'Migration submit failed: ',
     confirmMigrationFallback: 'Confirm migration and queue background task',
     externalSkillTitle: 'Register External Agent Memory Skill',
-    externalSkillNote: 'Register nova-RAG as a read-only global skill for OpenClaw, Claude Code, Codex, Gemini CLI, and Hermes. Defaults to dry-run; actual installation requires a confirmation phrase.',
-    externalSkillPolicy: 'read-only; memory write, index runs, and server lifecycle mutations are not allowed.',
+    externalSkillNote: 'Register the backend-neutral Actanara Memory Skill for detected and supported local agents. The skill automatically selects nova-RAG or local lexical recall.',
+    externalSkillPolicy: 'read-only; writes only to explicitly selected tools and preserves customized or newer skills.',
+    externalSkillTargets: 'Registration Targets',
+    externalSkillTargetsNote: 'Only tools detected locally and supporting global skills are shown. Explicitly select each target to register.',
+    selectRegistrationTarget: 'Select at least one registration target.',
+    detectedUnsupportedTools: 'Detected but global skills are not yet supported: ',
+    registrationAvailable: 'available',
     overwriteSkill: 'Overwrite existing skill (backs up first)',
     refreshPlan: 'Refresh Plan',
     installSkill: 'Install Skill',
@@ -1091,6 +1414,8 @@ const OPERATOR_UI_TEXT = {
     existingDiaries: '已有数据日期',
     missingSummaries: '周/月总结',
     maxLlmCalls: '预计最多 LLM 调用',
+    queueTask: '进入队列',
+    noQueuedHistoryItems: '请至少保留一个待生成项进入队列。',
     type: '类型',
     pendingItem: '待生成项',
     diary: '日记',
@@ -1164,10 +1489,54 @@ const OPERATOR_UI_TEXT = {
     secret: 'Secret',
     writableVia: '写入入口：',
     productLocalization: '产品与本地化',
+    dashboardNetwork: 'Dashboard 网络访问',
+    dashboardNetworkNote: '默认 127.0.0.1 仅允许本机浏览器。Tailscale 请使用下方 tailnet-only Serve，Dashboard 仍保持 loopback；仅手动配置局域网或其他反向代理时才修改监听地址。',
+    tailscaleTitle: 'Tailscale 安全访问',
+    tailscaleNote: '只检测已安装、登录、IP、MagicDNS 与节点连接状态，不执行 HTTP Serve 探测。不自动安装或登录。Serve 仅代理 loopback Dashboard 3036 到 tailnet；不会公开 nova-RAG，也不会启用 Funnel。',
+    tailscaleSecurityBoundary: '安全边界：tailnet 成员资格是远程访问边界；当前 Dashboard session 仅用于 CSRF/本进程会话，不是独立用户身份认证。',
+    tailscaleLoading: '正在读取 Tailscale 状态…',
+    tailscaleRefresh: '刷新状态',
+    tailscaleInstalled: 'CLI 安装',
+    tailscaleLogin: '登录/连接',
+    tailscaleIp: 'Tailnet IP',
+    tailscaleMagicDns: 'MagicDNS',
+    tailscaleReachability: '节点可达性（状态推断）',
+    tailscaleServe: 'Tailscale Serve（仅 tailnet）',
+    tailscaleFunnel: 'Tailscale Funnel（公网）',
+    tailscalePresent: '已安装',
+    tailscaleMissing: '不存在',
+    tailscaleConnected: '已连接',
+    tailscaleLoggedOut: '未登录',
+    tailscaleUnavailable: '不可用',
+    tailscaleReachable: '可达',
+    tailscaleNotReachable: '不可达',
+    tailscaleEnabled: '已启用',
+    tailscaleDisabled: '未启用',
+    tailscaleConflict: '存在非 Actanara Serve 配置；已保留',
+    tailscaleOriginReady: 'Dashboard MagicDNS Origin 已在安全允许列表中。',
+    tailscaleOriginRequired: '启用前请将此 HTTPS Origin 写入公开 URL 与允许 Origin，然后保存设置：',
+    tailscaleUseOrigin: '填入安全 Origin',
+    tailscaleEnableServe: '启用 tailnet-only Serve',
+    tailscaleDisableServe: '停用 Actanara Serve',
+    tailscaleActionPrompt: action => `输入确认短语以${action} Tailscale Serve：`,
+    tailscaleActionCancelled: '操作已取消：确认短语不匹配。',
+    tailscaleUpdating: '正在更新 Tailscale Serve…',
+    tailscaleActionSuccess: 'Tailscale Serve 操作成功。',
+    tailscaleStatusError: 'Tailscale 状态读取失败：',
+    tailscaleActionError: 'Tailscale Serve 操作失败：',
+    tailscaleFunnelBlocked: '高风险：Funnel 会把服务公开到互联网。当前安全策略禁止使用，Dashboard 不提供任何 Funnel 执行入口。',
+    dashboardHost: '监听地址',
+    dashboardPort: '监听端口',
+    dashboardPublicBaseUrl: '公开 URL',
+    dashboardAllowedOrigins: '允许的浏览器 Origin',
+    dashboardAllowedOriginsHint: '每行一个 Origin，例如 http://100.x.y.z:3036 或 https://actanara.example.com。',
     dashboardService: 'Dashboard 服务',
-    dashboardRestartNote: '这些值保存到 settings.json；已运行的 Dashboard LaunchAgent 需要重启后才会采用 host/port/python/appDir 等启动参数。',
+    dashboardRestartNote: '这些值保存到 settings.json；已运行的 Dashboard 服务需要安全 reconcile 或重启后才会采用网络/启动参数变更。',
     restartCommand: '重启命令：',
     copyCommand: '复制命令',
+    copyPrompt: '复制提示词',
+    promptCopied: '提示词已复制',
+    promptCopyFailed: '复制失败',
     systemSchedulerMode: '系统 scheduler 模式',
     enableSystemScheduler: '启用系统 scheduler',
     timezone: '时区',
@@ -1175,17 +1544,43 @@ const OPERATOR_UI_TEXT = {
     dashboardAggregationTime: 'Dashboard 聚合时间',
     systemTimerProvider: '系统定时器 Provider',
     systemTimerLabel: '系统定时器 Label',
-    systemTimerNote: '系统定时任务不会在保存设置时自动写入。安装会创建两个用户级 launchd job：每日管线和 Dashboard Foundation 聚合，并保留备份/卸载路径。',
+    systemTimerNote: '系统定时任务不会在保存设置时自动写入。安装/更新会由当前平台的用户级服务管理器创建每日管线和 Dashboard Foundation 聚合任务，并保留补偿与安全卸载路径。',
     previewSystemTimer: '预览系统定时任务',
     installUpdate: '安装/更新',
     uninstall: '卸载',
+    startupServicesTitle: '开机自启',
+    startupServicesNote: '管理当前平台的用户级服务；状态、运行态和定义一致性均由当前服务管理器的实际结果决定。',
+    startupDashboardServer: 'Dashboard server',
+    startupRagServer: 'nova-RAG / Embedding server',
+    startupReading: '读取开机自启状态…',
+    startupReadFailed: '读取开机自启状态失败: ',
+    startupEnableAction: '启用',
+    startupDisableAction: '停用',
+    startupApplyPrompt: (service, action) => `输入确认短语以${action}${service}开机自启：`,
+    startupCancelledMismatch: '操作已取消：确认短语不匹配。',
+    startupUpdating: '更新开机自启…',
+    startupUpdated: '已更新。',
+    startupApplyFailed: '更新失败: ',
+    startupLoaded: '已启用',
+    startupNotLoaded: '未启用',
+    startupPartial: '部分启用',
+    startupUnknown: '未知',
+    startupSettingsMismatch: 'settings 状态不一致',
+    startupJobs: '受管理任务',
+    startupReconcile: '安全 reconcile',
+    startupStart: '启动',
+    startupStop: '停止',
+    startupRestart: '重启',
+    startupDefinitionMismatch: '服务定义不一致',
+    startupRunning: '运行中',
+    startupStopped: '已停止',
     autoRefreshTargets: '自动刷新目标',
     currentDaySnapshot: '当天 snapshot',
     currentWeekSnapshot: '本周 snapshot',
     currentMonthSnapshot: '本月 snapshot',
     externalAgentMode: '外部 agent 模式',
     enableExternalAgentMode: '启用外部 agent 模式',
-    externalAgentNote: '发送给外部 Agent 后，由外部 Agent 管理系统定时任务；Dashboard 不接管完整生产管线执行。',
+    externalAgentNote: '外部 Agent 仅负责按提示词触发任务，Actanara 继续负责管线与 snapshot 逻辑。启用前请先停用或卸载系统 scheduler，避免重复运行。',
     prompt: '提示词',
     currentSelection: '当前选择',
     editedValue: '编辑值',
@@ -1214,12 +1609,11 @@ const OPERATOR_UI_TEXT = {
     useRuntimePath: '使用该 Runtime Path',
     initializeRuntimePath: '初始化 Runtime Path',
     checkDiarySqlite: '检查 Diary / SQLite 一致性',
-    featureSettingsNote: '这里只保留产品级开关。LLM 生成、任务审计、Embedding Server 属于默认运行或子系统内部配置，不在普通功能开关中暴露。',
-    featureDailyPipeline: '每日管线',
     featureDashboard: 'Dashboard 服务',
     saved: '已保存 ',
     restartRequiredSaved: '；启动参数变更需重启 Dashboard 后完全应用。命令：',
     saveFailed: '保存失败: ',
+    advancedDirtyCollapseBlocked: '高级设置含未保存修改；请先保存或取消，不能隐藏后继续保存。',
     readingSystemTimerPreview: '读取系统定时任务预览…',
     previewFailed: '预览失败: ',
     installTimerPrompt: '输入确认短语以安装系统定时任务：',
@@ -1228,8 +1622,8 @@ const OPERATOR_UI_TEXT = {
     uninstallCancelledMismatch: '卸载已取消：确认短语不匹配。',
     installingSystemTimer: '安装系统定时任务…',
     uninstallingSystemTimer: '卸载系统定时任务…',
-    installedJobs: (count) => `已安装 ${count} 个 launchd job。Backup: `,
-    uninstalledJobs: (count) => `已卸载 ${count} 个 launchd job。Backup: `,
+    installedJobs: (count) => `已安装/更新 ${count} 个用户级任务。Backup: `,
+    uninstalledJobs: (count) => `已安全卸载 ${count} 个用户级任务。Backup: `,
     installFailed: '安装失败: ',
     uninstallFailed: '卸载失败: ',
     githubProject: 'GitHub 项目主页',
@@ -1240,10 +1634,12 @@ const OPERATOR_UI_TEXT = {
     settingsReadFailed: '读取设置失败: ',
     tabGeneral: '基础',
     tabSchedule: '定时设置',
+    tabStartup: '开机自启',
+    tabNetwork: '网络',
     tabPaths: '路径设置',
     tabRuntimeSources: '数据源',
     tabExternalTools: '外部工具',
-    tabFeatures: '功能设置',
+    tabMemory: '记忆',
     configFile: '配置文件：',
     saveSettings: '保存设置',
     saving: '保存中…',
@@ -1301,6 +1697,14 @@ const OPERATOR_UI_TEXT = {
     noExternalTools: '暂无 externalTools 设置。',
     externalToolPaths: '外部工具路径',
     externalToolPathsNote: '这些路径写入 settings.json 的 externalTools，并影响 Dashboard 对 OpenClaw、Claude Code、Codex、Gemini CLI、Hermes、OpenCode、Antigravity、Cursor 等历史/当前资料的读取。',
+    nativeMemoryTitle: 'Agent 原生记忆',
+    nativeMemoryNote: '默认启用 Codex、Claude Code、指令文件与 nova-RAG 收录。Actanara 只读取受支持清单内的本机记忆文件；你可以关闭任一范围。',
+    nativeMemoryEnable: '启用 Agent 原生记忆收录',
+    nativeMemoryTools: '允许的 Agent',
+    nativeMemoryInstructions: '同时收录 Agent 指令文件',
+    nativeMemoryInstructionsNote: '指令文件可能包含长期偏好或敏感操作约束；如果不希望它们参与跨 Agent 检索，请关闭此项。',
+    nativeMemoryRag: '允许进入 nova-RAG 语义索引',
+    nativeMemoryRagNote: '关闭时原生记忆仅进入本地 SQLite 词法索引。启用 nova-RAG 收录后，需要重建 RAG 索引才能生效。',
     pipelineSettingsNote: '这些值会影响之后启动的 pipeline 子进程；已经运行中的 pipeline 不会被 retroactively 修改。',
     noStepTimeouts: '暂无 step timeout 配置。',
   },
@@ -1330,6 +1734,8 @@ const OPERATOR_UI_TEXT = {
     existingDiaries: 'Dates With Data',
     missingSummaries: 'Weekly/Monthly Summaries',
     maxLlmCalls: 'Max Estimated LLM Calls',
+    queueTask: 'Queue',
+    noQueuedHistoryItems: 'Keep at least one pending item queued.',
     type: 'Type',
     pendingItem: 'Pending Item',
     diary: 'Diary',
@@ -1403,10 +1809,54 @@ const OPERATOR_UI_TEXT = {
     secret: 'Secret',
     writableVia: 'Writable via: ',
     productLocalization: 'Product and Localization',
+    dashboardNetwork: 'Dashboard Network Access',
+    dashboardNetworkNote: 'Default 127.0.0.1 allows only the local browser. Use the tailnet-only Tailscale Serve control below while keeping Dashboard on loopback; change the bind address only for a manually managed LAN or other reverse proxy.',
+    tailscaleTitle: 'Tailscale Secure Access',
+    tailscaleNote: 'Detects installation, login, IP, MagicDNS, and node connection state only; it does not issue an HTTP Serve probe. It never installs or logs in. Serve proxies only the loopback Dashboard on 3036 to the tailnet; nova-RAG is not exposed and Funnel is never enabled.',
+    tailscaleSecurityBoundary: 'Security boundary: tailnet membership gates remote access; the current Dashboard session provides CSRF/process-local session protection, not independent user identity authentication.',
+    tailscaleLoading: 'Reading Tailscale status...',
+    tailscaleRefresh: 'Refresh Status',
+    tailscaleInstalled: 'CLI Installed',
+    tailscaleLogin: 'Login / Connection',
+    tailscaleIp: 'Tailnet IP',
+    tailscaleMagicDns: 'MagicDNS',
+    tailscaleReachability: 'Node Reachability (status inference)',
+    tailscaleServe: 'Tailscale Serve (tailnet only)',
+    tailscaleFunnel: 'Tailscale Funnel (public internet)',
+    tailscalePresent: 'installed',
+    tailscaleMissing: 'not found',
+    tailscaleConnected: 'connected',
+    tailscaleLoggedOut: 'logged out',
+    tailscaleUnavailable: 'unavailable',
+    tailscaleReachable: 'reachable',
+    tailscaleNotReachable: 'not reachable',
+    tailscaleEnabled: 'enabled',
+    tailscaleDisabled: 'disabled',
+    tailscaleConflict: 'non-Actanara Serve configuration exists and was preserved',
+    tailscaleOriginReady: 'The Dashboard MagicDNS Origin is in the security allowlist.',
+    tailscaleOriginRequired: 'Before enabling, put this HTTPS Origin in Public URL and Allowed Origins, then save settings: ',
+    tailscaleUseOrigin: 'Use Secure Origin',
+    tailscaleEnableServe: 'Enable Tailnet-only Serve',
+    tailscaleDisableServe: 'Disable Actanara Serve',
+    tailscaleActionPrompt: action => `Enter the confirmation phrase to ${action} Tailscale Serve: `,
+    tailscaleActionCancelled: 'Operation cancelled: confirmation phrase did not match.',
+    tailscaleUpdating: 'Updating Tailscale Serve...',
+    tailscaleActionSuccess: 'Tailscale Serve operation succeeded.',
+    tailscaleStatusError: 'Tailscale status read failed: ',
+    tailscaleActionError: 'Tailscale Serve operation failed: ',
+    tailscaleFunnelBlocked: 'High risk: Funnel publishes a service to the public internet. Current security policy forbids it, and Dashboard exposes no Funnel execution path.',
+    dashboardHost: 'Bind Address',
+    dashboardPort: 'Bind Port',
+    dashboardPublicBaseUrl: 'Public URL',
+    dashboardAllowedOrigins: 'Allowed Browser Origins',
+    dashboardAllowedOriginsHint: 'One Origin per line, for example http://100.x.y.z:3036 or https://actanara.example.com.',
     dashboardService: 'Dashboard Service',
-    dashboardRestartNote: 'These values are saved to settings.json. A running Dashboard LaunchAgent must be restarted before host/port/python/appDir startup parameters fully apply.',
+    dashboardRestartNote: 'These values are saved to settings.json. A running Dashboard service must be safely reconciled or restarted before network/startup parameter changes fully apply.',
     restartCommand: 'Restart command: ',
     copyCommand: 'Copy Command',
+    copyPrompt: 'Copy Prompt',
+    promptCopied: 'Prompt copied',
+    promptCopyFailed: 'Copy failed',
     systemSchedulerMode: 'System Scheduler Mode',
     enableSystemScheduler: 'Enable system scheduler',
     timezone: 'Timezone',
@@ -1414,17 +1864,43 @@ const OPERATOR_UI_TEXT = {
     dashboardAggregationTime: 'Dashboard Aggregation Time',
     systemTimerProvider: 'System Timer Provider',
     systemTimerLabel: 'System Timer Label',
-    systemTimerNote: 'System timers are not written automatically when settings are saved. Installation creates two user-level launchd jobs: daily pipeline and Dashboard Foundation aggregation, with backup/uninstall paths.',
+    systemTimerNote: 'System timers are not written automatically when settings are saved. Install/update uses the current platform user-service manager for the daily pipeline and Dashboard Foundation aggregation, with compensation and safe uninstall paths.',
     previewSystemTimer: 'Preview System Timers',
     installUpdate: 'Install / Update',
     uninstall: 'Uninstall',
+    startupServicesTitle: 'Startup',
+    startupServicesNote: 'Manage user services for the current platform; status, runtime state, and definition alignment come from the active service manager.',
+    startupDashboardServer: 'Dashboard server',
+    startupRagServer: 'nova-RAG / Embedding server',
+    startupReading: 'Reading startup status...',
+    startupReadFailed: 'Startup status read failed: ',
+    startupEnableAction: 'Enable',
+    startupDisableAction: 'Disable',
+    startupApplyPrompt: (service, action) => `Enter the confirmation phrase to ${action.toLowerCase()} ${service} startup: `,
+    startupCancelledMismatch: 'Operation cancelled: confirmation phrase did not match.',
+    startupUpdating: 'Updating startup...',
+    startupUpdated: 'Updated.',
+    startupApplyFailed: 'Update failed: ',
+    startupLoaded: 'enabled',
+    startupNotLoaded: 'disabled',
+    startupPartial: 'partial',
+    startupUnknown: 'unknown',
+    startupSettingsMismatch: 'settings mismatch',
+    startupJobs: 'managed jobs',
+    startupReconcile: 'Safe reconcile',
+    startupStart: 'Start',
+    startupStop: 'Stop',
+    startupRestart: 'Restart',
+    startupDefinitionMismatch: 'service definition mismatch',
+    startupRunning: 'running',
+    startupStopped: 'stopped',
     autoRefreshTargets: 'Auto Refresh Targets',
     currentDaySnapshot: 'Current Day Snapshot',
     currentWeekSnapshot: 'Current Week Snapshot',
     currentMonthSnapshot: 'Current Month Snapshot',
     externalAgentMode: 'External Agent Mode',
     enableExternalAgentMode: 'Enable external agent mode',
-    externalAgentNote: 'After sending to an external agent, that agent manages system timers. Dashboard does not take over full production pipeline execution.',
+    externalAgentNote: 'The external agent only triggers jobs from the prompt; Actanara still owns pipeline and snapshot logic. Disable or uninstall the system scheduler first to prevent duplicate runs.',
     prompt: 'Prompt',
     currentSelection: 'Current Selection',
     editedValue: 'Edited Value',
@@ -1453,12 +1929,11 @@ const OPERATOR_UI_TEXT = {
     useRuntimePath: 'Use This Runtime Path',
     initializeRuntimePath: 'Initialize Runtime Path',
     checkDiarySqlite: 'Check Diary / SQLite Consistency',
-    featureSettingsNote: 'Only product-level switches are exposed here. LLM generation, task auditing, and Embedding Server behavior are default runtime or subsystem-internal configuration, not ordinary feature switches.',
-    featureDailyPipeline: 'Daily Pipeline',
     featureDashboard: 'Dashboard Service',
     saved: 'Saved ',
     restartRequiredSaved: '; startup parameter changes require a Dashboard restart to fully apply. Command: ',
     saveFailed: 'Save failed: ',
+    advancedDirtyCollapseBlocked: 'Advanced settings contain unsaved changes. Save or cancel before hiding them.',
     readingSystemTimerPreview: 'Reading system timer preview...',
     previewFailed: 'Preview failed: ',
     installTimerPrompt: 'Enter the confirmation phrase to install system timers: ',
@@ -1467,8 +1942,8 @@ const OPERATOR_UI_TEXT = {
     uninstallCancelledMismatch: 'Uninstall cancelled: confirmation phrase did not match.',
     installingSystemTimer: 'Installing system timers...',
     uninstallingSystemTimer: 'Uninstalling system timers...',
-    installedJobs: (count) => `Installed ${count} launchd job${Number(count) === 1 ? '' : 's'}. Backup: `,
-    uninstalledJobs: (count) => `Uninstalled ${count} launchd job${Number(count) === 1 ? '' : 's'}. Backup: `,
+    installedJobs: (count) => `Installed/updated ${count} user job${Number(count) === 1 ? '' : 's'}. Backup: `,
+    uninstalledJobs: (count) => `Safely uninstalled ${count} user job${Number(count) === 1 ? '' : 's'}. Backup: `,
     installFailed: 'Install failed: ',
     uninstallFailed: 'Uninstall failed: ',
     githubProject: 'GitHub Project Home',
@@ -1479,10 +1954,12 @@ const OPERATOR_UI_TEXT = {
     settingsReadFailed: 'Settings read failed: ',
     tabGeneral: 'General',
     tabSchedule: 'Schedule',
+    tabStartup: 'Startup',
+    tabNetwork: 'Network',
     tabPaths: 'Paths',
     tabRuntimeSources: 'Data Sources',
     tabExternalTools: 'External Tools',
-    tabFeatures: 'Features',
+    tabMemory: 'Memory',
     configFile: 'Config file: ',
     saveSettings: 'Save Settings',
     saving: 'Saving...',
@@ -1540,6 +2017,14 @@ const OPERATOR_UI_TEXT = {
     noExternalTools: 'No externalTools settings.',
     externalToolPaths: 'External Tool Paths',
     externalToolPathsNote: 'These paths are written to settings.json externalTools and affect Dashboard reads of historical/current data for OpenClaw, Claude Code, Codex, Gemini CLI, Hermes, OpenCode, Antigravity, Cursor, and related tools.',
+    nativeMemoryTitle: 'Agent Native Memory',
+    nativeMemoryNote: 'Codex, Claude Code, instruction files, and nova-RAG ingestion are enabled by default. Actanara reads only allowlisted local memory files, and each scope can be disabled.',
+    nativeMemoryEnable: 'Include agent-native memory',
+    nativeMemoryTools: 'Allowed agents',
+    nativeMemoryInstructions: 'Also include agent instruction files',
+    nativeMemoryInstructionsNote: 'Instruction files can contain durable preferences or sensitive operational constraints. Disable this scope if they should not be searchable across agents.',
+    nativeMemoryRag: 'Allow native memory in the nova-RAG semantic index',
+    nativeMemoryRagNote: 'When disabled, native memory is limited to the local SQLite lexical index. Rebuild the RAG index after enabling semantic ingestion.',
     pipelineSettingsNote: 'These values affect pipeline child processes started after this change; already-running pipelines are not modified retroactively.',
     noStepTimeouts: 'No step timeout configuration.',
   },
@@ -1551,7 +2036,7 @@ const LLM_UI_TEXT = {
     readingProvider: '读取 Provider…',
     readProviderFailed: '读取 Provider 失败: ',
     manualOverride: (value, drift) => `当前为手动覆盖；自动建议值 ${value}${drift ? '，与当前值不同' : ''}`,
-    autoGate: (value) => `当前随模型 context 自动更新；自动建议值 ${value}`,
+    autoGate: (value) => `当前随模型 context 自动更新；取 context 的 15% 与 80,000 中较大值，且不超过 context；当前值 ${value}`,
     cancel: '取消',
     testAvailability: '检测可用性',
     saveProvider: '保存 Provider',
@@ -1579,13 +2064,25 @@ const LLM_UI_TEXT = {
     testPassed: '检测通过：',
     testFailedFull: '检测失败：',
     testFailed: '检测失败: ',
+    chainTitle: 'LLM Provider 与 Fallback',
+    primary: '主 Provider',
+    fallback: 'Fallback',
+    addFallback: '添加 Fallback',
+    manageFallbacks: '管理 Provider 顺序与 Fallback',
+    moveUp: '上移',
+    moveDown: '下移',
+    remove: '移除',
+    readiness: '就绪状态',
+    ready: '已就绪',
+    saveChain: '保存 Provider 链',
+    chainNote: '按顺序尝试；每个 Provider 使用独立模型、Endpoint、API 类型与密钥引用。',
   },
   en: {
     title: 'Diary Generation LLM Provider',
     readingProvider: 'Reading Provider...',
     readProviderFailed: 'Provider read failed: ',
     manualOverride: (value, drift) => `Manual override; automatic recommendation ${value}${drift ? ', differs from current value' : ''}`,
-    autoGate: (value) => `Auto-updates from model context; automatic recommendation ${value}`,
+    autoGate: (value) => `Auto-updates from model context; uses the larger of 15% of context or 80,000, capped by context; current value ${value}`,
     cancel: 'Cancel',
     testAvailability: 'Test Availability',
     saveProvider: 'Save Provider',
@@ -1613,6 +2110,18 @@ const LLM_UI_TEXT = {
     testPassed: 'Test passed: ',
     testFailedFull: 'Test failed: ',
     testFailed: 'Test failed: ',
+    chainTitle: 'LLM Providers and Fallbacks',
+    primary: 'Primary provider',
+    fallback: 'Fallback',
+    addFallback: 'Add fallback',
+    manageFallbacks: 'Manage provider order and fallbacks',
+    moveUp: 'Move up',
+    moveDown: 'Move down',
+    remove: 'Remove',
+    readiness: 'Readiness',
+    ready: 'Ready',
+    saveChain: 'Save provider chain',
+    chainNote: 'Providers are attempted in order; each keeps its own model, endpoint, API type, and secret reference.',
   },
 };
 
@@ -1622,6 +2131,8 @@ const AI_ASSETS_TEXT = {
     refresh: '🔄 刷新',
     updatedAt: '更新于 ',
     loadFailed: '加载失败: ',
+    noData: '尚无 AI Assets 快照。',
+    degraded: '部分 AI Assets 数据暂不可用: ',
     retry: '🔄 重试',
     submitting: '提交中…',
     queued: '排队中…',
@@ -1629,11 +2140,55 @@ const AI_ASSETS_TEXT = {
     backgroundUpdate: '后台更新',
     retryUpdate: '重试更新',
     updateFailed: 'AI Assets 更新失败: ',
+    dataBackup: '数据备份',
+    dataBackupTitle: 'AI Assets 数据备份',
+    dataBackupLoading: '正在读取备份设置与最近状态…',
+    dataBackupPrivacy: '备份保存在你选择的本地目录；secret、缓存、日志、legacy index 与源码目录不会进入备份。',
+    backupTarget: '目标目录',
+    backupTargetPlaceholder: '~/Backups/Actanara',
+    backupItems: '备份内容',
+    backupDatabase: 'SQLite 一致性快照',
+    backupDiary: '日记 Markdown',
+    backupReports: '周报与月报',
+    backupRag: 'nova-RAG v2 active store',
+    backupTask: 'Nova-Task 投影/导出',
+    backupSettings: '脱敏 settings.json',
+    backupWorkspace: 'Workspace attribution',
+    backupRuntime: 'Runtime manifests',
+    backupRetentionCount: '保留数量',
+    backupRetentionDays: '保留天数',
+    backupSchedule: '定期备份',
+    backupFrequency: '频率',
+    backupDaily: '每天',
+    backupWeekly: '每周',
+    backupMonthly: '每月',
+    backupTime: '执行时间',
+    backupSaveSettings: '保存设置',
+    backupRunNow: '立即备份',
+    backupVerifyLatest: '验证最近备份',
+    backupConfirmation: '确认短语',
+    backupConfirmationHint: '立即备份前输入：',
+    backupNeverRun: '尚未运行备份',
+    backupTargetReady: '目标目录安全检查通过',
+    backupTargetNotReady: '目标目录尚未就绪',
+    backupSettingsSaved: '备份设置已保存。',
+    backupQueued: '备份已排队，正在本地创建一致性快照…',
+    backupRunning: '备份进行中…',
+    backupCompleted: '备份完成并通过 manifest 验证。',
+    backupCompletedWarnings: '备份已完成，但 retention 有警告。',
+    backupFailed: '备份失败：',
+    backupVerificationPassed: 'manifest、hash 与文件清单验证通过。',
+    backupVerificationFailed: '备份验证失败：',
+    backupRestoreUnavailable: '当前版本不提供 restore；未来只会接受验证通过的 manifest。',
+    backupSaving: '正在保存…',
+    backupVerifying: '正在验证…',
     totalTokens: '总消耗 Token',
     totalMessages: '累计消息数',
     activeSystems: '活跃系统',
     agentInstances: 'Agent 实例',
-    lookbackDays: '追溯天数',
+    agentInstancesNote: '已检测到的本机Agent/工具实例',
+    activeDays: '活跃天数',
+    moreAiToolsSoon: '更多 AI 工具支持 coming soon',
     countUnit: '个',
     dayUnit: '天',
     cumulativeUsage: '累计消耗',
@@ -1643,6 +2198,29 @@ const AI_ASSETS_TEXT = {
     allTimeTokens: 'All-Time Tokens',
     tokenUnit: 'tokens',
     servicesUnit: 'services',
+    devicesLabel: '设备',
+    servicesLabel: '服务',
+    deviceKindTag: 'DEVICE',
+    serviceKindTag: 'SERVICE',
+    showAllDevices: (count) => `展开全部 ${count} 个设备`,
+    collapseDevices: '收起设备',
+    showAllServices: (count) => `展开全部 ${count} 个服务`,
+    collapseServices: '收起服务',
+    visibleCount: (shown, total) => `${shown}/${total}`,
+    noServiceData: '暂无服务数据',
+    standaloneServices: '独立服务',
+    recentActivity: '最近动态',
+    activityButton: (count) => `最近动态 ${count}`,
+    noRecentActivity: '暂无最近动态',
+    currentLabel: '当前',
+    fieldLabel: '字段',
+    typeLabel: '类型',
+    confidenceLabel: '置信度',
+    endpointLabel: 'Endpoint',
+    portLabel: '端口',
+    hostLabel: '宿主',
+    locationLabel: '位置',
+    pathLabel: '路径',
     firstActive: '首活跃: ',
     lastActive: '末活跃: ',
     diaryCount: '日记数',
@@ -1728,6 +2306,30 @@ const AI_ASSETS_TEXT = {
     profileLabel: 'Profile',
     linesUnit: '行',
     skillsLibrary: '技能库',
+    skillAssetsLoading: '正在读取 Skill Pass 资产账本…',
+    skillAssetsEmpty: '当前日期没有经验或技能提案。可选择其他日期，或在生成历史记录后刷新。',
+    skillAssetsFailed: 'Skill Pass 资产账本读取失败：',
+    skillAssetsTitle: 'Skill Pass 程序性资产',
+    skillAssetsBoundary: 'Skill 提案默认勾选；Lesson 默认不勾选，但可由用户强制结晶。点击生成后，最终 create/extend 草案会写入 Actanara 主库并自动注册到已检测且受支持的本机 Agent；covered/conflict/reject 不执行写入。',
+    skillAssetsDate: '业务日期',
+    skillAssetsPrompt: '提示词版本',
+    skillAssetsSelected: (count) => `已选择 ${count} 条资产`,
+    skillAssetsGenerateRegister: '生成并注册',
+    skillAssetsGenerating: '正在结晶并注册所选资产…',
+    skillAssetsNoSelection: '没有可生成的 Skill 或 Lesson。',
+    skillAssetsCrystallizationFailed: 'Skill 生成或注册失败：',
+    skillAssetsHumanOverride: '用户强制结晶',
+    skillAssetsRegistrationCompleted: 'Skill 已写入 Actanara 主库。',
+    skillAssetsRegistered: (count) => `已同步到 ${count} 个受支持的本机 Agent。`,
+    skillAssetsRegistrationBoundary: '点击按钮即授权本次本机 Skill 写入；自定义同名 Skill 会保留且不会被覆盖。注册只提供调用能力，不会要求 Agent 立即执行。',
+    skillAssetsClasses: { skill: 'Skill 提案', lesson: '经验教训', reference: '检索参考', discard: '丢弃记录' },
+    skillAssetsEvidence: '证据记录',
+    skillAssetsScores: '评分',
+    skillAssetsCompletion: '完成性',
+    skillAssetsLibraryAction: 'Skill 库动作',
+    skillAssetsExisting: '已有 Skill',
+    skillAssetsOriginalDecision: '原始裁决',
+    skillAssetsDetails: '查看依据与草案',
     skillSearchPlaceholder: '🔍 搜索所有工具的 Skills...',
     noSkillsData: '暂无 Skills 数据',
     noMatches: '无匹配结果',
@@ -1774,6 +2376,8 @@ const AI_ASSETS_TEXT = {
     refresh: '🔄 Refresh',
     updatedAt: 'Updated at ',
     loadFailed: 'Load failed: ',
+    noData: 'No AI Assets snapshot is available yet.',
+    degraded: 'Some AI Assets data is unavailable: ',
     retry: '🔄 Retry',
     submitting: 'Submitting...',
     queued: 'Queued...',
@@ -1781,11 +2385,55 @@ const AI_ASSETS_TEXT = {
     backgroundUpdate: 'Background Update',
     retryUpdate: 'Retry Update',
     updateFailed: 'AI Assets update failed: ',
+    dataBackup: 'Data Backup',
+    dataBackupTitle: 'AI Assets Data Backup',
+    dataBackupLoading: 'Reading backup settings and latest status...',
+    dataBackupPrivacy: 'Backups stay in your selected local directory. Secrets, caches, logs, the legacy index, and source checkout are excluded.',
+    backupTarget: 'Target directory',
+    backupTargetPlaceholder: '~/Backups/Actanara',
+    backupItems: 'Backup contents',
+    backupDatabase: 'Consistent SQLite snapshot',
+    backupDiary: 'Diary Markdown',
+    backupReports: 'Weekly and monthly reports',
+    backupRag: 'nova-RAG v2 active store',
+    backupTask: 'Nova-Task projections/exports',
+    backupSettings: 'Sanitized settings.json',
+    backupWorkspace: 'Workspace attribution',
+    backupRuntime: 'Runtime manifests',
+    backupRetentionCount: 'Retention count',
+    backupRetentionDays: 'Retention days',
+    backupSchedule: 'Scheduled backups',
+    backupFrequency: 'Frequency',
+    backupDaily: 'Daily',
+    backupWeekly: 'Weekly',
+    backupMonthly: 'Monthly',
+    backupTime: 'Run time',
+    backupSaveSettings: 'Save Settings',
+    backupRunNow: 'Back Up Now',
+    backupVerifyLatest: 'Verify Latest Backup',
+    backupConfirmation: 'Confirmation phrase',
+    backupConfirmationHint: 'Before running, enter: ',
+    backupNeverRun: 'No backup has run yet',
+    backupTargetReady: 'Target directory passed safety checks',
+    backupTargetNotReady: 'Target directory is not ready',
+    backupSettingsSaved: 'Backup settings saved.',
+    backupQueued: 'Backup queued; creating a consistent local snapshot...',
+    backupRunning: 'Backup is running...',
+    backupCompleted: 'Backup completed and passed manifest verification.',
+    backupCompletedWarnings: 'Backup completed with retention warnings.',
+    backupFailed: 'Backup failed: ',
+    backupVerificationPassed: 'Manifest, hashes, and file inventory are valid.',
+    backupVerificationFailed: 'Backup verification failed: ',
+    backupRestoreUnavailable: 'Restore is not available in this version; a future restore will accept verified manifests only.',
+    backupSaving: 'Saving...',
+    backupVerifying: 'Verifying...',
     totalTokens: 'Total Tokens',
     totalMessages: 'Total Messages',
     activeSystems: 'Active Systems',
     agentInstances: 'Agent Instances',
-    lookbackDays: 'Lookback Days',
+    agentInstancesNote: 'Detected local Agent/tool instances',
+    activeDays: 'Active Days',
+    moreAiToolsSoon: 'More AI tool support coming soon',
     countUnit: '',
     dayUnit: 'days',
     cumulativeUsage: 'Cumulative Usage',
@@ -1795,6 +2443,29 @@ const AI_ASSETS_TEXT = {
     allTimeTokens: 'All-Time Tokens',
     tokenUnit: 'tokens',
     servicesUnit: 'services',
+    devicesLabel: 'Devices',
+    servicesLabel: 'Services',
+    deviceKindTag: 'DEVICE',
+    serviceKindTag: 'SERVICE',
+    showAllDevices: (count) => `Show all ${count} devices`,
+    collapseDevices: 'Collapse devices',
+    showAllServices: (count) => `Show all ${count} services`,
+    collapseServices: 'Collapse services',
+    visibleCount: (shown, total) => `${shown}/${total}`,
+    noServiceData: 'No service data',
+    standaloneServices: 'Standalone Services',
+    recentActivity: 'Recent Activity',
+    activityButton: (count) => `Recent activity ${count}`,
+    noRecentActivity: 'No recent activity',
+    currentLabel: 'Current',
+    fieldLabel: 'Field',
+    typeLabel: 'Type',
+    confidenceLabel: 'Confidence',
+    endpointLabel: 'Endpoint',
+    portLabel: 'Port',
+    hostLabel: 'Host',
+    locationLabel: 'Location',
+    pathLabel: 'Path',
     firstActive: 'First active: ',
     lastActive: 'Last active: ',
     diaryCount: 'Diaries',
@@ -1880,6 +2551,30 @@ const AI_ASSETS_TEXT = {
     profileLabel: 'Profile',
     linesUnit: 'lines',
     skillsLibrary: 'Skill Library',
+    skillAssetsLoading: 'Reading the Skill Pass asset ledger...',
+    skillAssetsEmpty: 'No lessons or Skill proposals for this date. Choose another date, or generate historical records and refresh.',
+    skillAssetsFailed: 'Failed to read the Skill Pass asset ledger: ',
+    skillAssetsTitle: 'Skill Pass Procedural Assets',
+    skillAssetsBoundary: 'Skill proposals are selected by default. Lessons are not selected by default but may be force-crystallized by the user. On Generate, finalized create/extend drafts are written to the Actanara canonical library and registered with detected supported local Agents; covered/conflict/reject perform no write.',
+    skillAssetsDate: 'Business date',
+    skillAssetsPrompt: 'Prompt version',
+    skillAssetsSelected: (count) => `${count} asset(s) selected`,
+    skillAssetsGenerateRegister: 'Generate and Register',
+    skillAssetsGenerating: 'Crystallizing and registering selected assets...',
+    skillAssetsNoSelection: 'No eligible Skill or Lesson is selected.',
+    skillAssetsCrystallizationFailed: 'Skill generation or registration failed: ',
+    skillAssetsHumanOverride: 'User-forced crystallization',
+    skillAssetsRegistrationCompleted: 'The Skill was written to the Actanara canonical library.',
+    skillAssetsRegistered: (count) => `Synchronized with ${count} supported local Agent(s).`,
+    skillAssetsRegistrationBoundary: 'Clicking the button authorizes this local Skill write. Customized same-name Skills are preserved. Registration makes a Skill available; it does not force an Agent to run it.',
+    skillAssetsClasses: { skill: 'Skill Proposal', lesson: 'Lesson', reference: 'Reference', discard: 'Discarded Record' },
+    skillAssetsEvidence: 'Evidence records',
+    skillAssetsScores: 'Scores',
+    skillAssetsCompletion: 'Completion',
+    skillAssetsLibraryAction: 'Library action',
+    skillAssetsExisting: 'Existing Skill',
+    skillAssetsOriginalDecision: 'Original decision',
+    skillAssetsDetails: 'Review rationale and draft',
     skillSearchPlaceholder: '🔍 Search all tool Skills...',
     noSkillsData: 'No Skills data',
     noMatches: 'No matches',
@@ -1924,7 +2619,7 @@ const AI_ASSETS_TEXT = {
 };
 
 function dashboardLanguageProfile(value) {
-  const raw = String(value || ACTANARA_PIPELINE_LANGUAGE_PROFILE || 'zh').toLowerCase();
+  const raw = String(value || ACTANARA_DISPLAY_LANGUAGE_PROFILE || ACTANARA_PIPELINE_LANGUAGE_PROFILE || 'zh').toLowerCase();
   return raw.startsWith('en') ? 'en' : 'zh';
 }
 
@@ -1957,6 +2652,7 @@ function aiAssetsText(profile) {
 }
 
 function applyStaticDashboardText(profile) {
+  profile = ACTANARA_DISPLAY_LANGUAGE_PROFILE || profile;
   const labels = { ...dashboardText(profile), ...dashboardShellText(profile), ...aiAssetsText(profile) };
   document.documentElement.lang = dashboardLanguageProfile(profile) === 'en' ? 'en-US' : 'zh-CN';
   if (labels.documentTitle) document.title = labels.documentTitle;
@@ -1986,22 +2682,24 @@ function applyStaticDashboardText(profile) {
     }
   });
   renderSseConnectionStatus();
+  if (typeof decorateDashboardUi === 'function') decorateDashboardUi();
 }
 
 function rememberDashboardSettings(settings) {
+  ACTANARA_LAST_SETTINGS = settings || null;
   const pipeline = settings && settings.pipeline ? settings.pipeline : {};
-  ACTANARA_PIPELINE_LANGUAGE_PROFILE = dashboardLanguageProfile(pipeline.languageProfile);
+  ACTANARA_PIPELINE_LANGUAGE_PROFILE = dashboardLanguageProfile(pipeline.languageProfile || 'zh');
   ACTANARA_SETTINGS_LOADED = true;
   applyStaticDashboardText(ACTANARA_PIPELINE_LANGUAGE_PROFILE);
 }
 
 async function ensureDashboardLanguageProfile() {
-  if (ACTANARA_SETTINGS_LOADED) return ACTANARA_PIPELINE_LANGUAGE_PROFILE;
+  if (ACTANARA_SETTINGS_LOADED) return dashboardLanguageProfile();
   try {
     const res = await fetch('/api/settings');
     if (res.ok) rememberDashboardSettings(await res.json());
   } catch (e) {}
-  return ACTANARA_PIPELINE_LANGUAGE_PROFILE;
+  return dashboardLanguageProfile();
 }
 
 async function refreshBackgroundTaskButton() {
@@ -2011,7 +2709,7 @@ async function refreshBackgroundTaskButton() {
     BACKGROUND_TASK_STATE = await res.json();
     renderBackgroundTaskButton(BACKGROUND_TASK_STATE);
   } catch (e) {
-    renderBackgroundTaskButton({activeCount: 0, tasks: [], error: e.message});
+    renderBackgroundTaskButton({...BACKGROUND_TASK_STATE, error: e.message});
   }
 }
 
@@ -2020,6 +2718,13 @@ function renderBackgroundTaskButton(state) {
   const count = document.getElementById('taskMonitorCount');
   if (!button || !count) return;
   const labels = foundationText();
+  if (state.error) {
+    count.textContent = '—';
+    button.title = aiAssetsText().readFailed + state.error;
+    button.dataset.state = 'error';
+    return;
+  }
+  button.dataset.state = 'ready';
   const active = Number(state.activeCount || 0);
   button.classList.toggle('has-active', active > 0);
   count.textContent = String(active);
@@ -2034,6 +2739,128 @@ function backgroundTaskStatusLabel(status) {
 function formatBackgroundTaskTime(value) {
   if (!value) return '—';
   return String(value).replace('T', ' ').slice(0, 19);
+}
+
+function pipelineTaskText() {
+  const en = dashboardLanguageProfile() === 'en';
+  return en ? {
+    details: 'Stage details', unavailable: 'unavailable', estimated: 'estimated',
+    duration: 'Duration', provider: 'Provider / model', calls: 'LLM calls', chunks: 'Chunks',
+    retries: 'Retries', fallbacks: 'Fallbacks', tokens: 'Tokens', input: 'input', output: 'output',
+    cacheRead: 'cache read', cacheWrite: 'cache write', reasoning: 'reasoning', total: 'total',
+    started: 'Started', completed: 'Completed', failure: 'Failure', artifacts: 'Artifacts',
+    committed: 'committed', notCommitted: 'not committed', usage: 'Usage', attempts: 'Attempts',
+    call: 'Call', chunk: 'Chunk', noCalls: 'No LLM call data for this stage', seconds: 's',
+  } : {
+    details: '阶段详情', unavailable: '不可用', estimated: '估算',
+    duration: '耗时', provider: 'Provider / 模型', calls: 'LLM 调用', chunks: 'Chunk 数',
+    retries: '重试', fallbacks: 'Fallback', tokens: 'Token', input: '输入', output: '输出',
+    cacheRead: '缓存读取', cacheWrite: '缓存写入', reasoning: '推理', total: '总计',
+    started: '开始', completed: '结束', failure: '失败', artifacts: '产物',
+    committed: '已提交', notCommitted: '未提交', usage: '用量', attempts: '尝试顺序',
+    call: '调用', chunk: 'Chunk', noCalls: '该阶段无 LLM 调用数据', seconds: '秒',
+  };
+}
+
+function formatPipelineTaskCount(value, unavailable) {
+  return value === null || value === undefined ? unavailable : Number(value).toLocaleString();
+}
+
+function formatPipelineTaskDuration(stage, labels) {
+  if (stage.durationSeconds !== null && stage.durationSeconds !== undefined) {
+    const value = Number(stage.durationSeconds);
+    return Number.isFinite(value) ? value.toFixed(value < 10 ? 2 : 1) + labels.seconds : labels.unavailable;
+  }
+  const start = Date.parse(stage.startedAt || '');
+  const end = Date.parse(stage.completedAt || '');
+  return Number.isFinite(start) && Number.isFinite(end)
+    ? Math.max(0, (end - start) / 1000).toFixed(2) + labels.seconds
+    : labels.unavailable;
+}
+
+function renderPipelineTokenLine(attribution, labels) {
+  const source = attribution && attribution.usageStatus ? String(attribution.usageStatus) : 'unavailable';
+  const values = attribution && attribution.tokens ? attribution.tokens : {};
+  const fields = [
+    [labels.input, 'inputTokens'], [labels.output, 'outputTokens'],
+    [labels.cacheRead, 'cacheReadTokens'], [labels.cacheWrite, 'cacheWriteTokens'],
+    [labels.reasoning, 'reasoningTokens'], [labels.total, 'totalTokens'],
+  ];
+  const tokens = fields.map(([label, key]) =>
+    '<span><b>' + escapeHtml(label) + '</b> ' + escapeHtml(formatPipelineTaskCount(values[key], labels.unavailable)) + '</span>'
+  ).join('');
+  const estimate = attribution && attribution.estimated ? ' · ' + labels.estimated : '';
+  return '<div class="pipeline-token-row"><strong>' + escapeHtml(labels.tokens) + '</strong>' + tokens +
+    '<small>' + escapeHtml(source + estimate) + '</small></div>';
+}
+
+function renderPipelineAttempt(attempt, index, labels) {
+  const target = [attempt.provider || attempt.providerId, attempt.model].filter(Boolean).join(' / ') || labels.unavailable;
+  const state = [attempt.status, attempt.failureClass, attempt.httpStatus].filter(value => value !== null && value !== undefined && value !== '').join(' · ');
+  const error = attempt.errorSummary ? ' · ' + attempt.errorSummary : '';
+  return '<li><b>#' + escapeHtml(index + 1) + '</b> ' + escapeHtml(target) +
+    (state ? ' · ' + escapeHtml(state) : '') + escapeHtml(error) + '</li>';
+}
+
+function renderPipelineCall(call, index, labels) {
+  const usage = call.usage || {};
+  const total = formatPipelineTaskCount(usage.totalTokens, labels.unavailable);
+  const identity = call.chunkId ? labels.chunk + ' ' + call.chunkId : labels.call + ' ' + (index + 1);
+  const target = [call.providerId, call.model].filter(Boolean).join(' / ') || labels.unavailable;
+  const attempts = Array.isArray(call.attempts) ? call.attempts : [];
+  const usageMethod = call.estimationMethod ? ' (' + call.estimationMethod + ')' : '';
+  const attemptsHtml = attempts.length
+    ? '<div class="pipeline-attempts"><b>' + escapeHtml(labels.attempts) + '</b><ol>' + attempts.map((attempt, attemptIndex) => renderPipelineAttempt(attempt, attemptIndex, labels)).join('') + '</ol></div>'
+    : '';
+  const failure = [call.failureClass, call.errorSummary].filter(Boolean).join(' · ');
+  return '<div class="pipeline-call-row">' +
+    '<div><strong>' + escapeHtml(identity) + '</strong><span class="task-monitor-status ' + escapeHtml(call.status || 'unknown') + '">' + escapeHtml(backgroundTaskStatusLabel(call.status)) + '</span></div>' +
+    '<div class="pipeline-call-meta">' + escapeHtml(target) + ' · ' + escapeHtml(labels.total) + ' ' + escapeHtml(total) +
+      ' · ' + escapeHtml((call.usageSource || labels.unavailable) + usageMethod) +
+      ' · ' + escapeHtml(labels.retries) + ' ' + escapeHtml(call.retryCount || 0) +
+      ' · ' + escapeHtml(labels.fallbacks) + ' ' + escapeHtml(call.fallbackCount || 0) + '</div>' +
+    (failure ? '<div class="task-monitor-error">' + escapeHtml(failure) + '</div>' : '') + attemptsHtml + '</div>';
+}
+
+function renderPipelineStageDetail(stage, labels) {
+  const attribution = stage.tokenAttribution || {};
+  const calls = Array.isArray(stage.calls) ? stage.calls : [];
+  const chunks = new Set(calls.map(call => call.chunkId).filter(Boolean)).size;
+  const chunkDisplay = attribution.callDataAvailable ? chunks : labels.unavailable;
+  const total = attribution.tokens ? formatPipelineTaskCount(attribution.tokens.totalTokens, labels.unavailable) : labels.unavailable;
+  const target = [stage.provider, stage.model].filter(Boolean).join(' / ') || labels.unavailable;
+  const artifacts = Array.isArray(stage.artifactPaths) ? stage.artifactPaths : [];
+  const artifactsHtml = artifacts.length
+    ? '<div class="pipeline-artifacts"><b>' + escapeHtml(labels.artifacts) + ' · ' + escapeHtml(stage.artifactCommitted ? labels.committed : labels.notCommitted) + '</b>' + artifacts.map(path => '<code>' + escapeHtml(path) + '</code>').join('') + '</div>'
+    : '';
+  const failure = [stage.failureClass, stage.errorSummary].filter(Boolean).join(' · ');
+  return '<details class="pipeline-stage-row" data-stage-id="' + encodeURIComponent(stage.stageId || stage.name || '') + '">' +
+    '<summary><span><b>' + escapeHtml(stage.name || stage.stageId || labels.details) + '</b><small>' + escapeHtml(stage.stageId || '') + '</small></span>' +
+      '<span class="task-monitor-status ' + escapeHtml(stage.status || 'unknown') + '">' + escapeHtml(backgroundTaskStatusLabel(stage.status)) + '</span>' +
+      '<span>' + escapeHtml(labels.duration) + ' ' + escapeHtml(formatPipelineTaskDuration(stage, labels)) + '</span>' +
+      '<span>' + escapeHtml(labels.total) + ' ' + escapeHtml(total) + '</span></summary>' +
+    '<div class="pipeline-stage-body">' +
+      '<div class="pipeline-detail-grid">' +
+        '<span><b>' + escapeHtml(labels.started) + '</b>' + escapeHtml(formatBackgroundTaskTime(stage.startedAt)) + '</span>' +
+        '<span><b>' + escapeHtml(labels.completed) + '</b>' + escapeHtml(formatBackgroundTaskTime(stage.completedAt)) + '</span>' +
+        '<span><b>' + escapeHtml(labels.provider) + '</b>' + escapeHtml(target) + '</span>' +
+        '<span><b>' + escapeHtml(labels.calls) + ' / ' + escapeHtml(labels.chunks) + '</b>' + escapeHtml(formatPipelineTaskCount(stage.llmCallCount, labels.unavailable)) + ' / ' + escapeHtml(chunkDisplay) + '</span>' +
+        '<span><b>' + escapeHtml(labels.retries) + ' / ' + escapeHtml(labels.fallbacks) + '</b>' + escapeHtml(formatPipelineTaskCount(stage.retryCount, labels.unavailable)) + ' / ' + escapeHtml(formatPipelineTaskCount(stage.fallbackCount, labels.unavailable)) + '</span>' +
+      '</div>' + renderPipelineTokenLine(attribution, labels) +
+      (failure ? '<div class="task-monitor-error"><b>' + escapeHtml(labels.failure) + '</b> ' + escapeHtml(failure) + '</div>' : '') +
+      (calls.length ? '<div class="pipeline-call-list">' + calls.map((call, index) => renderPipelineCall(call, index, labels)).join('') + '</div>' : '<div class="pipeline-empty">' + escapeHtml(labels.noCalls) + '</div>') +
+      artifactsHtml +
+    '</div></details>';
+}
+
+function renderPipelineTaskDetails(task) {
+  if (task.source !== 'pipeline') return '';
+  const labels = pipelineTaskText();
+  const stages = Array.isArray(task.stageDetails) ? task.stageDetails : [];
+  return '<details class="pipeline-run-details"><summary>' + escapeHtml(labels.details) +
+    ' · ' + escapeHtml(labels.calls) + ' ' + escapeHtml(formatPipelineTaskCount(task.tokenAttribution && task.tokenAttribution.llmCallCount, labels.unavailable)) +
+    ' · ' + escapeHtml(labels.total) + ' ' + escapeHtml(formatPipelineTaskCount(task.tokenAttribution && task.tokenAttribution.tokens && task.tokenAttribution.tokens.totalTokens, labels.unavailable)) +
+    '</summary><div class="pipeline-stage-list">' + stages.map(stage => renderPipelineStageDetail(stage, labels)).join('') + '</div></details>';
 }
 
 function renderBackgroundTaskItem(task) {
@@ -2053,11 +2880,12 @@ function renderBackgroundTaskItem(task) {
     labels.started + formatBackgroundTaskTime(task.startedAt),
     labels.completed + formatBackgroundTaskTime(task.completedAt)
   ].join(' · ');
-  return '<div class="task-monitor-item">' +
+  return '<div class="task-monitor-item" data-task-id="' + encodeURIComponent((task.source || '') + ':' + (task.id || task.title || '')) + '">' +
     '<div class="task-monitor-head"><div class="task-monitor-title">' + escapeHtml(task.title || task.id || labels.backgroundTask) + '</div><span class="task-monitor-status ' + escapeHtml(status) + '">' + escapeHtml(backgroundTaskStatusLabel(status)) + '</span></div>' +
     '<div class="task-monitor-subtitle">' + escapeHtml(task.subtitle || '') + '</div>' +
     '<div class="settings-progress"><div class="settings-progress-bar ' + (status === 'failed' ? 'failed' : '') + '" style="width:' + progress + '%"></div></div>' +
     '<div class="task-monitor-meta">' + escapeHtml(meta) + '</div>' +
+    renderPipelineTaskDetails(task) +
     error +
     actionHtml +
     '</div>';
@@ -2143,26 +2971,52 @@ function renderBackgroundTasksModal(state) {
   return summary + breakdown + body;
 }
 
-async function refreshBackgroundTasksModal() {
+async function refreshBackgroundTasksModal(generation = BACKGROUND_TASK_MODAL_GENERATION) {
   const body = document.getElementById('modal-body');
-  if (!body) return;
+  if (!body || !generation || !dashboardModalGenerationIsCurrent(generation)) return;
+  const request = ++BACKGROUND_TASK_MODAL_REQUEST;
   try {
     const res = await fetch('/api/background-tasks?limit=30');
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    BACKGROUND_TASK_STATE = await res.json();
+    const state = await res.json();
+    if (!dashboardModalGenerationIsCurrent(generation) || request !== BACKGROUND_TASK_MODAL_REQUEST) return;
+    BACKGROUND_TASK_STATE = state;
     renderBackgroundTaskButton(BACKGROUND_TASK_STATE);
+    const detailKey = el => (el.closest('[data-task-id]')?.dataset.taskId || '') + ':' + (el.dataset.stageId || 'run');
+    const expanded = new Set(Array.from(body.querySelectorAll('details[open]')).map(detailKey));
+    const focused = document.activeElement?.closest('summary')?.parentElement;
+    const focusedKey = focused && body.contains(focused) ? detailKey(focused) : null;
+    const scrollTop = body.scrollTop;
     body.innerHTML = renderBackgroundTasksModal(BACKGROUND_TASK_STATE);
+    body.querySelectorAll('details').forEach(detail => {
+      detail.open = expanded.has(detailKey(detail));
+      if (focusedKey === detailKey(detail)) detail.querySelector('summary')?.focus({preventScroll: true});
+    });
+    body.scrollTop = scrollTop;
   } catch (e) {
-    body.innerHTML = '<div class="fo-job-error">' + escapeHtml(operatorText().backgroundTasksReadFailed + e.message) + '</div>';
+    if (!dashboardModalGenerationIsCurrent(generation) || request !== BACKGROUND_TASK_MODAL_REQUEST) return;
+    let error = body.querySelector('[data-task-monitor-error]');
+    if (!error) {
+      error = document.createElement('div');
+      error.className = 'fo-job-error';
+      error.dataset.taskMonitorError = 'true';
+      error.setAttribute('role', 'alert');
+      body.prepend(error);
+    }
+    error.textContent = operatorText().backgroundTasksReadFailed + e.message;
+    body.querySelector('.wr-loading')?.remove();
   }
 }
 
 async function openBackgroundTasksModal() {
   const labels = operatorText();
-  openModal(labels.backgroundTasksTitle, '<div class="wr-loading"><div class="wr-spinner"></div><span>' + escapeHtml(labels.readingBackgroundTasks) + '</span></div>');
+  const generation = openModal(labels.backgroundTasksTitle, '<div class="wr-loading"><div class="wr-spinner"></div><span>' + escapeHtml(labels.readingBackgroundTasks) + '</span></div>');
+  BACKGROUND_TASK_MODAL_GENERATION = generation;
   if (backgroundTasksTimer) clearInterval(backgroundTasksTimer);
-  await refreshBackgroundTasksModal();
-  backgroundTasksTimer = setInterval(refreshBackgroundTasksModal, 5000);
+  await refreshBackgroundTasksModal(generation);
+  if (dashboardModalGenerationIsCurrent(generation)) {
+    backgroundTasksTimer = setInterval(() => refreshBackgroundTasksModal(generation), 5000);
+  }
 }
 
 function historyBackfillMonthValue(date) {
@@ -2198,10 +3052,85 @@ function historyBackfillPlanKey(payload) {
   return JSON.stringify(Object.assign({}, payload, {dryRun: true, scheduledAt: null, overwriteDaily: false}));
 }
 
+function historyBackfillPendingKey(item) {
+  if (!item || typeof item !== 'object') return '';
+  if (item.kind === 'diary' && item.date) return 'diary:' + item.date;
+  if ((item.kind === 'week-summary' || item.kind === 'month-summary') && item.start && item.end) {
+    return item.kind + ':' + item.start + ':' + item.end;
+  }
+  return [item.kind || 'item', item.label || '', item.date || item.start || '', item.end || ''].join(':');
+}
+
+function historyBackfillPendingPeriod(item) {
+  if (!item || typeof item !== 'object') return null;
+  if (item.kind === 'diary' && item.date) {
+    return {kind: 'day', start: item.date, end: item.date, label: item.label || item.date};
+  }
+  if (item.kind === 'week-summary' && item.start && item.end) {
+    return {kind: 'week', start: item.start, end: item.end, label: item.label || (item.start + '..' + item.end), daily: false};
+  }
+  if (item.kind === 'month-summary' && item.start && item.end) {
+    return {kind: 'month', start: item.start, end: item.end, label: item.label || item.start.slice(0, 7), daily: false};
+  }
+  return null;
+}
+
+function historyBackfillSelectedPendingItems() {
+  const items = Array.isArray(HISTORY_BACKFILL_LAST_PLAN?.pendingItems) ? HISTORY_BACKFILL_LAST_PLAN.pendingItems : [];
+  return items.filter(item => HISTORY_BACKFILL_PENDING_SELECTION.has(historyBackfillPendingKey(item)));
+}
+
+function historyBackfillSelectedPeriodsForQueue() {
+  const seen = new Set();
+  const periods = [];
+  historyBackfillSelectedPendingItems().forEach(item => {
+    const period = historyBackfillPendingPeriod(item);
+    if (!period) return;
+    const key = [period.kind, period.start, period.end, period.daily === false ? 'summary-only' : 'daily'].join(':');
+    if (seen.has(key)) return;
+    seen.add(key);
+    periods.push(period);
+  });
+  return periods;
+}
+
+function historyBackfillSelectedPlanPayload(overwriteDaily) {
+  const labels = operatorText();
+  const base = Object.assign({}, HISTORY_BACKFILL_LAST_PLAN_PAYLOAD || historyBackfillPayload(true));
+  const periods = historyBackfillSelectedPeriodsForQueue();
+  if (!periods.length) throw new Error(labels.noQueuedHistoryItems);
+  const starts = periods.map(p => p.start).sort();
+  const ends = periods.map(p => p.end).sort();
+  const runMode = document.getElementById('historyBackfillRunMode')?.value || 'now';
+  const scheduledAt = document.getElementById('historyBackfillScheduledAt')?.value || '';
+  return Object.assign(base, {
+    start: starts[0],
+    end: ends[ends.length - 1],
+    grain: 'selected',
+    periods,
+    includeSummaries: periods.some(p => p.daily === false && (p.kind === 'week' || p.kind === 'month')),
+    overwriteDaily: Boolean(overwriteDaily),
+    scheduledAt: runMode === 'scheduled' ? scheduledAt : null,
+    dryRun: false
+  });
+}
+
+function toggleHistoryBackfillPendingItem(key, checked) {
+  if (!key) return;
+  if (checked) HISTORY_BACKFILL_PENDING_SELECTION.add(key);
+  else HISTORY_BACKFILL_PENDING_SELECTION.delete(key);
+  const status = document.getElementById('historyBackfillStatus');
+  const btn = document.getElementById('historyBackfillRunBtn');
+  const selected = historyBackfillSelectedPendingItems().length;
+  if (status && HISTORY_BACKFILL_LAST_PLAN) status.textContent = selected ? operatorText().dryRunReady : operatorText().noQueuedHistoryItems;
+  if (btn && HISTORY_BACKFILL_LAST_PLAN) btn.disabled = selected === 0;
+}
+
 function historyBackfillInvalidatePreview() {
   HISTORY_BACKFILL_LAST_PLAN = null;
   HISTORY_BACKFILL_LAST_PLAN_KEY = '';
   HISTORY_BACKFILL_LAST_PLAN_PAYLOAD = null;
+  HISTORY_BACKFILL_PENDING_SELECTION = new Set();
   const preview = document.getElementById('historyBackfillPreview');
   const status = document.getElementById('historyBackfillStatus');
   const btn = document.getElementById('historyBackfillRunBtn');
@@ -2216,15 +3145,17 @@ function historyBackfillInvalidatePreview() {
 function renderHistoryBackfillPlan(plan) {
   const labels = operatorText();
   const items = Array.isArray(plan.pendingItems) ? plan.pendingItems : [];
-  const rows = items.slice(0, 120).map(item =>
-    '<tr><td>' + escapeHtml(historyBackfillPendingType(item.kind)) + '</td><td>' + escapeHtml(historyBackfillPendingLabel(item)) + '</td><td>' + escapeHtml(item.llmCalls || 0) + '</td></tr>'
-  ).join('');
-  const empty = rows || '<tr><td colspan="3">' + escapeHtml(labels.noMissingItems) + '</td></tr>';
+  const rows = items.slice(0, 120).map(item => {
+    const key = historyBackfillPendingKey(item);
+    const checked = HISTORY_BACKFILL_PENDING_SELECTION.has(key) ? ' checked' : '';
+    return '<tr><td class="history-backfill-task-cell"><input type="checkbox" class="history-backfill-task-check" data-history-pending-key="' + escapeHtml(key) + '" onchange="toggleHistoryBackfillPendingItem(this.dataset.historyPendingKey, this.checked)"' + checked + '><span>' + escapeHtml(labels.queueTask) + '</span></td><td>' + escapeHtml(historyBackfillPendingType(item.kind)) + '</td><td>' + escapeHtml(historyBackfillPendingLabel(item)) + '</td><td>' + escapeHtml(item.llmCalls || 0) + '</td></tr>';
+  }).join('');
+  const empty = rows || '<tr><td colspan="4">' + escapeHtml(labels.noMissingItems) + '</td></tr>';
   const overflow = items.length > 120 ? '<div class="settings-note">' + escapeHtml(labels.previewFirstItems) + '</div>' : '';
   return '<div class="history-backfill-plan">' +
     '<div class="settings-runtime-line"><b>' + escapeHtml(labels.pendingItems) + '</b> ' + escapeHtml(plan.pendingItemCount || items.length || 0) + ' · <b>' + escapeHtml(labels.missingDiaries) + '</b> ' + escapeHtml(plan.pendingDiaryDays || 0) + ' · <b>' + escapeHtml(labels.existingDiaries) + '</b> ' + escapeHtml(plan.existingDiaryDays || 0) + ' · <b>' + escapeHtml(labels.missingSummaries) + '</b> ' + escapeHtml(plan.pendingSummaryReports || 0) + ' · <b>' + escapeHtml(labels.maxLlmCalls) + '</b> ' + escapeHtml(plan.llmCallCount || 0) + '</div>' +
     '<div class="settings-note">' + escapeHtml((plan.warnings || []).join(' ')) + '</div>' +
-    '<div class="history-backfill-periods"><table><thead><tr><th>' + escapeHtml(labels.type) + '</th><th>' + escapeHtml(labels.pendingItem) + '</th><th>' + escapeHtml(labels.maxLlmCalls) + '</th></tr></thead><tbody>' + empty + '</tbody></table></div>' +
+    '<div class="history-backfill-periods"><table><thead><tr><th>' + escapeHtml(labels.queueTask) + '</th><th>' + escapeHtml(labels.type) + '</th><th>' + escapeHtml(labels.pendingItem) + '</th><th>' + escapeHtml(labels.maxLlmCalls) + '</th></tr></thead><tbody>' + empty + '</tbody></table></div>' +
     overflow +
     '</div>';
 }
@@ -2265,11 +3196,12 @@ async function previewHistoryBackfill() {
     HISTORY_BACKFILL_LAST_PLAN = data;
     HISTORY_BACKFILL_LAST_PLAN_KEY = planKey;
     HISTORY_BACKFILL_LAST_PLAN_PAYLOAD = payload;
+    HISTORY_BACKFILL_PENDING_SELECTION = new Set((Array.isArray(data.pendingItems) ? data.pendingItems : []).map(historyBackfillPendingKey).filter(Boolean));
     if (status) status.textContent = labels.dryRunReady;
     if (preview) preview.innerHTML = renderHistoryBackfillPlan(data);
     const runBtn = document.getElementById('historyBackfillRunBtn');
     if (runBtn) {
-      runBtn.disabled = false;
+      runBtn.disabled = HISTORY_BACKFILL_PENDING_SELECTION.size === 0;
       runBtn.title = '';
     }
   } catch (e) {
@@ -2284,7 +3216,6 @@ async function startHistoryBackfill() {
   if (btn) btn.disabled = true;
   if (status) status.textContent = labels.submittingBackgroundTask;
   try {
-    const skipReady = Boolean(document.getElementById('historyBackfillSkipReady')?.checked);
     const planPayload = historyBackfillPayload(true);
     const planKey = historyBackfillPlanKey(planPayload);
     if (!HISTORY_BACKFILL_LAST_PLAN) {
@@ -2297,8 +3228,15 @@ async function startHistoryBackfill() {
       if (status) status.textContent = labels.dryRunStale;
       return;
     }
+    const selectedPendingItems = historyBackfillSelectedPendingItems();
+    if (!selectedPendingItems.length) {
+      if (status) status.textContent = labels.noQueuedHistoryItems;
+      return;
+    }
     let overwriteDaily = false;
-    const overwriteItems = Array.isArray(HISTORY_BACKFILL_LAST_PLAN?.overwriteItems) ? HISTORY_BACKFILL_LAST_PLAN.overwriteItems : [];
+    const selectedKeys = new Set(selectedPendingItems.map(historyBackfillPendingKey));
+    const overwriteItems = (Array.isArray(HISTORY_BACKFILL_LAST_PLAN?.overwriteItems) ? HISTORY_BACKFILL_LAST_PLAN.overwriteItems : [])
+      .filter(item => selectedKeys.has(historyBackfillPendingKey(item)));
     if (overwriteItems.length) {
       const names = overwriteItems.slice(0, 20).map(historyBackfillPendingLabel).join('、');
       const suffix = overwriteItems.length > 20 ? `… +${overwriteItems.length - 20}` : '';
@@ -2311,11 +3249,7 @@ async function startHistoryBackfill() {
     const scheduledAt = document.getElementById('historyBackfillScheduledAt')?.value || '';
     const runMode = document.getElementById('historyBackfillRunMode')?.value || 'now';
     if (runMode === 'scheduled' && !scheduledAt) throw new Error(labels.chooseScheduleTime);
-    const payload = Object.assign({}, HISTORY_BACKFILL_LAST_PLAN_PAYLOAD || planPayload, {
-      dryRun: false,
-      overwriteDaily: Boolean(overwriteDaily),
-      scheduledAt: runMode === 'scheduled' ? scheduledAt : null
-    });
+    const payload = historyBackfillSelectedPlanPayload(overwriteDaily);
     const res = await fetch('/api/foundation/history-backfill', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -2476,11 +3410,17 @@ function toggleHistoryBackfillSchedule() {
 }
 
 function replaceModalContent(title, content) {
+  const modal = document.getElementById('modal');
+  if (backgroundTasksTimer) { clearInterval(backgroundTasksTimer); backgroundTasksTimer = null; }
+  ACTANARA_MODAL_GENERATION += 1;
+  if (!modal.classList.contains('active')) ACTANARA_MODAL_RETURN_FOCUS = document.activeElement;
   document.getElementById('modal-title').textContent = title;
   document.getElementById('modal-body').innerHTML = content;
-  document.getElementById('modal').classList.add('active');
+  modal.classList.add('active');
+  modal.setAttribute('aria-hidden', 'false');
   document.body.style.overflow = 'hidden';
   modalHistory = [{ title, content }];
+  queueMicrotask(() => focusDashboardDialog(document.getElementById('modal-panel')));
 }
 
 async function refreshMsgbox() {
@@ -2489,8 +3429,11 @@ async function refreshMsgbox() {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     MSGBOX_STATE = await res.json();
     renderMsgboxButton(MSGBOX_STATE);
+    return true;
   } catch (e) {
-    renderMsgboxButton({count: 0, attentionCount: 0, error: e.message});
+    MSGBOX_STATE = {...MSGBOX_STATE, error: e.message};
+    renderMsgboxButton(MSGBOX_STATE);
+    return false;
   }
 }
 
@@ -2499,6 +3442,13 @@ function renderMsgboxButton(state) {
   const button = document.getElementById('msgboxButton');
   const count = document.getElementById('msgboxCount');
   if (!button || !count) return;
+  if (state.error) {
+    count.textContent = '—';
+    button.title = aiAssetsText().readFailed + state.error;
+    button.dataset.state = 'error';
+    return;
+  }
+  button.dataset.state = 'ready';
   const attention = Number(state.attentionCount || 0);
   const total = Number(state.count || 0);
   button.classList.toggle('has-attention', attention > 0);
@@ -2518,7 +3468,8 @@ function renderMsgboxItem(item) {
   const actionButton = item.actionLabel
     ? '<button class="wr-export-btn" onclick="handleMsgboxActionPayload(\'' + encodeURIComponent(JSON.stringify(action)) + '\')">' + escapeHtml(item.actionLabel) + '</button>'
     : '';
-  const readButton = '<button class="wr-export-btn secondary" onclick="markMsgboxRead(\'' + escapeHtml(item.id || '') + '\')">' + escapeHtml(operatorText().read) + '</button>';
+  const encodedId = encodeURIComponent(item.id || '').replace(/'/g, '%27');
+  const readButton = '<button type="button" class="wr-export-btn secondary" onclick="markMsgboxRead(decodeURIComponent(\'' + encodedId + '\'))">' + escapeHtml(operatorText().read) + '</button>';
   const details = item.details ? '<pre class="settings-json-preview">' + escapeHtml(JSON.stringify(item.details, null, 2)) + '</pre>' : '';
   return '<div class="msgbox-item ' + escapeHtml(item.severity || 'info') + '">' +
     '<div class="msgbox-item-title"><span>' + escapeHtml(item.title || item.type || operatorText().message) + '</span><span class="fo-status fo-status-' + escapeHtml(item.severity || 'info') + '">' + msgboxSeverityLabel(item.severity) + '</span></div>' +
@@ -2541,7 +3492,7 @@ function handleMsgboxActionPayload(encodedAction) {
 function openDashboardPage(pageId) {
   const page = String(pageId || 'overview').replace(/^page-/, '');
   if (page === 'tasks' || page === 'task-board') {
-    window.location.assign(window.ACTANARA_STATIC_DEMO ? 'tasks.html' : '/tasks');
+    window.location.assign('/tasks');
     return;
   }
   closeModal();
@@ -2570,40 +3521,712 @@ function handleMsgboxAction(action) {
 
 async function handleMsgboxApiPost(action) {
   const body = document.getElementById('modal-body');
+  const generation = ACTANARA_MODAL_GENERATION;
   try {
     const res = await fetch(action.url, { method: 'POST' });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
     if (action.refreshBackgroundTasks) await refreshBackgroundTaskButton();
     await refreshMsgbox();
-    if (body) {
+    if (body && dashboardModalGenerationIsCurrent(generation)) {
       body.innerHTML = '<div class="fo-empty">' + escapeHtml(action.successMessage || operatorText().actionSubmitted) + (data.runId ? ' · Run #' + escapeHtml(data.runId) : '') + '</div>';
     }
   } catch (e) {
-    if (body) body.innerHTML = '<div class="fo-job-error">' + escapeHtml(operatorText().actionFailed + (e.message || e)) + '</div>';
+    if (body && dashboardModalGenerationIsCurrent(generation)) body.innerHTML = '<div class="fo-job-error">' + escapeHtml(operatorText().actionFailed + (e.message || e)) + '</div>';
   }
 }
 
 async function markMsgboxRead(messageId) {
   if (!messageId) return;
-  const res = await fetch('/api/msgbox/' + encodeURIComponent(messageId) + '/read', { method: 'POST' });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  await refreshMsgbox();
+  const generation = ACTANARA_MODAL_GENERATION;
+  try {
+    const res = await fetch('/api/msgbox/' + encodeURIComponent(messageId) + '/read', { method: 'POST' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    await refreshMsgbox();
+    if (dashboardModalGenerationIsCurrent(generation)) document.getElementById('modal-body').innerHTML = renderMsgboxContent();
+  } catch (error) {
+    if (!dashboardModalGenerationIsCurrent(generation)) return;
+    const body = document.getElementById('modal-body');
+    body.querySelector('[data-msgbox-action-error]')?.remove();
+    const notice = document.createElement('div');
+    notice.className = 'fo-job-error';
+    notice.dataset.msgboxActionError = 'true';
+    notice.setAttribute('role', 'alert');
+    notice.textContent = operatorText().actionFailed + error.message;
+    body.prepend(notice);
+  }
+}
+
+function renderMsgboxContent() {
+  const labels = operatorText();
+  const error = MSGBOX_STATE.error ? '<div class="fo-job-error" role="alert">' + escapeHtml(aiAssetsText().readFailed + MSGBOX_STATE.error) + '</div><button type="button" class="wr-export-btn" onclick="openMsgboxModal()">' + escapeHtml(aiAssetsText().retry) + '</button>' : '';
   const items = Array.isArray(MSGBOX_STATE.items) ? MSGBOX_STATE.items : [];
-  document.getElementById('modal-body').innerHTML = items.length
+  return error + (items.length
     ? '<div class="msgbox-list">' + items.map(renderMsgboxItem).join('') + '</div>'
-    : '<div class="fo-empty">' + escapeHtml(operatorText().noMessages) + '</div>';
+    : MSGBOX_STATE.error ? '' : '<div class="fo-empty">' + escapeHtml(labels.noMessages) + '</div>');
 }
 
 async function openMsgboxModal() {
   const labels = operatorText();
-  openModal(labels.messagesTitle, '<div class="wr-loading"><div class="wr-spinner"></div><span>' + escapeHtml(labels.readingMessages) + '</span></div>');
+  const generation = openModal(labels.messagesTitle, '<div class="wr-loading"><div class="wr-spinner"></div><span>' + escapeHtml(labels.readingMessages) + '</span></div>');
   await refreshMsgbox();
-  const items = Array.isArray(MSGBOX_STATE.items) ? MSGBOX_STATE.items : [];
-  const body = items.length
-    ? '<div class="msgbox-list">' + items.map(renderMsgboxItem).join('') + '</div>'
-    : '<div class="fo-empty">' + escapeHtml(labels.noMessages) + '</div>';
-  document.getElementById('modal-body').innerHTML = body;
+  if (dashboardModalGenerationIsCurrent(generation)) document.getElementById('modal-body').innerHTML = renderMsgboxContent();
+}
+
+/* ═══ Privacy-safe local PNG sharing ═══ */
+const ACTANARA_SHARE_CANVAS_WIDTH = 1200;
+const ACTANARA_SHARE_CANVAS_HEIGHT = 1500;
+const ACTANARA_SHARE_MAX_EDGE = 4096;
+const ACTANARA_SHARE_MAX_PIXELS = 4000000;
+const ACTANARA_SHARE_MAX_TREND_POINTS = 14;
+const ACTANARA_SHARE_PAYLOADS = new Map();
+const ACTANARA_SHARE_TOOL_NAMES = new Set([
+  'OpenClaw', 'Claude Code', 'Gemini CLI', 'Codex', 'Hermes',
+  'OpenCode', 'Antigravity', 'Cursor'
+]);
+const ACTANARA_SHARE_FONT_STACK = '-apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Segoe UI", Arial, sans-serif';
+const ACTANARA_SHARE_PALETTES = Object.freeze({
+  light: Object.freeze({
+    background: '#f5f5ff', panel: '#ffffff', panelSoft: '#f0efff', text: '#071b32',
+    muted: '#5f6f84', accent: '#533afd', accentSoft: '#b9b9f9', positive: '#108c3d',
+    border: '#dfe5f0', grid: '#e8eaf5', shadow: 'rgba(38, 32, 110, 0.12)',
+  }),
+  dark: Object.freeze({
+    background: '#07111f', panel: '#0d1b2a', panelSoft: '#16243a', text: '#f8fafc',
+    muted: '#a7b4c7', accent: '#9d8cff', accentSoft: '#665efd', positive: '#4ade80',
+    border: '#26374d', grid: '#24344a', shadow: 'rgba(0, 0, 0, 0.3)',
+  }),
+});
+
+let ACTANARA_SHARE_PREVIEW = {
+  generation: 0,
+  key: '',
+  payload: null,
+  blob: null,
+  blobUrl: '',
+  canvas: null,
+  state: 'closed',
+};
+
+function shareIconSvg(name) {
+  const paths = {
+    share: '<circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><path d="m8.6 10.6 6.8-4.1"></path><path d="m8.6 13.4 6.8 4.1"></path>',
+    image: '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"></path>',
+    copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>',
+    download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" x2="12" y1="15" y2="3"></line>',
+    archive: '<rect width="20" height="5" x="2" y="3" rx="1"></rect><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"></path><path d="M10 12h4"></path>',
+  };
+  const body = paths[name] || paths.image;
+  return '<svg class="lucide-share-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true">' + body + '</svg>';
+}
+
+function hydrateShareIcons(root = document) {
+  root.querySelectorAll('[data-share-icon]').forEach(element => {
+    element.innerHTML = shareIconSvg(element.dataset.shareIcon || 'image');
+  });
+}
+
+function shareSafeNumber(value, minimum = 0, maximum = Number.MAX_SAFE_INTEGER) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return minimum;
+  return Math.min(maximum, Math.max(minimum, parsed));
+}
+
+function shareSafeDelta(value, maximum = Number.MAX_SAFE_INTEGER) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.min(maximum, Math.max(-maximum, parsed));
+}
+
+function shareIsoDate(value) {
+  const text = String(value || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return '';
+  const parsed = new Date(text + 'T00:00:00Z');
+  return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== text ? '' : text;
+}
+
+function shareAddDays(value, amount) {
+  const safe = shareIsoDate(value);
+  if (!safe) return '';
+  const parsed = new Date(safe + 'T00:00:00Z');
+  parsed.setUTCDate(parsed.getUTCDate() + Math.trunc(shareSafeNumber(amount, -366, 366)));
+  return parsed.toISOString().slice(0, 10);
+}
+
+function shareComparisonDelta(value) {
+  const row = value && typeof value === 'object' ? value : {};
+  if (row.deltaPercent !== null && row.deltaPercent !== undefined) return shareSafeDelta(row.deltaPercent, 100000);
+  return shareSafeDelta(row.delta, Number.MAX_SAFE_INTEGER);
+}
+
+function shareSafeTrend(series) {
+  if (!Array.isArray(series)) return [];
+  return series.slice(-ACTANARA_SHARE_MAX_TREND_POINTS).map(item => ({
+    date: shareIsoDate(item && item.date),
+    value: Math.round(shareSafeNumber(item && item.tokens)),
+  })).filter(item => item.date);
+}
+
+function shareResolvedTheme(value) {
+  if (value === 'light' || value === 'dark') return value;
+  const declared = document.documentElement.dataset.theme;
+  if (declared === 'light' || declared === 'dark') return declared;
+  return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function buildReportSharePayload(kind, source, range) {
+  const data = source && typeof source === 'object' ? source : {};
+  const labels = dashboardText();
+  const locale = dashboardLanguageProfile();
+  const days = Math.round(shareSafeNumber(range && range.days, 1, 62));
+  const start = shareIsoDate(range && range.start);
+  const end = shareIsoDate(range && range.end) || shareAddDays(start, days - 1);
+  const kpi = data.kpi && typeof data.kpi === 'object' ? data.kpi : {};
+  const comparison = data.workloadComparison && typeof data.workloadComparison === 'object' ? data.workloadComparison : {};
+  const task = data.taskStats && typeof data.taskStats === 'object' ? data.taskStats : {};
+  const cron = data.cronStats && typeof data.cronStats === 'object' ? data.cronStats : {};
+  const knowledge = data.knowledgePeriod && typeof data.knowledgePeriod === 'object' ? data.knowledgePeriod : {};
+  const rag = knowledge.rag && typeof knowledge.rag === 'object' ? knowledge.rag : {};
+  const completed = Math.round(shareSafeNumber(task.completed));
+  const safeKind = kind === 'monthly' ? 'monthly' : 'weekly';
+  return {
+    schemaVersion: 1,
+    kind: safeKind,
+    locale,
+    theme: shareResolvedTheme(),
+    title: safeKind === 'monthly' ? labels.shareMonthlyTitle : labels.shareWeeklyTitle,
+    range: { start, end, days },
+    summary: labels.shareSummaryReport(days, completed),
+    metrics: [
+      { key: 'tokens', value: Math.round(shareSafeNumber(kpi.totalTokens)), delta: shareComparisonDelta(comparison.totalTokens), format: 'tokens' },
+      { key: 'messages', value: Math.round(shareSafeNumber(kpi.totalMessages)), delta: shareComparisonDelta(comparison.totalMessages), format: 'integer' },
+      { key: 'sessions', value: Math.round(shareSafeNumber(kpi.activeSessions)), delta: null, format: 'integer' },
+      { key: 'cache-rate', value: shareSafeNumber(kpi.cacheHitRate, 0, 100), delta: shareComparisonDelta(comparison.cacheHitRate), format: 'percent' },
+    ],
+    trend: shareSafeTrend(data.dailyTokenSeries),
+    outcomes: [
+      { key: 'completed', value: completed, format: 'integer' },
+      { key: 'rag-delta', value: Math.round(shareSafeNumber(rag.deltaCount)), format: 'integer' },
+      { key: 'cron-rate', value: shareSafeNumber(cron.rate, 0, 100), format: 'percent' },
+    ],
+  };
+}
+
+function buildAiAssetsSharePayload(source) {
+  const data = source && typeof source === 'object' ? source : {};
+  const labels = dashboardText();
+  const locale = dashboardLanguageProfile();
+  const trendSource = Array.isArray(data.trend30d) ? data.trend30d : [];
+  const trend = trendSource.slice(-ACTANARA_SHARE_MAX_TREND_POINTS).map(item => {
+    const slots = item && item.slots && typeof item.slots === 'object' ? item.slots : {};
+    const value = ['上午', '下午', '晚上', '凌晨'].reduce((total, key) => total + shareSafeNumber(slots[key]), 0);
+    return { date: shareIsoDate(item && item.date), value: Math.round(shareSafeNumber(value)) };
+  }).filter(item => item.date);
+  const start = trend.length ? trend[0].date : '';
+  const end = trend.length ? trend[trend.length - 1].date : '';
+  const tools = Array.isArray(data.tools) ? data.tools : [];
+  const activeSystems = tools.filter(item => ACTANARA_SHARE_TOOL_NAMES.has(String(item && item.name || '')) && (
+    shareSafeNumber(item && item.todayTokens) > 0 || shareSafeNumber(item && item.allTimeTokens) > 0
+  )).length;
+  const diary = data.diary && typeof data.diary === 'object' ? data.diary : {};
+  const rag = data.rag && typeof data.rag === 'object' ? data.rag : {};
+  const cron = data.cronJobs && typeof data.cronJobs === 'object' ? data.cronJobs : {};
+  const days = Math.max(1, trend.length);
+  return {
+    schemaVersion: 1,
+    kind: 'ai-assets',
+    locale,
+    theme: shareResolvedTheme(),
+    title: labels.shareAssetsTitle,
+    range: { start, end, days },
+    summary: labels.shareSummaryAssets(days, activeSystems),
+    metrics: [
+      { key: 'tokens', value: Math.round(shareSafeNumber(data.totalTokens)), delta: null, format: 'tokens' },
+      { key: 'messages', value: Math.round(shareSafeNumber(data.totalMessages)), delta: null, format: 'integer' },
+      { key: 'active-days', value: Math.round(shareSafeNumber(data.activeDayCount)), delta: null, format: 'integer' },
+      { key: 'active-systems', value: activeSystems, delta: null, format: 'integer' },
+    ],
+    trend,
+    outcomes: [
+      { key: 'diaries', value: Math.round(shareSafeNumber(diary.count)), format: 'integer' },
+      { key: 'rag-entries', value: Math.round(shareSafeNumber(rag.entries)), format: 'integer' },
+      { key: 'cron-rate', value: shareSafeNumber(cron.successRate, 0, 100), format: 'percent' },
+    ],
+  };
+}
+
+function setSharePayload(key, payload, buttonId) {
+  ACTANARA_SHARE_PAYLOADS.set(key, payload);
+  const button = document.getElementById(buttonId);
+  if (button) button.disabled = false;
+}
+
+function clearSharePayload(key, buttonId) {
+  ACTANARA_SHARE_PAYLOADS.delete(key);
+  const button = document.getElementById(buttonId);
+  if (button) button.disabled = true;
+}
+
+function registerReportSharePayload(key, kind, source, range) {
+  const buttonId = kind === 'monthly' ? 'mrShareBtn' : key + '_shareBtn';
+  setSharePayload(key, buildReportSharePayload(kind, source, range), buttonId);
+}
+
+function registerAiAssetsSharePayload(source) {
+  setSharePayload('ai-assets', buildAiAssetsSharePayload(source), 'aiAssetsShareBtn');
+}
+
+function shareNormalizeText(value, maximum = 240) {
+  return Array.from(String(value || '').normalize('NFC').replace(/[\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2060\ufeff]/g, ' ').replace(/\s+/g, ' ').trim()).slice(0, maximum).join('');
+}
+
+function shareTextTokens(value, locale) {
+  const text = shareNormalizeText(value);
+  if (!text) return [];
+  if (typeof Intl.Segmenter === 'function') {
+    return Array.from(new Intl.Segmenter(locale === 'en' ? 'en' : 'zh', { granularity: 'word' }).segment(text), item => item.segment);
+  }
+  return text.match(/[\u3400-\u9fff\uf900-\ufaff]|[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*|\s+|./gu) || Array.from(text);
+}
+
+function shareEllipsize(ctx, value, maximumWidth) {
+  const ellipsis = '…';
+  const chars = Array.from(String(value || '').trimEnd());
+  while (chars.length && ctx.measureText(chars.join('') + ellipsis).width > maximumWidth) chars.pop();
+  return (chars.join('').trimEnd() + ellipsis) || ellipsis;
+}
+
+function shareWrapText(ctx, value, maximumWidth, maximumLines, locale) {
+  const rawTokens = shareTextTokens(value, locale);
+  const tokens = [];
+  rawTokens.forEach(token => {
+    if (ctx.measureText(token).width <= maximumWidth) {
+      tokens.push(token);
+    } else {
+      Array.from(token).forEach(char => tokens.push(char));
+    }
+  });
+  const lines = [];
+  let current = '';
+  let truncated = false;
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index];
+    if (!current && /^\s+$/.test(token)) continue;
+    const candidate = current + token;
+    if (ctx.measureText(candidate).width <= maximumWidth) {
+      current = candidate;
+      continue;
+    }
+    if (current) lines.push(current.trimEnd());
+    current = /^\s+$/.test(token) ? '' : token.trimStart();
+    if (lines.length === maximumLines) {
+      truncated = true;
+      break;
+    }
+  }
+  if (current && lines.length < maximumLines) lines.push(current.trimEnd());
+  if (lines.length > maximumLines) {
+    lines.length = maximumLines;
+    truncated = true;
+  }
+  if (!truncated && lines.length === maximumLines) {
+    const consumed = lines.join('').replace(/\s/g, '').length;
+    const available = shareNormalizeText(value).replace(/\s/g, '').length;
+    truncated = consumed < available;
+  }
+  if (truncated && lines.length) lines[lines.length - 1] = shareEllipsize(ctx, lines[lines.length - 1], maximumWidth);
+  return { lines, truncated };
+}
+
+function shareSetFont(ctx, size, weight = 500) {
+  ctx.font = `${weight} ${size}px ${ACTANARA_SHARE_FONT_STACK}`;
+}
+
+function shareDrawWrappedText(ctx, value, x, y, maximumWidth, lineHeight, maximumLines, locale) {
+  const wrapped = shareWrapText(ctx, value, maximumWidth, maximumLines, locale);
+  wrapped.lines.forEach((line, index) => ctx.fillText(line, x, y + index * lineHeight));
+  return y + wrapped.lines.length * lineHeight;
+}
+
+function shareRoundRect(ctx, x, y, width, height, radius) {
+  const r = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + width, y, x + width, y + height, r);
+  ctx.arcTo(x + width, y + height, x, y + height, r);
+  ctx.arcTo(x, y + height, x, y, r);
+  ctx.arcTo(x, y, x + width, y, r);
+  ctx.closePath();
+}
+
+function shareCompactNumber(value) {
+  const number = shareSafeNumber(value);
+  if (number >= 1e9) return (number / 1e9).toFixed(number >= 10e9 ? 1 : 2) + 'B';
+  if (number >= 1e6) return (number / 1e6).toFixed(number >= 10e6 ? 1 : 2) + 'M';
+  if (number >= 1e3) return (number / 1e3).toFixed(number >= 10e3 ? 1 : 2) + 'K';
+  return Math.round(number).toLocaleString();
+}
+
+function shareMetricLabel(key, labels) {
+  return ({
+    tokens: labels.shareMetricTokens,
+    messages: labels.shareMetricMessages,
+    sessions: labels.shareMetricSessions,
+    'cache-rate': labels.shareMetricCacheRate,
+    'active-days': labels.shareMetricActiveDays,
+    'active-systems': labels.shareMetricActiveSystems,
+  })[key] || labels.noData;
+}
+
+function shareOutcomeLabel(key, labels) {
+  return ({
+    completed: labels.shareOutcomeCompleted,
+    'rag-delta': labels.shareOutcomeRagDelta,
+    'cron-rate': labels.shareOutcomeCronRate,
+    diaries: labels.shareOutcomeDiaries,
+    'rag-entries': labels.shareOutcomeRagEntries,
+  })[key] || labels.noData;
+}
+
+function shareFormatValue(item) {
+  if (item.format === 'percent') return shareSafeNumber(item.value, 0, 100).toFixed(1).replace(/\.0$/, '') + '%';
+  if (item.format === 'tokens') return shareCompactNumber(item.value);
+  return Math.round(shareSafeNumber(item.value)).toLocaleString();
+}
+
+function renderActanaraShareCanvas(payload) {
+  const width = ACTANARA_SHARE_CANVAS_WIDTH;
+  const height = ACTANARA_SHARE_CANVAS_HEIGHT;
+  if (width > ACTANARA_SHARE_MAX_EDGE || height > ACTANARA_SHARE_MAX_EDGE || width * height > ACTANARA_SHARE_MAX_PIXELS) {
+    throw new Error('share canvas size limit exceeded');
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  canvas.dataset.shareCanvas = 'true';
+  const ctx = canvas.getContext('2d', { alpha: false });
+  if (!ctx) throw new Error('2d canvas unavailable');
+  const palette = ACTANARA_SHARE_PALETTES[shareResolvedTheme(payload.theme)];
+  const labels = dashboardText(payload.locale);
+  const locale = payload.locale === 'en' ? 'en' : 'zh';
+  const padding = 76;
+  const contentWidth = width - padding * 2;
+
+  ctx.fillStyle = palette.background;
+  ctx.fillRect(0, 0, width, height);
+  const glow = ctx.createRadialGradient(width - 110, 90, 20, width - 110, 90, 430);
+  glow.addColorStop(0, payload.theme === 'dark' ? 'rgba(157,140,255,0.28)' : 'rgba(83,58,253,0.2)');
+  glow.addColorStop(1, 'rgba(83,58,253,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, width, 520);
+
+  ctx.fillStyle = palette.accent;
+  shareRoundRect(ctx, padding, 72, 54, 54, 17);
+  ctx.fill();
+  ctx.strokeStyle = payload.theme === 'dark' ? '#ffffff' : '#ffffff';
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(padding + 15, 103);
+  ctx.lineTo(padding + 27, 87);
+  ctx.lineTo(padding + 39, 103);
+  ctx.stroke();
+  ctx.fillStyle = palette.text;
+  shareSetFont(ctx, 31, 720);
+  ctx.fillText('Actanara', padding + 72, 110);
+  ctx.fillStyle = palette.muted;
+  shareSetFont(ctx, 21, 520);
+  ctx.textAlign = 'right';
+  ctx.fillText(labels.shareGeneratedLocally, width - padding, 108);
+  ctx.textAlign = 'left';
+
+  ctx.fillStyle = palette.text;
+  shareSetFont(ctx, 58, 760);
+  const titleBottom = shareDrawWrappedText(ctx, payload.title, padding, 218, contentWidth, 70, 2, locale);
+  ctx.fillStyle = palette.muted;
+  shareSetFont(ctx, 24, 520);
+  const rangeText = [payload.range.start, payload.range.end].filter(Boolean).join('  —  ') || labels.noData;
+  ctx.fillText(labels.shareRange + '  ' + rangeText, padding, titleBottom + 18);
+
+  const summaryY = titleBottom + 76;
+  ctx.save();
+  ctx.shadowColor = palette.shadow;
+  ctx.shadowBlur = 28;
+  ctx.shadowOffsetY = 12;
+  ctx.fillStyle = palette.panel;
+  shareRoundRect(ctx, padding, summaryY, contentWidth, 190, 30);
+  ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = palette.accent;
+  shareRoundRect(ctx, padding + 30, summaryY + 31, 8, 128, 4);
+  ctx.fill();
+  ctx.fillStyle = palette.text;
+  shareSetFont(ctx, 31, 580);
+  shareDrawWrappedText(ctx, payload.summary, padding + 65, summaryY + 63, contentWidth - 105, 43, 3, locale);
+
+  const metricY = summaryY + 230;
+  const metricGap = 22;
+  const metricWidth = (contentWidth - metricGap) / 2;
+  const metricHeight = 184;
+  payload.metrics.slice(0, 4).forEach((item, index) => {
+    const column = index % 2;
+    const row = Math.floor(index / 2);
+    const x = padding + column * (metricWidth + metricGap);
+    const y = metricY + row * (metricHeight + metricGap);
+    ctx.fillStyle = palette.panel;
+    shareRoundRect(ctx, x, y, metricWidth, metricHeight, 26);
+    ctx.fill();
+    ctx.strokeStyle = palette.border;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = palette.muted;
+    shareSetFont(ctx, 22, 600);
+    ctx.fillText(shareMetricLabel(item.key, labels), x + 28, y + 44);
+    ctx.fillStyle = palette.text;
+    shareSetFont(ctx, 46, 720);
+    ctx.fillText(shareFormatValue(item), x + 28, y + 104);
+    if (item.delta !== null && item.delta !== undefined) {
+      const sign = item.delta > 0 ? '+' : '';
+      ctx.fillStyle = item.delta >= 0 ? palette.positive : palette.muted;
+      shareSetFont(ctx, 18, 620);
+      ctx.fillText(`${labels.shareComparedPrevious} ${sign}${Number(item.delta).toFixed(1).replace(/\.0$/, '')}%`, x + 28, y + 146);
+    }
+  });
+
+  const trendY = metricY + (metricHeight + metricGap) * 2 + 30;
+  ctx.fillStyle = palette.text;
+  shareSetFont(ctx, 27, 700);
+  ctx.fillText(labels.shareTrend, padding, trendY);
+  const chartY = trendY + 32;
+  const chartHeight = 210;
+  ctx.fillStyle = palette.panel;
+  shareRoundRect(ctx, padding, chartY, contentWidth, chartHeight, 26);
+  ctx.fill();
+  const values = payload.trend.slice(-ACTANARA_SHARE_MAX_TREND_POINTS);
+  const maxValue = Math.max(1, ...values.map(item => shareSafeNumber(item.value)));
+  const barGap = 12;
+  const available = contentWidth - 72;
+  const barWidth = values.length ? Math.max(12, (available - barGap * (values.length - 1)) / values.length) : 0;
+  values.forEach((item, index) => {
+    const value = shareSafeNumber(item.value);
+    const heightValue = Math.max(value > 0 ? 6 : 2, (value / maxValue) * 126);
+    const x = padding + 36 + index * (barWidth + barGap);
+    const y = chartY + 150 - heightValue;
+    ctx.fillStyle = value > 0 ? palette.accent : palette.grid;
+    shareRoundRect(ctx, x, y, barWidth, heightValue, Math.min(9, barWidth / 2));
+    ctx.fill();
+  });
+  ctx.fillStyle = palette.muted;
+  shareSetFont(ctx, 17, 500);
+  if (values.length) {
+    ctx.fillText(values[0].date.slice(5), padding + 36, chartY + 182);
+    ctx.textAlign = 'right';
+    ctx.fillText(values[values.length - 1].date.slice(5), width - padding - 36, chartY + 182);
+    ctx.textAlign = 'left';
+  } else {
+    ctx.fillText(labels.noData, padding + 36, chartY + 108);
+  }
+
+  const outcomeY = chartY + chartHeight + 45;
+  ctx.fillStyle = palette.text;
+  shareSetFont(ctx, 27, 700);
+  ctx.fillText(labels.shareOutcomes, padding, outcomeY);
+  const outcomeTop = outcomeY + 32;
+  const outcomeGap = 16;
+  const outcomeWidth = (contentWidth - outcomeGap * 2) / 3;
+  payload.outcomes.slice(0, 3).forEach((item, index) => {
+    const x = padding + index * (outcomeWidth + outcomeGap);
+    ctx.fillStyle = palette.panelSoft;
+    shareRoundRect(ctx, x, outcomeTop, outcomeWidth, 126, 22);
+    ctx.fill();
+    ctx.fillStyle = palette.muted;
+    shareSetFont(ctx, 18, 600);
+    shareDrawWrappedText(ctx, shareOutcomeLabel(item.key, labels), x + 22, outcomeTop + 35, outcomeWidth - 44, 24, 2, locale);
+    ctx.fillStyle = palette.text;
+    shareSetFont(ctx, 31, 720);
+    ctx.fillText(shareFormatValue(item), x + 22, outcomeTop + 98);
+  });
+
+  ctx.strokeStyle = palette.border;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(padding, height - 72);
+  ctx.lineTo(width - padding, height - 72);
+  ctx.stroke();
+  ctx.fillStyle = palette.muted;
+  shareSetFont(ctx, 18, 500);
+  ctx.fillText('actanara.local', padding, height - 38);
+  ctx.textAlign = 'right';
+  ctx.fillText('1200 × 1500 PNG', width - padding, height - 38);
+  ctx.textAlign = 'left';
+  return canvas;
+}
+
+function shareCanvasBlob(canvas) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('canvas toBlob returned null')), 'image/png');
+  });
+}
+
+function releaseActanaraShareArtifact() {
+  if (ACTANARA_SHARE_PREVIEW.blobUrl) URL.revokeObjectURL(ACTANARA_SHARE_PREVIEW.blobUrl);
+  ACTANARA_SHARE_PREVIEW.blob = null;
+  ACTANARA_SHARE_PREVIEW.blobUrl = '';
+  ACTANARA_SHARE_PREVIEW.canvas = null;
+}
+
+function releaseActanaraSharePreview() {
+  releaseActanaraShareArtifact();
+  ACTANARA_SHARE_PREVIEW = {
+    generation: 0, key: '', payload: null, blob: null, blobUrl: '', canvas: null, state: 'closed',
+  };
+}
+
+function sharePreparingMarkup() {
+  const labels = dashboardText();
+  return '<div class="share-preview-loading" data-share-state="preparing" role="status" aria-live="polite" aria-busy="true">' +
+    '<div class="wr-spinner"></div><span>' + escapeHtml(labels.sharePreparing) + '</span></div>';
+}
+
+function shareErrorMarkup() {
+  const labels = dashboardText();
+  return '<div class="share-preview-error" data-share-state="error" role="alert"><p>' + escapeHtml(labels.shareRenderFailed) + '</p>' +
+    '<button type="button" class="wr-export-btn" onclick="retryActanaraSharePreview()">' + escapeHtml(labels.shareRetry) + '</button></div>';
+}
+
+function shareReadyMarkup(theme) {
+  const labels = dashboardText();
+  return '<div class="share-preview-shell" data-share-state="ready">' +
+    '<div class="share-preview-toolbar" aria-label="Theme">' +
+      '<span class="share-preview-local"><span data-share-icon="image"></span>' + escapeHtml(labels.sharePrivacyNote) + '</span>' +
+      '<div class="share-theme-switch" role="group" aria-label="Theme">' +
+        '<button type="button" class="' + (theme === 'light' ? 'active' : '') + '" onclick="rerenderActanaraSharePreview(\'light\')">' + escapeHtml(labels.shareThemeLight) + '</button>' +
+        '<button type="button" class="' + (theme === 'dark' ? 'active' : '') + '" onclick="rerenderActanaraSharePreview(\'dark\')">' + escapeHtml(labels.shareThemeDark) + '</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="share-preview-image-wrap"><img id="actanaraSharePreviewImage" alt="' + escapeHtml(labels.sharePreviewAlt) + '" width="1200" height="1500"></div>' +
+    '<div class="share-preview-actions">' +
+      '<button type="button" class="wr-export-btn" id="actanaraShareCopyBtn" onclick="copyActanaraSharePng()"><span data-share-icon="copy"></span>' + escapeHtml(labels.shareCopyPng) + '</button>' +
+      '<button type="button" class="wr-export-btn share-primary-action" id="actanaraShareDownloadBtn" onclick="downloadActanaraSharePng()"><span data-share-icon="download"></span>' + escapeHtml(labels.shareDownloadPng) + '</button>' +
+    '</div>' +
+    '<div class="share-preview-status" id="actanaraShareStatus" role="status" aria-live="polite"></div>' +
+  '</div>';
+}
+
+async function renderActanaraSharePreview(generation, theme) {
+  const modalBody = document.getElementById('modal-body');
+  if (!modalBody) return;
+  ACTANARA_SHARE_PREVIEW.state = 'preparing';
+  modalBody.innerHTML = sharePreparingMarkup();
+  try {
+    const fontReady = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
+    await Promise.race([fontReady, new Promise(resolve => setTimeout(resolve, 800))]);
+    const payload = { ...ACTANARA_SHARE_PREVIEW.payload, theme: shareResolvedTheme(theme) };
+    const canvas = renderActanaraShareCanvas(payload);
+    const blob = await shareCanvasBlob(canvas);
+    if (!dashboardModalGenerationIsCurrent(generation) || ACTANARA_SHARE_PREVIEW.generation !== generation) return;
+    releaseActanaraShareArtifact();
+    const blobUrl = URL.createObjectURL(blob);
+    ACTANARA_SHARE_PREVIEW.payload = payload;
+    ACTANARA_SHARE_PREVIEW.canvas = canvas;
+    ACTANARA_SHARE_PREVIEW.blob = blob;
+    ACTANARA_SHARE_PREVIEW.blobUrl = blobUrl;
+    ACTANARA_SHARE_PREVIEW.state = 'ready';
+    modalBody.innerHTML = shareReadyMarkup(payload.theme);
+    const image = document.getElementById('actanaraSharePreviewImage');
+    if (image) image.src = blobUrl;
+    hydrateShareIcons(modalBody);
+  } catch (error) {
+    if (!dashboardModalGenerationIsCurrent(generation) || ACTANARA_SHARE_PREVIEW.generation !== generation) return;
+    console.error('Share PNG render failed:', error);
+    ACTANARA_SHARE_PREVIEW.state = 'error';
+    modalBody.innerHTML = shareErrorMarkup();
+  }
+}
+
+function openActanaraSharePreview(key) {
+  const payload = ACTANARA_SHARE_PAYLOADS.get(key);
+  if (!payload) return;
+  releaseActanaraSharePreview();
+  const labels = dashboardText();
+  const generation = openModal(labels.sharePreviewTitle, sharePreparingMarkup());
+  ACTANARA_SHARE_PREVIEW = {
+    generation, key, payload, blob: null, blobUrl: '', canvas: null, state: 'preparing',
+  };
+  renderActanaraSharePreview(generation, payload.theme);
+}
+
+function openReportSharePreview(kind, key) {
+  const payload = ACTANARA_SHARE_PAYLOADS.get(key);
+  if (!payload || payload.kind !== kind) return;
+  openActanaraSharePreview(key);
+}
+
+function openAiAssetsSharePreview() {
+  openActanaraSharePreview('ai-assets');
+}
+
+function retryActanaraSharePreview() {
+  if (!ACTANARA_SHARE_PREVIEW.payload || !ACTANARA_SHARE_PREVIEW.generation) return;
+  renderActanaraSharePreview(ACTANARA_SHARE_PREVIEW.generation, ACTANARA_SHARE_PREVIEW.payload.theme);
+}
+
+function rerenderActanaraSharePreview(theme) {
+  if (!ACTANARA_SHARE_PREVIEW.payload || !ACTANARA_SHARE_PREVIEW.generation) return;
+  renderActanaraSharePreview(ACTANARA_SHARE_PREVIEW.generation, theme);
+}
+
+function setActanaraShareStatus(message, tone) {
+  const status = document.getElementById('actanaraShareStatus');
+  if (!status) return;
+  status.textContent = message;
+  status.dataset.tone = tone || 'neutral';
+}
+
+async function copyActanaraSharePng() {
+  const labels = dashboardText();
+  const button = document.getElementById('actanaraShareCopyBtn');
+  const downloadButton = document.getElementById('actanaraShareDownloadBtn');
+  if (!ACTANARA_SHARE_PREVIEW.blob || ACTANARA_SHARE_PREVIEW.state !== 'ready') return;
+  if (button) button.disabled = true;
+  try {
+    if (!navigator.clipboard || typeof navigator.clipboard.write !== 'function' || typeof window.ClipboardItem !== 'function') {
+      setActanaraShareStatus(labels.shareClipboardUnavailable, 'warning');
+      if (downloadButton) downloadButton.focus();
+      return;
+    }
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': ACTANARA_SHARE_PREVIEW.blob })]);
+    setActanaraShareStatus(labels.shareCopied, 'success');
+  } catch (error) {
+    setActanaraShareStatus(labels.shareCopyFailed, 'warning');
+    if (downloadButton) downloadButton.focus();
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+function downloadActanaraSharePng() {
+  const labels = dashboardText();
+  const payload = ACTANARA_SHARE_PREVIEW.payload;
+  const blobUrl = ACTANARA_SHARE_PREVIEW.blobUrl;
+  if (!payload || !blobUrl || ACTANARA_SHARE_PREVIEW.state !== 'ready') return;
+  try {
+    const anchor = document.createElement('a');
+    const stamp = shareIsoDate(payload.range && payload.range.end) || 'snapshot';
+    anchor.href = blobUrl;
+    anchor.download = `actanara-${payload.kind}-${stamp}.png`;
+    anchor.hidden = true;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setActanaraShareStatus(labels.shareDownloadStarted, 'success');
+  } catch (error) {
+    setActanaraShareStatus(labels.shareDownloadFailed, 'error');
+  }
+}
+
+function actanaraSharePayload(key) {
+  const payload = ACTANARA_SHARE_PAYLOADS.get(key);
+  return payload ? JSON.parse(JSON.stringify(payload)) : null;
 }
 
 // ─── 动态加载周报（图表化） ────────────────────────────
@@ -2655,22 +4278,32 @@ function wrDestroyCharts(prefix) {
   }
 }
 
-async function loadReport(reportId) {
+async function loadReport(reportId, navEl) {
   await ensureDashboardLanguageProfile();
   const labels = dashboardText();
   const pageId = 'page-report-' + reportId;
   // 切换页面
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  event && event.currentTarget && event.currentTarget.classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => n.removeAttribute('aria-current'));
+  document.querySelectorAll('.nav-item-dot').forEach(d => d.classList.remove('active'));
+  const selectedNav = navEl || Array.from(document.querySelectorAll('.nav-item[data-report-id]'))
+    .find(item => item.dataset.reportId === reportId);
+  if (selectedNav) {
+    selectedNav.classList.add('active');
+    selectedNav.setAttribute('aria-current', 'page');
+    selectedNav.querySelector('.nav-item-dot')?.classList.add('active');
+  }
 
   let page = document.getElementById(pageId);
   if (page) {
     page.classList.add('active');
-    location.hash = pageId;
+    setDashboardRoute(pageId);
+    focusDashboardRoute(page);
     return;
   }
   // Create page
+  document.getElementById('usage-for-' + pageId)?.remove();
   page = document.createElement('div');
   page.id = pageId;
   page.className = 'page';
@@ -2681,6 +4314,7 @@ async function loadReport(reportId) {
       <div class="page-subtitle" id="${prefix}_sub">${escapeHtml(labels.loadingEllipsis)}</div>
       <div class="wr-summary-quote" id="${prefix}_summaryQuote" style="display:none"></div>
       <button class="wr-export-btn" onclick="window.print()" title="${escapeHtml(labels.exportPrintTitle)}">🖨️ ${escapeHtml(labels.exportPrint)}</button>
+      <button type="button" class="wr-export-btn share-trigger-btn" id="${prefix}_shareBtn" onclick="openReportSharePreview('weekly', '${prefix}')" disabled><span class="share-button-icon" data-share-icon="share" aria-hidden="true"></span>${escapeHtml(labels.sharePng)}</button>
       <button class="wr-export-btn" id="${prefix}_refreshAssets" onclick="refreshWeeklyAssets('${reportId}', '${prefix}')" title="${escapeHtml(labels.refreshAssetsTitle)}">${escapeHtml(labels.refreshAssets)}</button>
     </div>
     <div class="wr-loading" id="${prefix}_loading"><div class="wr-spinner"></div><span>${escapeHtml(labels.loadingWeekly)}</span></div>
@@ -2710,8 +4344,10 @@ async function loadReport(reportId) {
       <div class="wr-section" id="${prefix}_summaryDetailsSection" style="display:none"><div class="wr-section-header"><div class="wr-section-title"><span class="emoji">📋</span> ${escapeHtml(labels.summaryDetails)}</div></div><div class="wr-card full-width wr-summary-details" id="${prefix}_summaryDetails"></div></div>
     </div>`;
   document.getElementById('diary-pages').appendChild(page);
+  hydrateShareIcons(page);
   page.classList.add('active');
-  location.hash = pageId;
+  setDashboardRoute(pageId);
+  focusDashboardRoute(page);
 
   // Calculate start date from week identifier
   const startDate = wrMondayOfWeek(reportId);
@@ -2723,6 +4359,11 @@ async function loadReport(reportId) {
     const res = await fetch(url);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
+    registerReportSharePayload(prefix, 'weekly', data, {
+      start: startDate,
+      end: shareAddDays(startDate, 6),
+      days: 7,
+    });
     document.getElementById(prefix + '_loading').style.display = 'none';
     document.getElementById(prefix + '_content').style.display = 'block';
     document.getElementById(prefix + '_sub').textContent = (data.period || reportId) + ' · ' + (data.days || 0) + ' ' + labels.dayUnit;
@@ -2745,6 +4386,8 @@ async function loadReport(reportId) {
     wrRenderSummaryTopics(prefix, data.summaryTopics);
     wrRenderAgentWork(prefix, data.agentWork, data.hourlyHeatmap);
     wrRenderLessons(prefix, data.lessons);
+    if (typeof organizeDashboardUsage === 'function') organizeDashboardUsage();
+    if (typeof decorateDashboardUi === 'function') decorateDashboardUi();
   } catch (e) {
     document.getElementById(prefix + '_loading').innerHTML = '<span style="color:var(--ruby)">❌ ' + escapeHtml(labels.loadFailed) + escapeHtml(e.message) + '</span>';
   }
@@ -2760,12 +4403,19 @@ function updateMonthlyReportLabels() {
   applyStaticDashboardText(ACTANARA_PIPELINE_LANGUAGE_PROFILE);
 }
 
-function loadMonthlyReportById(mk) {
+function loadMonthlyReportById(mk, navEl) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(mk || ''))) return;
   const labels = dashboardText();
   updateMonthlyReportLabels();
   // mk = '2026-05'
+  const monthlyPage = document.getElementById('page-monthly-overview');
+  if (monthlyPage) monthlyPage.dataset.monthRequestedId = mk;
+  const selectedNav = navEl || Array.from(document.querySelectorAll('.nav-item[data-month-id]'))
+    .find(item => item.dataset.monthId === mk);
+  document.querySelectorAll('.nav-item[data-month-id]').forEach(item => item.removeAttribute('data-page-id'));
+  if (selectedNav) selectedNav.dataset.pageId = 'page-monthly-overview';
   if (MR_LOADED[mk] && MR_CURRENT_MONTH === mk) {
-    showPage('monthly-overview');
+    showPage('monthly-overview', selectedNav);
     return;
   }
   // Reset UI to loading state
@@ -2773,12 +4423,15 @@ function loadMonthlyReportById(mk) {
   const content = document.getElementById(MR_PREFIX + '_content');
   if (loading) loading.style.display = '';
   if (content) content.style.display = 'none';
+  const movedUsage = document.getElementById('usage-for-page-monthly-overview');
+  if (movedUsage) movedUsage.hidden = true;
   if (loading) loading.innerHTML = '<div class="wr-spinner"></div><span>' + escapeHtml(labels.loadingMonthly) + '</span>';
+  clearSharePayload(MR_PREFIX, 'mrShareBtn');
   const notice = document.getElementById(MR_PREFIX + '_refreshNotice');
   if (notice) notice.style.display = 'none';
   wrDestroyCharts(MR_PREFIX);
   WR_CHARTS[MR_PREFIX] = {};
-  showPage('monthly-overview');
+  showPage('monthly-overview', selectedNav);
   loadMonthlyReport(mk);
 }
 
@@ -2814,7 +4467,11 @@ async function loadMonthlyReport(mk) {
     const data = await res.json();
     if (requestToken !== MR_REQUEST_TOKEN || MR_CURRENT_MONTH !== mk) return;
 
-    MR_LOADED[mk] = true;
+    registerReportSharePayload(MR_PREFIX, 'monthly', data, {
+      start: startDate,
+      end: shareAddDays(startDate, daysInMonth - 1),
+      days: daysInMonth,
+    });
     loading.style.display = 'none';
     content.style.display = 'block';
     sub.textContent = monthLabel + ' · ' + (data.days || 0) + ' ' + labels.dayDataUnit;
@@ -2838,8 +4495,15 @@ async function loadMonthlyReport(mk) {
     wrRenderSummaryTopics(MR_PREFIX, data.summaryTopics);
     mrRenderHeatmap(data.assetHourlyHeatmap || data.hourlyHeatmap);
     wrRenderLessons(MR_PREFIX, data.lessons);
+    MR_LOADED[mk] = true;
+    document.getElementById('page-monthly-overview').dataset.monthRenderedId = mk;
+    const movedUsage = document.getElementById('usage-for-page-monthly-overview');
+    if (movedUsage) movedUsage.hidden = false;
+    if (typeof organizeDashboardUsage === 'function') organizeDashboardUsage();
+    if (typeof decorateDashboardUi === 'function') decorateDashboardUi();
   } catch (e) {
     if (requestToken !== MR_REQUEST_TOKEN || MR_CURRENT_MONTH !== mk) return;
+    MR_LOADED[mk] = false;
     loading.innerHTML = '<span style="color:var(--ruby)">❌ ' + escapeHtml(labels.loadFailed) + escapeHtml(e.message) + '</span>';
   }
 }
@@ -3937,10 +5601,16 @@ async function loadDiaryNav() {
   await ensureDashboardLanguageProfile();
   const labels = dashboardText();
   try {
-    const res = await fetch('/api/diary-list');
+    const res = await fetch('/api/diary-list?envelope=1');
     if (!res.ok) throw new Error('API ' + res.status);
 
-    const diaries = await res.json();
+    const payload = await res.json();
+    if (dashboardStateFailed(payload)) throw new Error(dashboardStateSummary(payload));
+    const diaries = Array.isArray(payload.items) ? payload.items : [];
+    const diaryState = dashboardStateOf(payload);
+    const hideInactive = localStorage.getItem('actanara.hideInactiveDiaryDays') === 'true';
+    const filter = document.getElementById('hideInactiveDiaryDays');
+    if (filter) filter.checked = hideInactive;
 
     // ── 1. 按月分组 → 月内按周分组 ────────────────
     const monthMap = {};  // "2026-04" -> {year, month, weeks:{}, dates:[]}
@@ -3963,7 +5633,10 @@ async function loadDiaryNav() {
     const monthNav = document.getElementById('month-nav');
     if (monthNav) {
       const sortedMonths = Object.keys(monthMap).sort().reverse();
-      monthNav.innerHTML = sortedMonths.map(mk => {
+      const stateNotice = diaryState.status === 'degraded'
+        ? '<div class="nav-state-error" role="status">' + escapeHtml(labels.loadFailed + dashboardStateSummary(payload)) + '</div>'
+        : (!sortedMonths.length ? '<div class="nav-state-empty" role="status">' + escapeHtml(labels.noData) + '</div>' : '');
+      monthNav.innerHTML = stateNotice + sortedMonths.map(mk => {
         const m = monthMap[mk];
         const isCurrentMonth = (mk === new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2,'0'));
         const monthLabel = labels.monthLabel(m.year, m.month + 1);
@@ -3974,21 +5647,22 @@ async function loadDiaryNav() {
         const sortedWeeks = Object.keys(m.weeks).sort().reverse();
         const weeksHtml = sortedWeeks.map(wk => {
           const dates = m.weeks[wk].sort((a,b) => b.fullDate.localeCompare(a.fullDate));
+          const visibleDates = hideInactive ? dates.filter(d => !d.isBlankDay) : dates;
           const dateRange = dates.length >= 2
             ? `${dates[dates.length-1].displayDate}～${dates[0].displayDate}`
             : dates[0].displayDate;
           return `<div class="nav-section" style="padding-left:0">
-            <div class="nav-section-title nav-section-title-nested" onclick="toggleSection(this)">
+            <div class="nav-section-title nav-section-title-nested" role="button" tabindex="0" aria-expanded="false" onclick="toggleSection(this)">
               📂 ${wrDisplayWeekId(wk)}（${dateRange}）
               <span class="arrow">›</span>
             </div>
             <div class="nav-items">
-              <div class="nav-item" onclick="loadReport('${wk}')">
+              <div class="nav-item" data-report-id="${escapeHtml(wk)}" data-page-id="page-report-${escapeHtml(wk)}" role="button" tabindex="0" onclick="loadReport('${wk}', this)">
                 <span class="nav-item-dot"></span>
                 ${escapeHtml(labels.diaryNavWeeklyOverview)}
               </div>
-              ${dates.map(d => `
-              <div class="nav-item" onclick="showDiaryByDate('${d.fullDate}', this)">
+              ${visibleDates.map(d => `
+              <div class="nav-item" data-diary-date="${escapeHtml(d.fullDate)}" data-page-id="page-day-${escapeHtml(d.date)}" role="button" tabindex="0" onclick="showDiaryByDate('${d.fullDate}', this)">
                 <span class="nav-item-dot"></span>
                 ${escapeHtml(d.displayDate)} ${escapeHtml(labels.diaryNavDiary)}
               </div>`).join('')}
@@ -3997,12 +5671,12 @@ async function loadDiaryNav() {
         }).join('');
 
         return `<div class="nav-section ${isCurrentMonth ? 'open' : ''}">
-          <div class="nav-section-title ${isCurrentMonth ? 'open' : ''}" onclick="toggleSection(this)">
+          <div class="nav-section-title ${isCurrentMonth ? 'open' : ''}" role="button" tabindex="0" aria-expanded="${isCurrentMonth ? 'true' : 'false'}" onclick="toggleSection(this)">
             📅 ${monthLabel}
             <span class="arrow">›</span>
           </div>
           <div class="nav-items ${isCurrentMonth ? 'open' : ''}">
-            <div class="nav-item" onclick="loadMonthlyReportById('${mk}')">
+            <div class="nav-item" data-month-id="${escapeHtml(mk)}"${isCurrentMonth ? ' data-page-id="page-monthly-overview"' : ''} role="button" tabindex="0" onclick="loadMonthlyReportById('${mk}', this)">
               <span class="nav-item-dot"></span>
               📋 ${escapeHtml(labels.diaryNavMonthlyOverview)}
             </div>
@@ -4028,7 +5702,14 @@ async function loadDiaryNav() {
     }
   } catch (e) {
     console.error('loadDiaryNav error:', e);
+    const monthNav = document.getElementById('month-nav');
+    if (monthNav) monthNav.innerHTML = '<div class="nav-state-error" role="alert">' + escapeHtml(labels.loadFailed + e.message) + '</div>';
   }
+}
+
+function setHideInactiveDiaryDays(enabled) {
+  localStorage.setItem('actanara.hideInactiveDiaryDays', enabled ? 'true' : 'false');
+  loadDiaryNav();
 }
 
 // ISO 周号
@@ -4043,42 +5724,72 @@ function getISOWeek(date) {
 // ─── 日记内容动态渲染 ─────────────────────────────────
 // 点击侧边栏日记 → 切换页面并加载内容
 async function showDiaryByDate(fullDate, navEl) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fullDate || ''))) return;
   const labels = dashboardText();
-  const date = fullDate.replace('2026-', '').replace('-', '');
+  const date = fullDate.slice(5).replace('-', '');
   const pageId = `page-day-${date}`;
 
   // 切换页面
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.removeAttribute('aria-current'));
   document.querySelectorAll('.nav-item-dot').forEach(d => d.classList.remove('active'));
 
-  const page = document.getElementById(pageId);
-  if (page) page.classList.add('active');
+  let page = document.getElementById(pageId);
+  if (!page) {
+    page = document.createElement('div');
+    page.id = pageId;
+    page.className = 'page';
+    page.innerHTML = '<div class="page-header"><div class="page-title"></div><div class="page-subtitle"></div></div><div id="diary-content-' + date + '" class="page-body diary-page-body"></div>';
+    document.getElementById('diary-pages').appendChild(page);
+  }
+  if (page) {
+    page.classList.add('active');
+    page.dataset.diaryRequestedDate = fullDate;
+    page.querySelector('.page-title').textContent = fullDate + ' ' + labels.diaryNavDiary;
+    page.querySelector('.page-subtitle').textContent = fullDate;
+  }
+  const request = Number(page.dataset.diaryRequestId || 0) + 1;
+  page.dataset.diaryRequestId = String(request);
 
   // 高亮侧边栏
   if (navEl) {
     navEl.classList.add('active');
+    navEl.setAttribute('aria-current', 'page');
     const dot = navEl.querySelector('.nav-item-dot');
     if (dot) dot.classList.add('active');
   }
 
-  location.hash = pageId;
+  setDashboardRoute(pageId, {day: fullDate});
+  document.querySelectorAll('.nav-item:not(.active)').forEach(item => item.removeAttribute('aria-current'));
+  focusDashboardRoute(page);
 
   // 加载内容
   const contentEl = document.getElementById('diary-content-' + date);
   if (!contentEl) return;
+  document.getElementById('usage-for-' + pageId)?.remove();
+  page.querySelector('[data-view-period-usage]')?.remove();
   contentEl.innerHTML = '<div style="padding:20px;color:var(--gray)">' + escapeHtml(labels.loadingDiary) + '</div>';
 
   try {
     const res = await fetch(`/api/diary/${fullDate}`);
+    if (page.dataset.diaryRequestedDate !== fullDate || Number(page.dataset.diaryRequestId) !== request) return;
     if (!res.ok) { contentEl.innerHTML = labels.updateFailed; return; }
     const d = await res.json();
+    if (page.dataset.diaryRequestedDate !== fullDate || Number(page.dataset.diaryRequestId) !== request) return;
+    if (dashboardStateFailed(d)) {
+      contentEl.innerHTML = '<div style="padding:20px;color:var(--error)" role="alert">' + escapeHtml(labels.updateFailed + ': ' + dashboardStateSummary(d)) + '</div>';
+      return;
+    }
     if (diaryNeedsRefresh(d.dataFreshness)) {
       renderDiaryRefreshNotice(contentEl, fullDate, date, navEl);
       return;
     }
     renderDiaryContent(date, d);
+    if (typeof organizeDashboardUsage === 'function') organizeDashboardUsage();
+    if (typeof decorateDashboardUi === 'function') decorateDashboardUi();
   } catch (e) {
+    if (page.dataset.diaryRequestedDate !== fullDate || Number(page.dataset.diaryRequestId) !== request) return;
     contentEl.innerHTML = '<div style="padding:20px;color:var(--error)">' + escapeHtml(labels.updateFailed + ': ' + e.message) + '</div>';
   }
 }
@@ -4535,7 +6246,7 @@ function renderDiaryContent(shortDate, d) {
 
   // ── 4. Token 小时分布 ──
   const heatmap = hourlyHeatmap(hourlyTokens, maxHourly);
-  const heatmapHtml = `<div class="section"><div class="section-title"><span class="section-title-num">${sec()}</span> ${escapeHtml(labels.hourlyTokens)}</div>${heatmap}</div>`;
+  const heatmapHtml = `<div class="section dash-diary-usage"><div class="section-title"><span class="section-title-num">${sec()}</span> ${escapeHtml(labels.hourlyTokens)}</div>${heatmap}</div>`;
 
   // ── 5. 重要提醒 ──
   let remindersHtml = '';
@@ -4579,7 +6290,7 @@ function renderDiaryContent(shortDate, d) {
   if (d.infraChanges && d.infraChanges.length > 0) {
     const rows = d.infraChanges.map(ic =>
       `<tr>
-        <td class="diary-infra-target">${escapeHtml(ic.target)}</td>
+        <td class="diary-infra-target">${escapeHtml(ic.target)}${ic.entityType || ic.eventType || ic.field ? `<div class="muted" style="font-size:11px;margin-top:4px">${escapeHtml([ic.entityType, ic.eventType, ic.field].filter(Boolean).join(' · '))}</div>` : ''}</td>
         <td>${renderMd(ic.change)}</td>
         <td class="diary-infra-current">${escapeHtml(ic.current)}</td>
       </tr>`
@@ -4621,72 +6332,275 @@ function renderDiaryContent(shortDate, d) {
   let rawHtml = '';
   if (d.rawContent) {
     const rawUid = 'raw-' + shortDate;
-    rawHtml = `<div class="section"><div class="section-title diary-raw-title" onclick="const el=document.getElementById('${rawUid}');if(!el)return;const open=el.style.display!=='none';el.style.display=open?'none':'block';this.querySelector('.raw-arrow').textContent=open?'▸':'▾';this.querySelector('.diary-raw-hint').textContent=open?'${escapeHtml(labels.expand)}':'${escapeHtml(labels.expanded)}'"><span class="section-title-num">${sec()}</span> ${escapeHtml(labels.rawDiary)} <span class="raw-arrow">▸</span><span class="diary-raw-hint">${escapeHtml(labels.expand)}</span></div><div id="${rawUid}" style="display:none"><div class="report-body">${marked.parse(d.rawContent)}</div></div></div>`;
+    rawHtml = `<div class="section"><div class="section-title diary-raw-title" onclick="const el=document.getElementById('${rawUid}');if(!el)return;const open=el.style.display!=='none';el.style.display=open?'none':'block';this.querySelector('.raw-arrow').textContent=open?'▸':'▾';this.querySelector('.diary-raw-hint').textContent=open?'${escapeHtml(labels.expand)}':'${escapeHtml(labels.expanded)}'"><span class="section-title-num">${sec()}</span> ${escapeHtml(labels.rawDiary)} <span class="raw-arrow">▸</span><span class="diary-raw-hint">${escapeHtml(labels.expand)}</span></div><div id="${rawUid}" style="display:none"><div class="report-body">${renderSafeMarkdown(d.rawContent)}</div></div></div>`;
   }
 
   container.innerHTML = `<div class="diary-content-stack">${kpiCards}${summaryHtml}${agentHtml}${heatmapHtml}${remindersHtml}${lessonsHtml}${infraHtml}${notesHtml}${rawHtml}</div>`;
 }
 
+function setDashboardRoute(pageId, params = {}) {
+  const url = new URL(location.href);
+  url.searchParams.delete('day');
+  url.searchParams.delete('month');
+  const page = document.getElementById(pageId);
+  if (pageId.startsWith('page-day-')) {
+    const date = params.day || page?.dataset.diaryRequestedDate;
+    if (date) url.searchParams.set('day', date);
+  }
+  if (pageId === 'page-monthly-overview') {
+    const month = params.month || page?.dataset.monthRequestedId;
+    if (month) url.searchParams.set('month', month);
+  }
+  url.hash = pageId;
+  if (url.href !== location.href) history.pushState(null, '', url.href);
+}
+
+function loadDashboardRouteData(id) {
+  if ((id === 'home' || id === 'static') && typeof loadAssetDashboard === 'function') loadAssetDashboard();
+  if (id === 'static' || id === 'overview') aaEnsureAssetsLoaded();
+  if (id === 'static') loadSkillAssetReview();
+  if (id === 'static' && typeof loadCanonicalSkills === 'function') loadCanonicalSkills();
+  if (id === 'overview') fetchTokenClock();
+  if (id === 'foundation-ops') loadFoundationOps();
+  if (id === 'rag-search') loadRagSearchPage();
+  if (typeof organizeDashboardUsage === 'function') organizeDashboardUsage();
+  if (typeof decorateDashboardUi === 'function') decorateDashboardUi();
+}
+
 function showPage(id, navEl) {
+  if (!document.getElementById('page-' + id)) id = 'home';
+  navEl = navEl || Array.from(document.querySelectorAll('.nav-item[data-page-id]')).find(item => item.dataset.pageId === 'page-' + id);
   // Update page display
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.removeAttribute('aria-current'));
+  document.querySelectorAll('.nav-item-dot').forEach(d => d.classList.remove('active'));
   const page = document.getElementById('page-' + id);
   if (page) page.classList.add('active');
   // Update nav active state
   if (navEl) {
     navEl.classList.add('active');
+    navEl.setAttribute('aria-current', 'page');
     const dot = navEl.querySelector('.nav-item-dot');
     if (dot) dot.classList.add('active');
   }
+  setMobileNavActive(id);
+  document.querySelectorAll('.nav-item:not(.active)').forEach(item => item.removeAttribute('aria-current'));
   // Update URL hash for browser back/forward support
-  location.hash = 'page-' + id;
-  if (id === 'static') aaEnsureAssetsLoaded();
-  if (id === 'foundation-ops') loadFoundationOps();
-  if (id === 'rag-search') loadRagSearchPage();
+  setDashboardRoute('page-' + id);
+  document.querySelectorAll('.page').forEach(item => item.setAttribute('aria-hidden', item === page ? 'false' : 'true'));
+  loadDashboardRouteData(id);
+  focusDashboardRoute(page);
 }
 
 // Restore page from URL hash (called on page load and hashchange)
 function showPageFromHash() {
-  const hash = location.hash.replace('#', '') || 'page-home';
+  const requestedHash = location.hash.replace('#', '') || 'page-home';
+  const requestedPage = document.getElementById(requestedHash);
+  const fallbackPage = document.getElementById('page-home');
+  const page = requestedPage || fallbackPage;
+  const hash = page ? page.id : requestedHash;
+  if (!requestedPage && fallbackPage && window.history?.replaceState) {
+    window.history.replaceState(null, '', location.pathname + location.search + '#page-home');
+  }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  const page = document.getElementById(hash);
+  document.querySelectorAll('.nav-item').forEach(n => n.removeAttribute('aria-current'));
+  document.querySelectorAll('.nav-item-dot').forEach(d => d.classList.remove('active'));
   if (page) page.classList.add('active');
   // Find and activate the corresponding nav item
   const navHash = hash.replace('page-', '');
   document.querySelectorAll('.nav-item').forEach(n => {
-    if (n.getAttribute('onclick')?.includes("'" + navHash + "'")) {
+    if (n.dataset.pageId === hash) {
       n.classList.add('active');
+      n.setAttribute('aria-current', 'page');
       const dot = n.querySelector('.nav-item-dot');
       if (dot) dot.classList.add('active');
     }
   });
-  if (hash === 'page-static') aaEnsureAssetsLoaded();
-  if (hash === 'page-foundation-ops') loadFoundationOps();
-  if (hash === 'page-rag-search') loadRagSearchPage();
+  setMobileNavActive(navHash);
+  document.querySelectorAll('.page').forEach(item => item.setAttribute('aria-hidden', item === page ? 'false' : 'true'));
+  loadDashboardRouteData(navHash);
+  focusDashboardRoute(page);
+}
+
+async function restoreDynamicDiaryPageFromHash() {
+  const requestedHash = location.hash.replace('#', '');
+  const routeParams = new URLSearchParams(location.search);
+  const dayMatch = requestedHash.match(/^page-day-(\d{4})$/);
+  if (dayMatch) {
+    const dateParam = routeParams.get('day');
+    const exactDate = /^\d{4}-\d{2}-\d{2}$/.test(dateParam || '') && dateParam.slice(5).replace('-', '') === dayMatch[1] ? dateParam : null;
+    const nav = Array.from(document.querySelectorAll('.nav-item[data-diary-date]'))
+      .find(item => exactDate ? item.dataset.diaryDate === exactDate : item.dataset.pageId === requestedHash);
+    const fullDate = exactDate || nav?.dataset.diaryDate;
+    if (fullDate) {
+      const page = document.getElementById(requestedHash);
+      if (page?.dataset.diaryRequestedDate === fullDate) {
+        showPageFromHash();
+        return true;
+      }
+      await showDiaryByDate(fullDate, nav);
+      return true;
+    }
+  }
+  if (requestedHash === 'page-monthly-overview') {
+    const monthParam = routeParams.get('month');
+    const exactMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(monthParam || '') ? monthParam : null;
+    const nav = Array.from(document.querySelectorAll('.nav-item[data-month-id]'))
+      .find(item => exactMonth ? item.dataset.monthId === exactMonth : item.dataset.pageId === requestedHash);
+    const now = new Date();
+    const monthId = exactMonth || nav?.dataset.monthId || now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    const page = document.getElementById('page-monthly-overview');
+    if (page?.dataset.monthRequestedId === monthId) {
+      showPageFromHash();
+      return true;
+    }
+    loadMonthlyReportById(monthId, nav);
+    return true;
+  }
+  const reportMatch = requestedHash.match(/^page-report-(\d{4}-W\d{2})$/);
+  if (reportMatch) {
+    const reportId = reportMatch[1];
+    const nav = Array.from(document.querySelectorAll('.nav-item[data-report-id]'))
+      .find(item => item.dataset.reportId === reportId);
+    await loadReport(reportId, nav);
+    return true;
+  }
+  return false;
+}
+
+function setMobileNavActive(id) {
+  document.querySelectorAll('.mobile-nav-item').forEach(item => {
+    const active = item.dataset.mobilePage === id;
+    item.classList.toggle('active', active);
+    if (active) item.setAttribute('aria-current', 'page');
+    else item.removeAttribute('aria-current');
+  });
+}
+
+function focusDashboardRoute(page) {
+  document.querySelectorAll('.page').forEach(item => item.setAttribute('aria-hidden', item === page ? 'false' : 'true'));
+  if (!page) return;
+  setMobileNavActive(page.id.replace(/^page-/, ''));
+  const heading = page.querySelector('.page-title') || page;
+  if (heading.classList.contains('page-title')) {
+    heading.setAttribute('role', 'heading');
+    heading.setAttribute('aria-level', '1');
+  }
+  if (!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
+  queueMicrotask(() => heading.focus());
+}
+
+const DASHBOARD_FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+function dashboardDialogFocusables(panel) {
+  if (!panel) return [];
+  return Array.from(panel.querySelectorAll(DASHBOARD_FOCUSABLE_SELECTOR))
+    .filter(element => {
+      const style = window.getComputedStyle(element);
+      return element.getAttribute('aria-hidden') !== 'true'
+        && !element.hidden
+        && !element.closest('[inert]')
+        && style.display !== 'none'
+        && style.visibility !== 'hidden'
+        && element.getClientRects().length > 0;
+    });
+}
+
+function focusDashboardDialog(panel) {
+  if (!panel) return;
+  const focusables = dashboardDialogFocusables(panel);
+  (focusables[0] || panel).focus();
+}
+
+function restoreDashboardFocus(target) {
+  if (!target || typeof target.focus !== 'function') return;
+  queueMicrotask(() => {
+    if (document.contains(target)) target.focus();
+  });
+}
+
+function activeDashboardDialog() {
+  const editor = document.getElementById('aaEditorOverlay');
+  if (editor && editor.getAttribute('aria-hidden') === 'false') return editor.querySelector('.aa-editor-modal');
+  const doc = document.getElementById('aaDocModal');
+  if (doc && doc.classList.contains('active')) return doc.querySelector('.aa-modal');
+  const modal = document.getElementById('modal');
+  if (modal && modal.classList.contains('active')) return document.getElementById('modal-panel');
+  return null;
+}
+
+function trapDashboardDialogFocus(event, panel) {
+  const focusables = dashboardDialogFocusables(panel);
+  if (!focusables.length) {
+    event.preventDefault();
+    panel.focus();
+    return;
+  }
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  if (!panel.contains(document.activeElement)) {
+    event.preventDefault();
+    first.focus();
+  } else if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
 }
 
 function openModal(title, content) {
+  if (backgroundTasksTimer) { clearInterval(backgroundTasksTimer); backgroundTasksTimer = null; }
+  if (ACTANARA_SHARE_PREVIEW.state !== 'closed') releaseActanaraSharePreview();
+  const modal = document.getElementById('modal');
+  const generation = ++ACTANARA_MODAL_GENERATION;
+  if (!modal.classList.contains('active')) ACTANARA_MODAL_RETURN_FOCUS = document.activeElement;
   document.getElementById('modal-title').textContent = title;
   document.getElementById('modal-body').innerHTML = content;
-  document.getElementById('modal').classList.add('active');
+  modal.classList.add('active');
+  modal.setAttribute('aria-hidden', 'false');
   document.body.style.overflow = 'hidden';
   modalHistory.push({ title, content });
+  queueMicrotask(() => focusDashboardDialog(document.getElementById('modal-panel')));
+  return generation;
+}
+
+function dashboardModalGenerationIsCurrent(generation) {
+  const modal = document.getElementById('modal');
+  return generation === ACTANARA_MODAL_GENERATION && modal.classList.contains('active') && modal.getAttribute('aria-hidden') === 'false';
 }
 
 function closeModal() {
-  document.getElementById('modal').classList.remove('active');
+  const modal = document.getElementById('modal');
+  ACTANARA_MODAL_GENERATION += 1;
+  releaseActanaraSharePreview();
+  modal.classList.remove('active');
+  modal.setAttribute('aria-hidden', 'true');
   document.body.style.overflow = '';
   modalHistory = [];
   if (backgroundTasksTimer) {
     clearInterval(backgroundTasksTimer);
     backgroundTasksTimer = null;
   }
+  const returnFocus = ACTANARA_MODAL_RETURN_FOCUS;
+  ACTANARA_MODAL_RETURN_FOCUS = null;
+  restoreDashboardFocus(returnFocus);
 }
 
 function modalBack() {
+  releaseActanaraSharePreview();
   if (modalHistory.length > 1) {
+    ACTANARA_MODAL_GENERATION += 1;
     modalHistory.pop();
     const prev = modalHistory[modalHistory.length - 1];
     document.getElementById('modal-title').textContent = prev.title;
@@ -4697,8 +6611,43 @@ function modalBack() {
 }
 
 function openI18nTodo() {
-  const labels = operatorText();
-  openModal(labels.i18nSwitch, '<div class="settings-note">' + escapeHtml(labels.i18nTodo) + '</div>');
+  const en = dashboardLanguageProfile() === 'en';
+  openModal(en ? 'Interface Language' : '界面语言',
+    '<p class="settings-note">' + (en ? 'This preference applies to this browser. Generated reports keep their existing language.' : '设置仅作用于当前浏览器，已生成报告的语言保持原样。') + '</p>' +
+    '<div class="settings-actions"><button type="button" class="wr-export-btn' + (!en ? '' : ' secondary') + '" aria-pressed="' + !en + '" onclick="setDashboardDisplayLanguage(\'zh\')">简体中文</button>' +
+    '<button type="button" class="wr-export-btn' + (en ? '' : ' secondary') + '" aria-pressed="' + en + '" onclick="setDashboardDisplayLanguage(\'en\')">English</button></div>');
+}
+
+function setDashboardDisplayLanguage(language) {
+  if (language !== 'en' && language !== 'zh') return;
+  ACTANARA_DISPLAY_LANGUAGE_PROFILE = language;
+  try {
+    localStorage.setItem('actanara.dashboard.language', language);
+    location.reload();
+  } catch (_) {
+    applyStaticDashboardText(language);
+    closeModal();
+    if (_aaState.data) { aaDestroyCharts(); aaRender(_aaState.data); }
+    loadDashboardRouteData(document.querySelector('.page.active')?.id.replace(/^page-/, '') || 'home');
+  }
+}
+
+function openMobileUtilities() {
+  const labels = dashboardShellText();
+  openModal(labels.mobileMoreTitle, `
+    <div class="mobile-utility-grid">
+      <button type="button" class="utility-btn" data-mobile-action="reports" onclick="openDashboardReportIndex()">${escapeHtml(dashboardLanguageProfile() === 'en' ? 'Reports & Diary' : '报告与日记')}</button>
+      <a class="utility-btn utility-link" data-mobile-action="tasks" href="tasks.html">${escapeHtml(labels.taskBoard)}</a>
+      <button type="button" class="utility-btn" data-mobile-action="background-tasks" onclick="openBackgroundTasksModal()">${escapeHtml(labels.backgroundTasks)}</button>
+      <button type="button" class="utility-btn" data-mobile-action="messages" onclick="openMsgboxModal()">${escapeHtml(labels.messagesTitle)}</button>
+      <button type="button" class="utility-btn" data-mobile-action="history" onclick="openHistoryBackfillModal()">${escapeHtml(labels.historyBackfill)}</button>
+      <button type="button" class="utility-btn" data-mobile-action="rag" onclick="openDashboardPage('rag-search')">nova-RAG</button>
+      <button type="button" class="utility-btn" data-mobile-action="maintenance" onclick="openDashboardPage('foundation-ops')">${escapeHtml(labels.navFoundationOps)}</button>
+      <button type="button" class="utility-btn" data-mobile-action="settings" onclick="openSettingsModal()">${escapeHtml(labels.settingsButton)}</button>
+      <button type="button" class="utility-btn" data-mobile-action="llm" onclick="openLlmProviderModal()">${escapeHtml(labels.llmButton)}</button>
+      <a class="utility-btn utility-btn-muted utility-link" data-mobile-action="github" href="${ACTANARA_GITHUB_URL}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(labels.githubTitle)}" aria-label="${escapeHtml(labels.githubTitle)}">GitHub</a>
+      <button type="button" class="utility-btn utility-btn-muted" data-mobile-action="language" onclick="openI18nTodo()">中/EN</button>
+    </div>`);
 }
 
 function settingsTab(name) {
@@ -4706,27 +6655,176 @@ function settingsTab(name) {
   document.querySelectorAll('.settings-pane').forEach(el => el.classList.toggle('active', el.dataset.pane === name));
   if (name === 'onboarding') loadOnboardingReadiness();
   if (name === 'workspaceAttribution') loadWorkspaceAttributionSettings();
+  if (name === 'startup') loadStartupServices();
+  if (name === 'network') loadTailscaleStatus();
+}
+
+function captureSettingsFormDraft() {
+  const body = document.getElementById('modal-body');
+  if (!body) return;
+  body.querySelectorAll('input[id], select[id], textarea[id]').forEach(input => {
+    ACTANARA_SETTINGS_FORM_DRAFT[input.id] = {
+      value: input.value,
+      checked: input.type === 'checkbox' || input.type === 'radio' ? input.checked : null,
+    };
+  });
+}
+
+function restoreSettingsFormDraft() {
+  const body = document.getElementById('modal-body');
+  if (!body) return;
+  Object.entries(ACTANARA_SETTINGS_FORM_DRAFT).forEach(([id, draft]) => {
+    const input = document.getElementById(id);
+    if (!input || !body.contains(input)) return;
+    input.value = draft.value;
+    if (draft.checked !== null) input.checked = draft.checked;
+  });
+}
+
+function recordSettingsLlmDirty(event) {
+  const input = event.target;
+  const body = document.getElementById('modal-body');
+  const settingsForm = body?.querySelector('[data-settings-bundle-form]');
+  const llmPane = input?.closest('.settings-pane[data-pane="llm"]');
+  if (!settingsForm || !llmPane || !settingsForm.contains(input)) return;
+  ACTANARA_SETTINGS_LLM_DIRTY = true;
+  if (input.id === 'llmProviderApiKey') input.dataset.userEdited = 'true';
+}
+
+function isAdvancedSettingsField(input) {
+  if (!input) return false;
+  if (input.dataset.settingsPathGroup || input.dataset.runtimeSourceKey || input.dataset.externalTool || input.dataset.pipelineStepTimeout) {
+    return true;
+  }
+  if (!input.id) return false;
+  const pane = input.closest('.settings-pane');
+  if (pane && ['paths', 'runtimeSources', 'pipeline', 'externalTools', 'memory', 'authority'].includes(pane.dataset.pane || '')) {
+    return true;
+  }
+  return new Set([
+    'setGeneralAppName', 'setGeneralEnvironment', 'setGeneralWorkspaceRoot', 'setGeneralTmpWorkspace',
+    'setDashboardProjectRoot', 'setDashboardPython', 'setDashboardAppDir', 'setDashboardHealthPath',
+    'setDashboardLogsDir', 'setDashboardServiceLabel', 'setDashboardWatchdogLabel',
+    'setDashboardAggregationTime', 'setSystemTimerProvider', 'setSystemTimerLabel',
+    'llmProviderContextWindow', 'llmProviderMaxTokens', 'llmPipelineConcurrency',
+    'llmProviderTimeoutSeconds', 'llmPipelineGateMode', 'llmPipelineGateTokens',
+  ]).has(input.id);
+}
+
+function advancedSettingsFieldKey(input) {
+  if (!input) return '';
+  if (input.id) return 'id:' + input.id;
+  if (input.dataset.settingsPathGroup && input.dataset.settingsPathKey) {
+    return 'path:' + input.dataset.settingsPathGroup + ':' + input.dataset.settingsPathKey;
+  }
+  if (input.dataset.runtimeSourceKey) return 'runtime-source:' + input.dataset.runtimeSourceKey;
+  if (input.dataset.externalTool && input.dataset.externalKey) {
+    return 'external-tool:' + input.dataset.externalTool + ':' + input.dataset.externalKey;
+  }
+  if (input.dataset.pipelineStepTimeout) return 'pipeline-timeout:' + input.dataset.pipelineStepTimeout;
+  return '';
+}
+
+function advancedSettingsFieldValue(input) {
+  return JSON.stringify({
+    value: input.value,
+    checked: input.type === 'checkbox' || input.type === 'radio' ? input.checked : null,
+  });
+}
+
+function advancedSettingsControls() {
+  return Array.from(document.querySelectorAll('#modal-body input, #modal-body select, #modal-body textarea'))
+    .filter(isAdvancedSettingsField);
+}
+
+function captureAdvancedSettingsBaseline() {
+  ACTANARA_SETTINGS_ADVANCED_BASELINE = new Map();
+  advancedSettingsControls().forEach(input => {
+    const key = advancedSettingsFieldKey(input);
+    if (key) ACTANARA_SETTINGS_ADVANCED_BASELINE.set(key, advancedSettingsFieldValue(input));
+  });
+}
+
+function refreshAdvancedSettingsDirty() {
+  const dirty = new Set();
+  advancedSettingsControls().forEach(input => {
+    const key = advancedSettingsFieldKey(input);
+    if (key && ACTANARA_SETTINGS_ADVANCED_BASELINE.get(key) !== advancedSettingsFieldValue(input)) dirty.add(key);
+  });
+  ACTANARA_SETTINGS_ADVANCED_DIRTY = dirty;
+}
+
+function recordAdvancedSettingsDirty(event) {
+  const input = event.target;
+  const body = document.getElementById('modal-body');
+  if (!ACTANARA_SETTINGS_ADVANCED || !body || !body.contains(input) || !isAdvancedSettingsField(input)) return;
+  const key = advancedSettingsFieldKey(input);
+  if (key) ACTANARA_SETTINGS_ADVANCED_DIRTY.add(key);
+}
+
+function focusSettingsControl(key) {
+  queueMicrotask(() => {
+    const control = document.querySelector(`#modal-body [data-settings-focus-key="${key}"]`);
+    if (control) control.focus();
+  });
+}
+
+function toggleSettingsAdvanced() {
+  const activeTab = document.querySelector('#modal-body .settings-tab.active')?.dataset.tab || '';
+  captureSettingsFormDraft();
+  if (ACTANARA_SETTINGS_ADVANCED) refreshAdvancedSettingsDirty();
+  if (ACTANARA_SETTINGS_ADVANCED && ACTANARA_SETTINGS_ADVANCED_DIRTY.size) {
+    const status = document.getElementById('settingsSaveStatus');
+    if (status) status.textContent = operatorText().advancedDirtyCollapseBlocked;
+    const firstDirty = Array.from(document.querySelectorAll('#modal-body input, #modal-body select, #modal-body textarea'))
+      .find(input => ACTANARA_SETTINGS_ADVANCED_DIRTY.has(advancedSettingsFieldKey(input)));
+    if (firstDirty) firstDirty.focus();
+    return false;
+  }
+  ACTANARA_SETTINGS_ADVANCED = !ACTANARA_SETTINGS_ADVANCED;
+  document.getElementById('modal-body').innerHTML = renderSettingsModal(ACTANARA_LAST_SETTINGS || {});
+  restoreSettingsFormDraft();
+  const activeTabStillAvailable = Array.from(document.querySelectorAll('#modal-body .settings-tab'))
+    .some(tab => tab.dataset.tab === activeTab);
+  settingsTab(activeTabStillAvailable ? activeTab : (ACTANARA_SETTINGS_ADVANCED ? 'paths' : 'schedule'));
+  syncSystemSchedulerCheckboxWithActual();
+  if (ACTANARA_SETTINGS_ADVANCED) captureAdvancedSettingsBaseline();
+  focusSettingsControl('advanced-toggle');
+  return true;
+}
+
+function isSettingsAdvancedVisible() {
+  return ACTANARA_SETTINGS_ADVANCED;
 }
 
 async function openSettingsModal() {
   const labels = operatorText();
-  openModal(labels.settingsTitle, '<div class="wr-loading"><div class="wr-spinner"></div><span>' + escapeHtml(labels.readingSettings) + '</span></div>');
+  const modalGeneration = openModal(labels.settingsTitle, '<div class="wr-loading"><div class="wr-spinner"></div><span>' + escapeHtml(labels.readingSettings) + '</span></div>');
+  ACTANARA_SETTINGS_LLM_DIRTY = false;
   try {
     const res = await fetch('/api/settings');
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const settings = await res.json();
+    if (!dashboardModalGenerationIsCurrent(modalGeneration)) return;
     rememberDashboardSettings(settings);
+    ACTANARA_SETTINGS_ADVANCED = false;
+    ACTANARA_SETTINGS_FORM_DRAFT = {};
+    ACTANARA_SETTINGS_ADVANCED_DIRTY = new Set();
+    ACTANARA_SETTINGS_ADVANCED_BASELINE = new Map();
     document.getElementById('modal-body').innerHTML = renderSettingsModal(settings);
     settingsTab('schedule');
+    syncSystemSchedulerCheckboxWithActual();
   } catch (e) {
-    document.getElementById('modal-body').innerHTML = '<div class="fo-job-error">' + escapeHtml(labels.settingsReadFailed + e.message) + '</div>';
+    if (dashboardModalGenerationIsCurrent(modalGeneration)) {
+      document.getElementById('modal-body').innerHTML = '<div class="fo-job-error">' + escapeHtml(labels.settingsReadFailed + e.message) + '</div>';
+    }
   }
 }
 
 function renderSettingsModal(settings) {
   const labels = operatorText();
+  const showAdvanced = isSettingsAdvancedVisible();
   const schedule = settings.schedule || {};
-  const features = settings.features || {};
   const paths = settings.paths || {};
   const authority = settings.authority || {};
   const general = settings.general || (authority.general || {});
@@ -4734,36 +6832,46 @@ function renderSettingsModal(settings) {
   const runtimeSources = settings.runtimeSources || (authority.runtimeSources || {});
   const pipeline = settings.pipeline || (authority.pipeline || {});
   const externalTools = settings.externalTools || {};
+  const memorySearch = settings.memorySearch || {};
   const llmProvider = settings.llmProvider || {};
+  const advancedTabs = showAdvanced ? `
+        <button class="settings-tab" data-tab="paths" onclick="settingsTab('paths')">${escapeHtml(labels.tabPaths)}</button>
+        <button class="settings-tab" data-tab="runtimeSources" onclick="settingsTab('runtimeSources')">${escapeHtml(labels.tabRuntimeSources)}</button>
+        <button class="settings-tab" data-tab="pipeline" onclick="settingsTab('pipeline')">Pipeline</button>
+        <button class="settings-tab" data-tab="externalTools" onclick="settingsTab('externalTools')">${escapeHtml(labels.tabExternalTools)}</button>
+        <button class="settings-tab" data-tab="memory" onclick="settingsTab('memory')">${escapeHtml(labels.tabMemory)}</button>
+        <button class="settings-tab" data-tab="authority" onclick="settingsTab('authority')">Authority</button>` : '';
+  const advancedPanes = showAdvanced ? `
+        <div class="settings-pane" data-pane="paths">${renderPathSettings(paths, settings.runtimePath || {})}</div>
+        <div class="settings-pane" data-pane="runtimeSources">${renderRuntimeSourceSettings(runtimeSources)}</div>
+        <div class="settings-pane" data-pane="pipeline">${renderPipelineSettings(pipeline)}</div>
+        <div class="settings-pane" data-pane="externalTools">${renderExternalToolSettings(externalTools)}</div>
+        <div class="settings-pane" data-pane="memory">${renderNativeMemorySettings(memorySearch)}</div>
+        <div class="settings-pane" data-pane="authority">${renderSettingsAuthority((authority || {}).settingsAuthority || {})}</div>` : '';
   return `
-    <div class="settings-grid">
+    <div class="settings-grid" data-settings-bundle-form>
       <div class="settings-tabs">
         <button class="settings-tab" data-tab="general" onclick="settingsTab('general')">${escapeHtml(labels.tabGeneral)}</button>
         <button class="settings-tab active" data-tab="schedule" onclick="settingsTab('schedule')">${escapeHtml(labels.tabSchedule)}</button>
-        <button class="settings-tab" data-tab="paths" onclick="settingsTab('paths')">${escapeHtml(labels.tabPaths)}</button>
-        <button class="settings-tab" data-tab="runtimeSources" onclick="settingsTab('runtimeSources')">${escapeHtml(labels.tabRuntimeSources)}</button>
+        <button class="settings-tab" data-tab="startup" onclick="settingsTab('startup')">${escapeHtml(labels.tabStartup)}</button>
+        <button class="settings-tab" data-tab="network" onclick="settingsTab('network')">${escapeHtml(labels.tabNetwork)}</button>
         <button class="settings-tab" data-tab="workspaceAttribution" onclick="settingsTab('workspaceAttribution')">Workspace 归属</button>
         <button class="settings-tab" data-tab="llm" onclick="settingsTab('llm')">LLM</button>
-        <button class="settings-tab" data-tab="pipeline" onclick="settingsTab('pipeline')">Pipeline</button>
-        <button class="settings-tab" data-tab="externalTools" onclick="settingsTab('externalTools')">${escapeHtml(labels.tabExternalTools)}</button>
-        <button class="settings-tab" data-tab="features" onclick="settingsTab('features')">${escapeHtml(labels.tabFeatures)}</button>
-        <button class="settings-tab" data-tab="authority" onclick="settingsTab('authority')">Authority</button>
+        <button type="button" class="settings-tab settings-advanced-toggle ${showAdvanced ? 'active' : ''}" data-settings-focus-key="advanced-toggle" aria-pressed="${showAdvanced ? 'true' : 'false'}" onclick="toggleSettingsAdvanced()">Advanced ${showAdvanced ? 'On' : 'Off'}</button>
+        ${advancedTabs}
       </div>
       <div>
-        <div class="settings-pane" data-pane="general">${renderGeneralSettings(general, dashboard)}</div>
-        <div class="settings-pane active" data-pane="schedule">${renderScheduleSettings(schedule, settings.agentSchedulePrompt || '')}</div>
-        <div class="settings-pane" data-pane="paths">${renderPathSettings(paths, settings.runtimePath || {})}</div>
-        <div class="settings-pane" data-pane="runtimeSources">${renderRuntimeSourceSettings(runtimeSources)}</div>
+        <div class="settings-pane" data-pane="general">${renderGeneralSettings(general, dashboard, showAdvanced)}</div>
+        <div class="settings-pane active" data-pane="schedule">${renderScheduleSettings(schedule, settings.agentSchedulePrompt || '', showAdvanced)}</div>
+        <div class="settings-pane" data-pane="startup">${renderStartupSettings()}</div>
+        <div class="settings-pane" data-pane="network">${renderNetworkSettings(dashboard)}</div>
         <div class="settings-pane" data-pane="workspaceAttribution">${renderWorkspaceAttributionSettings()}</div>
-        <div class="settings-pane" data-pane="llm">${renderLlmProviderSettings(llmProvider, false)}</div>
-        <div class="settings-pane" data-pane="pipeline">${renderPipelineSettings(pipeline)}</div>
-        <div class="settings-pane" data-pane="externalTools">${renderExternalToolSettings(externalTools)}</div>
-        <div class="settings-pane" data-pane="features">${renderFeatureSettings(features)}</div>
-        <div class="settings-pane" data-pane="authority">${renderSettingsAuthority((authority || {}).settingsAuthority || {})}</div>
+        <div class="settings-pane" data-pane="llm">${renderLlmProviderSettings(llmProvider, false, showAdvanced)}</div>
+        ${advancedPanes}
         <div class="settings-actions">
-          <span class="settings-status" id="settingsSaveStatus">${escapeHtml(labels.configFile)}${escapeHtml(settings.settingsPath || '')}</span>
+          <span class="settings-status" id="settingsSaveStatus" role="status" aria-live="polite">${escapeHtml(labels.configFile)}${escapeHtml(settings.settingsPath || '')}</span>
           <button class="wr-export-btn" onclick="closeModal()">${escapeHtml(labels.cancel)}</button>
-          <button class="wr-export-btn" onclick="saveSettingsModal()">${escapeHtml(labels.saveSettings)}</button>
+          <button class="wr-export-btn" data-settings-focus-key="save" onclick="saveSettingsModal()">${escapeHtml(labels.saveSettings)}</button>
         </div>
       </div>
     </div>`;
@@ -4950,48 +7058,187 @@ function formatSettingsAuthorityValue(value) {
   return '<code>' + escapeHtml(String(value)) + '</code>';
 }
 
-function renderGeneralSettings(general, dashboard) {
+function dashboardRestartAttr(value) {
+  return ' data-original-value="' + escapeHtml(value || '') + '" data-requires-restart="dashboard"';
+}
+
+function renderGeneralSettings(general, dashboard, showAdvanced = false) {
   const labels = operatorText();
-  const restartAttr = value => ' data-original-value="' + escapeHtml(value || '') + '" data-requires-restart="dashboard"';
+  const advancedGeneral = showAdvanced ? `
+      <div class="settings-row"><label>App name</label><input id="setGeneralAppName" value="${escapeHtml(general.appName || 'Actanara')}"></div>
+      <div class="settings-row"><label>Environment</label><input id="setGeneralEnvironment" value="${escapeHtml(general.environment || 'local')}"></div>
+      <div class="settings-row"><label>Workspace root</label><input id="setGeneralWorkspaceRoot" value="${escapeHtml(general.workspaceRoot || '')}"></div>
+      <div class="settings-row"><label>Tmp workspace</label><input id="setGeneralTmpWorkspace" value="${escapeHtml(general.tmpWorkspace || '')}"></div>` : '';
+  const dashboardService = showAdvanced ? `
+    <div class="settings-section">
+      <div class="settings-section-title">${escapeHtml(labels.dashboardService)}</div>
+      <div class="settings-row"><label>Project root</label><input id="setDashboardProjectRoot"${dashboardRestartAttr(dashboard.projectRoot || '')} value="${escapeHtml(dashboard.projectRoot || '')}"></div>
+      <div class="settings-row"><label>Python</label><input id="setDashboardPython"${dashboardRestartAttr(dashboard.pythonExecutable || 'python3')} value="${escapeHtml(dashboard.pythonExecutable || 'python3')}"></div>
+      <div class="settings-row"><label>App dir</label><input id="setDashboardAppDir"${dashboardRestartAttr(dashboard.appDir || '')} value="${escapeHtml(dashboard.appDir || '')}"></div>
+      <div class="settings-row"><label>Health path</label><input id="setDashboardHealthPath"${dashboardRestartAttr(dashboard.healthPath || '/health')} value="${escapeHtml(dashboard.healthPath || '/health')}"></div>
+      <div class="settings-row"><label>Logs dir</label><input id="setDashboardLogsDir"${dashboardRestartAttr(dashboard.logsDir || '')} value="${escapeHtml(dashboard.logsDir || '')}"></div>
+      <div class="settings-row"><label>Service label</label><input id="setDashboardServiceLabel"${dashboardRestartAttr(dashboard.serviceLabel || 'com.actanara.dashboard')} value="${escapeHtml(dashboard.serviceLabel || 'com.actanara.dashboard')}"></div>
+      <div class="settings-row"><label>Watchdog label</label><input id="setDashboardWatchdogLabel"${dashboardRestartAttr(dashboard.watchdogLabel || 'com.actanara.dashboard.watchdog')} value="${escapeHtml(dashboard.watchdogLabel || 'com.actanara.dashboard.watchdog')}"></div>
+      <div class="settings-note">${escapeHtml(labels.dashboardRestartNote)}<br>${escapeHtml(labels.restartCommand)}<code>${escapeHtml(DASHBOARD_RESTART_COMMAND)}</code> <button type="button" class="fo-copy-btn" onclick="copyDashboardRestartCommand()">${escapeHtml(labels.copyCommand)}</button><span class="fo-copy-status" id="dashboardRestartCopyStatus" aria-live="polite"></span></div>
+    </div>` : '';
   return `
     <div class="settings-section">
       <div class="settings-section-title">${escapeHtml(labels.productLocalization)}</div>
-      <div class="settings-row"><label>App name</label><input id="setGeneralAppName" value="${escapeHtml(general.appName || 'Actanara')}"></div>
-      <div class="settings-row"><label>Environment</label><input id="setGeneralEnvironment" value="${escapeHtml(general.environment || 'local')}"></div>
       <div class="settings-row"><label>Timezone</label><input id="setGeneralTimezone" value="${escapeHtml(general.timezone || 'Asia/Hong_Kong')}"></div>
       <div class="settings-row"><label>Locale</label><input id="setGeneralLocale" value="${escapeHtml(general.locale || 'zh-CN')}"></div>
-      <div class="settings-row"><label>Workspace root</label><input id="setGeneralWorkspaceRoot" value="${escapeHtml(general.workspaceRoot || '')}"></div>
-      <div class="settings-row"><label>Tmp workspace</label><input id="setGeneralTmpWorkspace" value="${escapeHtml(general.tmpWorkspace || '')}"></div>
+      ${advancedGeneral}
     </div>
+    ${dashboardService}`;
+}
+
+function renderNetworkSettings(dashboard) {
+  const labels = operatorText();
+  const origins = Array.isArray(dashboard.allowedOrigins) ? dashboard.allowedOrigins : [];
+  const originsText = origins.join('\n');
+  return `
     <div class="settings-section">
-      <div class="settings-section-title">${escapeHtml(labels.dashboardService)}</div>
-      <div class="settings-row"><label>Project root</label><input id="setDashboardProjectRoot"${restartAttr(dashboard.projectRoot || '')} value="${escapeHtml(dashboard.projectRoot || '')}"></div>
-      <div class="settings-row"><label>Python</label><input id="setDashboardPython"${restartAttr(dashboard.pythonExecutable || 'python3')} value="${escapeHtml(dashboard.pythonExecutable || 'python3')}"></div>
-      <div class="settings-row"><label>App dir</label><input id="setDashboardAppDir"${restartAttr(dashboard.appDir || '')} value="${escapeHtml(dashboard.appDir || '')}"></div>
-      <div class="settings-row"><label>Host</label><input id="setDashboardHost"${restartAttr(dashboard.host || '127.0.0.1')} value="${escapeHtml(dashboard.host || '127.0.0.1')}"></div>
-      <div class="settings-row"><label>Port</label><input id="setDashboardPort" type="number" min="1" max="65535"${restartAttr(dashboard.port || 3036)} value="${escapeHtml(dashboard.port || 3036)}"></div>
-      <div class="settings-row"><label>Health path</label><input id="setDashboardHealthPath"${restartAttr(dashboard.healthPath || '/health')} value="${escapeHtml(dashboard.healthPath || '/health')}"></div>
-      <div class="settings-row"><label>Logs dir</label><input id="setDashboardLogsDir"${restartAttr(dashboard.logsDir || '')} value="${escapeHtml(dashboard.logsDir || '')}"></div>
-      <div class="settings-row"><label>Service label</label><input id="setDashboardServiceLabel"${restartAttr(dashboard.serviceLabel || 'com.actanara.dashboard')} value="${escapeHtml(dashboard.serviceLabel || 'com.actanara.dashboard')}"></div>
-      <div class="settings-row"><label>Watchdog label</label><input id="setDashboardWatchdogLabel"${restartAttr(dashboard.watchdogLabel || 'com.actanara.dashboard.watchdog')} value="${escapeHtml(dashboard.watchdogLabel || 'com.actanara.dashboard.watchdog')}"></div>
-      <div class="settings-note">${escapeHtml(labels.dashboardRestartNote)}<br>${escapeHtml(labels.restartCommand)}<code>${escapeHtml(DASHBOARD_RESTART_COMMAND)}</code> <button type="button" class="fo-copy-btn" onclick="copyDashboardRestartCommand()">${escapeHtml(labels.copyCommand)}</button><span class="fo-copy-status" id="dashboardRestartCopyStatus" aria-live="polite"></span></div>
+      <div class="settings-section-title">${escapeHtml(labels.dashboardNetwork)}</div>
+      <div class="settings-note">${escapeHtml(labels.dashboardNetworkNote)}</div>
+      <div class="settings-row"><label>${escapeHtml(labels.dashboardHost)}</label><input id="setDashboardHost"${dashboardRestartAttr(dashboard.host || '127.0.0.1')} value="${escapeHtml(dashboard.host || '127.0.0.1')}"></div>
+      <div class="settings-row"><label>${escapeHtml(labels.dashboardPort)}</label><input id="setDashboardPort" type="number" min="1" max="65535"${dashboardRestartAttr(dashboard.port || 3036)} value="${escapeHtml(dashboard.port || 3036)}"></div>
+      <div class="settings-row"><label>${escapeHtml(labels.dashboardPublicBaseUrl)}</label><input id="setDashboardPublicBaseUrl"${dashboardRestartAttr(dashboard.publicBaseUrl || '')} placeholder="http://127.0.0.1:3036" value="${escapeHtml(dashboard.publicBaseUrl || '')}"></div>
+      <div class="settings-row"><label>${escapeHtml(labels.dashboardAllowedOrigins)}</label><textarea id="setDashboardAllowedOrigins"${dashboardRestartAttr(originsText)} placeholder="http://127.0.0.1:3036">${escapeHtml(originsText)}</textarea></div>
+      <div class="settings-note">${escapeHtml(labels.dashboardAllowedOriginsHint)}<br>${escapeHtml(labels.restartCommand)}<code>${escapeHtml(DASHBOARD_RESTART_COMMAND)}</code> <button type="button" class="fo-copy-btn" onclick="copyDashboardRestartCommand()">${escapeHtml(labels.copyCommand)}</button><span class="fo-copy-status" id="dashboardRestartCopyStatusNetwork" aria-live="polite"></span></div>
+    </div>
+    <div class="settings-section tailscale-settings">
+      <div class="settings-section-title">${escapeHtml(labels.tailscaleTitle)}</div>
+      <div class="settings-note">${escapeHtml(labels.tailscaleNote)}</div>
+      <div class="tailscale-security-boundary">${escapeHtml(labels.tailscaleSecurityBoundary)}</div>
+      <div id="tailscaleStatus" class="settings-runtime-status" role="status" aria-live="polite">
+        <div class="wr-loading" style="padding:10px"><div class="wr-spinner"></div><span>${escapeHtml(labels.tailscaleLoading)}</span></div>
+      </div>
+      <div class="settings-timer-actions">
+        <button type="button" class="settings-browse-btn" onclick="loadTailscaleStatus()">${escapeHtml(labels.tailscaleRefresh)}</button>
+        <button type="button" class="settings-browse-btn" id="tailscaleEnableServeBtn" disabled onclick="tailscaleServeAction(true)">${escapeHtml(labels.tailscaleEnableServe)}</button>
+        <button type="button" class="settings-browse-btn" id="tailscaleDisableServeBtn" disabled onclick="tailscaleServeAction(false)">${escapeHtml(labels.tailscaleDisableServe)}</button>
+      </div>
+      <div id="tailscaleActionStatus" class="settings-note" role="status" aria-live="polite"></div>
+      <div class="tailscale-funnel-boundary">
+        <b>${escapeHtml(labels.tailscaleFunnel)}</b>
+        <span class="settings-runtime-chip warn">${escapeHtml(labels.tailscaleUnavailable)}</span>
+        <p>${escapeHtml(labels.tailscaleFunnelBlocked)}</p>
+      </div>
     </div>`;
 }
 
-function renderScheduleSettings(schedule, agentPrompt) {
+async function loadTailscaleStatus(successMessage = '') {
+  const labels = operatorText();
+  const panel = document.getElementById('tailscaleStatus');
+  if (!panel) return;
+  panel.innerHTML = '<div class="wr-loading" style="padding:10px"><div class="wr-spinner"></div><span>' + escapeHtml(labels.tailscaleLoading) + '</span></div>';
+  const enableButton = document.getElementById('tailscaleEnableServeBtn');
+  const disableButton = document.getElementById('tailscaleDisableServeBtn');
+  if (enableButton) enableButton.disabled = true;
+  if (disableButton) disableButton.disabled = true;
+  try {
+    const response = await fetch('/api/settings/tailscale/status');
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || ('HTTP ' + response.status));
+    window.ACTANARA_TAILSCALE_STATUS = data;
+    panel.innerHTML = renderTailscaleStatus(data);
+    if (enableButton) enableButton.disabled = !data.canEnableServe;
+    if (disableButton) disableButton.disabled = !data.canDisableServe;
+    const actionStatus = document.getElementById('tailscaleActionStatus');
+    if (successMessage && actionStatus) actionStatus.textContent = successMessage;
+  } catch (error) {
+    window.ACTANARA_TAILSCALE_STATUS = null;
+    panel.innerHTML = '<div class="fo-job-error" style="padding:10px">' + escapeHtml(labels.tailscaleStatusError + error.message) + '</div>';
+  }
+}
+
+function renderTailscaleStatus(data) {
+  const labels = operatorText();
+  const dns = data.dns || {};
+  const serve = data.serve || {};
+  const access = data.dashboardAccess || {};
+  const ips = data.ips || {};
+  const loginLabel = data.connected
+    ? labels.tailscaleConnected
+    : (data.loginState === 'logged-out' ? labels.tailscaleLoggedOut : labels.tailscaleUnavailable);
+  const serveLabel = serve.conflict
+    ? labels.tailscaleConflict
+    : (serve.enabled ? labels.tailscaleEnabled : labels.tailscaleDisabled);
+  const ipLabel = [ips.ipv4, ips.ipv6].filter(Boolean).join(' / ') || '—';
+  const dnsLabel = dns.magicDnsEnabled ? (dns.name || dns.suffix || labels.tailscaleEnabled) : labels.tailscaleDisabled;
+  const accessHtml = access.ready
+    ? '<div class="tailscale-origin-ready"><span class="settings-runtime-chip ok">OK</span> ' + escapeHtml(labels.tailscaleOriginReady) + '</div>'
+    : (access.origin
+      ? '<div class="tailscale-origin-required">' + escapeHtml(labels.tailscaleOriginRequired) + '<code>' + escapeHtml(access.origin) + '</code> <button type="button" class="settings-browse-btn" onclick="tailscaleUseMagicDnsOrigin()">' + escapeHtml(labels.tailscaleUseOrigin) + '</button></div>'
+      : '');
+  const errors = Array.isArray(data.errors) && data.errors.length
+    ? '<ul>' + data.errors.map(item => '<li>' + escapeHtml(item.code || item.message || String(item)) + '</li>').join('') + '</ul>'
+    : '';
+  return '<div class="tailscale-status-grid">' +
+      tailscaleStatusCell(labels.tailscaleInstalled, data.installed ? labels.tailscalePresent : labels.tailscaleMissing, data.installed) +
+      tailscaleStatusCell(labels.tailscaleLogin, loginLabel, data.connected) +
+      tailscaleStatusCell(labels.tailscaleIp, ipLabel, Boolean(ips.ipv4 || ips.ipv6)) +
+      tailscaleStatusCell(labels.tailscaleMagicDns, dnsLabel, dns.magicDnsEnabled) +
+      tailscaleStatusCell(labels.tailscaleReachability, data.reachable ? labels.tailscaleReachable : labels.tailscaleNotReachable, data.reachable) +
+      tailscaleStatusCell(labels.tailscaleServe, serveLabel, serve.exclusiveManaged) +
+    '</div>' + accessHtml + errors;
+}
+
+function tailscaleStatusCell(label, value, positive) {
+  return '<div class="tailscale-status-cell"><b>' + escapeHtml(label) + '</b><span class="settings-runtime-chip ' + (positive ? 'ok' : 'warn') + '">' + escapeHtml(value) + '</span></div>';
+}
+
+function tailscaleUseMagicDnsOrigin() {
+  const origin = String((((window.ACTANARA_TAILSCALE_STATUS || {}).dashboardAccess || {}).origin) || '').trim();
+  if (!origin) return;
+  const publicBase = document.getElementById('setDashboardPublicBaseUrl');
+  const allowedOrigins = document.getElementById('setDashboardAllowedOrigins');
+  if (publicBase) publicBase.value = origin;
+  if (allowedOrigins) {
+    const origins = allowedOrigins.value.split(/\r?\n/).map(item => item.trim()).filter(Boolean);
+    if (!origins.includes(origin)) origins.push(origin);
+    allowedOrigins.value = origins.join('\n');
+  }
+  const status = document.getElementById('tailscaleActionStatus');
+  if (status) status.textContent = operatorText().tailscaleOriginRequired + origin;
+}
+
+async function tailscaleServeAction(enable) {
+  const labels = operatorText();
+  const current = window.ACTANARA_TAILSCALE_STATUS || {};
+  const serve = current.serve || {};
+  const confirmationText = enable ? serve.enableConfirmationTextRequired : serve.disableConfirmationTextRequired;
+  if (!confirmationText) return;
+  const actionName = enable ? labels.tailscaleEnableServe : labels.tailscaleDisableServe;
+  const supplied = prompt(labels.tailscaleActionPrompt(actionName) + confirmationText);
+  const status = document.getElementById('tailscaleActionStatus');
+  if (supplied !== confirmationText) {
+    if (status) status.textContent = labels.tailscaleActionCancelled;
+    return;
+  }
+  if (status) status.textContent = labels.tailscaleUpdating;
+  const endpoint = enable ? '/api/settings/tailscale/serve/enable' : '/api/settings/tailscale/serve/disable';
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({confirmationText}),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || data.code || ('HTTP ' + response.status));
+    await loadTailscaleStatus(labels.tailscaleActionSuccess);
+  } catch (error) {
+    if (status) status.textContent = labels.tailscaleActionError + error.message;
+  }
+}
+
+function renderScheduleSettings(schedule, agentPrompt, showAdvanced = false) {
   const labels = operatorText();
   const targets = schedule.refreshTargets || {};
   const systemEnabled = schedule.enabled && (schedule.mode || 'system') === 'system';
   const agentEnabled = schedule.enabled && schedule.mode === 'agent';
-  return `
-    <div class="settings-section">
-      <div class="settings-section-title">${escapeHtml(labels.systemSchedulerMode)}</div>
-      <label class="settings-check"><input type="checkbox" id="setScheduleSystemEnabled" ${systemEnabled ? 'checked' : ''} onchange="toggleScheduleMode('system')"> ${escapeHtml(labels.enableSystemScheduler)}</label>
-      <div id="systemScheduleSettings" style="${systemEnabled ? '' : 'display:none'}">
-      <div class="settings-row"><label>${escapeHtml(labels.timezone)}</label><input id="setTimezone" value="${escapeHtml(schedule.timezone || 'Asia/Hong_Kong')}"></div>
-      <div class="settings-row"><label>${escapeHtml(labels.dailyPipelineTime)}</label><input id="setDailyPipelineTime" type="time" value="${escapeHtml(schedule.dailyPipelineTime || '04:00')}"></div>
+  const advancedSystemTimer = showAdvanced ? `
       <div class="settings-row"><label>${escapeHtml(labels.dashboardAggregationTime)}</label><input id="setDashboardAggregationTime" type="time" value="${escapeHtml(schedule.dashboardAggregationTime || '04:30')}"></div>
-      <div class="settings-row"><label>${escapeHtml(labels.systemTimerProvider)}</label><input id="setSystemTimerProvider" value="${escapeHtml((schedule.systemTimer || {}).provider || 'launchd')}"></div>
+      <div class="settings-row"><label>${escapeHtml(labels.systemTimerProvider)}</label><input id="setSystemTimerProvider" value="${escapeHtml((schedule.systemTimer || {}).provider || '')}"></div>
       <div class="settings-row"><label>${escapeHtml(labels.systemTimerLabel)}</label><input id="setSystemTimerLabel" value="${escapeHtml((schedule.systemTimer || {}).label || 'actanara.daily')}"></div>
       <div class="settings-note">${escapeHtml(labels.systemTimerNote)}</div>
       <div class="settings-timer-actions">
@@ -4999,7 +7246,15 @@ function renderScheduleSettings(schedule, agentPrompt) {
         <button type="button" class="wr-export-btn" onclick="installSystemTimer()">${escapeHtml(labels.installUpdate)}</button>
         <button type="button" class="wr-export-btn" onclick="uninstallSystemTimer()">${escapeHtml(labels.uninstall)}</button>
       </div>
-      <div id="systemTimerPreview" class="settings-timer-preview" style="display:none"></div>
+      <div id="systemTimerPreview" class="settings-timer-preview" style="display:none"></div>` : '';
+  return `
+    <div class="settings-section">
+      <div class="settings-section-title">${escapeHtml(labels.systemSchedulerMode)}</div>
+      <label class="settings-check"><input type="checkbox" id="setScheduleSystemEnabled" ${systemEnabled ? 'checked' : ''} onchange="toggleScheduleMode('system')"> ${escapeHtml(labels.enableSystemScheduler)}</label>
+      <div id="systemScheduleSettings" style="${systemEnabled ? '' : 'display:none'}">
+      <div class="settings-row"><label>${escapeHtml(labels.timezone)}</label><input id="setTimezone" value="${escapeHtml(schedule.timezone || 'Asia/Hong_Kong')}"></div>
+      <div class="settings-row"><label>${escapeHtml(labels.dailyPipelineTime)}</label><input id="setDailyPipelineTime" type="time" value="${escapeHtml(schedule.dailyPipelineTime || '04:00')}"></div>
+      ${advancedSystemTimer}
       </div>
     </div>
     <div class="settings-section">
@@ -5015,7 +7270,7 @@ function renderScheduleSettings(schedule, agentPrompt) {
       <label class="settings-check"><input type="checkbox" id="setScheduleAgentEnabled" ${agentEnabled ? 'checked' : ''} onchange="toggleScheduleMode('agent')"> ${escapeHtml(labels.enableExternalAgentMode)}</label>
       <div id="agentScheduleSettings" style="${agentEnabled ? '' : 'display:none'}">
       <div class="settings-note">${escapeHtml(labels.externalAgentNote)}</div>
-      <div class="settings-row"><label>${escapeHtml(labels.prompt)}</label><textarea readonly>${escapeHtml(agentPrompt)}</textarea></div>
+      <div class="settings-row"><label>${escapeHtml(labels.prompt)}</label><textarea id="agentSchedulePromptText" readonly>${escapeHtml(agentPrompt)}</textarea><div><button type="button" class="fo-copy-btn" onclick="copyAgentSchedulePrompt()">${escapeHtml(labels.copyPrompt)}</button><span class="fo-copy-status" id="agentSchedulePromptCopyStatus" aria-live="polite"></span></div></div>
       </div>
     </div>`;
 }
@@ -5029,6 +7284,253 @@ function toggleScheduleMode(mode) {
   const agentPanel = document.getElementById('agentScheduleSettings');
   if (systemPanel) systemPanel.style.display = systemInput?.checked ? '' : 'none';
   if (agentPanel) agentPanel.style.display = agentInput?.checked ? '' : 'none';
+}
+
+async function copyAgentSchedulePrompt() {
+  const prompt = document.getElementById('agentSchedulePromptText')?.value || '';
+  const status = document.getElementById('agentSchedulePromptCopyStatus');
+  const labels = operatorText();
+  try {
+    if (!prompt) throw new Error('empty prompt');
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(prompt);
+    } else {
+      const text = document.createElement('textarea');
+      text.value = prompt;
+      document.body.appendChild(text);
+      text.select();
+      document.execCommand('copy');
+      document.body.removeChild(text);
+    }
+    if (status) status.textContent = labels.promptCopied;
+  } catch (error) {
+    if (status) status.textContent = labels.promptCopyFailed;
+  }
+}
+
+async function syncSystemSchedulerCheckboxWithActual() {
+  const systemInput = document.getElementById('setScheduleSystemEnabled');
+  if (!systemInput) return null;
+  try {
+    const res = await fetch('/api/settings/scheduler');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const status = await res.json();
+    const timer = status.systemTimer || {};
+    let actualRegistered = null;
+    if (timer.actualRegistered === true || timer.actualRegistered === false) {
+      actualRegistered = Boolean(timer.actualRegistered);
+    } else if ((timer.runtimeProbe || {}).enabled && timer.registered !== undefined) {
+      actualRegistered = Boolean(timer.registered);
+    }
+    if (actualRegistered === null) return status;
+
+    const agentInput = document.getElementById('setScheduleAgentEnabled');
+    if (actualRegistered) {
+      systemInput.checked = true;
+      if (agentInput) agentInput.checked = false;
+      toggleScheduleMode('system');
+    } else if ((status.mode || 'system') === 'system') {
+      systemInput.checked = false;
+      toggleScheduleMode(agentInput?.checked ? 'agent' : 'system');
+    }
+
+    if (ACTANARA_LAST_SETTINGS && ACTANARA_LAST_SETTINGS.schedule) {
+      const schedule = ACTANARA_LAST_SETTINGS.schedule;
+      schedule.enabled = Boolean(systemInput.checked || agentInput?.checked);
+      schedule.mode = agentInput?.checked ? 'agent' : 'system';
+      schedule.systemTimer = Object.assign({}, schedule.systemTimer || {}, {
+        registered: Boolean(timer.registered),
+        actualRegistered,
+        registrationSource: timer.registrationSource || 'unknown',
+        registrationMismatch: Boolean(timer.registrationMismatch),
+      });
+    }
+    return status;
+  } catch (e) {
+    console.warn('System scheduler sync failed', e);
+    return null;
+  }
+}
+
+function renderStartupSettings() {
+  const labels = operatorText();
+  return `
+    <div class="settings-section">
+      <div class="settings-section-title">${escapeHtml(labels.startupServicesTitle)}</div>
+      <div class="settings-note">${escapeHtml(labels.startupServicesNote)}</div>
+      <div id="startupServices" class="settings-runtime-status">
+        <div class="wr-loading" style="padding:12px"><div class="wr-spinner"></div><span>${escapeHtml(labels.startupReading)}</span></div>
+      </div>
+    </div>`;
+}
+
+async function loadStartupServices(message = '') {
+  const labels = operatorText();
+  const panel = document.getElementById('startupServices');
+  if (!panel) return;
+  panel.innerHTML = '<div class="wr-loading" style="padding:12px"><div class="wr-spinner"></div><span>' + escapeHtml(labels.startupReading) + '</span></div>';
+  try {
+    const [dashboardRes, ragRes] = await Promise.all([
+      fetch('/api/settings/services/dashboard/preview'),
+      fetch('/api/settings/services/rag/preview')
+    ]);
+    if (!dashboardRes.ok) throw new Error('dashboard HTTP ' + dashboardRes.status);
+    if (!ragRes.ok) throw new Error('rag HTTP ' + ragRes.status);
+    const previews = {
+      dashboard: await dashboardRes.json(),
+      rag: await ragRes.json()
+    };
+    ACTANARA_STARTUP_PREVIEWS = previews;
+    panel.innerHTML = renderStartupServices(previews, message);
+  } catch (e) {
+    panel.innerHTML = '<div class="fo-job-error" style="padding:12px">' + escapeHtml(labels.startupReadFailed + e.message) + '</div>';
+  }
+}
+
+function renderStartupServices(previews, message = '') {
+  const labels = operatorText();
+  return [
+    message ? '<div class="settings-note" id="startupServiceStatus">' + escapeHtml(message) + '</div>' : '<div class="settings-note" id="startupServiceStatus"></div>',
+    renderStartupServiceRow('dashboard', labels.startupDashboardServer, previews.dashboard || {}),
+    renderStartupServiceRow('rag', labels.startupRagServer, previews.rag || {})
+  ].join('');
+}
+
+function renderStartupServiceRow(kind, label, preview) {
+  const labels = operatorText();
+  const registered = startupPreviewRegistered(preview);
+  const status = startupPreviewStatus(preview);
+  const probe = preview.runtimeProbe || {};
+  const expectedJobs = Number(probe.expectedJobs ?? ((preview.jobs || []).length || 0));
+  const loadedJobs = Number(probe.loadedJobs ?? 0);
+  const definitionJobs = Number(probe.definitionJobs ?? probe.plistJobs ?? 0);
+  const mismatch = preview.registrationMismatch ? '<span class="settings-runtime-chip warn">' + escapeHtml(labels.startupSettingsMismatch) + '</span>' : '';
+  const definitionMismatch = preview.definitionsAligned === false && registered ? '<span class="settings-runtime-chip warn">' + escapeHtml(labels.startupDefinitionMismatch) + '</span>' : '';
+  const jobs = (preview.jobs || []).map(job => {
+    const runtime = job.runtimeStatus || {};
+    const running = runtime.launchctlLoaded === true || runtime.systemdActive === true;
+    const stopped = runtime.launchctlLoaded === false || runtime.systemdActive === false;
+    const runtimeLabel = running ? labels.startupRunning : stopped ? labels.startupStopped : (runtime.status || labels.startupUnknown);
+    const identifier = job.label || job.unitName || '';
+    const definitionPath = job.plistPath || job.unitPath || '';
+    return '<div class="settings-runtime-line" style="padding-left:26px">' +
+      '<span class="settings-runtime-chip ' + (running ? 'ok' : 'warn') + '">' + escapeHtml(runtimeLabel) + '</span> ' +
+      '<b>' + escapeHtml(job.kind || identifier) + '</b>' +
+      '<code>' + escapeHtml(identifier) + '</code>' +
+      '<code>' + escapeHtml(definitionPath) + '</code>' +
+      '</div>';
+  }).join('');
+  return '<div class="settings-job-row">' +
+    '<div class="settings-runtime-line" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">' +
+      '<label class="settings-check" style="margin:0;min-width:240px"><input type="checkbox" id="startupService-' + escapeHtml(kind) + '" ' + (registered ? 'checked' : '') + ' onchange="toggleStartupService(\'' + escapeJs(kind) + '\', this.checked)"> ' + escapeHtml(label) + '</label>' +
+      '<span class="settings-runtime-chip ' + status.className + '">' + escapeHtml(status.label) + '</span>' +
+    '</div>' +
+    '<div class="settings-runtime-line">' +
+      '<b>' + escapeHtml(labels.startupJobs) + '</b> ' + escapeHtml(String(loadedJobs)) + '/' + escapeHtml(String(expectedJobs)) + ' running · definitions=' + escapeHtml(String(definitionJobs)) + '/' + escapeHtml(String(expectedJobs)) + ' · provider=' + escapeHtml(preview.serviceManager || preview.provider || 'unknown') + ' · source=' + escapeHtml(preview.registrationSource || 'unknown') +
+    '</div>' +
+    ((mismatch || definitionMismatch) ? '<div class="settings-runtime-flags">' + mismatch + definitionMismatch + '</div>' : '') +
+    '<div class="settings-timer-actions">' +
+      '<button type="button" class="settings-browse-btn" onclick="applyStartupServiceAction(\'' + escapeJs(kind) + '\', \'install\')">' + escapeHtml(labels.startupReconcile) + '</button>' +
+      '<button type="button" class="settings-browse-btn" onclick="applyStartupServiceAction(\'' + escapeJs(kind) + '\', \'start\')">' + escapeHtml(labels.startupStart) + '</button>' +
+      '<button type="button" class="settings-browse-btn" onclick="applyStartupServiceAction(\'' + escapeJs(kind) + '\', \'stop\')">' + escapeHtml(labels.startupStop) + '</button>' +
+      '<button type="button" class="settings-browse-btn" onclick="applyStartupServiceAction(\'' + escapeJs(kind) + '\', \'restart\')">' + escapeHtml(labels.startupRestart) + '</button>' +
+    '</div>' +
+    jobs +
+  '</div>';
+}
+
+function startupPreviewRegistered(preview) {
+  if (preview && (preview.actualRegistered === true || preview.actualRegistered === false)) return Boolean(preview.actualRegistered);
+  return Boolean((preview || {}).registered);
+}
+
+function startupPreviewStatus(preview) {
+  const labels = operatorText();
+  const probeStatus = ((preview || {}).runtimeProbe || {}).status || '';
+  if (startupPreviewRegistered(preview) && preview.actualRunning === false) return {label: labels.startupStopped, className: 'warn'};
+  if (startupPreviewRegistered(preview)) return {label: labels.startupLoaded, className: 'ok'};
+  if (probeStatus === 'partial') return {label: labels.startupPartial, className: 'warn'};
+  if (preview && (preview.actualRegistered === false || preview.registered === false)) return {label: labels.startupNotLoaded, className: 'warn'};
+  return {label: labels.startupUnknown, className: 'warn'};
+}
+
+function startupConfirmationText(kind, action, preview) {
+  const key = action + 'ConfirmationTextRequired';
+  const fromPreview = (preview || {})[key];
+  if (fromPreview) return fromPreview;
+  const fallback = {
+    dashboard: {
+      install: 'INSTALL ACTANARA DASHBOARD SERVICE',
+      uninstall: 'UNINSTALL ACTANARA DASHBOARD SERVICE',
+      start: 'START ACTANARA DASHBOARD SERVICE',
+      stop: 'STOP ACTANARA DASHBOARD SERVICE',
+      restart: 'RESTART ACTANARA DASHBOARD SERVICE'
+    },
+    rag: {
+      install: 'INSTALL ACTANARA RAG SERVICE',
+      uninstall: 'UNINSTALL ACTANARA RAG SERVICE',
+      start: 'START ACTANARA RAG SERVICE',
+      stop: 'STOP ACTANARA RAG SERVICE',
+      restart: 'RESTART ACTANARA RAG SERVICE'
+    }
+  };
+  return ((fallback[kind] || {})[action]) || '';
+}
+
+function startupServiceEndpoint(kind, action) {
+  if (!['dashboard', 'rag'].includes(kind)) return '';
+  if (!['install', 'uninstall', 'start', 'stop', 'restart'].includes(action)) return '';
+  return '/api/settings/services/' + encodeURIComponent(kind) + '/' + encodeURIComponent(action);
+}
+
+async function toggleStartupService(kind, checked) {
+  return applyStartupServiceAction(kind, checked ? 'install' : 'uninstall');
+}
+
+async function applyStartupServiceAction(kind, action) {
+  const labels = operatorText();
+  const previews = ACTANARA_STARTUP_PREVIEWS || {};
+  const preview = previews[kind] || {};
+  const service = kind === 'dashboard' ? labels.startupDashboardServer : labels.startupRagServer;
+  const actionLabels = {
+    install: labels.startupEnableAction,
+    uninstall: labels.startupDisableAction,
+    start: labels.startupStart,
+    stop: labels.startupStop,
+    restart: labels.startupRestart,
+  };
+  const actionLabel = actionLabels[action] || action;
+  const confirmationText = startupConfirmationText(kind, action, preview);
+  const endpoint = startupServiceEndpoint(kind, action);
+  if (!endpoint) throw new Error('unknown startup service action');
+  const typed = prompt(labels.startupApplyPrompt(service, actionLabel) + confirmationText);
+  if (typed !== confirmationText) {
+    const status = document.getElementById('startupServiceStatus');
+    if (status) status.innerHTML = '<span class="settings-runtime-chip warn">' + escapeHtml(labels.startupCancelledMismatch) + '</span>';
+    await loadStartupServices();
+    await loadRagManagedService(labels.startupCancelledMismatch);
+    return;
+  }
+  const panel = document.getElementById('startupServices');
+  if (panel) panel.innerHTML = '<div class="wr-loading" style="padding:12px"><div class="wr-spinner"></div><span>' + escapeHtml(labels.startupUpdating) + '</span></div>';
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({confirmationText})
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || ('HTTP ' + res.status));
+    }
+    await res.json().catch(() => ({}));
+    await loadStartupServices(labels.startupUpdated);
+    await loadRagManagedService(labels.startupUpdated);
+  } catch (e) {
+    if (panel) panel.innerHTML = '<div class="fo-job-error" style="padding:12px">' + escapeHtml(labels.startupApplyFailed + e.message) + '</div>';
+    const ragPanel = document.getElementById('ragManagedService');
+    if (ragPanel) ragPanel.innerHTML = '<div class="fo-job-error" style="padding:12px">' + escapeHtml(labels.startupApplyFailed + e.message) + '</div>';
+  }
 }
 
 function renderPathSettings(paths, runtimePath) {
@@ -5483,7 +7985,6 @@ function renderRuntimeSourceSettings(runtimeSources) {
     diaryMemorySource: 'Diary memory source',
     diaryTasksSource: 'Diary tasks source',
     taskAuditSink: 'Task audit sink',
-    llmGeneration: 'LLM generation',
   };
   const rows = Object.keys(labels).map(key => {
     const value = runtimeSources[key] || 'foundation';
@@ -5510,7 +8011,7 @@ function renderWorkspaceAttributionSettings() {
       '<div class="settings-section-title">添加归属规则</div>' +
       '<div class="settings-row"><label>Rule Type</label><select id="workspaceAttributionRuleType"><option value="path">path</option><option value="alias">alias</option><option value="container">container</option></select></div>' +
       '<div class="settings-row"><label>Tool</label><select id="workspaceAttributionTool"><option value="">all</option><option value="codex">Codex</option><option value="claude-code">Claude Code</option><option value="gemini-cli">Gemini CLI</option><option value="openclaw">OpenClaw</option><option value="opencode">OpenCode</option><option value="antigravity">Antigravity</option><option value="cursor">Cursor</option></select></div>' +
-      '<div class="settings-row"><label>Workspace Path</label><input id="workspaceAttributionPath" placeholder="~/Projects/TokenClock"></div>' +
+      '<div class="settings-row"><label>Workspace Path</label><input id="workspaceAttributionPath" placeholder="~/work/TokenClock"></div>' +
       '<div class="settings-row"><label>Workspace Name</label><input id="workspaceAttributionName" placeholder="留空则使用项目 metadata"></div>' +
       '<div class="settings-row"><label>Alias From</label><input id="workspaceAttributionAliasSource" placeholder="TokenClock-normal"></div>' +
       '<div class="settings-row"><label>Alias To</label><input id="workspaceAttributionAliasTarget" placeholder="TokenClock"></div>' +
@@ -5660,6 +8161,35 @@ function renderExternalToolSettings(externalTools) {
     '</div>';
 }
 
+function renderNativeMemorySettings(memorySearch) {
+  const labels = operatorText();
+  const nativeMemory = memorySearch.nativeMemory || {};
+  const tools = nativeMemory.tools || {};
+  const enabled = nativeMemory.enabled !== false;
+  const disabled = enabled ? '' : 'disabled';
+  return `
+    <div class="settings-section">
+      <div class="settings-section-title">${escapeHtml(labels.nativeMemoryTitle)}</div>
+      <div class="settings-note">${escapeHtml(labels.nativeMemoryNote)}</div>
+      <label class="settings-check"><input id="setNativeMemoryEnabled" type="checkbox" ${enabled ? 'checked' : ''} onchange="syncNativeMemorySettingsState()"> ${escapeHtml(labels.nativeMemoryEnable)}</label>
+      <div class="settings-row"><label>${escapeHtml(labels.nativeMemoryTools)}</label><div>
+        <label class="settings-check"><input id="setNativeMemoryCodex" data-native-memory-dependent type="checkbox" ${tools.codex !== false ? 'checked' : ''} ${disabled}> Codex</label>
+        <label class="settings-check"><input id="setNativeMemoryClaudeCode" data-native-memory-dependent type="checkbox" ${tools.claudeCode !== false ? 'checked' : ''} ${disabled}> Claude Code</label>
+      </div></div>
+      <label class="settings-check"><input id="setNativeMemoryIncludeInstructions" data-native-memory-dependent type="checkbox" ${nativeMemory.includeInstructions !== false ? 'checked' : ''} ${disabled}> ${escapeHtml(labels.nativeMemoryInstructions)}</label>
+      <div class="settings-note">${escapeHtml(labels.nativeMemoryInstructionsNote)}</div>
+      <label class="settings-check"><input id="setNativeMemoryAllowInRag" data-native-memory-dependent type="checkbox" ${nativeMemory.allowInRag !== false ? 'checked' : ''} ${disabled}> ${escapeHtml(labels.nativeMemoryRag)}</label>
+      <div class="settings-note">${escapeHtml(labels.nativeMemoryRagNote)}</div>
+    </div>`;
+}
+
+function syncNativeMemorySettingsState() {
+  const enabled = document.getElementById('setNativeMemoryEnabled')?.checked === true;
+  document.querySelectorAll('[data-native-memory-dependent]').forEach(input => {
+    input.disabled = !enabled;
+  });
+}
+
 function renderPipelineSettings(pipeline) {
   const labels = operatorText();
   const stepTimeouts = pipeline.stepTimeouts || {};
@@ -5691,23 +8221,6 @@ function renderPipelineSettings(pipeline) {
 
 function escapeJs(text) {
   return String(text || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-}
-
-function renderFeatureSettings(features) {
-  const text = operatorText();
-  const labels = {
-    pipeline: text.featureDailyPipeline,
-    dashboard: text.featureDashboard,
-    foundationSnapshots: 'Foundation snapshots',
-    rag: 'nova-RAG',
-    novaTask: 'Nova-Task',
-    embeddingServer: 'Embedding server',
-    taskAuditSink: 'Task audit sink',
-    llmGeneration: 'LLM generation'
-  };
-  return '<div class="settings-note">' + escapeHtml(text.featureSettingsNote) + '</div><div class="settings-checks">' +
-    Object.keys(labels).map(key => '<label class="settings-check"><input type="checkbox" data-feature-key="' + key + '" ' + (features[key] ? 'checked' : '') + '> ' + labels[key] + '</label>').join('') +
-    '</div>';
 }
 
 function ragProfileLabel(profile) {
@@ -5811,17 +8324,50 @@ function updateNovaRagPowerButton(status) {
 
 function renderRagSettings(rag, status) {
   const labels = ragUiText();
+  const serviceLabels = operatorText();
   rag = rag || {};
   status = status || {};
+  if (rag.embedding && Object.prototype.hasOwnProperty.call(rag.embedding, 'apiKey')) {
+    rag = {...rag, embedding: {...rag.embedding}};
+    delete rag.embedding.apiKey;
+  }
   window._lastRagSettings = rag;
   window._lastRagStatus = status;
   const retrieval = rag.retrieval || {};
+  const embedding = rag.embedding || {};
+  const embeddingMode = embedding.mode || embedding.provider || 'local';
+  const cloudStatus = (((status.provider || {}).cloud) || {});
+  const cloudKeyHint = cloudStatus.secretMigrationRequired
+    ? labels.cloudProviderCredentialReentry
+    : (cloudStatus.apiKeyConfigured ? labels.cloudProviderCredentialConfigured : labels.cloudProviderCredentialMissing);
   const profile = status.profile || {};
   const configuredProfile = profile.configured || {};
   const activeProfile = profile.active || {};
   const configuredLabel = ragProfileLabel(configuredProfile);
   const activeLabel = activeProfile && activeProfile.model ? ragProfileLabel(activeProfile) : labels.noActiveProfile;
+  const indexing = rag.indexing || {};
+  const external = indexing.externalSources || {};
+  const externalStatus = status.externalSources || external;
+  const externalMode = external.mode === 'replace' ? 'replace' : 'supplement';
+  const externalSymlink = external.symlinkPolicy === 'within-root' ? 'within-root' : 'reject';
+  const externalPaths = Array.isArray(external.paths) ? external.paths : [];
+  const externalInclude = Array.isArray(external.include) ? external.include : [];
+  const externalExclude = Array.isArray(external.exclude) ? external.exclude : [];
+  queueMicrotask(() => {
+    loadRagManagedService();
+    loadLocalMemoryStatus();
+  });
   return `
+    <div class="settings-section">
+      <div class="settings-section-title">${escapeHtml(serviceLabels.startupRagServer)} · ${escapeHtml(serviceLabels.startupServicesTitle)}</div>
+      <div class="settings-note">${escapeHtml(serviceLabels.startupServicesNote)}</div>
+      <div id="ragManagedService" class="settings-runtime-status"><div class="wr-loading" style="padding:12px"><div class="wr-spinner"></div><span>${escapeHtml(serviceLabels.startupReading)}</span></div></div>
+    </div>
+    <div class="settings-section">
+      <div class="settings-section-title">${escapeHtml(labels.localMemoryTitle)}</div>
+      <div class="settings-note">${escapeHtml(labels.localMemoryNote)}</div>
+      <div id="localMemoryStatus" class="settings-runtime-status"><div class="wr-loading" style="padding:12px"><div class="wr-spinner"></div><span>${escapeHtml(labels.readingStatus)}</span></div></div>
+    </div>
     <div class="settings-section">
       <div class="settings-section-title">${escapeHtml(labels.instantParams)}</div>
       <div class="settings-runtime-status">
@@ -5831,8 +8377,93 @@ function renderRagSettings(rag, status) {
       </div>
       <div class="settings-row"><label>Top K</label><input id="setRagTopK" type="number" min="1" max="50" value="${escapeHtml(retrieval.topK || 8)}"></div>
       <div class="settings-row"><label>${escapeHtml(labels.timeHalfLife)}</label><input id="setRagHalfLife" type="number" min="1" value="${escapeHtml(retrieval.recencyHalfLifeDays || 7)}"></div>
+      ${embeddingMode === 'cloud' ? `
+      <div class="settings-row"><label>${escapeHtml(labels.cloudProviderCredential)}</label><input id="setRagCloudProviderCredential" type="password" autocomplete="new-password" placeholder="${escapeHtml(labels.cloudProviderCredentialPlaceholder)}" aria-describedby="setRagCloudProviderCredentialHint"></div>
+      <div class="settings-note" id="setRagCloudProviderCredentialHint">${escapeHtml(cloudKeyHint)}</div>` : ''}
+      <section class="rag-external-sources" id="ragExternalSources">
+        <div class="settings-section-title">${escapeHtml(labels.externalSourcesTitle)}</div>
+        <div class="settings-note">${escapeHtml(labels.externalSourcesNote)}</div>
+        <label class="rag-external-switch"><span>${escapeHtml(labels.externalSourcesEnabled)}</span><input id="setRagExternalEnabled" type="checkbox" ${external.enabled ? 'checked' : ''}></label>
+        <div class="rag-external-grid">
+          <label><span>${escapeHtml(labels.externalSourcesMode)}</span><select id="setRagExternalMode"><option value="supplement" ${externalMode === 'supplement' ? 'selected' : ''}>${escapeHtml(labels.externalSourcesSupplement)}</option><option value="replace" ${externalMode === 'replace' ? 'selected' : ''}>${escapeHtml(labels.externalSourcesReplace)}</option></select></label>
+          <label><span>${escapeHtml(labels.externalSourcesSymlink)}</span><select id="setRagExternalSymlink"><option value="reject" ${externalSymlink === 'reject' ? 'selected' : ''}>${escapeHtml(labels.externalSourcesSymlinkReject)}</option><option value="within-root" ${externalSymlink === 'within-root' ? 'selected' : ''}>${escapeHtml(labels.externalSourcesSymlinkWithinRoot)}</option></select></label>
+          <label class="rag-external-wide"><span>${escapeHtml(labels.externalSourcesPaths)}</span><textarea id="setRagExternalPaths" rows="3">${escapeHtml(externalPaths.join('\n'))}</textarea></label>
+          <label class="rag-external-wide rag-external-check"><input id="setRagExternalRecursive" type="checkbox" ${external.recursive !== false ? 'checked' : ''}><span>${escapeHtml(labels.externalSourcesRecursive)}</span></label>
+          <label><span>${escapeHtml(labels.externalSourcesInclude)}</span><textarea id="setRagExternalInclude" rows="3">${escapeHtml(externalInclude.join('\n'))}</textarea></label>
+          <label><span>${escapeHtml(labels.externalSourcesExclude)}</span><textarea id="setRagExternalExclude" rows="3">${escapeHtml(externalExclude.join('\n'))}</textarea></label>
+          <label><span>${escapeHtml(labels.externalSourcesMaxFileBytes)}</span><input id="setRagExternalMaxFileBytes" type="number" min="1" value="${escapeHtml(external.maxFileBytes || 10485760)}"></label>
+          <label><span>${escapeHtml(labels.externalSourcesMaxTotalBytes)}</span><input id="setRagExternalMaxTotalBytes" type="number" min="1" value="${escapeHtml(external.maxTotalBytes || 268435456)}"></label>
+          <label><span>${escapeHtml(labels.externalSourcesMaxFiles)}</span><input id="setRagExternalMaxFiles" type="number" min="1" value="${escapeHtml(external.maxFiles || 5000)}"></label>
+        </div>
+        <div class="settings-note rag-external-doc-note">${escapeHtml(labels.externalSourcesDocUnsupported)}</div>
+        <div class="settings-runtime-line"><b>${escapeHtml(labels.status)}</b> ${escapeHtml(externalStatus.enabled ? labels.enabled : labels.disabled)} · ${escapeHtml(externalMode)} · ${escapeHtml(String(externalPaths.length))} path(s)</div>
+        <div class="rag-external-actions"><button type="button" class="settings-browse-btn secondary" id="ragExternalPlanBtn" onclick="previewRagExternalSources()">${escapeHtml(labels.externalSourcesDryRun)}</button></div>
+        <div id="ragExternalSourcesPlan" aria-live="polite"></div>
+      </section>
       <button type="button" class="settings-browse-btn" onclick="saveRagSettingsPanel()">${escapeHtml(labels.saveInstantParams)}</button>
     </div>`;
+}
+
+function ragExternalList(id) {
+  return String(document.getElementById(id)?.value || '').split(/\r?\n/).map(item => item.trim()).filter(Boolean);
+}
+
+function collectRagExternalSourcesFromModal(previous) {
+  const external = previous || {};
+  if (!document.getElementById('setRagExternalEnabled')) return external;
+  return {
+    enabled: Boolean(document.getElementById('setRagExternalEnabled')?.checked),
+    mode: document.getElementById('setRagExternalMode')?.value || 'supplement',
+    paths: ragExternalList('setRagExternalPaths'),
+    recursive: Boolean(document.getElementById('setRagExternalRecursive')?.checked),
+    include: ragExternalList('setRagExternalInclude'),
+    exclude: ragExternalList('setRagExternalExclude'),
+    maxFileBytes: Number(document.getElementById('setRagExternalMaxFileBytes')?.value || external.maxFileBytes || 10485760),
+    maxTotalBytes: Number(document.getElementById('setRagExternalMaxTotalBytes')?.value || external.maxTotalBytes || 268435456),
+    maxFiles: Number(document.getElementById('setRagExternalMaxFiles')?.value || external.maxFiles || 5000),
+    symlinkPolicy: document.getElementById('setRagExternalSymlink')?.value || 'reject',
+  };
+}
+
+function renderRagExternalSourcesPlan(plan) {
+  const labels = ragUiText();
+  const summary = plan.summary || {};
+  const sources = Array.isArray(plan.sources) ? plan.sources.slice(0, 12) : [];
+  const rows = sources.map(source => {
+    const status = source.parserStatus || source.status || 'unknown';
+    const tone = status === 'parsed' || status === 'cached' ? 'ok' : 'warn';
+    const detail = source.parserError || source.suggestion || source.parserVersion || '';
+    return '<div class="rag-external-plan-row"><span class="settings-runtime-chip ' + tone + '">' + escapeHtml(status) + '</span><code>' + escapeHtml(source.sourcePath || source.path || '—') + '</code>' + (detail ? '<small>' + escapeHtml(detail) + '</small>' : '') + '</div>';
+  }).join('');
+  const blockers = Array.isArray(plan.blockers) ? plan.blockers : [];
+  return '<div class="rag-external-plan-summary"><b>' + escapeHtml(labels.externalSourcesSummary) + '</b> · ' +
+    escapeHtml(String(summary.sourceRecordCount || 0)) + ' sources · ' + escapeHtml(String(summary.chunkCount || 0)) + ' chunks · ' +
+    escapeHtml(String(summary.parseErrorCount || 0)) + ' errors' + (blockers.length ? ' · ' + escapeHtml(labels.externalSourcesBlocked) : '') + '</div>' +
+    (rows || '<div class="settings-note">' + escapeHtml(labels.externalSourcesNoRecords) + '</div>');
+}
+
+async function previewRagExternalSources() {
+  const labels = ragUiText();
+  const panel = document.getElementById('ragExternalSourcesPlan');
+  const button = document.getElementById('ragExternalPlanBtn');
+  if (!panel || !button) return;
+  const previous = (((window._lastRagSettings || {}).indexing || {}).externalSources) || {};
+  const externalSources = collectRagExternalSourcesFromModal(previous);
+  button.disabled = true;
+  panel.innerHTML = '<div class="wr-loading rag-external-loading"><div class="wr-spinner"></div><span>' + escapeHtml(labels.externalSourcesPlanning) + '</span></div>';
+  try {
+    const res = await fetch('/api/rag/external-sources/plan', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({rag: {indexing: {externalSources}}}),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    panel.innerHTML = '<div class="settings-note rag-external-plan-ready">' + escapeHtml(labels.externalSourcesPlanReady) + '</div>' + renderRagExternalSourcesPlan(data);
+  } catch (e) {
+    panel.innerHTML = '<div class="fo-job-error">' + escapeHtml(labels.externalSourcesPlanFailed + e.message) + '</div>';
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function rerenderRagSettingsPanel() {
@@ -5874,38 +8505,22 @@ async function saveSettingsModal() {
   const status = document.getElementById('settingsSaveStatus');
   if (status) status.textContent = operatorText().saving;
   const restartRequired = Array.from(document.querySelectorAll('[data-requires-restart]')).some(input => String(input.value || '') !== String(input.dataset.originalValue || ''));
-  const features = {};
-  document.querySelectorAll('[data-feature-key]').forEach(input => {
-    features[input.dataset.featureKey] = input.checked;
-  });
+  const advancedVisible = isSettingsAdvancedVisible();
   const payload = {
     general: collectGeneralSettingsFromModal(),
     dashboard: collectDashboardSettingsFromModal(),
-    schedule: {
-      enabled: Boolean(document.getElementById('setScheduleSystemEnabled')?.checked || document.getElementById('setScheduleAgentEnabled')?.checked),
-      mode: document.getElementById('setScheduleAgentEnabled')?.checked ? 'agent' : 'system',
-      timezone: document.getElementById('setTimezone')?.value || 'Asia/Hong_Kong',
-      dailyPipelineTime: document.getElementById('setDailyPipelineTime')?.value || '04:00',
-      dashboardAggregationTime: document.getElementById('setDashboardAggregationTime')?.value || '04:30',
-      refreshTargets: {
-        currentDay: document.getElementById('setTargetDay')?.checked || false,
-        currentWeek: document.getElementById('setTargetWeek')?.checked || false,
-        currentMonth: document.getElementById('setTargetMonth')?.checked || false,
-      },
-      systemTimer: {
-        provider: document.getElementById('setSystemTimerProvider')?.value || 'launchd',
-        label: document.getElementById('setSystemTimerLabel')?.value || 'actanara.daily',
-      }
-    },
-    paths: collectPathSettingsFromModal(),
-    runtimeSources: collectRuntimeSourceSettingsFromModal(),
-    pipeline: collectPipelineSettingsFromModal(),
-    externalTools: collectExternalToolSettingsFromModal(),
-    features,
+    schedule: collectScheduleSettingsFromModal(),
   };
+  if (advancedVisible) {
+    payload.paths = collectPathSettingsFromModal();
+    payload.runtimeSources = collectRuntimeSourceSettingsFromModal();
+    payload.pipeline = collectPipelineSettingsFromModal();
+    payload.externalTools = collectExternalToolSettingsFromModal();
+    payload.memorySearch = collectNativeMemorySettingsFromModal();
+  }
   try {
     const bundle = {settings: payload};
-    if (document.getElementById('llmProviderName')) {
+    if (ACTANARA_SETTINGS_LLM_DIRTY && document.getElementById('llmProviderName')) {
       bundle.llmProvider = collectLlmProviderSettingsFromModal();
     }
     const res = await fetch('/api/settings/bundle', {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(bundle)});
@@ -5916,8 +8531,15 @@ async function saveSettingsModal() {
     const freshRes = await fetch('/api/settings');
     if (!freshRes.ok) throw new Error('reload HTTP ' + freshRes.status);
     const saved = await freshRes.json();
+    rememberDashboardSettings(saved);
+    ACTANARA_SETTINGS_FORM_DRAFT = {};
+    ACTANARA_SETTINGS_LLM_DIRTY = false;
+    ACTANARA_SETTINGS_ADVANCED_DIRTY = new Set();
+    ACTANARA_SETTINGS_ADVANCED_BASELINE = new Map();
     document.getElementById('modal-body').innerHTML = renderSettingsModal(saved);
+    if (ACTANARA_SETTINGS_ADVANCED) captureAdvancedSettingsBaseline();
     settingsTab('schedule');
+    await syncSystemSchedulerCheckboxWithActual();
     const newStatus = document.getElementById('settingsSaveStatus');
     if (newStatus) {
       const labels = operatorText();
@@ -5927,6 +8549,7 @@ async function saveSettingsModal() {
         newStatus.textContent = labels.saved + new Date().toLocaleTimeString();
       }
     }
+    focusSettingsControl('save');
   } catch (e) {
     if (status) status.textContent = operatorText().saveFailed + e.message;
   }
@@ -5944,39 +8567,81 @@ async function copyDashboardRestartCommand() {
       document.execCommand('copy');
       document.body.removeChild(text);
     }
-    document.querySelectorAll('#dashboardRestartCopyStatus, #dashboardRestartCopyStatusSaved').forEach(el => {
+    document.querySelectorAll('#dashboardRestartCopyStatus, #dashboardRestartCopyStatusNetwork, #dashboardRestartCopyStatusSaved').forEach(el => {
       el.textContent = foundationText().copied;
     });
   } catch (e) {
-    document.querySelectorAll('#dashboardRestartCopyStatus, #dashboardRestartCopyStatusSaved').forEach(el => {
+    document.querySelectorAll('#dashboardRestartCopyStatus, #dashboardRestartCopyStatusNetwork, #dashboardRestartCopyStatusSaved').forEach(el => {
       el.textContent = foundationText().copyFailed;
     });
   }
 }
 
 function collectGeneralSettingsFromModal() {
-  return {
-    appName: document.getElementById('setGeneralAppName')?.value || 'Actanara',
-    environment: document.getElementById('setGeneralEnvironment')?.value || 'local',
+  const general = {
     timezone: document.getElementById('setGeneralTimezone')?.value || 'Asia/Hong_Kong',
     locale: document.getElementById('setGeneralLocale')?.value || 'zh-CN',
-    workspaceRoot: document.getElementById('setGeneralWorkspaceRoot')?.value || '',
-    tmpWorkspace: document.getElementById('setGeneralTmpWorkspace')?.value || '',
   };
+  if (document.getElementById('setGeneralAppName')) {
+    general.appName = document.getElementById('setGeneralAppName')?.value || 'Actanara';
+    general.environment = document.getElementById('setGeneralEnvironment')?.value || 'local';
+    general.workspaceRoot = document.getElementById('setGeneralWorkspaceRoot')?.value || '';
+    general.tmpWorkspace = document.getElementById('setGeneralTmpWorkspace')?.value || '';
+  }
+  return general;
+}
+
+function collectScheduleSettingsFromModal() {
+  const schedule = {
+    enabled: Boolean(document.getElementById('setScheduleSystemEnabled')?.checked || document.getElementById('setScheduleAgentEnabled')?.checked),
+    mode: document.getElementById('setScheduleAgentEnabled')?.checked ? 'agent' : 'system',
+    timezone: document.getElementById('setTimezone')?.value || 'Asia/Hong_Kong',
+    dailyPipelineTime: document.getElementById('setDailyPipelineTime')?.value || '04:00',
+    refreshTargets: {
+      currentDay: document.getElementById('setTargetDay')?.checked || false,
+      currentWeek: document.getElementById('setTargetWeek')?.checked || false,
+      currentMonth: document.getElementById('setTargetMonth')?.checked || false,
+    },
+  };
+  if (document.getElementById('setDashboardAggregationTime')) {
+    schedule.dashboardAggregationTime = document.getElementById('setDashboardAggregationTime')?.value || '04:30';
+  }
+  if (document.getElementById('setSystemTimerProvider') || document.getElementById('setSystemTimerLabel')) {
+    const systemTimer = {
+      label: document.getElementById('setSystemTimerLabel')?.value || 'actanara.daily',
+    };
+    const provider = document.getElementById('setSystemTimerProvider')?.value?.trim() || '';
+    if (provider) systemTimer.provider = provider;
+    schedule.systemTimer = systemTimer;
+  }
+  return schedule;
 }
 
 function collectDashboardSettingsFromModal() {
-  return {
-    projectRoot: document.getElementById('setDashboardProjectRoot')?.value || '',
-    pythonExecutable: document.getElementById('setDashboardPython')?.value || 'python3',
-    appDir: document.getElementById('setDashboardAppDir')?.value || '',
-    host: document.getElementById('setDashboardHost')?.value || '127.0.0.1',
-    port: Number(document.getElementById('setDashboardPort')?.value || 3036),
-    healthPath: document.getElementById('setDashboardHealthPath')?.value || '/health',
-    logsDir: document.getElementById('setDashboardLogsDir')?.value || '',
-    serviceLabel: document.getElementById('setDashboardServiceLabel')?.value || 'com.actanara.dashboard',
-    watchdogLabel: document.getElementById('setDashboardWatchdogLabel')?.value || 'com.actanara.dashboard.watchdog',
+  const dashboard = {};
+  const assignString = (key, id, fallback = '') => {
+    const input = document.getElementById(id);
+    if (input) dashboard[key] = input.value || fallback;
   };
+  assignString('projectRoot', 'setDashboardProjectRoot');
+  assignString('pythonExecutable', 'setDashboardPython', 'python3');
+  assignString('appDir', 'setDashboardAppDir');
+  assignString('host', 'setDashboardHost', '127.0.0.1');
+  const portInput = document.getElementById('setDashboardPort');
+  if (portInput) dashboard.port = Number(portInput.value || 3036);
+  assignString('publicBaseUrl', 'setDashboardPublicBaseUrl');
+  const originsInput = document.getElementById('setDashboardAllowedOrigins');
+  if (originsInput) {
+    dashboard.allowedOrigins = String(originsInput.value || '')
+      .split(/\r?\n|,/)
+      .map(item => item.trim())
+      .filter(Boolean);
+  }
+  assignString('healthPath', 'setDashboardHealthPath', '/health');
+  assignString('logsDir', 'setDashboardLogsDir');
+  assignString('serviceLabel', 'setDashboardServiceLabel', 'com.actanara.dashboard');
+  assignString('watchdogLabel', 'setDashboardWatchdogLabel', 'com.actanara.dashboard.watchdog');
+  return dashboard;
 }
 
 function collectPathSettingsFromModal() {
@@ -6016,6 +8681,20 @@ function collectExternalToolSettingsFromModal() {
   return externalTools;
 }
 
+function collectNativeMemorySettingsFromModal() {
+  return {
+    nativeMemory: {
+      enabled: document.getElementById('setNativeMemoryEnabled')?.checked === true,
+      allowInRag: document.getElementById('setNativeMemoryAllowInRag')?.checked === true,
+      includeInstructions: document.getElementById('setNativeMemoryIncludeInstructions')?.checked === true,
+      tools: {
+        codex: document.getElementById('setNativeMemoryCodex')?.checked === true,
+        claudeCode: document.getElementById('setNativeMemoryClaudeCode')?.checked === true,
+      },
+    },
+  };
+}
+
 function collectPipelineSettingsFromModal() {
   const stepTimeouts = {};
   document.querySelectorAll('[data-pipeline-step-timeout]').forEach(input => {
@@ -6040,16 +8719,26 @@ function collectLlmProviderSettingsFromModal() {
   const payload = {
     mode: custom ? 'custom' : 'preset',
     provider: providerName,
-    endpoint: custom ? (document.getElementById('llmProviderEndpoint')?.value || '') : '',
     model: custom ? (document.getElementById('llmProviderModel')?.value || '') : (document.getElementById('llmProviderModelSelect')?.value || ''),
-    api: custom ? (document.getElementById('llmProviderApi')?.value || 'openai-compatible') : '',
-    contextWindow: custom ? (document.getElementById('llmProviderContextWindow')?.value || '') : '',
-    maxTokens: custom ? (document.getElementById('llmProviderMaxTokens')?.value || '') : '',
-    pipelineConcurrency: document.getElementById('llmPipelineConcurrency')?.value || '3',
-    timeoutSeconds: document.getElementById('llmProviderTimeoutSeconds')?.value || '300',
-    pipelineGateMode: document.getElementById('llmPipelineGateMode')?.value || 'auto',
     apiKey: document.getElementById('llmProviderApiKey')?.value || '',
   };
+  if (custom) {
+    payload.endpoint = document.getElementById('llmProviderEndpoint')?.value || '';
+    payload.api = document.getElementById('llmProviderApi')?.value || 'openai-compatible';
+  }
+  if (document.getElementById('llmProviderContextWindow')) {
+    payload.contextWindow = custom ? (document.getElementById('llmProviderContextWindow')?.value || '') : '';
+    payload.maxTokens = custom ? (document.getElementById('llmProviderMaxTokens')?.value || '') : '';
+  }
+  if (document.getElementById('llmPipelineConcurrency')) {
+    payload.pipelineConcurrency = document.getElementById('llmPipelineConcurrency')?.value || '3';
+  }
+  if (document.getElementById('llmProviderTimeoutSeconds')) {
+    payload.timeoutSeconds = document.getElementById('llmProviderTimeoutSeconds')?.value || '300';
+  }
+  if (document.getElementById('llmPipelineGateMode')) {
+    payload.pipelineGateMode = document.getElementById('llmPipelineGateMode')?.value || 'auto';
+  }
   if (payload.pipelineGateMode === 'manual') {
     payload.pipelineGateTokens = document.getElementById('llmPipelineGateTokens')?.value || '30000';
   }
@@ -6102,6 +8791,7 @@ function collectRagSettingsFromModal() {
   const previous = window._lastRagSettings || {};
   const previousEmbedding = previous.embedding || {};
   const previousRetrieval = previous.retrieval || {};
+  const previousIndexing = previous.indexing || {};
   const enabled = previous.enabled !== false && (previous.mode || 'v2') !== 'disabled';
   const embeddingMode = previousEmbedding.mode || previousEmbedding.provider || 'local';
   const providerId = previousEmbedding.providerId || embeddingMode;
@@ -6115,6 +8805,7 @@ function collectRagSettingsFromModal() {
       model: previousEmbedding.model || 'intfloat/multilingual-e5-small',
     },
     retrieval: {
+      ...previousRetrieval,
       topK: Number(document.getElementById('setRagTopK')?.value || previousRetrieval.topK || 8),
       recencyHalfLifeDays: Number(document.getElementById('setRagHalfLife')?.value || previousRetrieval.recencyHalfLifeDays || 7),
     },
@@ -6124,12 +8815,14 @@ function collectRagSettingsFromModal() {
     indexing: {
       enabled,
       defaultFullRebuild: false,
+      externalSources: collectRagExternalSourcesFromModal(previousIndexing.externalSources || {}),
     },
   };
   const device = previousEmbedding.device;
   if (device) payload.embedding.device = device;
   const endpoint = previousEmbedding.endpoint;
   const apiKeyEnv = previousEmbedding.apiKeyEnv;
+  const cloudProviderCredential = document.getElementById('setRagCloudProviderCredential')?.value || '';
   const previousSecretRef = previousEmbedding.secretRef || {};
   const secretBackend = previousSecretRef.backend;
   const secretService = previousSecretRef.service;
@@ -6140,6 +8833,9 @@ function collectRagSettingsFromModal() {
     payload.embedding.providerId = providerId && providerId !== 'local' ? providerId : 'cloud';
     payload.embedding.endpoint = endpoint || '';
     payload.embedding.apiKeyEnv = apiKeyEnv || 'NOVA_RAG_CLOUD_API_KEY';
+    if (cloudProviderCredential) {
+      payload.embedding = {...payload.embedding, ['api' + 'Key']: cloudProviderCredential};
+    }
     if (secretBackend || secretAccount) {
       payload.embedding.secretRef = {
         backend: secretBackend || 'process-env',
@@ -6269,21 +8965,107 @@ async function loadRagEval() {
   }
 }
 
+async function loadLocalMemoryStatus() {
+  const labels = ragUiText();
+  const panel = document.getElementById('localMemoryStatus');
+  if (!panel) return;
+  try {
+    const res = await fetch('/api/memory/status?probe=true');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    renderLocalMemoryStatus(data);
+  } catch (e) {
+    panel.innerHTML = '<div class="fo-job-error">' + escapeHtml(labels.localMemoryStatusFailed + e.message) + '</div>';
+  }
+}
+
+function renderLocalMemoryStatus(status) {
+  const labels = ragUiText();
+  const panel = document.getElementById('localMemoryStatus');
+  if (!panel) return;
+  status = status || {};
+  const local = ((status.backends || {}).local) || {};
+  const backend = local.backend || {kind: 'local-fts', semantic: false};
+  const capabilities = local.capabilities || {};
+  const actions = status.actions || {};
+  const stateClass = local.ready ? 'ok' : 'warn';
+  const actionButtons = [
+    actions.sync
+      ? '<button type="button" class="settings-browse-btn" onclick="syncLocalMemoryIndex(false)">' + escapeHtml(labels.syncLocalMemory) + '</button>'
+      : '',
+    actions.rebuild
+      ? '<button type="button" class="settings-browse-btn secondary" onclick="syncLocalMemoryIndex(true)">' + escapeHtml(labels.rebuildLocalMemory) + '</button>'
+      : '',
+  ].filter(Boolean).join(' ');
+  const featureList = [
+    capabilities.fts5 ? 'FTS5' : '',
+    capabilities.unicode61 ? 'unicode61' : '',
+    capabilities.trigram ? 'trigram' : '',
+    capabilities.exactScan ? 'exact-scan' : '',
+  ].filter(Boolean).join(', ') || 'exact-scan';
+  panel.innerHTML =
+    '<div class="settings-runtime-line"><span class="settings-runtime-chip ' + stateClass + '">' +
+      escapeHtml(local.status || (local.ready ? 'ready' : 'missing')) + '</span> ' +
+      '<b>' + escapeHtml(labels.localMemoryBackend) + '</b> ' + escapeHtml(backend.kind || 'local-fts') +
+      ' · semantic=' + escapeHtml(String(Boolean(backend.semantic))) + '</div>' +
+    '<div class="settings-runtime-line"><b>' + escapeHtml(labels.localMemoryDocuments) + '</b> ' +
+      Number(local.documentCount || 0).toLocaleString() + ' · <b>' + escapeHtml(labels.localMemorySources) + '</b> ' +
+      Number(local.sourceCount || 0).toLocaleString() + '</div>' +
+    '<div class="settings-runtime-line"><b>' + escapeHtml(labels.localMemorySyncedAt) + '</b> ' +
+      escapeHtml(local.indexedAt || '—') + ' · <b>' + escapeHtml(labels.localMemoryCapabilities) + '</b> ' +
+      escapeHtml(featureList) + '</div>' +
+    (backend.indexPath ? '<div class="settings-runtime-line"><b>' + escapeHtml(labels.localMemoryIndex) +
+      '</b> <code>' + escapeHtml(backend.indexPath) + '</code></div>' : '') +
+    (actionButtons ? '<div class="rag-external-actions">' + actionButtons + '</div>' : '');
+}
+
+async function syncLocalMemoryIndex(rebuild) {
+  const labels = ragUiText();
+  const panel = document.getElementById('localMemoryStatus');
+  if (!panel) return;
+  panel.innerHTML = '<div class="wr-loading" style="padding:12px"><div class="wr-spinner"></div><span>' +
+    escapeHtml(rebuild ? labels.rebuildingLocalMemory : labels.syncingLocalMemory) + '</span></div>';
+  try {
+    const endpoint = rebuild ? '/api/memory/local/rebuild' : '/api/memory/local/sync';
+    const res = await fetch(endpoint, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    renderLocalMemoryStatus(data.memoryStatus || {});
+  } catch (e) {
+    panel.innerHTML = '<div class="fo-job-error">' + escapeHtml(labels.localMemoryActionFailed + e.message) + '</div>';
+  }
+}
+
 async function runRagSearch() {
   const labels = ragUiText();
   const box = document.getElementById('ragSearchResults');
   const query = document.getElementById('ragSearchQuery')?.value || '';
   if (box) box.textContent = labels.searching;
   try {
-    const res = await fetch('/api/rag/search', {
+    const res = await fetch('/api/memory/search', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({query, topK: Number(document.getElementById('setRagTopK')?.value || 8)})
+      body: JSON.stringify({query, topK: Number(document.getElementById('setRagTopK')?.value || 8), mode: 'auto', caller: 'dashboard'})
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
+    if (data.available === false) {
+      const unavailableBackend = data.backend || {};
+      if (box) box.innerHTML =
+        '<div class="settings-note" role="status"><b>' + escapeHtml(labels.searchBackend) + '</b> ' +
+          escapeHtml(unavailableBackend.kind || 'unavailable') + ' · semantic=' +
+          escapeHtml(String(Boolean(unavailableBackend.semantic))) + '</div>' +
+        '<div class="fo-job-error" role="alert">' +
+          escapeHtml(labels.searchUnavailable + (data.reason || 'server unavailable')) + '</div>';
+      return;
+    }
     const rows = (data.results || []).map(item => '<div class="settings-runtime-line"><b>' + escapeHtml(item.id || item.score || '') + '</b> ' + escapeHtml(item.textPreview || item.text || item.score || '') + '</div>').join('');
-    if (box) box.innerHTML = rows || '<div class="settings-note">' + escapeHtml(labels.noResults) + '</div>';
+    const backend = data.backend || {};
+    const backendNotice = '<div class="settings-note" role="status"><b>' + escapeHtml(labels.searchBackend) + '</b> ' +
+      escapeHtml(backend.kind || 'unknown') + ' · semantic=' + escapeHtml(String(Boolean(backend.semantic))) + '</div>';
+    const degraded = data.degraded || backend.degraded || (data.controller && data.controller.status === 'degraded');
+    const notice = degraded ? '<div class="settings-note" role="status">' + escapeHtml(labels.partialResults || 'Partial results') + '</div>' : '';
+    if (box) box.innerHTML = backendNotice + notice + (rows || '<div class="settings-note">' + escapeHtml(labels.noResults) + '</div>');
   } catch (e) {
     if (box) box.innerHTML = '<div class="fo-job-error">' + escapeHtml(labels.searchFailed) + escapeHtml(e.message) + '</div>';
   }
@@ -6296,21 +9078,41 @@ async function loadRagSearchPage() {
   const settingsPanel = document.getElementById('ragSearchSettings');
   if (panel) panel.innerHTML = '<div class="settings-note">' + escapeHtml(labels.readingStatus) + '</div>';
   if (settingsPanel) settingsPanel.innerHTML = '<div class="settings-note">' + escapeHtml(labels.readingSettings) + '</div>';
+  let settingsPayload = null;
   try {
     const settingsRes = await fetch('/api/rag/settings');
     if (!settingsRes.ok) throw new Error('settings HTTP ' + settingsRes.status);
-    const settingsPayload = await settingsRes.json();
+    settingsPayload = await settingsRes.json();
     window._lastRagSettings = settingsPayload.rag || {};
+    if (settingsPanel) settingsPanel.innerHTML = renderRagSettings(window._lastRagSettings, window._lastRagStatus || {});
+  } catch (e) {
+    if (settingsPanel) settingsPanel.innerHTML = '<div class="fo-job-error">' + escapeHtml(labels.settingsReadFailed) + escapeHtml(e.message) + '</div>';
+  }
+  try {
     const res = await fetch('/api/rag/status?probe=true');
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     window._lastRagSearchStatus = data;
     window._lastRagStatus = data;
-    if (settingsPanel) settingsPanel.innerHTML = renderRagSettings(window._lastRagSettings, data);
+    if (settingsPanel && settingsPayload) settingsPanel.innerHTML = renderRagSettings(window._lastRagSettings, data);
     renderRagSearchStatus(data);
   } catch (e) {
     if (panel) panel.innerHTML = '<div class="fo-job-error">' + escapeHtml(labels.statusReadFailed) + escapeHtml(e.message) + '</div>';
-    if (settingsPanel) settingsPanel.innerHTML = '<div class="fo-job-error">' + escapeHtml(labels.settingsReadFailed) + escapeHtml(e.message) + '</div>';
+  }
+}
+
+async function loadRagManagedService(message = '') {
+  const panel = document.getElementById('ragManagedService');
+  if (!panel) return;
+  const labels = operatorText();
+  try {
+    const response = await fetch('/api/settings/services/rag/preview');
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    const preview = await response.json();
+    ACTANARA_STARTUP_PREVIEWS = Object.assign({}, ACTANARA_STARTUP_PREVIEWS || {}, {rag: preview});
+    panel.innerHTML = (message ? '<div class="settings-note">' + escapeHtml(message) + '</div>' : '') + renderStartupServiceRow('rag', labels.startupRagServer, preview);
+  } catch (error) {
+    panel.innerHTML = '<div class="fo-job-error" style="padding:12px">' + escapeHtml(labels.startupReadFailed + error.message) + '</div>';
   }
 }
 
@@ -6446,8 +9248,7 @@ async function submitRagProfileMigration() {
   const payload = collectRagProfileMigrationPayload();
   const initMode = payload.initMode;
   const targetProfile = payload.targetProfile;
-  const mode = targetProfile.mode;
-  const confirmationText = initMode ? 'MIGRATE RAG PROFILE' : payload.confirmationText;
+  const confirmationText = payload.confirmationText;
   if (initMode && payload.confirmationText !== labels.initializationConfirmation) {
     if (box) box.innerHTML = '<div class="fo-job-error">' + escapeHtml(labels.initializationConfirmationMismatch) + '</div>';
     return;
@@ -6460,62 +9261,10 @@ async function submitRagProfileMigration() {
   }
   try {
     await previewRagProfileMigration();
-    if (initMode) {
-      const current = window._lastRagSettings || {};
-      const currentEmbedding = current.embedding || {};
-      const settingsRes = await fetch('/api/rag/settings', {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({rag: {
-          enabled: true,
-          mode: 'v2',
-          embedding: {
-            mode,
-            provider: mode,
-            providerId: targetProfile.providerId,
-            model: targetProfile.model,
-            dimension: targetProfile.dimension,
-            endpoint: targetProfile.endpoint,
-            apiKeyEnv: targetProfile.apiKeyEnv,
-            batchSize: currentEmbedding.batchSize || 200,
-            device: currentEmbedding.device || 'auto',
-          },
-          server: {enabled: true},
-          indexing: {
-            enabled: true,
-            defaultFullRebuild: false,
-          },
-          retrieval: (current.retrieval || {topK: 8, recencyHalfLifeDays: 7}),
-        }})
-      });
-      const settingsPayload = await settingsRes.json().catch(() => ({}));
-      if (!settingsRes.ok) throw new Error(settingsPayload.error || ('settings HTTP ' + settingsRes.status));
-      window._lastRagSettings = settingsPayload.rag || window._lastRagSettings || {};
-      window._lastRagStatus = settingsPayload.status || window._lastRagStatus || {};
-      const startBody = {confirmationText: 'START ACTANARA RAG SERVER'};
-      let startRes;
-      try {
-        startRes = await fetch('/api/rag/server/start', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify(startBody)
-        });
-      } catch (startError) {
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        startRes = await fetch('/api/rag/server/start', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify(startBody)
-        });
-      }
-      const startPayload = await startRes.json().catch(() => ({}));
-      if (!startRes.ok) throw new Error(startPayload.error || ('server HTTP ' + startRes.status));
-      if (startPayload.accepted === false) throw new Error(startPayload.reason || startPayload.status || 'nova-RAG server start was not accepted');
-    }
     const res = await fetch('/api/rag/profile/migrate', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({confirmationText, autoPromote: initMode, targetProfile})
+      body: JSON.stringify({initMode, confirmationText, autoPromote: initMode, targetProfile})
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -6542,13 +9291,16 @@ function openRagExternalSkillRegistration() {
       '<div class="settings-section-title">External Agent Memory Skill</div>' +
       '<div class="settings-note">' + escapeHtml(labels.externalSkillNote) + '</div>' +
       '<div class="settings-runtime-status">' +
-        '<div class="settings-runtime-line"><b>Contract</b> GET /api/rag/external/health · GET /api/rag/external/contract · POST /api/rag/external/search</div>' +
+        '<div class="settings-runtime-line"><b>Contract</b> GET /api/memory/external/health · GET /api/memory/external/contract · POST /api/memory/external/search</div>' +
         '<div class="settings-runtime-line"><b>Policy</b> ' + escapeHtml(labels.externalSkillPolicy) + '</div>' +
       '</div>' +
-      '<div class="settings-row"><label>' + escapeHtml(labels.confirmationPhrase) + '</label><input id="ragSkillRegistrationConfirmation" placeholder="INSTALL ACTANARA RAG SKILL"></div>' +
-      '<label class="settings-inline"><input type="checkbox" id="ragSkillRegistrationOverwrite"> ' + escapeHtml(labels.overwriteSkill) + '</label>' +
-      '<button type="button" class="wr-export-btn" onclick="loadRagExternalSkillPlan()">' + escapeHtml(labels.refreshPlan) + '</button> ' +
-      '<button type="button" class="wr-export-btn" onclick="submitRagExternalSkillRegistration()">' + escapeHtml(labels.installSkill) + '</button> ' +
+      '<div class="settings-section-title">' + escapeHtml(labels.externalSkillTargets) + '</div>' +
+      '<div class="settings-note">' + escapeHtml(labels.externalSkillTargetsNote) + '</div>' +
+      '<div id="memorySkillRegistrationTargets" class="settings-runtime-status">' + escapeHtml(labels.readingInstallPlan) + '</div>' +
+      '<div class="settings-row"><label>' + escapeHtml(labels.confirmationPhrase) + '</label><input id="ragSkillRegistrationConfirmation" placeholder="INSTALL ACTANARA MEMORY SKILL"></div>' +
+      '<label class="settings-inline"><input type="checkbox" id="ragSkillRegistrationOverwrite" onchange="loadRagExternalSkillPlan(true)"> ' + escapeHtml(labels.overwriteSkill) + '</label>' +
+      '<button type="button" class="wr-export-btn" onclick="loadRagExternalSkillPlan(true)">' + escapeHtml(labels.refreshPlan) + '</button> ' +
+      '<button type="button" class="wr-export-btn" id="memorySkillRegistrationApplyBtn" onclick="submitRagExternalSkillRegistration()">' + escapeHtml(labels.installSkill) + '</button> ' +
       '<button type="button" class="wr-export-btn secondary" onclick="loadRagExternalContractPreview()">' + escapeHtml(labels.readContract) + '</button> ' +
       '<button type="button" class="wr-export-btn secondary" onclick="openBackgroundTasksModal()">' + escapeHtml(labels.backgroundTasks) + '</button>' +
       '<div id="ragExternalSkillPreview" class="settings-runtime-status" style="margin-top:10px">' + escapeHtml(labels.readingInstallPlan) + '</div>' +
@@ -6556,22 +9308,104 @@ function openRagExternalSkillRegistration() {
   loadRagExternalSkillPlan();
 }
 
-async function loadRagExternalSkillPlan() {
+async function loadRagExternalSkillPlan(useCurrentSelection = false) {
   const labels = ragUiText();
+  const generation = ++MEMORY_SKILL_PLAN_GENERATION;
   const box = document.getElementById('ragExternalSkillPreview');
+  const targets = document.getElementById('memorySkillRegistrationTargets');
+  const currentInputs = Array.from(document.querySelectorAll('[data-memory-skill-tool]'));
+  const tools = useCurrentSelection && currentInputs.length
+    ? selectedMemorySkillRegistrationTools()
+    : null;
+  const overwrite = document.getElementById('ragSkillRegistrationOverwrite')?.checked || false;
   if (box) box.textContent = labels.readingInstallPlan;
+  if (targets) targets.textContent = labels.readingInstallPlan;
   try {
-    const res = await fetch('/api/settings/external-tools/rag-skill-registration/plan');
+    const res = tools === null
+      ? await fetch('/api/settings/external-tools/memory-skill-registration/plan')
+      : await fetch('/api/settings/external-tools/memory-skill-registration', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({dryRun: true, overwrite, tools})
+        });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-    const rows = (data.operations || []).map(op =>
-      '<div class="settings-runtime-line"><b>' + escapeHtml(op.tool) + '</b> ' +
-      escapeHtml(op.status) + ' · ' + escapeHtml(op.skillFile || '') + '</div>'
-    ).join('');
-    if (box) box.innerHTML = rows || '<div class="settings-note">' + escapeHtml(labels.noRegistrationTargets) + '</div>';
+    if (generation !== MEMORY_SKILL_PLAN_GENERATION) return;
+    renderMemorySkillRegistrationPlan(data);
   } catch (e) {
+    if (generation !== MEMORY_SKILL_PLAN_GENERATION) return;
     if (box) box.innerHTML = '<div class="fo-job-error">' + escapeHtml(labels.planReadFailed + e.message) + '</div>';
+    if (targets) targets.innerHTML = '<div class="fo-job-error">' + escapeHtml(labels.planReadFailed + e.message) + '</div>';
   }
+}
+
+function memorySkillToolLabel(tool) {
+  return ({
+    openclaw: 'OpenClaw',
+    claudeCode: 'Claude Code',
+    codex: 'Codex',
+    geminiCli: 'Gemini CLI',
+    hermes: 'Hermes',
+    opencode: 'OpenCode',
+    antigravity: 'Antigravity',
+    cursor: 'Cursor',
+  })[tool] || tool;
+}
+
+function renderMemorySkillRegistrationPlan(data) {
+  const labels = ragUiText();
+  const box = document.getElementById('ragExternalSkillPreview');
+  const targets = document.getElementById('memorySkillRegistrationTargets');
+  const detected = new Set(Array.isArray(data.detectedTools) ? data.detectedTools : []);
+  const supported = new Set(Array.isArray(data.supportedTools) ? data.supportedTools : []);
+  const selected = new Set(Array.isArray(data.selectedTools) ? data.selectedTools : []);
+  const candidates = Array.from(supported).filter(tool => detected.has(tool));
+  const operations = new Map((data.operations || []).map(operation => [operation.tool, operation]));
+  const targetRows = candidates.map(tool => {
+    const operation = operations.get(tool) || {};
+    const status = operation.status || labels.registrationAvailable;
+    const checked = selected.has(tool) ? ' checked' : '';
+    const path = operation.skillFile
+      ? ' · <code>' + escapeHtml(operation.skillFile) + '</code>'
+      : '';
+    return '<label class="settings-check memory-skill-target">' +
+      '<input type="checkbox" data-memory-skill-tool="' + escapeHtml(tool) + '"' + checked +
+      ' onchange="loadRagExternalSkillPlan(true)"> ' +
+      '<span><b>' + escapeHtml(memorySkillToolLabel(tool)) + '</b> · ' + escapeHtml(status) + path + '</span>' +
+      '</label>';
+  }).join('');
+  const unsupported = Array.from(detected).filter(tool => !supported.has(tool));
+  const warnings = (data.warnings || []).map(item =>
+    '<div class="settings-note">' + escapeHtml(item) + '</div>'
+  ).join('');
+  if (targets) {
+    targets.innerHTML = targetRows ||
+      '<div class="settings-note">' + escapeHtml(labels.noRegistrationTargets) + '</div>';
+  }
+  if (box) {
+    box.innerHTML =
+      (unsupported.length
+        ? '<div class="settings-note">' + escapeHtml(labels.detectedUnsupportedTools) +
+          escapeHtml(unsupported.map(memorySkillToolLabel).join(', ')) + '</div>'
+        : '') +
+      warnings +
+      '<div class="settings-runtime-line"><b>Template</b> v' +
+        escapeHtml(String(data.templateVersion || '—')) + ' · skill=' +
+        escapeHtml(data.skillId || 'actanara-rag') + '</div>';
+  }
+  const confirmation = document.getElementById('ragSkillRegistrationConfirmation');
+  if (confirmation) {
+    confirmation.placeholder = data.confirmationTextRequired || 'INSTALL ACTANARA MEMORY SKILL';
+  }
+  const applyButton = document.getElementById('memorySkillRegistrationApplyBtn');
+  if (applyButton) applyButton.disabled = candidates.length === 0;
+}
+
+function selectedMemorySkillRegistrationTools() {
+  return Array.from(document.querySelectorAll('[data-memory-skill-tool]'))
+    .filter(input => input.checked)
+    .map(input => input.dataset.memorySkillTool)
+    .filter(Boolean);
 }
 
 async function submitRagExternalSkillRegistration() {
@@ -6579,19 +9413,30 @@ async function submitRagExternalSkillRegistration() {
   const box = document.getElementById('ragExternalSkillPreview');
   const confirmationText = document.getElementById('ragSkillRegistrationConfirmation')?.value || '';
   const overwrite = document.getElementById('ragSkillRegistrationOverwrite')?.checked || false;
+  const tools = selectedMemorySkillRegistrationTools();
+  if (!tools.length) {
+    if (box) box.innerHTML = '<div class="fo-job-error">' + escapeHtml(labels.selectRegistrationTarget) + '</div>';
+    return;
+  }
   if (box) box.textContent = labels.submittingRegistration;
   try {
-    const res = await fetch('/api/settings/external-tools/rag-skill-registration', {
+    const res = await fetch('/api/settings/external-tools/memory-skill-registration', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({dryRun: false, overwrite, confirmationText})
+      body: JSON.stringify({dryRun: false, overwrite, confirmationText, tools})
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error || ('HTTP ' + res.status));
     }
     const data = await res.json();
-    if (box) box.innerHTML = '<div class="settings-note">' + escapeHtml(labels.registrationComplete + (data.results || []).length + ' target(s)') + '</div>';
+    const rows = (data.results || []).map(result =>
+      '<div class="settings-runtime-line"><b>' + escapeHtml(memorySkillToolLabel(result.tool)) +
+      '</b> ' + escapeHtml(result.result || result.status || 'completed') + '</div>'
+    ).join('');
+    if (box) box.innerHTML =
+      '<div class="settings-note">' + escapeHtml(labels.registrationComplete + (data.results || []).length + ' target(s)') + '</div>' +
+      rows;
     await refreshBackgroundTaskButton();
   } catch (e) {
     if (box) box.innerHTML = '<div class="fo-job-error">' + escapeHtml(labels.registrationFailed + e.message) + '</div>';
@@ -6603,7 +9448,7 @@ async function loadRagExternalContractPreview() {
   const box = document.getElementById('ragExternalSkillPreview');
   if (box) box.textContent = labels.readingContract;
   try {
-    const res = await fetch('/api/rag/external/contract');
+    const res = await fetch('/api/memory/contract');
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     if (box) box.innerHTML = '<pre style="white-space:pre-wrap;margin:0">' + escapeHtml(JSON.stringify(data, null, 2)) + '</pre>';
@@ -6869,7 +9714,8 @@ async function runRagPageSearch() {
   const t = ragUiText();
   const box = document.getElementById('ragPageSearchResults');
   const query = document.getElementById('ragPageSearchQuery')?.value || '';
-  const topK = Number(document.getElementById('ragPageSearchTopK')?.value || 8);
+  const limitInput = document.getElementById('ragPageSearchTopK');
+  const topK = Number(limitInput?.value || 8);
   const project = document.getElementById('ragPageSearchProject')?.value || '';
   const sourceSets = _csvValues(document.getElementById('ragPageSearchSourceSets')?.value || '');
   const lifecycle = _csvValues(document.getElementById('ragPageSearchLifecycle')?.value || '');
@@ -6877,27 +9723,44 @@ async function runRagPageSearch() {
     if (box) box.innerHTML = '<div class="fo-job-error">' + escapeHtml(t.searchQueryRequired) + '</div>';
     return;
   }
+  const limitMessage = dashboardLanguageProfile() === 'en' ? 'Choose a whole number from 1 to 20 for the result limit.' : '结果数量需为 1 到 20 之间的整数。';
+  limitInput?.setCustomValidity('');
+  if (!Number.isInteger(topK) || topK < 1 || topK > 20) {
+    limitInput?.setCustomValidity(limitMessage);
+    limitInput?.reportValidity();
+    if (box) box.innerHTML = '<div class="fo-job-error" role="alert">' + escapeHtml(limitMessage) + '</div>';
+    return;
+  }
+  const request = ++RAG_PAGE_SEARCH_REQUEST;
   if (box) box.innerHTML = '<div class="settings-note">' + escapeHtml(t.searching) + '</div>';
   try {
-    const payload = {query, topK, includeGovernance: true};
+    const payload = {query, topK, includeGovernance: true, mode: 'auto', caller: 'dashboard'};
     if (project.trim()) payload.project = project.trim();
     if (sourceSets.length) payload.sourceSets = sourceSets;
     if (lifecycle.length) payload.lifecycle = lifecycle;
-    const res = await fetch('/api/rag/search', {
+    const res = await fetch('/api/memory/search', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(payload)
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
+    if (request !== RAG_PAGE_SEARCH_REQUEST) return;
+    const backend = data.backend || {};
+    const backendNotice = '<div class="settings-note" role="status"><b>' +
+      escapeHtml(t.searchBackend) + '</b> ' + escapeHtml(backend.kind || 'unknown') +
+      ' · semantic=' + escapeHtml(String(Boolean(backend.semantic))) + '</div>';
     if (data.available === false) {
-      if (box) box.innerHTML = '<div class="fo-job-error">' + escapeHtml(t.searchUnavailable + (data.reason || 'server unavailable')) + '</div>';
+      if (box) box.innerHTML = backendNotice + '<div class="fo-job-error">' +
+        escapeHtml(t.searchUnavailable + (data.reason || 'server unavailable')) + '</div>';
       await loadRagSearchPage();
       return;
     }
     const rows = (data.results || []).map(renderRagSearchResult).join('');
-    if (box) box.innerHTML = rows || '<div class="settings-note">' + escapeHtml(t.noResults) + '</div>';
+    if (box) box.innerHTML = backendNotice +
+      (rows || '<div class="settings-note">' + escapeHtml(t.noResults) + '</div>');
   } catch (e) {
+    if (request !== RAG_PAGE_SEARCH_REQUEST) return;
     if (box) box.innerHTML = '<div class="fo-job-error">' + escapeHtml(t.searchFailed + e.message) + '</div>';
   }
 }
@@ -6941,10 +9804,13 @@ function renderSystemTimerPreview(data) {
   }
   const jobs = data.jobs || [];
   const jobHtml = jobs.map(job => {
+    const identifier = job.label || job.timerName || job.unitName || '';
+    const definitionPath = job.plistPath || job.timerPath || job.unitPath || '';
+    const command = (job.programArguments || []).join(' ') || job.command || '';
     return '<div class="settings-timer-job"><b>' + escapeHtml(job.kind) + ' · ' + escapeHtml(job.time) + '</b>' +
-      '<code>Label: ' + escapeHtml(job.label) + '</code>' +
-      '<code>Plist: ' + escapeHtml(job.plistPath) + '</code>' +
-      '<code>' + escapeHtml((job.programArguments || []).join(' ')) + '</code></div>';
+      '<code>' + escapeHtml(identifier) + '</code>' +
+      '<code>' + escapeHtml(definitionPath) + '</code>' +
+      '<code>' + escapeHtml(command) + '</code></div>';
   }).join('');
   return '<div class="settings-note" style="padding:12px;margin:0">Provider: ' + escapeHtml(data.provider) + ' · Registered: ' + (data.registered ? 'yes' : 'no') + '</div>' + jobHtml;
 }
@@ -6978,6 +9844,7 @@ async function installSystemTimer() {
     }
     const data = await res.json();
     if (panel) panel.innerHTML = '<div class="settings-note" style="padding:12px;margin:0">' + escapeHtml(labels.installedJobs((data.installed || []).length)) + escapeHtml(data.backupDir || 'none') + '</div>';
+    await syncSystemSchedulerCheckboxWithActual();
   } catch (e) {
     if (panel) panel.innerHTML = '<div class="fo-job-error" style="padding:12px">' + escapeHtml(labels.installFailed + e.message) + '</div>';
   }
@@ -7004,7 +9871,10 @@ async function uninstallSystemTimer() {
     const res = await fetch('/api/settings/scheduler/system-timer/uninstall', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({confirmationText})
+      body: JSON.stringify({
+        confirmationText,
+        targetMode: document.getElementById('setScheduleAgentEnabled')?.checked ? 'agent' : 'disabled'
+      })
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -7012,6 +9882,7 @@ async function uninstallSystemTimer() {
     }
     const data = await res.json();
     if (panel) panel.innerHTML = '<div class="settings-note" style="padding:12px;margin:0">' + escapeHtml(labels.uninstalledJobs((data.removed || []).length)) + escapeHtml(data.backupDir || 'none') + '</div>';
+    await syncSystemSchedulerCheckboxWithActual();
   } catch (e) {
     if (panel) panel.innerHTML = '<div class="fo-job-error" style="padding:12px">' + escapeHtml(labels.uninstallFailed + e.message) + '</div>';
   }
@@ -7019,22 +9890,156 @@ async function uninstallSystemTimer() {
 
 async function openLlmProviderModal() {
   const labels = llmUiText();
-  openModal(labels.title, '<div class="wr-loading"><div class="wr-spinner"></div><span>' + escapeHtml(labels.readingProvider) + '</span></div>');
+  const modalGeneration = openModal(labels.chainTitle, '<div class="wr-loading"><div class="wr-spinner"></div><span>' + escapeHtml(labels.readingProvider) + '</span></div>');
   try {
-    const res = await fetch('/api/llm-provider');
+    const res = await fetch('/api/llm-provider-chain');
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    const provider = await res.json();
-    document.getElementById('modal-body').innerHTML = renderLlmProviderModal(provider);
+    const chain = await res.json();
+    if (dashboardModalGenerationIsCurrent(modalGeneration)) {
+      LLM_PROVIDER_CHAIN_DRAFT = chain;
+      document.getElementById('modal-body').innerHTML = renderLlmProviderModal(chain);
+    }
   } catch (e) {
-    document.getElementById('modal-body').innerHTML = '<div class="fo-job-error">' + escapeHtml(labels.readProviderFailed + e.message) + '</div>';
+    if (dashboardModalGenerationIsCurrent(modalGeneration)) {
+      document.getElementById('modal-body').innerHTML = '<div class="fo-job-error">' + escapeHtml(labels.readProviderFailed + e.message) + '</div>';
+    }
   }
 }
 
-function renderLlmProviderModal(provider) {
-  return renderLlmProviderSettings(provider, true);
+function renderLlmProviderModal(chain) {
+  const labels = llmUiText();
+  const providers = Array.isArray(chain && chain.providers) ? chain.providers : [];
+  const catalog = Array.isArray(chain && chain.catalog) ? chain.catalog : [];
+  const rows = providers.map((provider, index) => renderLlmProviderChainRow(provider, index, providers.length, catalog)).join('');
+  return '<div class="llm-chain-editor">' +
+    '<div class="settings-note llm-chain-note">' + escapeHtml(labels.chainNote) + '</div>' +
+    '<div id="llmProviderChainRows">' + rows + '</div>' +
+    '<button type="button" class="wr-export-btn secondary llm-chain-add" onclick="addLlmProviderFallback()">+ ' + escapeHtml(labels.addFallback) + '</button>' +
+    '<div class="settings-actions"><span class="settings-status" id="llmSaveStatus" role="status" aria-live="polite"></span>' +
+      '<button class="wr-export-btn" onclick="closeModal()">' + escapeHtml(labels.cancel) + '</button>' +
+      '<button class="wr-export-btn" onclick="saveLlmProviderModal()">' + escapeHtml(labels.saveChain) + '</button></div>' +
+    '</div>';
 }
 
-function renderLlmProviderSettings(provider, includeActions) {
+function renderLlmProviderChainRow(provider, index, count, catalog) {
+  const labels = llmUiText();
+  const providerId = provider.provider || provider.presetProvider || 'custom';
+  const selectedCatalog = catalog.find(item => item.id === providerId) || {id:'custom', models:[]};
+  const custom = providerId === 'custom' || provider.mode === 'custom';
+  const providerOptions = catalog.map(item => '<option value="' + escapeHtml(item.id) + '" ' +
+    (item.id === providerId ? 'selected' : '') + ' ' + (item.enabled === false ? 'disabled' : '') + '>' +
+    escapeHtml(item.name || item.id) + '</option>').join('');
+  const modelOptions = (selectedCatalog.models || []).map(item => '<option value="' + escapeHtml(item.id) + '" ' +
+    (item.id === provider.model ? 'selected' : '') + '>' + escapeHtml(item.name || item.id) + '</option>').join('');
+  const readiness = provider.readiness || {};
+  const readinessText = readiness.ready ? labels.ready : (readiness.status || labels.notConfigured);
+  const readinessTitle = readiness.error || readinessText;
+  const role = index === 0 ? labels.primary : labels.fallback + ' ' + index;
+  const entryId = provider.entryId || ('provider-' + (index + 1));
+  const endpoint = provider.endpoint || selectedCatalog.endpoint || '';
+  const apiType = provider.api || selectedCatalog.api || 'openai-compatible';
+  return '<section class="llm-chain-row" data-llm-chain-index="' + escapeHtml(index) + '" data-entry-id="' + escapeHtml(entryId) + '">' +
+    '<div class="llm-chain-head"><div><b>' + escapeHtml(role) + '</b><code>' + escapeHtml(entryId) + '</code></div>' +
+      '<span class="task-monitor-status ' + (readiness.ready ? 'completed' : 'failed') + '" title="' + escapeHtml(readinessTitle) + '">' + escapeHtml(readinessText) + '</span>' +
+      '<div class="llm-chain-order">' +
+        '<button type="button" class="wr-export-btn secondary" onclick="moveLlmProviderChainEntry(' + index + ',-1)" ' + (index === 0 ? 'disabled' : '') + ' aria-label="' + escapeHtml(labels.moveUp) + '">↑</button>' +
+        '<button type="button" class="wr-export-btn secondary" onclick="moveLlmProviderChainEntry(' + index + ',1)" ' + (index === count - 1 ? 'disabled' : '') + ' aria-label="' + escapeHtml(labels.moveDown) + '">↓</button>' +
+        '<button type="button" class="wr-export-btn secondary" onclick="removeLlmProviderChainEntry(' + index + ')" ' + (count <= 1 ? 'disabled' : '') + ' aria-label="' + escapeHtml(labels.remove) + '">×</button>' +
+      '</div></div>' +
+    '<div class="llm-chain-fields">' +
+      '<label><span>' + escapeHtml(labels.provider) + '</span><select data-chain-field="provider" onchange="llmProviderChainCatalogChanged(' + index + ')">' + providerOptions + '</select></label>' +
+      (custom
+        ? '<label><span>' + escapeHtml(labels.model) + '</span><input data-chain-field="model" value="' + escapeHtml(provider.model || '') + '"></label>'
+        : '<label><span>' + escapeHtml(labels.model) + '</span><select data-chain-field="model">' + modelOptions + '</select></label>') +
+      '<label><span>Endpoint</span><input data-chain-field="endpoint" value="' + escapeHtml(endpoint) + '" ' + (custom ? '' : 'readonly') + '></label>' +
+      '<label><span>' + escapeHtml(labels.apiType) + '</span><select data-chain-field="api" ' + (custom ? '' : 'disabled') + '>' +
+        '<option value="openai-compatible" ' + (apiType === 'openai-compatible' ? 'selected' : '') + '>OpenAI compatible</option>' +
+        '<option value="anthropic-messages" ' + (apiType === 'anthropic-messages' ? 'selected' : '') + '>Anthropic Messages</option></select></label>' +
+      '<label><span>' + escapeHtml(labels.apiKey) + '</span><input data-chain-field="apiKey" type="password" value="" placeholder="' + escapeHtml(provider.hasApiKey ? labels.savedKeepBlank : labels.notConfigured) + '"></label>' +
+      '<label><span>' + escapeHtml(labels.requestTimeout) + '</span><input data-chain-field="timeoutSeconds" type="number" min="30" max="900" value="' + escapeHtml(provider.timeoutSeconds || 300) + '"></label>' +
+    '</div>' +
+    '<div class="llm-chain-test"><button type="button" class="wr-export-btn secondary" onclick="testLlmProviderChainEntry(' + index + ')">' + escapeHtml(labels.testAvailability) + '</button>' +
+      '<span id="llmProviderChainTest-' + index + '" role="status" aria-live="polite"></span></div>' +
+    '</section>';
+}
+
+function collectLlmProviderChainFromModal() {
+  return Array.from(document.querySelectorAll('[data-llm-chain-index]')).map(row => {
+    const value = name => row.querySelector('[data-chain-field="' + name + '"]')?.value || '';
+    const provider = value('provider') || 'custom';
+    const catalog = (LLM_PROVIDER_CHAIN_DRAFT && LLM_PROVIDER_CHAIN_DRAFT.catalog) || [];
+    const preset = catalog.find(item => item.id === provider) || {};
+    return {
+      entryId: row.dataset.entryId,
+      mode: provider === 'custom' ? 'custom' : 'preset',
+      provider,
+      model: value('model'),
+      endpoint: value('endpoint') || preset.endpoint || '',
+      api: value('api') || preset.api || 'openai-compatible',
+      apiKey: value('apiKey'),
+      timeoutSeconds: value('timeoutSeconds') || '300',
+    };
+  });
+}
+
+function rerenderLlmProviderChain(providers) {
+  if (!LLM_PROVIDER_CHAIN_DRAFT) LLM_PROVIDER_CHAIN_DRAFT = {catalog: []};
+  LLM_PROVIDER_CHAIN_DRAFT.providers = providers;
+  const body = document.getElementById('modal-body');
+  if (body) body.innerHTML = renderLlmProviderModal(LLM_PROVIDER_CHAIN_DRAFT);
+}
+
+function moveLlmProviderChainEntry(index, offset) {
+  const providers = collectLlmProviderChainFromModal();
+  const target = index + offset;
+  if (target < 0 || target >= providers.length) return;
+  [providers[index], providers[target]] = [providers[target], providers[index]];
+  rerenderLlmProviderChain(providers);
+}
+
+function removeLlmProviderChainEntry(index) {
+  const providers = collectLlmProviderChainFromModal();
+  if (providers.length <= 1) return;
+  providers.splice(index, 1);
+  rerenderLlmProviderChain(providers);
+}
+
+function addLlmProviderFallback() {
+  const providers = collectLlmProviderChainFromModal();
+  providers.push({entryId: 'fallback-' + Date.now().toString(36), provider:'custom', mode:'custom', api:'openai-compatible', timeoutSeconds:300, readiness:{ready:false, status:'not-configured'}});
+  rerenderLlmProviderChain(providers);
+}
+
+function llmProviderChainCatalogChanged(index) {
+  const providers = collectLlmProviderChainFromModal();
+  const catalog = (LLM_PROVIDER_CHAIN_DRAFT && LLM_PROVIDER_CHAIN_DRAFT.catalog) || [];
+  const selected = catalog.find(item => item.id === providers[index].provider) || {};
+  if (providers[index].provider !== 'custom') {
+    providers[index].endpoint = selected.endpoint || '';
+    providers[index].api = selected.api || 'openai-compatible';
+    providers[index].model = ((selected.models || [])[0] || {}).id || '';
+  }
+  rerenderLlmProviderChain(providers);
+}
+
+async function testLlmProviderChainEntry(index) {
+  const labels = llmUiText();
+  const providers = collectLlmProviderChainFromModal();
+  const resultEl = document.getElementById('llmProviderChainTest-' + index);
+  if (resultEl) resultEl.textContent = labels.testing;
+  try {
+    const res = await fetch('/api/llm-provider-chain/test', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(providers[index])});
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    if (resultEl) resultEl.textContent = data.ok
+      ? labels.testPassed + [data.provider, data.model].filter(Boolean).join(' / ') + ' · ' + (data.latencyMs || 0) + 'ms'
+      : labels.testFailedFull + (data.error || data.status || 'unknown');
+  } catch (e) {
+    if (resultEl) resultEl.textContent = labels.testFailed + e.message;
+  }
+}
+
+function renderLlmProviderSettings(provider, includeActions, showAdvanced = true) {
   const labels = llmUiText();
   const catalog = provider.catalog || [];
   const rawProvider = provider.provider || provider.presetProvider || 'custom';
@@ -7062,6 +10067,23 @@ function renderLlmProviderSettings(provider, includeActions) {
   const gateNote = pipelineGateMode === 'manual'
     ? labels.manualOverride(escapeHtml(autoPipelineGateTokens), gateDrift)
     : labels.autoGate(escapeHtml(autoPipelineGateTokens));
+  const customConfigRows = `
+      <div class="settings-row llm-custom-row" style="${custom ? '' : 'display:none'}"><label>${escapeHtml(labels.apiType)}</label><select id="llmProviderApi">
+        <option value="openai-compatible" ${apiType === 'openai-compatible' ? 'selected' : ''}>OpenAI compatible</option>
+        <option value="anthropic-messages" ${apiType === 'anthropic-messages' ? 'selected' : ''}>Anthropic Messages</option>
+      </select></div>
+      <div class="settings-row llm-custom-row" style="${custom ? '' : 'display:none'}"><label>Endpoint</label><input id="llmProviderEndpoint" value="${escapeHtml(endpointValue)}"></div>
+      <div class="settings-row llm-custom-row" style="${custom ? '' : 'display:none'}"><label>${escapeHtml(labels.model)}</label><input id="llmProviderModel" value="${escapeHtml(provider.model || selectedModel.id || '')}"></div>`;
+  const advancedRows = showAdvanced ? `
+      <div class="settings-row"><label>Context</label><input id="llmProviderContextWindow" value="${escapeHtml(contextWindow)}" ${custom ? '' : 'readonly'}></div>
+      <div class="settings-row"><label>Max Tokens</label><input id="llmProviderMaxTokens" value="${escapeHtml(maxTokens)}" ${custom ? '' : 'readonly'}></div>
+      <div class="settings-row"><label>${escapeHtml(labels.pipelineConcurrency)}</label><input id="llmPipelineConcurrency" type="number" min="1" max="8" step="1" value="${escapeHtml(pipelineConcurrency)}"></div>
+      <div class="settings-row"><label>${escapeHtml(labels.requestTimeout)}</label><input id="llmProviderTimeoutSeconds" type="number" min="30" max="900" step="30" value="${escapeHtml(timeoutSeconds)}"></div>
+      <div class="settings-row"><label>Pipeline Gate Tokens</label><input id="llmPipelineGateTokens" type="number" min="1000" step="100" value="${escapeHtml(pipelineGateTokens)}" oninput="llmPipelineGateEdited()"></div>
+      <div class="settings-row"><label>${escapeHtml(labels.autoSuggestion)}</label><div class="settings-inline-control"><input id="llmPipelineGateMode" type="hidden" value="${escapeHtml(pipelineGateMode)}"><span id="llmPipelineGateAutoValue">${escapeHtml(autoPipelineGateTokens)}</span><button type="button" class="wr-export-btn" onclick="llmUseAutoPipelineGate()">${escapeHtml(labels.useAutoValue)}</button></div></div>` : '';
+  const advancedNotes = showAdvanced ? `
+      <div class="settings-note" id="llmPipelineGateNote">${gateNote}</div>
+      <div class="settings-note">${escapeHtml(labels.regularModeNote)}</div>` : '';
   const actions = includeActions ? `
     <div class="settings-actions">
       <span class="settings-status" id="llmSaveStatus"></span>
@@ -7075,24 +10097,15 @@ function renderLlmProviderSettings(provider, includeActions) {
         ${providerOptions}
       </select></div>
       <div class="settings-row llm-preset-row" style="${custom ? 'display:none' : ''}"><label>${escapeHtml(labels.model)}</label><select id="llmProviderModelSelect" onchange="llmProviderModelChanged()">${modelOptions}</select></div>
-      <div class="settings-row"><label>${escapeHtml(labels.apiType)}</label><select id="llmProviderApi" ${custom ? '' : 'disabled'}>
-        <option value="openai-compatible" ${apiType === 'openai-compatible' ? 'selected' : ''}>OpenAI compatible</option>
-        <option value="anthropic-messages" ${apiType === 'anthropic-messages' ? 'selected' : ''}>Anthropic Messages</option>
-      </select></div>
-      <div class="settings-row"><label>Endpoint</label><input id="llmProviderEndpoint" value="${escapeHtml(endpointValue)}" ${custom ? '' : 'readonly'}></div>
-      <div class="settings-row llm-custom-row" style="${custom ? '' : 'display:none'}"><label>${escapeHtml(labels.model)}</label><input id="llmProviderModel" value="${escapeHtml(provider.model || selectedModel.id || '')}"></div>
-      <div class="settings-row"><label>Context</label><input id="llmProviderContextWindow" value="${escapeHtml(contextWindow)}" ${custom ? '' : 'readonly'}></div>
-      <div class="settings-row"><label>Max Tokens</label><input id="llmProviderMaxTokens" value="${escapeHtml(maxTokens)}" ${custom ? '' : 'readonly'}></div>
-      <div class="settings-row"><label>${escapeHtml(labels.pipelineConcurrency)}</label><input id="llmPipelineConcurrency" type="number" min="1" max="8" step="1" value="${escapeHtml(pipelineConcurrency)}"></div>
-      <div class="settings-row"><label>${escapeHtml(labels.requestTimeout)}</label><input id="llmProviderTimeoutSeconds" type="number" min="30" max="900" step="30" value="${escapeHtml(timeoutSeconds)}"></div>
-      <div class="settings-row"><label>Pipeline Gate Tokens</label><input id="llmPipelineGateTokens" type="number" min="1000" step="100" value="${escapeHtml(pipelineGateTokens)}" oninput="llmPipelineGateEdited()"></div>
-      <div class="settings-row"><label>${escapeHtml(labels.autoSuggestion)}</label><div class="settings-inline-control"><input id="llmPipelineGateMode" type="hidden" value="${escapeHtml(pipelineGateMode)}"><span id="llmPipelineGateAutoValue">${escapeHtml(autoPipelineGateTokens)}</span><button type="button" class="wr-export-btn" onclick="llmUseAutoPipelineGate()">${escapeHtml(labels.useAutoValue)}</button></div></div>
+      ${customConfigRows}
+      ${advancedRows}
       <div class="settings-row"><label>${escapeHtml(labels.apiKey)}</label><input id="llmProviderApiKey" type="password" value="${escapeHtml(provider.apiKey || '')}" placeholder="${provider.hasApiKey ? labels.savedKeepBlank : labels.notConfigured}"></div>
       <div class="settings-note" id="llmProviderTestResult">${escapeHtml(labels.testBeforeSave)}</div>
       <div class="settings-note" id="llmProviderCatalogNote">${providerNote}</div>
-      <div class="settings-note" id="llmPipelineGateNote">${gateNote}</div>
-      <div class="settings-note">${escapeHtml(labels.regularModeNote)}</div>
+      ${advancedNotes}
+      ${includeActions ? '' : '<button type="button" class="wr-export-btn secondary llm-manage-chain" onclick="openLlmProviderModal()">' + escapeHtml(labels.manageFallbacks) + '</button>'}
       <script type="application/json" id="llmProviderCatalogData">${escapeHtml(JSON.stringify(catalog))}</script>
+      <script type="application/json" id="llmProviderSavedKeysData">${escapeHtml(JSON.stringify(provider.savedProviderKeys || {}))}</script>
     </div>${actions}`;
 }
 
@@ -7101,6 +10114,14 @@ function llmProviderCatalog() {
     return JSON.parse(document.getElementById('llmProviderCatalogData')?.textContent || '[]');
   } catch (_) {
     return [];
+  }
+}
+
+function llmProviderSavedKeys() {
+  try {
+    return JSON.parse(document.getElementById('llmProviderSavedKeysData')?.textContent || '{}');
+  } catch (_) {
+    return {};
   }
 }
 
@@ -7115,7 +10136,7 @@ function providerStatusLabel(status) {
 function llmAutoGateTokens(contextWindow) {
   const parsed = Number.parseInt(contextWindow, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return 30000;
-  return Math.max(1000, Math.min(Math.floor(parsed * 0.15), 80000));
+  return Math.min(parsed, Math.max(Math.floor(parsed * 0.15), 80000));
 }
 
 function providerCatalogNote(provider) {
@@ -7150,6 +10171,13 @@ function llmProviderCatalogChanged() {
   }
   const note = document.getElementById('llmProviderCatalogNote');
   if (note) note.innerHTML = providerCatalogNote(provider);
+  const savedKeys = llmProviderSavedKeys();
+  const apiKey = document.getElementById('llmProviderApiKey');
+  if (apiKey && !apiKey.dataset.userEdited) {
+    const hasSavedKey = Boolean(savedKeys[providerId]);
+    apiKey.value = hasSavedKey ? '********' : '';
+    apiKey.placeholder = hasSavedKey ? llmUiText().savedKeepBlank : llmUiText().notConfigured;
+  }
   llmProviderModelChanged();
 }
 
@@ -7201,14 +10229,15 @@ async function saveLlmProviderModal() {
   const labels = llmUiText();
   const status = document.getElementById('llmSaveStatus');
   if (status) status.textContent = labels.saving;
-  const payload = collectLlmProviderSettingsFromModal();
+  const payload = {providers: collectLlmProviderChainFromModal()};
   try {
-    const res = await fetch('/api/llm-provider', {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+    const res = await fetch('/api/llm-provider-chain', {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error || ('HTTP ' + res.status));
     }
     const saved = await res.json();
+    LLM_PROVIDER_CHAIN_DRAFT = saved;
     document.getElementById('modal-body').innerHTML = renderLlmProviderModal(saved);
     const newStatus = document.getElementById('llmSaveStatus');
     if (newStatus) newStatus.textContent = labels.saved + new Date().toLocaleTimeString();
@@ -7241,7 +10270,363 @@ async function testLlmProviderModal() {
   }
 }
 
-// Legacy hard-coded card-detail snapshots are omitted from the public static demo.
+// ── Card Detail Functions ──
+function showAgentDetail() {
+  if (dashboardLanguageProfile() === 'en') {
+    openModal('🤖 Active Agents - Details', `
+      <div class="section">
+        <div class="section-title"><span class="section-title-num">A1</span> Agent Roles</div>
+        <table class="data-table">
+          <thead><tr><th>Agent</th><th>Role</th><th>Profile</th><th>Activity</th></tr></thead>
+          <tbody>
+            <tr><td><b>main</b></td><td>Primary coordinator across agents</td><td>Sharp, warm, efficient</td><td>All day</td></tr>
+            <tr><td><b>coder</b></td><td>Coding assistant for deep engineering work</td><td>Claude Code collaboration</td><td>On demand</td></tr>
+            <tr><td><b>daily-assistant</b></td><td>Daily information retrieval and small tasks</td><td>Multi-tool skill access</td><td>Low frequency</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="section">
+        <div class="section-title"><span class="section-title-num">A2</span> Activity Summary</div>
+        <table class="data-table">
+          <thead><tr><th>Agent</th><th>Sessions</th><th>Messages</th><th>Errors</th><th>Tool Calls</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td>main</td><td>56</td><td>2,947</td><td>0</td><td>—</td><td><span class="badge badge-success">Active</span></td></tr>
+            <tr><td>coder</td><td>6</td><td>286</td><td>0</td><td>—</td><td><span class="badge badge-success">Active</span></td></tr>
+            <tr><td>daily-assistant</td><td>2</td><td>7</td><td>0</td><td>—</td><td><span class="badge badge-slate">Low activity</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    `);
+    return;
+  }
+  openModal('🤖 活跃 Agent — 详情', `
+    <div class="section">
+      <div class="section-title"><span class="section-title-num">A1</span> Agent 职责与身份</div>
+      <table class="data-table">
+        <thead><tr><th>Agent</th><th>职责定位</th><th>人设/特点</th><th>活跃时间</th></tr></thead>
+        <tbody>
+          <tr><td><b>main (Isshin)</b></td><td>Agent 总管，协调所有子 Agent</td><td>sharp, warm, efficient · Emoji 🌟</td><td>全天活跃</td></tr>
+          <tr><td><b>coder</b></td><td>编码助手，深度编程任务</td><td>Claude Code 协同 · 多模型切换</td><td>按需触发</td></tr>
+          <tr><td><b>volcano</b></td><td>备用测试，GLM/其他模型测试</td><td>多用 Minimax/M2 系列</td><td>低频</td></tr>
+          <tr><td><b>daily-assistant</b></td><td>日常零碎信息检索</td><td>接入多种工具 skill</td><td>低频</td></tr>
+          <tr><td><b>Lune (Debian)</b></td><td>Debian 主 Agent，统一管理</td><td>远程部署 · Mattermost 通信</td><td>常驻</td></tr>
+          <tr><td><b>op</b></td><td>副总经理，sub-agent 任务协调</td><td>派发、监控、汇报</td><td>进行中</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="section">
+      <div class="section-title"><span class="section-title-num">A2</span> 活跃度统计（两周汇总）</div>
+      <table class="data-table">
+        <thead><tr><th>Agent</th><th>Sessions</th><th>消息数</th><th>错误数</th><th>Tool Calls</th><th>状态</th></tr></thead>
+        <tbody>
+          <tr><td>main</td><td>56</td><td>2,947</td><td>0</td><td>—</td><td><span class="badge badge-success">活跃</span></td></tr>
+          <tr><td>volcano</td><td>5</td><td>327</td><td>0</td><td>—</td><td><span class="badge badge-purple">低活跃</span></td></tr>
+          <tr><td>coder</td><td>6</td><td>286</td><td>0</td><td>—</td><td><span class="badge badge-success">活跃</span></td></tr>
+          <tr><td>daily-assistant</td><td>2</td><td>7</td><td>0</td><td>—</td><td><span class="badge badge-slate">低活跃</span></td></tr>
+          <tr><td>Lune</td><td>—</td><td>—</td><td>—</td><td>—</td><td><span class="badge badge-slate">远程</span></td></tr>
+          <tr><td>op</td><td>—</td><td>—</td><td>—</td><td>—</td><td><span class="badge badge-slate">建设中</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  `);
+}
+
+function showSessionDetail() {
+  if (dashboardLanguageProfile() === 'en') {
+    openModal('📋 Session Statistics - Details', `
+      <div class="section">
+        <div class="section-title"><span class="section-title-num">S1</span> Agent Session Distribution</div>
+        <table class="data-table">
+          <thead><tr><th>Agent</th><th>Sessions</th><th>Messages</th><th>Avg Messages / Session</th><th>Period</th></tr></thead>
+          <tbody>
+            <tr><td>main</td><td>56</td><td>2,947</td><td>52.6</td><td>Two weeks</td></tr>
+            <tr><td>coder</td><td>6</td><td>286</td><td>47.7</td><td>Two weeks</td></tr>
+            <tr><td>daily-assistant</td><td>2</td><td>7</td><td>3.5</td><td>Two weeks</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="section">
+        <div class="section-title"><span class="section-title-num">S2</span> Session Message Counts</div>
+        <table class="data-table">
+          <thead><tr><th>Session</th><th>Agent</th><th>Messages</th><th>Last Active</th></tr></thead>
+          <tbody>
+            <tr><td>cd04fc60... (Telegram)</td><td>main</td><td>1,560</td><td>04-09</td></tr>
+            <tr><td>9864dc79... (coder-Telegram)</td><td>coder</td><td>—</td><td>04-10</td></tr>
+            <tr><td>cron diary generation</td><td>main</td><td>—</td><td>Daily</td></tr>
+          </tbody>
+        </table>
+      </div>
+    `);
+    return;
+  }
+  openModal('📋 Session 统计 — 详情', `
+    <div class="section">
+      <div class="section-title"><span class="section-title-num">S1</span> 各 Agent Session 分布</div>
+      <table class="data-table">
+        <thead><tr><th>Agent</th><th>Session 数</th><th>消息条目</th><th>平均消息/Session</th><th>周期</th></tr></thead>
+        <tbody>
+          <tr><td>main</td><td>56</td><td>2,947</td><td>52.6</td><td>两周</td></tr>
+          <tr><td>volcano</td><td>5</td><td>327</td><td>65.4</td><td>两周</td></tr>
+          <tr><td>coder</td><td>6</td><td>286</td><td>47.7</td><td>两周</td></tr>
+          <tr><td>daily-assistant</td><td>2</td><td>7</td><td>3.5</td><td>两周</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="section">
+      <div class="section-title"><span class="section-title-num">S2</span> 按 Session 统计消息条目</div>
+      <table class="data-table">
+        <thead><tr><th>Session</th><th>Agent</th><th>消息数</th><th>最后活跃</th></tr></thead>
+        <tbody>
+          <tr><td>cd04fc60... (Telegram)</td><td>main</td><td>1,560</td><td>04-09</td></tr>
+          <tr><td>9864dc79... (coder-Telegram)</td><td>coder</td><td>—</td><td>04-10</td></tr>
+          <tr><td>cron 日记生成</td><td>main</td><td>—</td><td>每日</td></tr>
+          <tr><td>cron nova-RAG 索引</td><td>main</td><td>—</td><td>每日</td></tr>
+          <tr><td>cron Workspace 备份</td><td>main</td><td>—</td><td>每日</td></tr>
+        </tbody>
+      </table>
+    </div>
+  `);
+}
+
+function showTokenDetail() {
+  if (dashboardLanguageProfile() === 'en') {
+    openModal('💰 Token Usage - Details', `
+      <div class="section">
+        <div class="section-title"><span class="section-title-num">T1</span> By Agent (prompt + output)</div>
+        <table class="data-table">
+          <thead><tr><th>Agent</th><th>promptTokens</th><th>outputTokens</th><th>Total</th><th>Messages</th><th>Cache Hit Rate</th></tr></thead>
+          <tbody>
+            <tr><td>main</td><td>148.2M</td><td>536K</td><td>148.8M</td><td>1,557</td><td>29.6%</td></tr>
+            <tr><td>coder</td><td>5.3M</td><td>21K</td><td>5.3M</td><td>57</td><td>46.8%</td></tr>
+            <tr><td style="font-weight:bold">Total</td><td style="font-weight:bold">160.2M</td><td style="font-weight:bold">586K</td><td style="font-weight:bold">160.8M</td><td>1,619</td><td>30.2%</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="section">
+        <div class="section-title"><span class="section-title-num">T2</span> Calculation Notes</div>
+        <table class="data-table"><tbody>
+          <tr><td>promptTokens</td><td>= input + cacheRead + cacheWrite</td><td>160.2M</td></tr>
+          <tr><td>outputTokens</td><td>= API output field</td><td>586K</td></tr>
+          <tr><td>Cache Hit Rate</td><td>= cacheRead / (input + cacheRead)</td><td>30.2%</td></tr>
+        </tbody></table>
+      </div>
+    `);
+    return;
+  }
+  openModal('💰 Token 消耗 — 详情（维度 2）', `
+    <div class="section">
+      <div class="section-title"><span class="section-title-num">T1</span> 04-10 按 Agent 区分（prompt + output）</div>
+      <table class="data-table">
+        <thead><tr><th>Agent</th><th>promptTokens</th><th>outputTokens</th><th>合计</th><th>消息数</th><th>cache 命中率</th></tr></thead>
+        <tbody>
+          <tr><td>main</td><td>148.2M</td><td>536K</td><td>148.8M</td><td>1,557</td><td>29.6%</td></tr>
+          <tr><td>coder</td><td>5.3M</td><td>21K</td><td>5.3M</td><td>57</td><td>46.8%</td></tr>
+          <tr><td>volcano</td><td>0</td><td>0</td><td>0</td><td>5</td><td>—</td></tr>
+          <tr><td style="font-weight:bold">合计</td><td style="font-weight:bold">160.2M</td><td style="font-weight:bold">586K</td><td style="font-weight:bold">160.8M</td><td>1,619</td><td>30.2%</td></tr>
+        </tbody>
+      </table>
+      <p style="color:var(--gray)">⚠️ 显示 04-10 日历日数据，Control UI 的 119.8M 为 24h rolling 窗口（含未 flush 的 session）</p>
+    </div>
+    <div class="section">
+      <div class="section-title"><span class="section-title-num">T2</span> Token 计算说明</div>
+      <table class="data-table">
+        <tbody>
+          <tr><td>promptTokens</td><td>= input + cacheRead + cacheWrite</td><td>160.2M</td></tr>
+          <tr><td>outputTokens</td><td>= API 返回的 output 字段</td><td>586K</td></tr>
+          <tr><td>缓存命中率</td><td>= cacheRead ÷ (input + cacheRead)</td><td>30.2%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="section">
+      <div class="section-title"><span class="section-title-num">T3</span> 7 天趋势</div>
+      <table class="data-table">
+        <thead><tr><th>日期</th><th>promptTokens</th><th>金额</th><th>cache 命中率</th></tr></thead>
+        <tbody>
+          <tr><td>04-05</td><td>54K</td><td>¥0.01</td><td>90.6%</td></tr>
+          <tr><td>04-06</td><td>0</td><td>¥0</td><td>—</td></tr>
+          <tr><td>04-07</td><td>377K</td><td>¥0.09</td><td>90.5%</td></tr>
+          <tr><td>04-08</td><td>10.7M</td><td>¥4.16</td><td>39.9%</td></tr>
+          <tr><td>04-09</td><td>67.9M</td><td>¥28.63</td><td>31.2%</td></tr>
+          <tr><td>04-10</td><td>160.2M</td><td>¥68.11</td><td>30.2%</td></tr>
+          <tr><td style="font-weight:bold">合计</td><td style="font-weight:bold">239.2M</td><td style="font-weight:bold">¥101.01</td><td>30.8%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="section">
+      <div class="section-title"><span class="section-title-num">T4</span> 7 天金额走势（折线图）</div>
+      <canvas id="chart-token-cost-daily" style="max-height:200px"></canvas>
+    </div>
+  `);
+}
+
+
+
+
+
+function showCronDetail() {
+  if (dashboardLanguageProfile() === 'en') {
+    openModal('⏱️ Scheduled Jobs - Details', `
+      <div class="section">
+        <div class="section-title"><span class="section-title-num">C1</span> Scheduled Job Execution</div>
+        <table class="data-table">
+          <thead><tr><th>Job</th><th>Trigger Time</th><th>Cadence</th><th>Latest Run</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td>JSONL diary generation</td><td>04:00</td><td>Daily</td><td>04-10 04:05</td><td><span class="badge badge-success">✅</span></td></tr>
+            <tr><td>nova-RAG index update</td><td>04:05</td><td>Daily</td><td>04-10 04:10</td><td><span class="badge badge-success">✅</span></td></tr>
+            <tr><td>Weekly report generation</td><td>Mon 09:00</td><td>Weekly</td><td>04-07 09:00</td><td><span class="badge badge-success">✅</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    `);
+    return;
+  }
+  openModal('⏱️ 定时任务 — 详情（维度 1.5）', `
+    <div class="section">
+      <div class="section-title"><span class="section-title-num">C1</span> 定时任务列表与执行情况</div>
+      <table class="data-table">
+        <thead><tr><th>任务</th><th>触发时间</th><th>执行周期</th><th>最近执行</th><th>状态</th></tr></thead>
+        <tbody>
+          <tr><td>JSONL 日记生成</td><td>04:00</td><td>每日</td><td>04-10 04:05</td><td><span class="badge badge-success">✅</span></td></tr>
+          <tr><td>nova-RAG 索引更新</td><td>04:05</td><td>每日</td><td>04-10 04:10</td><td><span class="badge badge-success">✅</span></td></tr>
+          <tr><td>日记叙事生成</td><td>04:30</td><td>每日</td><td>04-10 04:35</td><td><span class="badge badge-success">✅</span></td></tr>
+          <tr><td>自创 Skills 列表更新</td><td>06:00</td><td>每日</td><td>04-10 06:04</td><td><span class="badge badge-success">✅</span></td></tr>
+          <tr><td>Agent 速查表更新</td><td>06:04</td><td>每日</td><td>04-10 06:04</td><td><span class="badge badge-success">✅</span></td></tr>
+          <tr><td>定时任务速查表更新</td><td>06:30</td><td>每日</td><td>04-10 06:30</td><td><span class="badge badge-success">✅</span></td></tr>
+          <tr><td>Isshin Workspace 备份</td><td>09:03</td><td>每日</td><td>04-10 09:03</td><td><span class="badge badge-success">✅</span></td></tr>
+          <tr><td>Isshin Workspace 备份</td><td>15:03</td><td>每日</td><td>04-10 15:03</td><td><span class="badge badge-success">✅</span></td></tr>
+          <tr><td>周报生成</td><td>周一 09:00</td><td>每周</td><td>04-07 09:00</td><td><span class="badge badge-success">✅</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  `);
+}
+
+function showSkillsDetail(type) {
+  if (dashboardLanguageProfile() === 'en') {
+    if (type === 'custom') {
+      openModal('⚙️ Custom Skills', `
+        <div class="section">
+          <table class="data-table">
+            <thead><tr><th>Skill</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td class="skill-item">agent-orchestration</td><td style="font-size:12px;color:var(--slate)">Delegates tasks across agents and aggregates results.</td></tr>
+              <tr><td class="skill-item">backup</td><td style="font-size:12px;color:var(--slate)">Scheduled workspace backup scripts with incremental NAS backup support.</td></tr>
+              <tr><td class="skill-item">actanara-memory</td><td style="font-size:12px;color:var(--slate)">Daily diary generation and nova-RAG vector index maintenance.</td></tr>
+              <tr><td class="skill-item">skills-management</td><td style="font-size:12px;color:var(--slate)">Skill lifecycle management for create, install, remove, and audit workflows.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      `);
+    } else {
+      openModal('🛠️ System Skills', `
+        <div class="section">
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+            <div class="skill-item builtin">1password</div>
+            <div class="skill-item builtin">agent-comm</div>
+            <div class="skill-item builtin">apple-notes</div>
+            <div class="skill-item builtin">frontend-dev</div>
+            <div class="skill-item builtin">fullstack-dev</div>
+            <div class="skill-item builtin">github</div>
+            <div class="skill-item builtin">model-usage</div>
+            <div class="skill-item builtin">obsidian</div>
+            <div class="skill-item builtin">pdf</div>
+          </div>
+          <div style="margin-top:12px;font-size:12px;color:var(--slate)">Additional system Skills are available but not listed in this static preview.</div>
+        </div>
+      `);
+    }
+    return;
+  }
+  if (type === 'custom') {
+    openModal('⚙️ 自建 Skills（16个）', `
+      <div class="section">
+        <table class="data-table">
+          <thead><tr><th>Skill</th><th>简介</th></tr></thead>
+          <tbody>
+            <tr><td class="skill-item">agent-orchestration</td><td style="font-size:12px;color:var(--slate)">跨 Agent 任务委托与结果汇总。用于主控 Agent 向子 Agent 派发任务、跟踪进度、收集结果</td></tr>
+            <tr><td class="skill-item">backup</td><td style="font-size:12px;color:var(--slate)">Isshin Workspace 定时备份脚本，支持增量备份到 NAS</td></tr>
+            <tr><td class="skill-item">claude-code-colaab</td><td style="font-size:12px;color:var(--slate)">Claude Code 协同编程，用于深度编程、代码生成与重构</td></tr>
+            <tr><td class="skill-item">claude-code-setup</td><td style="font-size:12px;color:var(--slate)">设置和管理 Claude Code 多模型切换功能（claudec 脚本）</td></tr>
+            <tr><td class="skill-item">edgeone-cdn-updater</td><td style="font-size:12px;color:var(--slate)">自动更新腾讯云 EdgeOne CDN 源站 IP（NAS 公网 IP 变化时）</td></tr>
+            <tr><td class="skill-item">actanara-memory</td><td style="font-size:12px;color:var(--slate)">每天 04:05 自动运行，生成日记 + 构建 nova-RAG 向量索引</td></tr>
+            <tr><td class="skill-item">mattermost-push</td><td style="font-size:12px;color:var(--slate)">Mattermost 推送通知，支持跨 Gateway 消息推送</td></tr>
+            <tr><td class="skill-item">media-generation</td><td style="font-size:12px;color:var(--slate)">MiniMax 多媒体生成工具（TTS、图片、视频、音乐）</td></tr>
+            <tr><td class="skill-item">model-provider-cleanup</td><td style="font-size:12px;color:var(--slate)">清理 OpenClaw 中不再使用的模型 Provider（API 提供方）</td></tr>
+            <tr><td class="skill-item">models-manage</td><td style="font-size:12px;color:var(--slate)">管理 OpenClaw 模型提供商配置，解决模型调用和计费问题</td></tr>
+            <tr><td class="skill-item">nas-comm</td><td style="font-size:12px;color:var(--slate)">NAS 访问与 Docker 容器管理（QNAP NAS / 查看状态 / 升级检查）</td></tr>
+            <tr><td class="skill-item">qwen-mcp</td><td style="font-size:12px;color:var(--slate)">通过阿里云百炼 API 调用 Qwen 图像生成模型</td></tr>
+            <tr><td class="skill-item">self-improving-agent</td><td style="font-size:12px;color:var(--slate)">捕获学习、错误和修正，实现持续改进。包含开发任务工作流</td></tr>
+            <tr><td class="skill-item">skills-management</td><td style="font-size:12px;color:var(--slate)">Skill 全生命周期管理：创建、安装、卸载、自动记录操作</td></tr>
+            <tr><td class="skill-item">task-push</td><td style="font-size:12px;color:var(--slate)">任务完成自动推送，当受管理的 agent 回复 TASK_COMPLETE 时推送结果</td></tr>
+            <tr><td class="skill-item">wuxia-image-gen</td><td style="font-size:12px;color:var(--slate)">武侠风格图片批量生成工具（MiniMax image-01 API）</td></tr>
+          </tbody>
+        </table>
+      </div>
+    `);
+  } else {
+    openModal('🛠️ 系统 Skills（80个）', `
+      <div class="section">
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+          <div class="skill-item builtin">1password</div>
+          <div class="skill-item builtin">agent-comm</div>
+          <div class="skill-item builtin">apple-notes</div>
+          <div class="skill-item builtin">apple-reminders</div>
+          <div class="skill-item builtin">bear-notes</div>
+          <div class="skill-item builtin">blogwatcher</div>
+          <div class="skill-item builtin">blucli</div>
+          <div class="skill-item builtin">camsnap</div>
+          <div class="skill-item builtin">clawhub</div>
+          <div class="skill-item builtin">coding-agent</div>
+          <div class="skill-item builtin">discord</div>
+          <div class="skill-item builtin">eightctl</div>
+          <div class="skill-item builtin">flutter-dev</div>
+          <div class="skill-item builtin">frontend-dev</div>
+          <div class="skill-item builtin">fullstack-dev</div>
+          <div class="skill-item builtin">gemini</div>
+          <div class="skill-item builtin">gh-issues</div>
+          <div class="skill-item builtin">gif-sticker-maker</div>
+          <div class="skill-item builtin">gifgrep</div>
+          <div class="skill-item builtin">github</div>
+          <div class="skill-item builtin">gog</div>
+          <div class="skill-item builtin">healthcheck</div>
+          <div class="skill-item builtin">himalaya</div>
+          <div class="skill-item builtin">imsg</div>
+          <div class="skill-item builtin">ios-application-dev</div>
+          <div class="skill-item builtin">mattermost-bot</div>
+          <div class="skill-item builtin">mattermost-relay</div>
+          <div class="skill-item builtin">mcp-minimax</div>
+          <div class="skill-item builtin">mcporter</div>
+          <div class="skill-item builtin">minimax-docx</div>
+          <div class="skill-item builtin">minimax-multimodal-toolkit</div>
+          <div class="skill-item builtin">minimax-pdf</div>
+          <div class="skill-item builtin">minimax-usage</div>
+          <div class="skill-item builtin">minimax-xlsx</div>
+          <div class="skill-item builtin">model-usage</div>
+          <div class="skill-item builtin">nano-pdf</div>
+          <div class="skill-item builtin">obsidian</div>
+          <div class="skill-item builtin">openhue</div>
+          <div class="skill-item builtin">ordercli</div>
+          <div class="skill-item builtin">peekaboo</div>
+          <div class="skill-item builtin">pptx-generator</div>
+          <div class="skill-item builtin">react-native-dev</div>
+          <div class="skill-item builtin">shader-dev</div>
+          <div class="skill-item builtin">songsee</div>
+          <div class="skill-item builtin">sonoscli</div>
+          <div class="skill-item builtin">summarize</div>
+          <div class="skill-item builtin">tts-minimax</div>
+          <div class="skill-item builtin">video-frames</div>
+          <div class="skill-item builtin">vision-analysis</div>
+          <div class="skill-item builtin">wacli</div>
+          <div class="skill-item builtin">weather</div>
+          <div class="skill-item builtin">xurl</div>
+        </div>
+        <div style="margin-top:12px;font-size:12px;color:var(--slate)">还有 27 个系统 Skills 未列出（android-native-dev, goplaces 等）</div>
+      </div>
+    `);
+  }
+}
+
+
 
 // ── Charts ──
 const PURPLE = '#533afd';
@@ -7254,8 +10639,10 @@ const SUCCESS = '#15be53';
 const AMBER = '#f59e0b';
 const MAGENTA = '#f96bee';
 
-Chart.defaults.font.family = "-apple-system, system-ui, sans-serif";
-Chart.defaults.color = SLATE;
+if (window.Chart && Chart.defaults) {
+  Chart.defaults.font.family = "-apple-system, system-ui, sans-serif";
+  Chart.defaults.color = SLATE;
+}
 
 function makeBarChart(id, labels, data, colors) {
   return new Chart(document.getElementById(id), {
@@ -7326,6 +10713,10 @@ const TC_TOOL_COLORS = {
 function renderTokenClock(data) {
   const labels = dashboardShellText();
   const el = id => document.getElementById(id);
+  if (dashboardStateFailed(data)) {
+    renderTokenClockUnavailable(dashboardStateSummary(data));
+    return;
+  }
 
   // Date subtitle
   if (data.today) {
@@ -7363,6 +10754,8 @@ function renderTokenClock(data) {
   const tools = data.tools || [];
   const activeCount = tools.filter(t => t.isActive).length;
   if (el('tcActiveTools')) el('tcActiveTools').textContent = activeCount + '/' + tools.length;
+
+  renderTokenClockDegradedState(data, labels);
 
   // Timeline heatmap
   const timelineByHour = new Map((data.hourlyTimeline || []).map(h => [String(h.hour).padStart(2, '0'), h]));
@@ -7411,6 +10804,41 @@ function renderTokenClock(data) {
   if (el('tcToolsGrid')) el('tcToolsGrid').innerHTML = toolsHtml;
 
   renderRealtimeWorkspaces(data.workspaceUsage || [], data.timestamp);
+  ACTANARA_TOKEN_CLOCK_READY = true;
+}
+
+function renderTokenClockUnavailable(reason) {
+  const labels = dashboardText();
+  const message = labels.loadFailed + (reason || 'source-unavailable');
+  if (!ACTANARA_TOKEN_CLOCK_READY) {
+    ['tcTotalTokens', 'tcTotalMessages', 'tcCacheRate', 'tcHourlyRate', 'tcActiveTools'].forEach(id => {
+      const element = document.getElementById(id);
+      if (element) element.textContent = '—';
+    });
+    const alert = '<div class="fo-job-error" role="alert">' + escapeHtml(message) + '</div>';
+    const timeline = document.getElementById('tcTimeline');
+    const tools = document.getElementById('tcToolsGrid');
+    const workspaces = document.getElementById('agentTableContainer');
+    if (timeline) timeline.innerHTML = alert;
+    if (tools) tools.innerHTML = alert;
+    if (workspaces) workspaces.innerHTML = alert;
+  }
+  const subtitle = document.getElementById('overviewSubtitle');
+  if (subtitle) subtitle.innerHTML = '<span class="tc-degraded-inline" role="alert">' + escapeHtml(message) + '</span>';
+}
+
+function renderTokenClockDegradedState(data, labels) {
+  const subtitle = document.getElementById('overviewSubtitle');
+  if (!subtitle) return;
+  const dateText = document.getElementById('overviewDate')?.textContent || labels.loadingDots;
+  const sourceErrors = Array.isArray(data.sourceErrors) ? data.sourceErrors : [];
+  const base = '<span id="overviewDate">' + escapeHtml(dateText) + '</span> · <span data-i18n="realtimeMonitoring">' + escapeHtml(labels.realtimeMonitoring) + '</span>';
+  if (!data.degraded || !sourceErrors.length) {
+    subtitle.innerHTML = base;
+    return;
+  }
+  const sources = sourceErrors.map(item => item && item.source).filter(Boolean).join(', ');
+  subtitle.innerHTML = base + ' · <span class="tc-degraded-inline" role="status" aria-live="polite">' + escapeHtml(labels.tokenClockDegraded(sourceErrors.length, sources)) + '</span>';
 }
 
 function renderRealtimeWorkspaces(workspaces, updatedAt) {
@@ -7446,17 +10874,27 @@ function renderRealtimeWorkspaces(workspaces, updatedAt) {
 }
 
 function fetchTokenClock() {
-  fetch('/api/token-clock').then(r => r.json()).then(data => {
+  if (!document.getElementById('page-overview')?.classList.contains('active') || document.hidden) return;
+  fetch('/api/token-clock').then(async r => {
+    const data = await r.json();
+    if (!r.ok || dashboardStateFailed(data)) throw new Error(dashboardStateSummary(data));
+    return data;
+  }).then(data => {
     renderTokenClock(data);
   }).catch(err => {
     console.error('TokenClock fetch error:', err);
+    renderTokenClockUnavailable(err.message);
   });
 }
 
 /* ═══ AI Assets Page — Data Fetch & Render ═══ */
 let _aaCharts = { trend: null, model: null, tool: null };
-let _aaState = { data: null, skillTab: 'global' };
+let _aaState = { data: null, skillTab: 'global', infraExpanded: { devices: false, services: false }, infraActivityItems: [] };
+let _aaSkillAssetState = { payload: null, selected: new Set(), loading: false, generating: false, error: '' };
+let _aaSkillReviewPending = null;
 let _aaLoading = false;
+let _aaPendingPromise = null;
+const AA_INFRA_CARD_LIMIT = 6;
 
 function aaFmtTokens(n) {
   n = Number(n) || 0;
@@ -7464,6 +10902,32 @@ function aaFmtTokens(n) {
   if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
   if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
   return String(n);
+}
+
+function aaFormatStorageMB(value) {
+  const size = Number(value) || 0;
+  if (size >= 1024) return (size / 1024).toFixed(size >= 10240 ? 1 : 2) + ' GB';
+  if (size >= 1) return size.toFixed(1) + ' MB';
+  if (size > 0) return Math.max(size * 1024, 0.1).toFixed(1) + ' KB';
+  return '0 MB';
+}
+
+function aaRecentActivityDate(value) {
+  const text = String(value || '').trim();
+  if (!text || text.toLowerCase() === 'unknown') return null;
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(text) ? text + 'T23:59:59' : text.replace(' ', 'T');
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function aaActiveToolCount(tools, windowDays = 30) {
+  const now = new Date();
+  const cutoff = now.getTime() - Math.max(1, Number(windowDays) || 30) * 86400000;
+  return (tools || []).filter(tool => {
+    const lastActive = aaRecentActivityDate(tool.lastActivity);
+    if (lastActive && lastActive.getTime() >= cutoff && lastActive.getTime() <= now.getTime() + 86400000) return true;
+    return Number(tool.todayTokens || 0) > 0 || Number(tool.todayMessages || 0) > 0;
+  }).length;
 }
 
 function aaDestroyCharts() {
@@ -7476,10 +10940,13 @@ function renderAACharts(d) {
   const labels = dashboardText();
   const assetLabels = aiAssetsText();
   const tools = d.tools || [];
-  if (!tools.length) return;
-
   // Heatmap for 30-day trend
   renderHeatmap(d.trend30d || []);
+  // Charts need a visible canvas after moving historical usage to its own page.
+  const usagePage = document.getElementById('aaToolChart')?.closest('.page');
+  if (usagePage && !usagePage.classList.contains('active')) return;
+  if (typeof window.Chart !== 'function') return;
+  aaDestroyCharts();
 
   // Agent / workspace consumption bar chart
   const workspaces = d.workspaceUsage || [];
@@ -7622,35 +11089,478 @@ function aaToolColor(name) {
   return map[name] || '#533afd';
 }
 
+function aaSkillAssetItems(payload) {
+  const allowedClasses = new Set(['skill', 'lesson', 'reference', 'discard']);
+  const allowedActions = new Set(['create', 'extend', 'covered', 'conflict', 'reject']);
+  const rows = Array.isArray(payload?.items) ? payload.items : [];
+  return rows.filter(item => {
+    if (!item || !/^review-\d{3}$/.test(String(item.reviewId || ''))) return false;
+    if (!allowedClasses.has(String(item.assetClass || ''))) return false;
+    if (item.libraryAction && !allowedActions.has(String(item.libraryAction))) return false;
+    if (item.assetClass === 'skill') {
+      return ['create', 'extend'].includes(item.libraryAction) &&
+        Boolean(item.skillName && item.skillDescription && item.skillMarkdown);
+    }
+    return !item.skillMarkdown;
+  });
+}
+
+function aaSkillAssetScoreText(scores) {
+  const row = scores || {};
+  return ['E ' + Number(row.evidence || 0), 'V ' + Number(row.value || 0), 'R ' + Number(row.reuse || 0), 'P ' + Number(row.program || 0)].join(' · ');
+}
+
+function aaSkillAssetCard(item, labels) {
+  const assetClass = String(item.assetClass || 'discard');
+  const selectable = assetClass === 'skill' || assetClass === 'lesson';
+  const selected = selectable && _aaSkillAssetState.selected.has(item.reviewId);
+  const classLabel = labels.skillAssetsClasses?.[assetClass] || assetClass;
+  const checkbox = selectable
+    ? '<input type="checkbox" class="aa-skill-asset-checkbox" aria-label="' + escapeHtml(classLabel + ': ' + item.title) + '" ' +
+      (selected ? 'checked ' : '') + 'onchange="aaToggleSkillAssetSelection(\'' + escapeHtml(item.reviewId) + '\', this.checked)">'
+    : '<span class="aa-skill-asset-nonselect" aria-hidden="true">•</span>';
+  const detailRows = [
+    [labels.skillAssetsOriginalDecision, item.originalDecision],
+    [labels.skillAssetsEvidence, Number(item.evidenceCount || 0)],
+    [labels.skillAssetsScores, aaSkillAssetScoreText(item.scores)],
+    [labels.skillAssetsCompletion, item.completion],
+    [labels.skillAssetsLibraryAction, item.libraryAction],
+    [labels.skillAssetsExisting, item.existingSkillName],
+  ].filter(row => row[1] !== null && row[1] !== undefined && row[1] !== '');
+  const draft = assetClass === 'skill'
+    ? '<div class="aa-skill-asset-draft"><div class="aa-skill-asset-draft-name">' + escapeHtml(item.skillName) + '</div>' +
+      '<div class="aa-skill-asset-draft-description">' + escapeHtml(item.skillDescription) + '</div>' +
+      '<pre>' + escapeHtml(item.skillMarkdown) + '</pre></div>'
+    : '';
+  return '<article class="aa-skill-asset-card" data-review-id="' + escapeHtml(item.reviewId) + '" data-asset-class="' + escapeHtml(assetClass) + '">' +
+    '<div class="aa-skill-asset-head">' + checkbox +
+      '<div class="aa-skill-asset-heading"><div class="aa-skill-asset-tags"><span class="aa-skill-asset-class">' + escapeHtml(classLabel) + '</span>' +
+      (item.humanOverride === true ? '<span class="aa-skill-asset-disposition">' + escapeHtml(labels.skillAssetsHumanOverride) + '</span>' : '') +
+      '<span class="aa-skill-asset-disposition">' + escapeHtml(item.disposition || '') + '</span></div>' +
+      '<h4>' + escapeHtml(item.title || item.skillName || item.reviewId) + '</h4></div></div>' +
+    (item.summary ? '<p class="aa-skill-asset-summary">' + escapeHtml(item.summary) + '</p>' : '') +
+    '<details class="aa-skill-asset-details"><summary>' + escapeHtml(labels.skillAssetsDetails) + '</summary>' +
+      (item.reason ? '<p>' + escapeHtml(item.reason) + '</p>' : '') +
+      '<div class="aa-skill-asset-meta">' + detailRows.map(row => '<span><b>' + escapeHtml(row[0]) + ':</b> ' + escapeHtml(row[1]) + '</span>').join('') + '</div>' +
+      draft +
+    '</details></article>';
+}
+
+function renderSkillAssetReview() {
+  const target = document.getElementById('aaSkillAssetReview');
+  if (!target) return;
+  const labels = aiAssetsText();
+  const datePicker = document.getElementById('aaSkillAssetDate');
+  if (datePicker) {
+    datePicker.disabled = _aaSkillAssetState.generating;
+    if (!_aaSkillAssetState.loading && _aaSkillAssetState.payload?.businessDate) datePicker.value = _aaSkillAssetState.payload.businessDate;
+  }
+  if (_aaSkillAssetState.loading) {
+    target.innerHTML = '<div class="aa-skill-assets-empty">' + escapeHtml(labels.skillAssetsLoading) + '</div>';
+    return;
+  }
+  if (_aaSkillAssetState.error) {
+    target.innerHTML = '<div class="aa-skill-assets-empty aa-skill-assets-error" role="alert">' + escapeHtml(labels.skillAssetsFailed + _aaSkillAssetState.error) + '</div><button type="button" class="wr-export-btn" onclick="loadSkillAssetReview(document.getElementById(\'aaSkillAssetDate\')?.value || null)">' + escapeHtml(labels.retry) + '</button>';
+    return;
+  }
+  const payload = _aaSkillAssetState.payload;
+  const items = aaSkillAssetItems(payload);
+  if (!payload || payload.status === 'empty' || !items.length) {
+    target.innerHTML = '<div class="aa-skill-assets-empty">' + escapeHtml(labels.skillAssetsEmpty) + '</div>';
+    return;
+  }
+  const counts = payload.counts || {};
+  const selectedCount = items.filter(item => ['skill', 'lesson'].includes(item.assetClass) && _aaSkillAssetState.selected.has(item.reviewId)).length;
+  const countOrder = ['skill', 'lesson', 'reference', 'discard'];
+  target.innerHTML = '<div class="aa-skill-assets-toolbar">' +
+    '<div><div class="aa-skill-assets-title">' + escapeHtml(labels.skillAssetsTitle) + '</div>' +
+      '<div class="aa-skill-assets-context">' + escapeHtml(labels.skillAssetsDate) + ': ' + escapeHtml(payload.businessDate || '—') + ' · ' + escapeHtml(labels.skillAssetsPrompt) + ': ' + escapeHtml(payload.promptVersion || '—') + '</div></div>' +
+    '<div class="aa-skill-assets-counts">' + countOrder.map(key => '<span data-asset-class="' + key + '">' + escapeHtml(labels.skillAssetsClasses?.[key] || key) + ' ' + Number(counts[key] || 0) + '</span>').join('') + '</div></div>' +
+    '<div class="aa-skill-assets-boundary">' + escapeHtml(labels.skillAssetsBoundary) + '</div>' +
+    '<div class="aa-skill-assets-list">' + items.map(item => aaSkillAssetCard(item, labels)).join('') + '</div>' +
+    '<div class="aa-skill-assets-actions"><div><strong>' + escapeHtml(labels.skillAssetsSelected(selectedCount)) + '</strong><small>' + escapeHtml(labels.skillAssetsRegistrationBoundary) + '</small></div>' +
+      '<button type="button" class="aa-skill-assets-export" onclick="generateAndRegisterSelectedSkillAssets()" ' + (selectedCount && !_aaSkillAssetState.generating ? '' : 'disabled') + '>' + escapeHtml(_aaSkillAssetState.generating ? labels.skillAssetsGenerating : labels.skillAssetsGenerateRegister) + '</button></div>' +
+    '<div id="aaSkillAssetMessage" class="aa-skill-assets-message" role="status" aria-live="polite"></div>';
+}
+
+function aaToggleSkillAssetSelection(reviewId, selected) {
+  const item = aaSkillAssetItems(_aaSkillAssetState.payload).find(row => row.reviewId === reviewId && ['skill', 'lesson'].includes(row.assetClass));
+  if (!item) return;
+  if (selected) _aaSkillAssetState.selected.add(reviewId);
+  else _aaSkillAssetState.selected.delete(reviewId);
+  renderSkillAssetReview();
+}
+
+async function loadSkillAssetReview(businessDate = null) {
+  if (_aaSkillAssetState.generating) return;
+  if (_aaSkillAssetState.loading) {
+    await _aaSkillReviewPending;
+    if (businessDate && businessDate !== _aaSkillAssetState.payload?.businessDate) return loadSkillAssetReview(businessDate);
+    return;
+  }
+  if (businessDate && !/^\d{4}-\d{2}-\d{2}$/.test(businessDate)) return;
+  if (businessDate && document.getElementById('aaSkillAssetDate')) document.getElementById('aaSkillAssetDate').value = businessDate;
+  let finishReview;
+  _aaSkillReviewPending = new Promise(resolve => { finishReview = resolve; });
+  _aaSkillAssetState.loading = true;
+  _aaSkillAssetState.error = '';
+  renderSkillAssetReview();
+  try {
+    const response = await fetch('/api/ai-assets/skill-assets' + (businessDate ? '?businessDate=' + encodeURIComponent(businessDate) : ''));
+    const payload = await response.json();
+    if (!response.ok || !['ready', 'empty'].includes(payload.status)) throw new Error(payload.error || ('HTTP ' + response.status));
+    const items = aaSkillAssetItems(payload);
+    _aaSkillAssetState.payload = {...payload, items};
+    _aaSkillAssetState.selected = new Set(items.filter(item => item.selectedByDefault === true && item.assetClass === 'skill').map(item => item.reviewId));
+  } catch (error) {
+    _aaSkillAssetState.payload = null;
+    _aaSkillAssetState.selected = new Set();
+    _aaSkillAssetState.error = String(error?.message || error || 'unknown');
+  } finally {
+    _aaSkillAssetState.loading = false;
+    renderSkillAssetReview();
+    finishReview();
+    _aaSkillReviewPending = null;
+  }
+}
+
+async function generateAndRegisterSelectedSkillAssets() {
+  if (_aaSkillAssetState.generating) return;
+  const labels = aiAssetsText();
+  const payload = _aaSkillAssetState.payload;
+  const selected = aaSkillAssetItems(payload).filter(item =>
+    ['skill', 'lesson'].includes(item.assetClass) && _aaSkillAssetState.selected.has(item.reviewId));
+  const messageText = selected.length ? '' : labels.skillAssetsNoSelection;
+  if (!selected.length) {
+    const message = document.getElementById('aaSkillAssetMessage');
+    if (message) message.textContent = messageText;
+    return;
+  }
+  _aaSkillAssetState.generating = true;
+  renderSkillAssetReview();
+  let registration = null;
+  try {
+    const lessons = selected.filter(item => item.assetClass === 'lesson');
+    if (lessons.length) {
+      const response = await fetch('/api/ai-assets/skill-assets/crystallize', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          businessDate: payload.businessDate,
+          promptVersion: payload.promptVersion,
+          reviewIds: lessons.map(item => item.reviewId),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || result.status !== 'ready' || !result.review) {
+        throw new Error(result.error || ('HTTP ' + response.status));
+      }
+      const items = aaSkillAssetItems(result.review);
+      _aaSkillAssetState.payload = {...result.review, items};
+    }
+    const finalized = aaSkillAssetItems(_aaSkillAssetState.payload).filter(item =>
+      item.assetClass === 'skill' && _aaSkillAssetState.selected.has(item.reviewId));
+    if (!finalized.length) throw new Error(labels.skillAssetsNoSelection);
+    const registerResponse = await fetch('/api/ai-assets/skill-assets/register', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        businessDate: _aaSkillAssetState.payload.businessDate,
+        promptVersion: _aaSkillAssetState.payload.promptVersion,
+        reviewIds: finalized.map(item => item.reviewId),
+      }),
+    });
+    registration = await registerResponse.json();
+    if (!registerResponse.ok || registration.status !== 'completed') {
+      throw new Error(registration.error || ('HTTP ' + registerResponse.status));
+    }
+  } catch (error) {
+    _aaSkillAssetState.generating = false;
+    renderSkillAssetReview();
+    const message = document.getElementById('aaSkillAssetMessage');
+    if (message) message.textContent = labels.skillAssetsCrystallizationFailed + String(error?.message || error || 'unknown');
+    return;
+  }
+  _aaSkillAssetState.generating = false;
+  renderSkillAssetReview();
+  const message = document.getElementById('aaSkillAssetMessage');
+  if (message) {
+    const toolCount = Array.isArray(registration?.registeredTools) ? registration.registeredTools.length : 0;
+    message.textContent = labels.skillAssetsRegistrationCompleted + ' ' + labels.skillAssetsRegistered(toolCount);
+  }
+}
+
 async function loadAiAssets() {
   const labels = aiAssetsText();
-  if (_aaLoading) return;
+  if (_aaLoading) return _aaPendingPromise;
   _aaLoading = true;
+  let finishLoad;
+  _aaPendingPromise = new Promise(resolve => { finishLoad = resolve; });
   const loading = document.getElementById('aiAssetsLoading');
   const content = document.getElementById('aiAssetsContent');
   const btn = document.getElementById('aiAssetsRefreshBtn');
   const timeEl = document.getElementById('aiAssetsUpdateTime');
-  if (!loading || !content) { _aaLoading = false; return; }
+  const usageLoading = document.getElementById('usageHistoryLoading');
+  const usageButton = document.getElementById('usageHistoryRefreshBtn');
+  const usageUpdatedAt = document.getElementById('usageHistoryUpdatedAt');
+  if (!loading || !content) { _aaLoading = false; finishLoad(null); _aaPendingPromise = null; return; }
 
   loading.style.display = 'flex';
   content.style.display = 'none';
+  clearSharePayload('ai-assets', 'aiAssetsShareBtn');
   if (btn) btn.textContent = labels.loading;
+  if (btn) btn.disabled = true;
+  if (usageButton) usageButton.disabled = true;
+  if (usageLoading) {
+    usageLoading.style.display = 'block';
+    usageLoading.setAttribute('role', 'status');
+    usageLoading.textContent = labels.loading;
+  }
 
   try {
     const res = await fetch('/api/ai-assets');
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const d = await res.json();
-    loading.style.display = 'none';
+    const state = dashboardStateOf(d);
+    if (dashboardStateFailed(d)) throw new Error(dashboardStateSummary(d));
+    if (state.status === 'empty') {
+      loading.style.display = 'flex';
+      loading.setAttribute('role', 'status');
+      loading.textContent = labels.noData;
+      content.style.display = 'none';
+      if (btn) btn.textContent = labels.refresh;
+      if (timeEl) timeEl.textContent = '';
+      if (usageLoading) usageLoading.textContent = labels.noData;
+      return;
+    }
+    if (state.status === 'degraded') {
+      loading.style.display = 'flex';
+      loading.setAttribute('role', 'status');
+      loading.textContent = labels.degraded + dashboardStateSummary(d);
+      if (usageLoading) usageLoading.textContent = labels.degraded + dashboardStateSummary(d);
+    } else {
+      loading.style.display = 'none';
+      loading.removeAttribute('role');
+      if (usageLoading) usageLoading.style.display = 'none';
+    }
     content.style.display = 'block';
     if (btn) btn.textContent = labels.refresh;
     if (timeEl) timeEl.textContent = labels.updatedAt + new Date().toLocaleTimeString() + foundationFreshnessSuffix(d.dataFreshness && d.dataFreshness.aiAssets);
+    if (usageUpdatedAt && timeEl) usageUpdatedAt.textContent = timeEl.textContent;
     aaDestroyCharts();
     aaRender(d);
   } catch (e) {
     loading.innerHTML = '<span style="color:var(--ruby)">❌ ' + escapeHtml(labels.loadFailed + e.message) + '</span>';
     if (btn) btn.textContent = labels.retry;
+    if (usageLoading) {
+      usageLoading.setAttribute('role', 'alert');
+      usageLoading.textContent = labels.loadFailed + e.message;
+    }
   } finally {
     _aaLoading = false;
+    finishLoad(_aaState.data);
+    _aaPendingPromise = null;
+    if (btn) btn.disabled = false;
+    if (usageButton) usageButton.disabled = false;
+  }
+}
+
+/* ═══ AI Assets private data backups ═══ */
+let AI_ASSETS_BACKUP_STATUS = null;
+
+function aiAssetsBackupErrorMessage(value) {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object') return String(value.message || value.code || value.reason || '');
+  return String(value);
+}
+
+function aiAssetsBackupLatestMarkup(latest, labels) {
+  if (!latest) return '<div class="backup-latest-empty">' + escapeHtml(labels.backupNeverRun) + '</div>';
+  const status = String(latest.status || 'unknown');
+  const tone = status === 'completed' ? 'success' : status === 'completed_with_warnings' ? 'warning' : status === 'failed' ? 'error' : 'neutral';
+  const completed = latest.completedAt || latest.startedAt || '';
+  const details = [];
+  if (latest.fileCount !== undefined) details.push(Number(latest.fileCount || 0).toLocaleString() + ' files');
+  if (latest.totalBytes !== undefined) details.push(foFormatBytes(latest.totalBytes || 0));
+  if (completed) details.push(new Date(completed).toLocaleString());
+  const error = aiAssetsBackupErrorMessage(latest.error);
+  return '<div class="backup-latest" data-tone="' + escapeHtml(tone) + '">' +
+    '<div class="backup-latest-title"><strong>' + escapeHtml(status) + '</strong>' + (latest.backupId ? '<code>' + escapeHtml(latest.backupId) + '</code>' : '') + '</div>' +
+    (details.length ? '<div class="backup-latest-meta">' + details.map(escapeHtml).join(' · ') + '</div>' : '') +
+    (error ? '<div class="backup-latest-error">' + escapeHtml(error) + '</div>' : '') +
+  '</div>';
+}
+
+function renderAiAssetsBackupModal(payload, generation, message = '', tone = 'neutral') {
+  if (!dashboardModalGenerationIsCurrent(generation)) return;
+  const labels = aiAssetsText();
+  const settings = payload && payload.settings || {};
+  const include = settings.include || {};
+  const retention = settings.retention || {};
+  const schedule = settings.schedule || {};
+  const readiness = payload && payload.targetReadiness || {};
+  const latest = payload && payload.latestRun || null;
+  const confirmation = String(payload && payload.confirmationTextRequired || 'BACK UP ACTANARA DATA');
+  const itemRows = [
+    ['database', labels.backupDatabase],
+    ['diaryMarkdown', labels.backupDiary],
+    ['periodReports', labels.backupReports],
+    ['ragV2', labels.backupRag],
+    ['novaTaskExports', labels.backupTask],
+    ['settings', labels.backupSettings],
+    ['workspaceAttribution', labels.backupWorkspace],
+    ['runtimeManifests', labels.backupRuntime],
+  ];
+  const readinessLabel = readiness.ready ? labels.backupTargetReady : labels.backupTargetNotReady;
+  document.getElementById('modal-body').innerHTML = '<div class="backup-modal" data-backup-modal="true">' +
+    '<div class="backup-privacy-note"><span data-share-icon="archive"></span><span>' + escapeHtml(labels.dataBackupPrivacy) + '</span></div>' +
+    '<label class="backup-field backup-field-wide"><span>' + escapeHtml(labels.backupTarget) + '</span><input id="backupTargetDirectory" type="text" autocomplete="off" spellcheck="false" placeholder="' + escapeHtml(labels.backupTargetPlaceholder) + '" value="' + escapeHtml(settings.targetDirectory || '') + '"></label>' +
+    '<div class="backup-target-state" data-ready="' + (readiness.ready ? 'true' : 'false') + '">' + escapeHtml(readinessLabel) + (readiness.code ? ' · ' + escapeHtml(readiness.code) : '') + '</div>' +
+    '<fieldset class="backup-fieldset"><legend>' + escapeHtml(labels.backupItems) + '</legend><div class="backup-check-grid">' + itemRows.map(([key, label]) =>
+      '<label><input type="checkbox" data-backup-include="' + key + '"' + (include[key] !== false ? ' checked' : '') + '><span>' + escapeHtml(label) + '</span></label>'
+    ).join('') + '</div></fieldset>' +
+    '<div class="backup-settings-grid">' +
+      '<label class="backup-field"><span>' + escapeHtml(labels.backupRetentionCount) + '</span><input id="backupRetentionCount" type="number" min="1" max="1000" value="' + escapeHtml(retention.maxBackups || 7) + '"></label>' +
+      '<label class="backup-field"><span>' + escapeHtml(labels.backupRetentionDays) + '</span><input id="backupRetentionDays" type="number" min="1" max="36500" value="' + escapeHtml(retention.maxAgeDays || 30) + '"></label>' +
+      '<label class="backup-field backup-switch"><span>' + escapeHtml(labels.backupSchedule) + '</span><input id="backupScheduleEnabled" type="checkbox"' + (schedule.enabled ? ' checked' : '') + '></label>' +
+      '<label class="backup-field"><span>' + escapeHtml(labels.backupFrequency) + '</span><select id="backupScheduleFrequency"><option value="daily"' + (schedule.frequency === 'daily' ? ' selected' : '') + '>' + escapeHtml(labels.backupDaily) + '</option><option value="weekly"' + (schedule.frequency !== 'daily' && schedule.frequency !== 'monthly' ? ' selected' : '') + '>' + escapeHtml(labels.backupWeekly) + '</option><option value="monthly"' + (schedule.frequency === 'monthly' ? ' selected' : '') + '>' + escapeHtml(labels.backupMonthly) + '</option></select></label>' +
+      '<label class="backup-field"><span>' + escapeHtml(labels.backupTime) + '</span><input id="backupScheduleTime" type="time" value="' + escapeHtml(schedule.timeOfDay || '05:00') + '"></label>' +
+    '</div>' +
+    '<div class="backup-form-actions"><button type="button" class="wr-export-btn" id="backupSaveBtn" onclick="saveAiAssetsBackupSettings()">' + escapeHtml(labels.backupSaveSettings) + '</button></div>' +
+    '<div class="backup-run-panel"><div><strong>' + escapeHtml(labels.backupRunNow) + '</strong><p>' + escapeHtml(labels.backupConfirmationHint) + ' <code>' + escapeHtml(confirmation) + '</code></p></div>' +
+      '<div class="backup-run-controls"><input id="backupConfirmationText" type="text" autocomplete="off" aria-label="' + escapeHtml(labels.backupConfirmation) + '"><button type="button" class="wr-export-btn share-primary-action" id="backupRunBtn" onclick="runAiAssetsBackupNow()">' + escapeHtml(labels.backupRunNow) + '</button></div>' +
+    '</div>' +
+    '<section class="backup-latest-section"><div class="backup-latest-heading"><strong>' + escapeHtml(labels.status) + '</strong>' + (latest && latest.backupId ? '<button type="button" class="wr-export-btn" id="backupVerifyBtn" onclick="verifyLatestAiAssetsBackup()">' + escapeHtml(labels.backupVerifyLatest) + '</button>' : '') + '</div>' + aiAssetsBackupLatestMarkup(latest, labels) + '</section>' +
+    '<div class="backup-restore-contract">' + escapeHtml(labels.backupRestoreUnavailable) + '</div>' +
+    '<div id="backupActionStatus" class="backup-action-status" data-tone="' + escapeHtml(tone) + '" role="status" aria-live="polite">' + escapeHtml(message) + '</div>' +
+  '</div>';
+  hydrateShareIcons(document.getElementById('modal-body'));
+}
+
+function readAiAssetsBackupForm() {
+  const include = {};
+  document.querySelectorAll('[data-backup-include]').forEach(input => { include[input.dataset.backupInclude] = input.checked; });
+  return {
+    targetDirectory: String(document.getElementById('backupTargetDirectory')?.value || '').trim(),
+    include,
+    retention: {
+      maxBackups: Number(document.getElementById('backupRetentionCount')?.value || 7),
+      maxAgeDays: Number(document.getElementById('backupRetentionDays')?.value || 30),
+    },
+    schedule: {
+      enabled: !!document.getElementById('backupScheduleEnabled')?.checked,
+      frequency: String(document.getElementById('backupScheduleFrequency')?.value || 'weekly'),
+      timeOfDay: String(document.getElementById('backupScheduleTime')?.value || '05:00'),
+    },
+  };
+}
+
+function setAiAssetsBackupAction(message, tone = 'neutral') {
+  const element = document.getElementById('backupActionStatus');
+  if (!element) return;
+  element.textContent = message;
+  element.dataset.tone = tone;
+}
+
+async function openAiAssetsBackupModal() {
+  const labels = aiAssetsText();
+  const generation = openModal(labels.dataBackupTitle, '<div class="wr-loading"><div class="wr-spinner"></div><span>' + escapeHtml(labels.dataBackupLoading) + '</span></div>');
+  try {
+    const response = await fetch('/api/ai-assets/backups/status');
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || ('HTTP ' + response.status));
+    if (!dashboardModalGenerationIsCurrent(generation)) return;
+    AI_ASSETS_BACKUP_STATUS = payload;
+    renderAiAssetsBackupModal(payload, generation);
+  } catch (error) {
+    if (!dashboardModalGenerationIsCurrent(generation)) return;
+    document.getElementById('modal-body').innerHTML = '<div class="share-preview-error" role="alert">' + escapeHtml(labels.backupFailed + error.message) + '</div>';
+  }
+}
+
+async function saveAiAssetsBackupSettings(options = {}) {
+  const labels = aiAssetsText();
+  const button = document.getElementById('backupSaveBtn');
+  const generation = ACTANARA_MODAL_GENERATION;
+  if (button) { button.disabled = true; button.textContent = labels.backupSaving; }
+  setAiAssetsBackupAction(labels.backupSaving);
+  try {
+    const response = await fetch('/api/ai-assets/backups/settings', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({backup: readAiAssetsBackupForm()}),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || ('HTTP ' + response.status));
+    AI_ASSETS_BACKUP_STATUS = payload;
+    renderAiAssetsBackupModal(payload, generation, options.silent ? '' : labels.backupSettingsSaved, 'success');
+    return payload;
+  } catch (error) {
+    setAiAssetsBackupAction(labels.backupFailed + error.message, 'error');
+    return null;
+  } finally {
+    const current = document.getElementById('backupSaveBtn');
+    if (current) { current.disabled = false; current.textContent = labels.backupSaveSettings; }
+  }
+}
+
+async function runAiAssetsBackupNow() {
+  const labels = aiAssetsText();
+  const confirmation = String(document.getElementById('backupConfirmationText')?.value || '');
+  const generation = ACTANARA_MODAL_GENERATION;
+  const previousRunId = AI_ASSETS_BACKUP_STATUS && AI_ASSETS_BACKUP_STATUS.latestRun && AI_ASSETS_BACKUP_STATUS.latestRun.runId;
+  const saved = await saveAiAssetsBackupSettings({silent: true});
+  if (!saved || !dashboardModalGenerationIsCurrent(generation)) return;
+  const button = document.getElementById('backupRunBtn');
+  if (button) button.disabled = true;
+  try {
+    const response = await fetch('/api/ai-assets/backups/run', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({confirmationText: confirmation}),
+    });
+    const queued = await response.json();
+    if (!response.ok) throw new Error(queued.error || ('HTTP ' + response.status));
+    setAiAssetsBackupAction(labels.backupQueued, 'neutral');
+    for (let attempt = 0; attempt < 180 && dashboardModalGenerationIsCurrent(generation); attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const statusResponse = await fetch('/api/ai-assets/backups/status');
+      const statusPayload = await statusResponse.json();
+      if (!statusResponse.ok) throw new Error(statusPayload.error || ('HTTP ' + statusResponse.status));
+      AI_ASSETS_BACKUP_STATUS = statusPayload;
+      const latest = statusPayload.latestRun;
+      if (!latest || latest.runId === previousRunId) continue;
+      if (latest.status === 'running') {
+        setAiAssetsBackupAction(labels.backupRunning, 'neutral');
+        continue;
+      }
+      const success = latest.status === 'completed' || latest.status === 'completed_with_warnings';
+      const message = latest.status === 'completed' ? labels.backupCompleted : latest.status === 'completed_with_warnings' ? labels.backupCompletedWarnings : labels.backupFailed + aiAssetsBackupErrorMessage(latest.error);
+      renderAiAssetsBackupModal(statusPayload, generation, message, success ? (latest.status === 'completed' ? 'success' : 'warning') : 'error');
+      return;
+    }
+    throw new Error('status timeout');
+  } catch (error) {
+    setAiAssetsBackupAction(labels.backupFailed + error.message, 'error');
+  } finally {
+    const current = document.getElementById('backupRunBtn');
+    if (current) current.disabled = false;
+  }
+}
+
+async function verifyLatestAiAssetsBackup() {
+  const labels = aiAssetsText();
+  const latest = AI_ASSETS_BACKUP_STATUS && AI_ASSETS_BACKUP_STATUS.latestRun;
+  if (!latest || !latest.backupId) return;
+  const button = document.getElementById('backupVerifyBtn');
+  if (button) { button.disabled = true; button.textContent = labels.backupVerifying; }
+  setAiAssetsBackupAction(labels.backupVerifying);
+  try {
+    const response = await fetch('/api/ai-assets/backups/' + encodeURIComponent(latest.backupId) + '/verify', {method: 'POST'});
+    const result = await response.json();
+    if (!response.ok || result.valid !== true) throw new Error(result.error || aiAssetsBackupErrorMessage(result.errors && result.errors[0]) || ('HTTP ' + response.status));
+    setAiAssetsBackupAction(labels.backupVerificationPassed, 'success');
+  } catch (error) {
+    setAiAssetsBackupAction(labels.backupVerificationFailed + error.message, 'error');
+  } finally {
+    if (button) { button.disabled = false; button.textContent = labels.backupVerifyLatest; }
   }
 }
 
@@ -8391,19 +12301,154 @@ async function foundationBackfillRange() {
 }
 
 function aaEnsureAssetsLoaded() {
-  const page = document.getElementById('page-static');
-  if (!page || !page.classList.contains('active')) return;
+  const page = document.querySelector('#page-static.active, #page-overview.active');
+  if (!page) return;
   const content = document.getElementById('aiAssetsContent');
-  const loading = document.getElementById('aiAssetsLoading');
   const hasData = content && content.style.display === 'block' && _aaState.data;
-  const failed = loading && loading.innerHTML.startsWith('❌');
-  if (!hasData && !failed) loadAiAssets();
+  if (!hasData) loadAiAssets();
+  else if (page.id === 'page-overview') requestAnimationFrame(() => renderAACharts(_aaState.data));
+}
+
+function toggleAaInfrastructure(kind) {
+  if (!_aaState.infraExpanded) _aaState.infraExpanded = { devices: false, services: false };
+  _aaState.infraExpanded[kind] = !_aaState.infraExpanded[kind];
+  if (_aaState.data) renderAaInfrastructure(_aaState.data, aiAssetsText());
+}
+window.toggleAaInfrastructure = toggleAaInfrastructure;
+
+function openAaInfraActivityModal(activityIndex) {
+  const labels = aiAssetsText();
+  const item = (_aaState.infraActivityItems || [])[activityIndex];
+  if (!item) return;
+  const events = item.events || [];
+  const content = events.length
+    ? '<div class="aa-infra-activity-list">' + events.map(event => {
+        const meta = [
+          event.type ? [labels.typeLabel, event.type] : null,
+          event.field ? [labels.fieldLabel, event.field] : null,
+          event.confidence ? [labels.confidenceLabel, event.confidence] : null,
+        ].filter(Boolean);
+        return '<div class="aa-infra-activity-item">' +
+          '<div class="aa-infra-activity-head"><span>' + escapeHtml(event.date || '') + '</span><strong>' + escapeHtml(event.summary || labels.recentActivity) + '</strong></div>' +
+          (event.current ? '<div class="aa-infra-activity-current"><span>' + escapeHtml(labels.currentLabel) + '</span><p>' + escapeHtml(event.current) + '</p></div>' : '') +
+          (meta.length ? '<div class="aa-infra-activity-meta">' + meta.map(([key, value]) =>
+            '<span><strong>' + escapeHtml(key) + '</strong>' + escapeHtml(value) + '</span>'
+          ).join('') + '</div>' : '') +
+        '</div>';
+      }).join('') + '</div>'
+    : '<div class="aa-infra-empty">' + escapeHtml(labels.noRecentActivity) + '</div>';
+  openModal(labels.recentActivity + ' · ' + (item.name || ''), content);
+}
+window.openAaInfraActivityModal = openAaInfraActivityModal;
+
+function renderAaInfrastructure(d, labels) {
+  const target = document.getElementById('aaDevices');
+  if (!target) return;
+  _aaState.infraActivityItems = [];
+  const renderMetaLine = (parts) => {
+    const clean = (parts || []).filter(part => {
+      if (part === undefined || part === null) return false;
+      const value = typeof part === 'object' ? part.value : part;
+      return value !== undefined && value !== null && String(value).trim();
+    });
+    return clean.length
+      ? '<div class="aa-infra-meta-line">' + clean.map(part => {
+          const value = part && typeof part === 'object' ? part.value : part;
+          const cls = part && typeof part === 'object' && part.status ? ' aa-infra-meta-status' : '';
+          return '<span class="aa-infra-meta-item' + cls + '">' + escapeHtml(value) + '</span>';
+        }).join('<span class="aa-infra-meta-dot">·</span>') + '</div>'
+      : '';
+  };
+  const renderInfraFacts = (item, includeHost = false) => {
+    const facts = [];
+    if (includeHost && item.host) facts.push([labels.hostLabel, item.host]);
+    if (item.location) facts.push([labels.locationLabel, item.location]);
+    if (item.endpoint) facts.push([labels.endpointLabel, item.endpoint]);
+    if (item.port) facts.push([labels.portLabel, item.port]);
+    if (item.path) facts.push([labels.pathLabel, item.path]);
+    return facts.length
+      ? '<div class="aa-infra-facts">' + facts.map(([key, value]) =>
+          '<div class="aa-infra-fact"><span class="aa-infra-fact-label">' + escapeHtml(key) + '</span><span class="aa-infra-fact-value">' + escapeHtml(value) + '</span></div>'
+        ).join('') + '</div>'
+      : '';
+  };
+  const renderActivityButton = (item) => {
+    const events = (item.recentActivity || []).filter(Boolean);
+    if (!events.length) return '';
+    const index = _aaState.infraActivityItems.push({ name: item.name || '', events }) - 1;
+    return '<button type="button" class="aa-infra-activity-button" onclick="openAaInfraActivityModal(' + index + ')">' +
+      escapeHtml(labels.activityButton(events.length)) +
+    '</button>';
+  };
+  const renderInfraCard = (item, options) => {
+    options = options || {};
+    const role = options.role || item.role || item.type || '';
+    const facts = renderInfraFacts(item, !!options.includeHost);
+    const activity = renderActivityButton(item);
+    const detail = facts + (activity ? '<div class="aa-infra-card-actions">' + activity + '</div>' : '');
+    return '<details class="aa-device-card aa-infra-card">' +
+      '<summary class="aa-infra-card-top">' +
+        '<div class="aa-infra-card-copy">' +
+          '<span class="aa-device-name">' + escapeHtml(item.name || '') + '</span>' +
+          (role ? '<span class="aa-device-role">' + escapeHtml(role) + '</span>' : '') +
+          renderMetaLine(options.meta || []) +
+        '</div>' +
+      '</summary>' +
+      (detail ? '<div class="aa-infra-card-detail">' + detail + '</div>' : '') +
+    '</details>';
+  };
+  const renderInfraService = (service) =>
+    renderInfraCard(service, {
+      includeHost: true,
+      role: service.role || service.type || '',
+      meta: [
+        service.status ? { value: service.status, status: true } : null,
+        service.host || null,
+      ],
+    });
+  const renderInfraSection = (kind, title, tag, items, renderer, emptyLabel) => {
+    const expanded = !!(_aaState.infraExpanded && _aaState.infraExpanded[kind]);
+    const visible = expanded ? items : items.slice(0, AA_INFRA_CARD_LIMIT);
+    const toggle = items.length > AA_INFRA_CARD_LIMIT
+      ? '<button type="button" class="aa-infra-toggle" onclick="toggleAaInfrastructure(\'' + kind + '\')">' +
+          escapeHtml(expanded
+            ? (kind === 'devices' ? labels.collapseDevices : labels.collapseServices)
+            : (kind === 'devices' ? labels.showAllDevices(items.length) : labels.showAllServices(items.length))) +
+        '</button>'
+      : '';
+    const body = visible.length
+      ? '<div class="aa-devices-grid">' + visible.map(renderer).join('') + '</div>'
+      : '<div class="aa-infra-empty">' + escapeHtml(emptyLabel) + '</div>';
+    return '<div class="aa-infra-section">' +
+      '<div class="aa-infra-header"><div class="aa-infra-header-main"><div class="aa-infra-title-row"><h4>' + escapeHtml(title) + '</h4><span class="aa-infra-kind-tag">' + escapeHtml(tag) + '</span></div><span class="aa-infra-count">' + escapeHtml(labels.visibleCount(visible.length, items.length)) + '</span></div>' + toggle + '</div>' +
+      body +
+    '</div>';
+  };
+  const devices = d.infrastructure?.devices || [];
+  const unassignedServices = d.infrastructure?.services || [];
+  const services = devices.flatMap(dev =>
+    (dev.services || []).map(service => ({...service, host: service.host || dev.name, parentDeviceId: dev.entityId}))
+  ).concat(unassignedServices);
+  const deviceHtml = renderInfraSection('devices', labels.devicesLabel, labels.deviceKindTag, devices, (dev, index) =>
+    renderInfraCard(dev, {
+      role: dev.role || dev.type || '',
+      meta: [
+        ((dev.services || []).length + ' ' + labels.servicesUnit),
+        dev.status ? { value: dev.status, status: true } : null,
+      ],
+    })
+  , labels.noDeviceData);
+  const serviceHtml = renderInfraSection('services', labels.servicesLabel, labels.serviceKindTag, services, renderInfraService, labels.noServiceData);
+  target.innerHTML = (devices.length || services.length)
+    ? deviceHtml + serviceHtml
+    : '<div style="color:var(--slate);font-size:13px">' + escapeHtml(labels.noDeviceData) + '</div>';
 }
 
 
 function aaRender(d) {
   const labels = aiAssetsText();
   _aaState.data = d;
+  registerAiAssetsSharePayload(d);
   const el = id => document.getElementById(id);
   const tools = d.tools || [];
   const diary = d.diary || {};
@@ -8414,10 +12459,11 @@ function aaRender(d) {
   el('aaKpi').innerHTML = [
     { icon:'🔥', label:labels.totalTokens, value: aaFmtTokens(d.totalTokens||0) },
     { icon:'💬', label:labels.totalMessages, value: (d.totalMessages||0).toLocaleString() },
-    { icon:'⚡', label:labels.activeSystems, value: tools.length + (labels.countUnit ? ' ' + labels.countUnit : '') },
-    { icon:'🤖', label:labels.agentInstances, value: (d.agents||[]).length },
-    { icon:'📅', label:labels.lookbackDays, value: '67 ' + labels.dayUnit },
-  ].map(k => '<div class="aa-kpi-card"><div class="aa-kpi-icon">' + k.icon + '</div><div class="aa-kpi-label">' + k.label + '</div><div class="aa-kpi-value">' + k.value + '</div></div>').join('');
+    { icon:'⚡', label:labels.activeSystems, value: aaActiveToolCount(tools, 30) + (labels.countUnit ? ' ' + labels.countUnit : '') },
+    { icon:'🤖', label:labels.agentInstances, value: Number(d.agentCount ?? (d.agents||[]).length).toLocaleString(), note: labels.agentInstancesNote },
+    { icon:'📅', label:labels.activeDays, value: Number(d.activeDayCount || 0).toLocaleString() + ' ' + labels.dayUnit },
+  ].map(k => '<div class="aa-kpi-card"><div class="aa-kpi-icon">' + k.icon + '</div><div class="aa-kpi-label">' + k.label + '</div><div class="aa-kpi-value">' + k.value + '</div>' + (k.note ? '<div class="aa-kpi-note">' + escapeHtml(k.note) + '</div>' : '') + '</div>').join('');
+  if (typeof renderAssetInventorySummary === 'function') renderAssetInventorySummary(d);
 
   // B: Tools
   const maxTokens = Math.max(...tools.map(t => t.allTimeTokens), 1);
@@ -8460,18 +12506,7 @@ function aaRender(d) {
   if(el('aaCron')) el('aaCron').innerHTML = [[labels.total, cronJobs.total||0], [labels.success, cronJobs.success||0], [labels.failed, cronJobs.failed||0], [labels.successRate, (cronJobs.successRate||0) + '%']].map(r => '<div class="aa-info-row"><span>'+escapeHtml(r[0])+'</span><span>'+r[1]+'</span></div>').join('');
 
   // H: 基础设施
-  if(el('aaDevices')) el('aaDevices').innerHTML = (d.infrastructure?.devices || []).length
-    ? (d.infrastructure.devices).map((dev, index) =>
-      '<details class="aa-device-card"' + (index === 0 ? ' open' : '') + '>' +
-        '<summary class="aa-device-summary"><span class="aa-device-identity"><span class="aa-device-emoji">' + escapeHtml(dev.emoji || '') + '</span><span><span class="aa-device-name">' + escapeHtml(dev.name) + '</span><span class="aa-device-role">' + escapeHtml(dev.role || '') + '</span></span></span>' +
-        '<span class="aa-device-count">' + (dev.services || []).length + ' ' + escapeHtml(labels.servicesUnit) + '</span><span class="aa-device-status">' + escapeHtml(dev.status || '') + '</span></summary>' +
-        '<div class="aa-device-service-list">' + (dev.services || []).map(service =>
-          '<div class="aa-device-service-row"><span class="aa-service-main"><strong>' + escapeHtml(service.name) + '</strong><small>' + escapeHtml(service.type || '') + '</small></span>' +
-          '<span class="aa-service-port">' + escapeHtml(service.port || '—') + '</span><span class="aa-service-state">' + escapeHtml(service.status || '') + '</span></div>'
-        ).join('') + '</div>' +
-      '</details>'
-    ).join('')
-    : '<div style="color:var(--slate);font-size:13px">' + escapeHtml(labels.noDeviceData) + '</div>';
+  renderAaInfrastructure(d, labels);
 
   // I: 存储使用
   renderStorageDetail(d.storage || {});
@@ -8482,8 +12517,12 @@ function aaRender(d) {
   // L: Skill 库
   renderSkills(d.skills || {});
 
-  // M: 工具配置
+  // N: 工具配置
   if (typeof renderToolConfigs === 'function') renderToolConfigs(d.toolConfigs || []);
+
+  // L: Skill Pass review projection (read-only; no registration side effects)
+  void loadSkillAssetReview();
+  if (typeof decorateDashboardUi === 'function') decorateDashboardUi();
 }
 
 function switchSkillTab(type) {
@@ -8501,7 +12540,12 @@ async function openEditor(agentName, fileName, path) {
   const ta = document.getElementById('aaEditorTextarea');
   if(ta) ta.value = labels.readingFile;
   const overlay = document.getElementById('aaEditorOverlay');
-  if(overlay) overlay.style.display = 'flex';
+  if(overlay) {
+    if (overlay.getAttribute('aria-hidden') !== 'false') ACTANARA_EDITOR_RETURN_FOCUS = document.activeElement;
+    overlay.style.display = 'flex';
+    overlay.setAttribute('aria-hidden', 'false');
+    queueMicrotask(() => focusDashboardDialog(overlay.querySelector('.aa-editor-modal')));
+  }
   try {
     const res = await fetch('/api/file-content?path=' + encodeURIComponent(path));
     const d = await res.json();
@@ -8510,7 +12554,13 @@ async function openEditor(agentName, fileName, path) {
 }
 function closeEditor() {
   const overlay = document.getElementById('aaEditorOverlay');
-  if(overlay) overlay.style.display = 'none';
+  if(overlay) {
+    overlay.style.display = 'none';
+    overlay.setAttribute('aria-hidden', 'true');
+  }
+  const returnFocus = ACTANARA_EDITOR_RETURN_FOCUS;
+  ACTANARA_EDITOR_RETURN_FOCUS = null;
+  restoreDashboardFocus(returnFocus);
 }
 async function saveFile() {
   const labels = aiAssetsText();
@@ -8544,32 +12594,31 @@ function renderStorageDetail(storage) {
   if (!container) return;
   let html = '';
 
-  // Per-tool disk usage
-  const toolStorage = storage.tools || [];
-  if (toolStorage.length) {
-    html += '<div class="aa-storage-section"><div class="aa-storage-section-title">' + escapeHtml(labels.toolStorage) + '</div>';
-    html += '<div class="aa-storage-tool-grid">';
-    html += toolStorage.map(t =>
-      '<div class="aa-storage-tool-card"><div class="aa-storage-tool-emoji">' + t.emoji + '</div>' +
-      '<div class="aa-storage-tool-name">' + t.name + '</div>' +
-      '<div class="aa-storage-tool-size">' + t.sizeMB + '</div>' +
-      '<div class="aa-storage-unit">MB</div></div>'
-    ).join('');
-    html += '</div></div>';
-  }
-
-  // Category breakdown
+  // Actanara artifacts and runtime-owned storage.
   const categories = storage.categories || [];
   if (categories.length) {
-    html += '<div class="aa-storage-section"><div class="aa-storage-section-title">' + escapeHtml(labels.artifactDetails) + '</div>';
+    html += '<div class="chart-card aa-storage-card"><div class="aa-storage-section"><div class="aa-storage-section-title">' + escapeHtml(labels.artifactDetails) + '</div>';
     const maxCat = Math.max(...categories.map(c => c.sizeMB), 1);
     html += categories.map(c => {
       const pct = (c.sizeMB / maxCat * 100).toFixed(0);
-      return '<div class="aa-storage-row"><span class="aa-storage-label">' + c.label + '</span>' +
+      return '<div class="aa-storage-row"><span class="aa-storage-label">' + escapeHtml(c.label) + '</span>' +
         '<div class="aa-storage-bar-track"><div class="aa-storage-bar-fill" style="width:' + pct + '%;background:var(--purple)"></div></div>' +
-        '<span class="aa-storage-text">' + c.sizeMB + ' MB</span></div>';
+        '<span class="aa-storage-text">' + escapeHtml(aaFormatStorageMB(c.sizeMB)) + '</span></div>';
     }).join('');
-    html += '</div>';
+    html += '</div></div>';
+  }
+
+  // Per-tool disk usage remains separate from Actanara artifacts.
+  const toolStorage = storage.tools || [];
+  if (toolStorage.length) {
+    html += '<div class="chart-card aa-storage-card"><div class="aa-storage-section"><div class="aa-storage-section-title">' + escapeHtml(labels.toolStorage) + '</div>';
+    html += '<div class="aa-storage-tool-grid">';
+    html += toolStorage.map(t =>
+      '<div class="aa-storage-tool-card"><div class="aa-storage-tool-emoji">' + escapeHtml(t.emoji || '') + '</div>' +
+      '<div class="aa-storage-tool-name">' + escapeHtml(t.name || '') + '</div>' +
+      '<div class="aa-storage-tool-size">' + escapeHtml(aaFormatStorageMB(t.sizeMB)) + '</div></div>'
+    ).join('');
+    html += '</div></div></div>';
   }
 
   container.innerHTML = html || '<div style="color:var(--slate);font-size:13px">' + escapeHtml(labels.noStorageData) + '</div>';
@@ -8609,6 +12658,7 @@ function _showModalContent(html, title, options) {
   const backBtn = document.getElementById('aaModalBack');
   const textarea = document.getElementById('aaDocTextarea');
   const content = document.getElementById('aaModalContent');
+  if (!modal.classList.contains('active')) ACTANARA_DOC_MODAL_RETURN_FOCUS = document.activeElement;
 
   // Reset to view mode (not editing)
   modal.classList.remove('aa-editing');
@@ -8626,6 +12676,7 @@ function _showModalContent(html, title, options) {
   const footer = modal.querySelector('.aa-modal-footer');
   if (footer) footer.style.display = 'none';
   modal.classList.add('active');
+  modal.setAttribute('aria-hidden', 'false');
   modal.style.setProperty('display', 'flex', 'important');
   modal.style.setProperty('position', 'fixed', 'important');
   modal.style.setProperty('inset', '0', 'important');
@@ -8633,6 +12684,7 @@ function _showModalContent(html, title, options) {
   modal.style.setProperty('align-items', 'center', 'important');
   modal.style.setProperty('justify-content', 'center', 'important');
   modal.style.setProperty('background', 'rgba(6, 27, 49, 0.62)', 'important');
+  queueMicrotask(() => focusDashboardDialog(panel));
 }
 
 function aaModalBack() {
@@ -9265,6 +13317,7 @@ async function openDocModal(agentName, fileName, workspace, fullPath, createable
     console.error('AI assets modal DOM is incomplete');
     return;
   }
+  if (!modal.classList.contains('active')) ACTANARA_DOC_MODAL_RETURN_FOCUS = document.activeElement;
   if (modal.parentElement !== document.body) document.body.appendChild(modal);
 
   // Editor mode: wider modal, textarea fills body
@@ -9296,6 +13349,7 @@ async function openDocModal(agentName, fileName, workspace, fullPath, createable
   const footer = modal.querySelector('.aa-modal-footer');
   if (footer) footer.style.display = 'flex';
   modal.classList.add('active');
+  modal.setAttribute('aria-hidden', 'false');
   modal.style.setProperty('display', 'flex', 'important');
   modal.style.setProperty('position', 'fixed', 'important');
   modal.style.setProperty('inset', '0', 'important');
@@ -9303,6 +13357,7 @@ async function openDocModal(agentName, fileName, workspace, fullPath, createable
   modal.style.setProperty('align-items', 'center', 'important');
   modal.style.setProperty('justify-content', 'center', 'important');
   modal.style.setProperty('background', 'rgba(6, 27, 49, 0.62)', 'important');
+  queueMicrotask(() => focusDashboardDialog(panel));
 
   try {
     const res = await fetch('/api/file-content?path=' + encodeURIComponent(filePath));
@@ -9330,6 +13385,7 @@ function closeDocModal() {
   const modal = document.getElementById('aaDocModal');
   if (!modal) return;
   modal.classList.remove('active', 'aa-editing');
+  modal.setAttribute('aria-hidden', 'true');
   _aaModalBackAction = null;
   modal.style.setProperty('display', 'none', 'important');
   const content = document.getElementById('aaModalContent');
@@ -9358,6 +13414,9 @@ function closeDocModal() {
   if (subtitle) subtitle.textContent = '';
   const backBtn = document.getElementById('aaModalBack');
   if (backBtn) backBtn.style.display = 'none';
+  const returnFocus = ACTANARA_DOC_MODAL_RETURN_FOCUS;
+  ACTANARA_DOC_MODAL_RETURN_FOCUS = null;
+  restoreDashboardFocus(returnFocus);
 }
 
 async function saveDoc() {
@@ -9399,9 +13458,34 @@ function aaToast(msg, type) {
   setTimeout(() => t.remove(), 3200);
 }
 
-// ESC to close modal
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeDocModal();
+  if (e.key === 'Enter' && !e.isComposing && e.target.matches('#ragPageSearchQuery, #ragPageSearchTopK, #ragPageSearchProject, #ragPageSearchSourceSets, #ragPageSearchLifecycle')) {
+    e.preventDefault();
+    runRagPageSearch();
+    return;
+  }
+  const roleButton = e.target.closest && e.target.closest('[role="button"]:not(button):not(a)');
+  if (roleButton && (e.key === 'Enter' || e.key === ' ')) {
+    e.preventDefault();
+    roleButton.click();
+    return;
+  }
+  const panel = activeDashboardDialog();
+  if (!panel) return;
+  if (e.key === 'Tab') {
+    trapDashboardDialogFocus(e, panel);
+    return;
+  }
+  if (e.key !== 'Escape') return;
+  e.preventDefault();
+  const editor = document.getElementById('aaEditorOverlay');
+  if (editor && editor.getAttribute('aria-hidden') === 'false') {
+    closeEditor();
+  } else if (document.getElementById('aaDocModal')?.classList.contains('active')) {
+    closeDocModal();
+  } else {
+    closeModal();
+  }
 });
 
 // Auto-load AI assets when page becomes visible
@@ -9415,7 +13499,7 @@ _aaObserver.observe(document.getElementById('page-static') || document.body, { a
 
 fetchTokenClock();
 setInterval(fetchTokenClock, 30000);
-loadDiaryNav();
+ACTANARA_DIARY_NAV_READY = loadDiaryNav();
 
 
 // ═══════════════════════════════════════════════════════
@@ -9455,7 +13539,20 @@ function flashElement(id, newVal) {
 }
 
 function updateTokenCards(data) {
-  const labels = dashboardShellText();
+  const labels = { ...dashboardText(), ...dashboardShellText() };
+  if (dashboardStateFailed(data)) {
+    if (!ACTANARA_TOKEN_SUMMARY_READY) {
+      ['statMsgCount', 'statTodayTokens', 'statCacheHit'].forEach(id => flashElement(id, '—'));
+    }
+    const reason = dashboardStateSummary(data);
+    const msgTrend = document.getElementById('statMsgTrend');
+    const tokenTrend = document.getElementById('statTokenTrend');
+    const cacheTrend = document.getElementById('statCacheTrend');
+    [msgTrend, tokenTrend, cacheTrend].forEach(element => {
+      if (element) element.textContent = labels.loadFailed + reason;
+    });
+    return;
+  }
   // today summary
   const summary = data.summary || {};
   const today = data.today || {};
@@ -9480,6 +13577,7 @@ function updateTokenCards(data) {
 
   // Update uptime
   if (el('statUptime')) el('statUptime').textContent = formatUptime(Date.now() - pageLoadTime);
+  ACTANARA_TOKEN_SUMMARY_READY = true;
 }
 
 // ── Task Board (from /api/tasks) ─────────────────────────────────────────────
@@ -9497,6 +13595,7 @@ function taskBoardText() {
         plannedShort: 'Planned',
         milestoneShort: 'Milestones',
         noData: 'No data',
+        unavailable: 'Task data unavailable',
         boardTitle: 'Task Board',
         summary: (count, lastUpdated) => `📋 Task Board · ${count} projects${lastUpdated ? ' · ' + lastUpdated : ''}`,
         sectionCount: (section, count) => `${section} (${count} projects)`,
@@ -9514,6 +13613,7 @@ function taskBoardText() {
         plannedShort: '已计划',
         milestoneShort: '里程碑',
         noData: '暂无数据',
+        unavailable: '任务数据不可用',
         boardTitle: '任务看板',
         summary: (count, lastUpdated) => `📋 任务看板 · 共 ${count} 个项目${lastUpdated ? ' · ' + lastUpdated : ''}`,
         sectionCount: (section, count) => `${section}（${count} 个项目）`,
@@ -9590,6 +13690,19 @@ function dashboardTasksFromPayload(data) {
 
 function updateTaskBoard(data) {
   const labels = taskBoardText();
+  if (dashboardStateFailed(data)) {
+    if (!NOVA_TASK_BOARD_READY) {
+      ['tb-milestone-count', 'tb-active-count', 'tb-planned-count', 'tb-pending-count'].forEach(id => {
+        const element = document.getElementById(id);
+        if (element) element.textContent = '—';
+      });
+      const total = document.getElementById('statTaskTotal');
+      if (total) total.textContent = '—';
+    }
+    const trend = document.getElementById('statTaskTrend');
+    if (trend) trend.textContent = (data && data.reason) || labels.unavailable + ': ' + dashboardStateSummary(data);
+    return;
+  }
   const tasks = dashboardTasksFromPayload(data);
   _cachedTasks = tasks;
 
@@ -9627,6 +13740,7 @@ function updateTaskBoard(data) {
     if (milestoneCount) parts.push(labels.milestoneShort + ' ' + milestoneCount);
     el('statTaskTrend').textContent = parts.join(' · ') || labels.noData;
   }
+  NOVA_TASK_BOARD_READY = true;
 }
 
 // Global store for showAllTasks modal
@@ -9689,9 +13803,7 @@ function showAllTasks() {
 const ACTANARA_SSE_STREAM_STATES = new Map();
 
 function sseSourceWarnings(payload) {
-  const state = payload && typeof payload.dashboardState === 'object'
-    ? payload.dashboardState
-    : {};
+  const state = dashboardStateOf(payload);
   const errors = Array.isArray(state.sourceErrors) ? state.sourceErrors : [];
   const warnings = errors.map(item => {
     if (!item || typeof item !== 'object') return '';
@@ -9699,8 +13811,8 @@ function sseSourceWarnings(payload) {
     const code = String(item.code || '').trim();
     return source && code ? source + ': ' + code : code || source;
   }).filter(Boolean);
-  if (!warnings.length && ['error', 'unavailable', 'degraded'].includes(state.status)) {
-    warnings.push(String(state.status));
+  if (!warnings.length && dashboardStateFailed(payload)) {
+    warnings.push(String(state.status || 'unavailable'));
   }
   return warnings;
 }
@@ -9790,7 +13902,10 @@ function connectSSE(url, onData, label) {
 
 // ── Initialize SSE connections ──
 connectSSE('/events/tokens', updateTokenCards, 'tokens');
-connectSSE('/events/tasks', (data) => { window._taskBoardData = dashboardTasksFromPayload(data); updateTaskBoard(data); }, 'tasks');
+connectSSE('/events/tasks', (data) => {
+  if (!dashboardStateFailed(data)) window._taskBoardData = dashboardTasksFromPayload(data);
+  updateTaskBoard(data);
+}, 'tasks');
 
 // ── Update uptime every second ──
 setInterval(() => {
@@ -9800,6 +13915,7 @@ setInterval(() => {
 
 // ── Initial data fetch (fallback if SSE slow) ──
 applyStaticDashboardText();
+hydrateShareIcons(document);
 ensureDashboardLanguageProfile().then(profile => applyStaticDashboardText(profile)).catch(() => {});
 refreshMsgbox();
 setInterval(refreshMsgbox, 60000);
@@ -9808,18 +13924,31 @@ setInterval(refreshBackgroundTaskButton, 60000);
 loadDashboardTimezone();
 fetch('/api/tokens').then(r => r.json()).then(data => {
   if (data) updateTokenCards(data);
-}).catch(() => {});
+}).catch(error => updateTokenCards({dashboardState: {status: 'error', sourceErrors: [{source: 'token-summary', code: 'transport-failed'}]}, error: error.message}));
 // Initial tasks fetch (SSE fallback)
 fetch('/api/tasks').then(r => r.json()).then(data => {
   if (!window._taskBoardData) {
-    window._taskBoardData = dashboardTasksFromPayload(data);
+    if (!dashboardStateFailed(data)) window._taskBoardData = dashboardTasksFromPayload(data);
     updateTaskBoard(data);
   }
-}).catch(() => {});
+}).catch(error => updateTaskBoard({dashboardState: {status: 'error', sourceErrors: [{source: 'nova-task-board', code: 'transport-failed'}]}, error: error.message}));
 
 // ── Hash-based Navigation (fallback + browser back/forward support) ──
-initFromHash();
-window.addEventListener('hashchange', showPageFromHash);
+initFromHash().catch(e => console.error('initFromHash error:', e));
+window.addEventListener('hashchange', () => {
+  initFromHash().catch(e => console.error('hashchange restore error:', e));
+});
+window.addEventListener('popstate', () => {
+  initFromHash().catch(e => console.error('history restore error:', e));
+});
+
+document.addEventListener('input', recordAdvancedSettingsDirty);
+document.addEventListener('input', event => {
+  if (event.target.id === 'ragPageSearchTopK') event.target.setCustomValidity('');
+});
+document.addEventListener('change', recordAdvancedSettingsDirty);
+document.addEventListener('input', recordSettingsLlmDirty);
+document.addEventListener('change', recordSettingsLlmDirty);
 
 // ── Global event delegation for skill capsules ──
 document.addEventListener('click', function(e) {
@@ -9874,9 +14003,8 @@ document.addEventListener('click', function(e) {
   e.stopPropagation();
   openSkillModal(cap.dataset.tab, parseInt(cap.dataset.idx));
 }, true);
-function initFromHash() {
-  if (location.hash && location.hash !== '#') {
-    showPageFromHash();
-  }
-  // Otherwise the page-home.active in HTML will show by default
+async function initFromHash() {
+  if (ACTANARA_DIARY_NAV_READY) await ACTANARA_DIARY_NAV_READY;
+  if (location.hash && location.hash !== '#' && await restoreDynamicDiaryPageFromHash()) return;
+  showPageFromHash();
 }
