@@ -12,11 +12,11 @@ const mappings = [
     .replace(/<link href="https:\/\/fonts\.googleapis\.com[^>]+>\n/g, '')
     .replace('https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js', 'js/vendor/chart.umd.min.js')
     .replace('https://cdn.jsdelivr.net/npm/marked/marked.min.js', 'js/vendor/marked.min.js')
-    .replace('<script src="/static/js/autorefresh.js"></script>', '<script src="js/demo-assets.js"></script>\n<script src="js/static-mock.js"></script>')
+    .replace('<script src="/static/js/autorefresh.js"></script>', '<script src="js/demo-assets.js?v=1.9.0"></script>\n<script src="js/static-mock.js?v=1.9.0"></script>')
     .replaceAll('/static/', '')
     .replaceAll('href="/tasks"', 'href="tasks.html"')
     .replace('class="asset-dashboard"', 'class="asset-dashboard public-demo"')
-    .replace('</head>', '  <link rel="stylesheet" href="css/demo.css">\n</head>')
+    .replace('</head>', '  <link rel="stylesheet" href="css/demo.css?v=1.9.0">\n</head>')
     .replace('<main class="main">', '<main class="main">\n  <aside class="demo-notice" aria-label="Demo information"><b>v1.9.0 · Interactive demo / 在线演示</b><span>示例数据 · 不连接本机 · 生成、注册与服务操作需安装后使用 / Sample data; no local runtime access.</span><a href="https://github.com/Neo-Isshin/actanara/releases/latest" target="_blank" rel="noopener noreferrer">安装 / Install ↗</a></aside>')],
   ['css/style.css', text => text],
   ['css/dashboard.css', text => text],
