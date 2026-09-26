@@ -401,7 +401,8 @@ test("static dashboard demo uses local assets and excludes private hosts, machin
   for (const pageFile of ["index.html", "tasks.html"]) {
     const html = fs.readFileSync(path.join(dashboardDemoRoot, pageFile), "utf8");
     expect(html).not.toMatch(/<script[^>]+src=["']https?:\/\//i);
-    expect(html).toContain('src="js/static-mock.js"');
+    expect(html).toContain('src="js/static-mock.js?v=1.9.0"');
+    expect(html).toContain('src="js/demo-assets.js?v=1.9.0"');
   }
 
   expect(fs.existsSync(path.join(dashboardDemoRoot, "js", "vendor", "chart.umd.min.js"))).toBe(true);
