@@ -22,6 +22,8 @@ from data_foundation.settings import (
     resolve_external_tool_paths,
 )
 from data_foundation.runtime_sources import AntigravityRuntime, OpenCodeRuntime
+from data_foundation.runtime_sources.registry import NEW_RUNTIME_IDS, configured_runtime, usage_status
+from data_foundation.external_tool_definitions import TOOL_CATALOG
 from data_foundation.token_semantics import (
     authoritative_semantics,
     cache_hit_rate,
@@ -681,6 +683,30 @@ def _rate_emoji(hourly_tokens: int) -> str:
 
 
 # ── Scanner registry ──
+_runtime_usage_cache = {}
+
+
+def _scan_added_runtime_usage(tool_id):
+    runtime = configured_runtime(tool_id)
+    signature = []
+    for path in runtime.artifacts():
+        for candidate in (path, Path(str(path) + "-wal")):
+            try:
+                info = candidate.stat()
+                signature.append((str(candidate), info.st_size, info.st_mtime_ns))
+            except OSError:
+                continue
+    key = tuple(sorted(signature))
+    cached = _runtime_usage_cache.get(tool_id)
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    entries = _normalized_runtime_usage_entries(runtime)
+    if not entries and runtime.usage_status != "available":
+        raise ValueError("Local usage records are unavailable")
+    _runtime_usage_cache[tool_id] = (key, entries)
+    return entries
+
+
 _SCANNERS = [
     ("OpenClaw", _scan_openclaw),
     ("Claude Code", _scan_claude_code),
@@ -690,6 +716,8 @@ _SCANNERS = [
     ("OpenCode", _scan_opencode),
     ("Antigravity", _scan_antigravity),
 ]
+_SCANNERS.extend((TOOL_CATALOG[key]["name"], lambda _today, _hour, key=key: _scan_added_runtime_usage(key))
+                 for key in NEW_RUNTIME_IDS if usage_status(key) != "unavailable")
 
 _TOOL_ID_BY_NAME = {
     "OpenClaw": "openclaw",
@@ -702,6 +730,9 @@ _TOOL_ID_BY_NAME = {
     "Cursor": "cursor",
 }
 _USAGE_UNAVAILABLE_TOOL_IDS = {"cursor"}
+_TOOL_ID_BY_NAME.update({TOOL_CATALOG[key]["name"]: key for key in NEW_RUNTIME_IDS})
+_USAGE_UNAVAILABLE_TOOL_IDS.update(key for key in NEW_RUNTIME_IDS if usage_status(key) == "unavailable")
+TOOL_DEFS.extend({"name": TOOL_CATALOG[key]["name"], "emoji": TOOL_CATALOG[key]["emoji"], "color": TOOL_CATALOG[key]["color"], "usageStatus": usage_status(key)} for key in NEW_RUNTIME_IDS)
 
 
 def _live_token_semantics() -> dict:
@@ -715,7 +746,7 @@ def _live_token_semantics() -> dict:
         "OpenCode": "source protocol total includes separately reported reasoning and excludes cache writes",
         "Antigravity": "source protocol total also includes local reasoning and tool token fields",
     }
-    semantics["usageUnavailable"] = ["Cursor"]
+    semantics["usageUnavailable"] = [TOOL_CATALOG[key]["name"] for key in _USAGE_UNAVAILABLE_TOOL_IDS]
     return semantics
 
 
@@ -769,6 +800,8 @@ def _get_token_clock_data_unlocked() -> dict:
         except Exception as exc:
             logger.warning("Token clock scanner failed for %s: %s", name, exc)
             source_errors.append(source_error(name))
+            if tool_id in NEW_RUNTIME_IDS:
+                continue
             raw_entries = []
         filtered = _filter_today(raw_entries, today_str)
         stats = _aggregate(filtered, current_hour)

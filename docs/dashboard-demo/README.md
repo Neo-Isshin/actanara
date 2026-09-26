@@ -1,6 +1,6 @@
-# Actanara v1.8.0 在线演示 / Public Dashboard demo
+# Actanara v1.9.0 在线演示 / Public Dashboard demo
 
-演示直接复用 v1.8.0 的 Dashboard HTML、CSS 和交互代码，以公开演示数据替代后端 API。首页聚焦已保存的任务成果、学习经验、技能和报告；Token、消息、缓存、模型与工作区排行保留在独立的「用量与活动」菜单。
+演示直接复用 v1.9.0 的 Dashboard HTML、CSS 和交互代码，以公开演示数据替代后端 API。首页聚焦已保存的任务成果、学习经验、技能和报告；Token、消息、缓存、模型与工作区排行保留在独立的「用量与活动」菜单。
 
 The demo uses the production Dashboard frontend with a static data adapter. It never connects to a local runtime or provider account.
 

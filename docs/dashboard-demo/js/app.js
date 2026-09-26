@@ -6360,6 +6360,7 @@ function loadDashboardRouteData(id) {
   if (id === 'static' || id === 'overview') aaEnsureAssetsLoaded();
   if (id === 'static') loadSkillAssetReview();
   if (id === 'static' && typeof loadCanonicalSkills === 'function') loadCanonicalSkills();
+  if (id === 'static' && document.getElementById('dashboardRuntimeSources')?.open && typeof loadRuntimeSources === 'function') loadRuntimeSources();
   if (id === 'overview') fetchTokenClock();
   if (id === 'foundation-ops') loadFoundationOps();
   if (id === 'rag-search') loadRagSearchPage();

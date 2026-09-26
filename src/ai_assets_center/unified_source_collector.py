@@ -25,6 +25,10 @@ from data_foundation.settings import (
     external_tool_path_list,
 )
 from data_foundation.time import business_today, business_window, parse_timestamp, resolve_timezone
+from data_foundation.runtime_sources.registry import NEW_RUNTIME_IDS, configured_runtime
+from data_foundation.external_tool_definitions import CATALOG_TO_FOUNDATION
+from data_foundation.runtime_sources.base import DialogueRecord
+from itertools import chain
 
 SOURCES = {
     "openclaw": {"tool": "openclaw", "key": "agentsRoot", "pattern": "*.jsonl*", "engine": "openclaw_agents"},
@@ -36,6 +40,7 @@ SOURCES = {
     "antigravity": {"engine": "runtime_records"},
     "cursor":      {"engine": "runtime_records"},
 }
+SOURCES.update({CATALOG_TO_FOUNDATION[tool]: {"engine": "runtime_records"} for tool in NEW_RUNTIME_IDS})
 def _diary_root() -> Path:
     return load_paths().diary_dir
 
@@ -502,7 +507,17 @@ def collect_runtime_records(name, target_date, start_ts, end_ts):
     daily_unified: list[tuple[float, int, dict]] = []
     seen_entries = set()
     try:
-        records = runtime.dialogue()
+        # Source artifacts remain explicitly labelled evidence. Their mtime describes
+        # when the file was saved, not a claim that its task completed on that day.
+        document_records = (
+            DialogueRecord("document:" + doc.external_document_key, doc.external_session_key, "assistant",
+                "[Source-authored artifact / 来源产物；状态未由 Actanara 验证；日期为来源记录或文件保存时间]\n"
+                + doc.title + "\n" + doc.content,
+                doc.occurred_at, source_variant=doc.source_variant,
+                metadata={"kind": doc.kind, "evidence_only": True}, raw_locator=doc.raw_locator)
+            for doc in getattr(runtime, "documents", lambda: ())()
+        )
+        records = chain(runtime.dialogue(), document_records)
         for source_order, record in enumerate(records):
             occurred_at = record.occurred_at
             if occurred_at is None:
@@ -532,6 +547,9 @@ def collect_runtime_records(name, target_date, start_ts, end_ts):
                         "source": name,
                         "sourceVariant": record.source_variant,
                         "session": record.external_session_key,
+                        "sourceRecordId": record.external_message_key,
+                        "sourceLocator": record.raw_locator,
+                        "evidenceKind": record.metadata.get("kind", "dialogue"),
                         "conversationId": opaque_conversation_id(
                             name,
                             record.external_session_key or record.external_message_key or str(source_order),
@@ -569,6 +587,8 @@ def collect_runtime_records(name, target_date, start_ts, end_ts):
 
 
 def _local_runtime(name):
+    if name in {CATALOG_TO_FOUNDATION[tool] for tool in NEW_RUNTIME_IDS}:
+        return configured_runtime(name)
     if name == "opencode":
         from data_foundation.runtime_sources import OpenCodeRuntime
 

@@ -10,6 +10,8 @@ from typing import Callable
 
 from .db import connect
 from .external_tool_catalog import detect_external_tools
+from .external_tool_definitions import TOOL_CATALOG, CATALOG_TO_FOUNDATION
+from .runtime_sources.registry import usage_status
 from .paths import RuntimePaths
 from .time import parse_timestamp, resolve_timezone
 from .usage_attribution import TOOL_EMOJI, WORKSPACE_USAGE_MIN_TOKENS, resolve_usage_group, usage_group_display_allowed
@@ -64,6 +66,11 @@ CATALOG_ID_BY_DISPLAY_NAME = {
     TOOL_DISPLAY[foundation_key][0]: catalog_id
     for foundation_key, catalog_id in CATALOG_ID_BY_FOUNDATION_KEY.items()
 }
+TOOL_DISPLAY.update({CATALOG_TO_FOUNDATION[key]: (value["name"], value["emoji"]) for key, value in TOOL_CATALOG.items()})
+DISPLAY_ORDER = tuple(TOOL_DISPLAY)
+CATALOG_TOOL_IDS = tuple(TOOL_CATALOG)
+CATALOG_ID_BY_FOUNDATION_KEY.update({value: key for key, value in CATALOG_TO_FOUNDATION.items()})
+CATALOG_ID_BY_DISPLAY_NAME.update({value["name"]: key for key, value in TOOL_CATALOG.items()})
 _TOOL_ID_ALIASES = {
     **CATALOG_ID_BY_FOUNDATION_KEY,
     **CATALOG_ID_BY_DISPLAY_NAME,
@@ -475,13 +482,7 @@ def _foundation_ai_assets_non_rag_payload(paths: RuntimePaths) -> dict:
                 "firstActivity": "",
                 "lastActivity": str(row["latest_date"] or "") if row else "",
                 "activeDays": int(row["active_days"] or 0) if row else 0,
-                "usageStatus": (
-                    "unavailable"
-                    if key == "cursor"
-                    else "local-partial"
-                    if key == "antigravity"
-                    else "available"
-                ),
+                "usageStatus": usage_status(key),
             }
         )
     models = [

@@ -7,6 +7,7 @@ let assetDashboardLastRead = 0;
 
 const ASSET_DASHBOARD_COPY = {
   zh: {
+    runtimeSources:'外部工具接入', runtimeSourcesNote:'只读查看来源记录与产物；不等同于已验证任务或主技能库。未提供的用量不计作零。', configureRuntimePaths:'配置数据来源路径',
     workspace:'工作台', skillRecords:'技能与提案', searchSkills:'搜索主技能库', previous:'上一页', next:'下一页', resultLimit:'返回结果数量', truncated:'文档较长，仅显示前 200,000 个字符。', indexManagement:'索引与服务管理', indexSettings:'索引设置', shareUsage:'分享用量图片', home:'资产总览', homeDescription:'找回已完成的工作，复用经验与技能。',
     localWorkspace:'本地工作资产', reviewDate:'复核日期', installedSkills:'已安装技能', agentSettings:'Agent 配置', storageTools:'存储与工具', refresh:'刷新', loading:'正在读取已保存的资产…',
     recent:'最近保存的成果', browse:'浏览资产与技能', searchAssets:'搜索成果标题', assetType:'资产类型',
@@ -29,6 +30,7 @@ const ASSET_DASHBOARD_COPY = {
     updated:'读取于', noTotal:'按类别分别统计', reportInventory:'报告与文档', sourceTasks:'任务记录', sourceLessons:'经验与技能提案', sourceLearning:'学习记录', sourceSkills:'主技能库', sourceReports:'生成文档',
   },
   en: {
+    runtimeSources:'Runtime sources', runtimeSourcesNote:'Read-only source records and artifacts, not verified tasks or canonical skills. Missing usage is not zero.', configureRuntimePaths:'Configure source paths',
     workspace:'Workspace', skillRecords:'Skills & proposals', searchSkills:'Search canonical skills', previous:'Previous', next:'Next', resultLimit:'Number of results', truncated:'Showing the first 200,000 characters of this document.', indexManagement:'Index & service management', indexSettings:'Index settings', shareUsage:'Share usage image', home:'Asset overview', homeDescription:'Find completed work and reuse lessons and skills.',
     localWorkspace:'Local work assets', reviewDate:'Review date', installedSkills:'Installed skills', agentSettings:'Agent settings', storageTools:'Storage & tools', refresh:'Refresh', loading:'Reading saved assets…', recent:'Recently saved work', browse:'Browse assets & skills',
     searchAssets:'Search work titles', assetType:'Asset type', all:'All types', tasks:'Task outcomes', lessons:'Lessons', skills:'Saved skills', reports:'Diaries & reports',
@@ -82,6 +84,67 @@ function dashState(value) {
 function dashSource(value) {
   const t=assetDashboardText();
   return ({'nova-task-v2-sqlite':t.sourceTasks,'skill-pass-ledger':t.sourceLessons,'canonical-learning-lessons':t.sourceLearning,'canonical-skill-library':t.sourceSkills,'foundation-report-inventory':t.sourceReports})[value] || value;
+}
+
+let runtimeSourcesPending=null;
+let runtimeSourcesReadAt=0;
+function runtimeCoverageLabel(value) {
+  const en=typeof dashboardLanguageProfile==='function'&&dashboardLanguageProfile()==='en';
+  const labels={'local-records':['本地记录','Local records'],'local-partial':['部分本地记录','Partial local records'],'cli-only':['仅 CLI 本地历史','Local CLI history only'],'extension-history':['扩展历史记录','Extension history'],'ide-history':['IDE 历史记录','IDE history'],'explicit-history-files':['指定的历史文件','Selected history files'],'cache-only':['仅本地缓存','Local cache only'],'public-demo':['演示数据','Sample data']};
+  return labels[value]?.[en?1:0]||value||'';
+}
+function runtimeCopy() {
+  const en=typeof dashboardLanguageProfile==='function'&&dashboardLanguageProfile()==='en';
+  return en?{loading:'Reading source coverage…',read:'Browse records',ready:'Local records available',partial:'Partial coverage',unrecognized:'Unrecognized format',missing:'No compatible records found',error:'Source unavailable',sessions:'Sessions',messages:'Messages',documents:'Artifacts',usage:'Usage events',none:'Not available',experimental:'Experimental · cache only',fixtures:'Schema tested · local sample not validated',local:'Local sample validated',unknownDate:'Date not provided',boundary:'Source-authored, unverified. Cached history may be incomplete. Undated messages are not assigned to a daily report.',limited:'Showing at most 100 recent messages. Long entries are shortened.',back:'Back to records',noRecords:'No text records or artifacts available.',skills:'Managed skill registration supported'}:
+  {loading:'正在读取来源覆盖范围…',read:'浏览记录',ready:'本地记录可读取',partial:'部分覆盖',unrecognized:'格式尚未识别',missing:'未找到兼容记录',error:'来源暂不可用',sessions:'会话',messages:'消息',documents:'来源产物',usage:'用量事件',none:'未提供',experimental:'实验性 · 仅本地缓存',fixtures:'格式已适配 · 待真实样本验证',local:'已通过真实样本验证',unknownDate:'来源未提供时间',boundary:'来源内容未经独立验证。缓存可能不完整；无时间的消息不会被强行归入某天的报告。',limited:'最多显示最近 100 条消息；较长正文会截断。',back:'返回来源记录',noRecords:'暂无可读取的文本记录或产物。',skills:'支持受管技能注册'};
+}
+async function loadRuntimeSources(force=false) {
+  if(runtimeSourcesPending)return runtimeSourcesPending;
+  if(!force&&runtimeSourcesReadAt&&Date.now()-runtimeSourcesReadAt<30000)return;
+  const target=document.getElementById('runtimeSourcesList');if(!target)return;
+  const copy=runtimeCopy(),button=document.getElementById('runtimeSourcesRefresh');
+  target.textContent=copy.loading;target.setAttribute('aria-busy','true');if(button)button.disabled=true;
+  runtimeSourcesPending=(async()=>{
+    try {
+      const response=await fetch('/api/dashboard/runtime-sources'+(force?'?refresh=true':''),{signal:AbortSignal.timeout(30000)});
+      if(!response.ok)throw new Error('HTTP '+response.status);
+      const data=await response.json();
+      target.innerHTML=(data.items||[]).map(item=>{
+        const state=({ready:copy.ready,partial:copy.partial,empty:assetDashboardText().empty,unrecognized:copy.unrecognized,'not-found':copy.missing})[item.status]||copy.error;
+        const note=item.experimental?copy.experimental:item.validation==='schema-fixtures'?copy.fixtures:item.validation==='local-sample'?copy.local:'';
+        const readable=(item.messageCount||0)+(item.documentCount||0)>0;
+        const sessionLabel=item.sessionUnit==='history-files'?runtimeCoverageLabel('explicit-history-files'):copy.sessions;
+        return '<article class="dash-runtime-card"><header><h3>'+dashEscape(item.name)+'</h3><span>'+dashEscape(state)+'</span></header><p>'+dashEscape(note)+'</p><dl>'+[[sessionLabel,item.sessionCount],[copy.messages,item.messageCount],[copy.documents,item.documentCount],[copy.usage,item.usageStatus==='unavailable'?null:item.usageEventCount]].map(([label,value])=>'<div><dt>'+dashEscape(label)+'</dt><dd>'+dashEscape(value===null||value===undefined?copy.none:dashNumber(value))+'</dd></div>').join('')+'</dl><small>'+dashEscape(runtimeCoverageLabel(item.coverage))+(item.skillRegistration?' · '+dashEscape(copy.skills):'')+'</small><button type="button" class="dash-text-button" data-runtime-source="'+dashEscape(item.id)+'" '+(readable?'':'disabled')+'>'+dashEscape(copy.read)+'</button></article>';
+      }).join('');runtimeSourcesReadAt=Date.now();
+    } catch(error) {target.innerHTML='<p role="alert">'+dashEscape(copy.error+' · '+error.message)+'</p>';}
+    finally {target.removeAttribute('aria-busy');if(button)button.disabled=false;runtimeSourcesPending=null;}
+  })();return runtimeSourcesPending;
+}
+function updateRuntimeModal(generation,title,content) {
+  if(!dashboardModalGenerationIsCurrent(generation))return;
+  document.getElementById('modal-title').textContent=title;
+  document.getElementById('modal-body').innerHTML=content;
+  if(modalHistory.length)modalHistory[modalHistory.length-1]={title,content};
+}
+async function openRuntimeSource(toolId) {
+  const copy=runtimeCopy(),generation=openModal(copy.read,'<p>'+dashEscape(copy.loading)+'</p>');
+  try {
+    const response=await fetch('/api/dashboard/runtime-sources/'+encodeURIComponent(toolId),{signal:AbortSignal.timeout(30000)});
+    if(!response.ok)throw new Error('HTTP '+response.status);
+    const data=await response.json();
+    const documents=(data.documents||[]).map(doc=>'<button type="button" class="dash-asset-row" data-runtime-document="'+dashEscape(doc.id)+'" data-runtime-tool="'+dashEscape(toolId)+'"><span class="dash-asset-copy"><b>'+dashEscape(doc.title)+'</b><small>'+dashEscape(doc.kind)+' · '+dashEscape(doc.occurredAt||copy.unknownDate)+'</small></span><span aria-hidden="true">→</span></button>').join('');
+    const messages=(data.messages||[]).map(m=>'<article class="dash-runtime-message"><small>'+dashEscape(m.role)+' · '+dashEscape(m.occurredAt||copy.unknownDate)+'</small><pre>'+dashEscape(m.content)+(m.truncated?'\n…':'')+'</pre></article>').join('');
+    updateRuntimeModal(generation,data.name,'<p>'+dashEscape(copy.boundary)+'</p>'+documents+'<p>'+dashEscape(copy.limited)+'</p>'+messages+(!documents&&!messages?'<p>'+dashEscape(copy.noRecords)+'</p>':''));
+  } catch(error) {updateRuntimeModal(generation,copy.error,'<p role="alert">'+dashEscape(error.message)+'</p>');}
+}
+async function openRuntimeDocument(toolId,documentId) {
+  const copy=runtimeCopy(),generation=openModal(copy.read,'<p>'+dashEscape(copy.loading)+'</p>');
+  try {
+    const response=await fetch('/api/dashboard/runtime-sources/'+encodeURIComponent(toolId)+'/documents/'+encodeURIComponent(documentId),{signal:AbortSignal.timeout(30000)});
+    if(!response.ok)throw new Error('HTTP '+response.status);
+    const doc=await response.json();
+    updateRuntimeModal(generation,doc.title,'<button type="button" class="dash-text-button" data-runtime-back>'+dashEscape(copy.back)+'</button><p>'+dashEscape(copy.boundary)+'</p><pre class="dash-runtime-document">'+dashEscape(doc.content)+(doc.truncated?'\n…':'')+'</pre>');
+  } catch(error) {updateRuntimeModal(generation,copy.error,'<p role="alert">'+dashEscape(error.message)+'</p>');}
 }
 
 function dashMetricMarkup(payload) {
@@ -342,6 +405,9 @@ function decorateDashboardUi() {
 }
 
 document.addEventListener('click',event=>{
+  if(event.target.closest('[data-runtime-back]')){modalBack();return;}
+  const runtimeDocument=event.target.closest('[data-runtime-document]');if(runtimeDocument){openRuntimeDocument(runtimeDocument.dataset.runtimeTool,runtimeDocument.dataset.runtimeDocument);return;}
+  const runtimeSource=event.target.closest('[data-runtime-source]');if(runtimeSource){openRuntimeSource(runtimeSource.dataset.runtimeSource);return;}
   const skill=event.target.closest('[data-dash-skill]');if(skill){openCanonicalSkill(skill.dataset.dashSkill);return;}
   const pagination=event.target.closest('[data-dash-skill-page]');if(pagination){dashboardSkillPage+=Number(pagination.dataset.dashSkillPage);renderCanonicalSkills();return;}
   const record=event.target.closest('[data-dash-record]');if(record){openDashboardRecord(record.dataset.dashRecord);return;}
@@ -355,6 +421,7 @@ document.addEventListener('click',event=>{
   }
 });
 document.addEventListener('DOMContentLoaded',()=>{
+  document.getElementById('dashboardRuntimeSources')?.addEventListener('toggle',event=>{if(event.currentTarget.open)loadRuntimeSources();});
   document.getElementById('dashboardAssetSearch')?.addEventListener('input',renderDashboardRecent);
   document.getElementById('dashboardAssetType')?.addEventListener('change',renderDashboardRecent);
   document.getElementById('dashboardSkillSearch')?.addEventListener('input',()=>{dashboardSkillPage=1;renderCanonicalSkills();});

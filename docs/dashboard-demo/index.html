@@ -102,7 +102,7 @@
 
 <!-- ═══════════════════ MAIN ═══════════════════ -->
 <main class="main">
-  <aside class="demo-notice" aria-label="Demo information"><b>v1.8.0 · Interactive demo / 在线演示</b><span>示例数据 · 不连接本机 · 生成、注册与服务操作需安装后使用 / Sample data; no local runtime access.</span><a href="https://github.com/Neo-Isshin/actanara/releases/latest" target="_blank" rel="noopener noreferrer">安装 / Install ↗</a></aside>
+  <aside class="demo-notice" aria-label="Demo information"><b>v1.9.0 · Interactive demo / 在线演示</b><span>示例数据 · 不连接本机 · 生成、注册与服务操作需安装后使用 / Sample data; no local runtime access.</span><a href="https://github.com/Neo-Isshin/actanara/releases/latest" target="_blank" rel="noopener noreferrer">安装 / Install ↗</a></aside>
   <header class="dash-global-bar">
     <button class="dash-report-index" type="button" onclick="openDashboardReportIndex()"><span data-dash-icon="book"></span><span data-dash-text="reports">日记与报告</span></button>
     <span class="dash-global-caption" data-dash-text="localWorkspace">本地工作资产</span>
@@ -458,6 +458,13 @@
         <div id="dashboardCanonicalSkillList" class="dash-recent-list" role="region" aria-label="已保存技能列表"></div>
         <footer id="dashboardCanonicalSkillPages" class="dash-surface-foot"></footer>
       </section>
+      <details id="dashboardRuntimeSources" class="dash-surface section">
+        <summary data-dash-text="runtimeSources">外部工具接入</summary>
+        <header class="dash-surface-head"><span data-dash-text="sourceStatus">数据来源状态</span><button type="button" class="dash-text-button" id="runtimeSourcesRefresh" onclick="loadRuntimeSources(true)" data-dash-text="refresh">刷新</button></header>
+        <p class="dash-source-note" data-dash-text="runtimeSourcesNote">只读查看来源记录与产物；不等同于已验证任务或主技能库。未提供的用量不计作零。</p>
+        <div id="runtimeSourcesList" class="dash-runtime-list" aria-live="polite"></div>
+        <button type="button" class="dash-text-button" onclick="openSettingsModal()" data-dash-text="configureRuntimePaths">配置数据来源路径</button>
+      </details>
       <!-- Section L: 程序性资产复核 -->
       <div class="section">
         <div class="section-title"><span class="section-title-num">10</span> <span data-i18n="proceduralAssets">程序性资产复核</span></div>

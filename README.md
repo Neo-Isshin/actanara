@@ -37,7 +37,7 @@
 
 <p align="center"><sub><b>v1.8.0 asset-first Dashboard · sample data</b> · select the image to explore the interactive demo</sub></p>
 
-v1.8.0 puts saved outcomes, lessons and Skills on the home page. Token use, messages, cache statistics and model rankings remain available under **Usage & activity**. Skill proposals are distinct from saved Skills, and source-specific counts are not added into a potentially duplicated asset total. [Release notes](https://github.com/Neo-Isshin/actanara/releases/tag/v1.8.0).
+v1.9.0 expands Runtime support and adds read-only source coverage, conversation and artifact browsing. Saved outcomes, lessons and Skills remain central; Token use stays under **Usage & activity**. Source records are not counted as independently verified tasks or duplicated canonical assets. [Release notes](https://github.com/Neo-Isshin/actanara/releases/tag/v1.9.0).
 
 ## What Actanara gives you
 
@@ -216,6 +216,8 @@ Read-only Retrieval for External Runtimes
 
 **Currently supported agent runtimes:** 🦞 OpenClaw · ✳️ Claude Code · 🤖 Codex · ✨ Gemini CLI · ⚕️ Hermes · 🐙 OpenCode · 🛡️ Antigravity · 🖱️ Cursor. Collection depends on compatible local records and enabled paths. Cursor currently contributes local session/workspace records and explicit dialogue content; Actanara does not call Cursor cloud APIs or infer missing token usage.
 
+**v1.9.0 additions:** ZCode, Qwen Code, Copilot CLI, Cline, Continue, Aider history exports, and experimental Grok Bot cache reading. The AI Assets page distinguishes readable source records, artifacts, usage availability and validation coverage. These are source adapters—not a claim of complete cloud history or independently verified outcomes. See [runtime coverage and setup](docs/runtime-integrations.md) for paths, limitations and local-sample versus schema-fixture validation.
+
 ## 📊 Dashboard, Screenshots, and Interactive Demo
 
 The Dashboard starts with saved work and retains usage analysis, retrieval, backups and maintenance.
@@ -303,14 +305,14 @@ The updated Dashboard screenshots render the production frontend with public sam
 
 ### ▶️ Interactive Demo
 
-The [v1.8.0 interactive demo](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-home) reuses the production HTML, CSS and interaction code with public sample data. Filter outcomes, read Skills and reports, inspect usage, try text search and switch languages. Task-state edits and message acknowledgements affect page memory only. Generation, registration, backups, configuration and service operations require an installed runtime. The demo never accesses local runtime data, credentials or private files.
+The [v1.9.0 interactive demo](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-home) reuses the production HTML, CSS and interaction code with public sample data. Filter outcomes, read Skills and reports, inspect usage, try text search and switch languages. Task-state edits and message acknowledgements affect page memory only. Generation, registration, backups, configuration and service operations require an installed runtime. The demo never accesses local runtime data, credentials or private files.
 
 [Asset overview](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-home) · [Skills & proposals](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-static) · [Usage & activity](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-overview) · [W27 report](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-report-2026-W27) · [Task board](https://neo-isshin.github.io/actanara/dashboard-demo/tasks.html)
 
 Open [`docs/dashboard-demo/index.html`](docs/dashboard-demo/index.html) from a checkout, or read the [demo scope and synchronization guide](docs/dashboard-demo/README.md).
 
 <p align="center">
-  ▶ <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-home"><strong>Open the v1.8.0 Interactive Demo</strong></a>
+  ▶ <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-home"><strong>Open the v1.9.0 Interactive Demo</strong></a>
 </p>
 
 ### Common Commands

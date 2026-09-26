@@ -37,7 +37,7 @@
 
 <p align="center"><sub><b>v1.8.0 资产优先 Dashboard · 演示数据</b> · 点击图片进入在线交互 Demo</sub></p>
 
-v1.8.0 把任务成果、经验与技能放到首页，Token、消息、缓存及模型排行保留在独立的「用量与活动」菜单。技能提案与已保存技能分别展示，各类记录按来源统计，不合计成一个可能重复的资产总数。[查看版本说明](https://github.com/Neo-Isshin/actanara/releases/tag/v1.8.0)。
+v1.9.0 扩展 Runtime 接入，新增只读的来源覆盖状态、对话与产物浏览。任务成果、经验与技能仍是核心，Token 保留在「用量与活动」中；来源清单不冒充已验证任务，工具中的技能副本不重复计入主库资产。[查看版本说明](https://github.com/Neo-Isshin/actanara/releases/tag/v1.9.0)。
 
 ## Actanara 能为你留下什么
 
@@ -209,6 +209,8 @@ Memory Search → 本地词法索引
 
 **当前支持的 Agent Runtime**：🦞 OpenClaw · ✳️ Claude Code · 🤖 Codex · ✨ Gemini CLI · ⚕️ Hermes · 🐙 OpenCode · 🛡️ Antigravity · 🖱️ Cursor。实际可采集内容取决于本机是否存在兼容记录与对应路径是否启用。Cursor 当前接入本地会话、工作区记录和明确的对话正文；Actanara 不请求 Cursor 云端 API，也不会把缺失的 Token 用量推断成 0。
 
+**v1.9.0 新增接入**：ZCode、Qwen Code、Copilot CLI、Cline、Continue、Aider 历史导出，以及实验性的 Grok Bot 缓存读取。AI 资产页分别展示来源记录、产物、用量可用性与验证范围；不把来源清单当作已验证成果，也不宣称覆盖完整云端历史。[接入范围与配置说明](docs/runtime-integrations.md)列明了本机实测与结构样本验证的区别。
+
 ## 📊 Dashboard、截图与交互 Demo
 
 Dashboard 以已保存的工作成果为入口，并保留用量分析、检索、备份与维护能力。
@@ -296,14 +298,14 @@ Nova-Task 保持独立的任务操作页面。界面语言可切换中英文，�
 
 ### ▶️ 在线交互 Demo
 
-<a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-home"><strong>v1.8.0 在线 Demo</strong></a>直接复用新版 Dashboard 的 HTML、CSS 与交互代码，后端由公开示例数据替代。可以筛选资产、阅读技能和报告、查看用量、体验文本检索与语言切换。任务状态和消息已读只改变当前页面内存；生成、注册、备份、设置和服务管理需要安装后使用。Demo 不访问本机 Runtime、凭证或私有文件。
+<a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-home"><strong>v1.9.0 在线 Demo</strong></a>直接复用新版 Dashboard 的 HTML、CSS 与交互代码，后端由公开示例数据替代。可以筛选资产、阅读技能和报告、查看用量、体验文本检索与语言切换。任务状态和消息已读只改变当前页面内存；生成、注册、备份、设置和服务管理需要安装后使用。Demo 不访问本机 Runtime、凭证或私有文件。
 
 [资产总览](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-home) · [主技能库与提案](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-static) · [用量与活动](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-overview) · [W27 周报](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-report-2026-W27) · [任务看板](https://neo-isshin.github.io/actanara/dashboard-demo/tasks.html)
 
 本地也可打开 [`docs/dashboard-demo/index.html`](docs/dashboard-demo/index.html)。[演示范围与同步方式](docs/dashboard-demo/README.md)。
 
 <p align="center">
-  ▶ <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-home"><strong>打开 v1.8.0 在线 Demo</strong></a>
+  ▶ <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-home"><strong>打开 v1.9.0 在线 Demo</strong></a>
 </p>
 
 ### 常用命令

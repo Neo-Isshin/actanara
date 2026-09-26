@@ -19,6 +19,7 @@ from .base import (
     sqlite_tables,
     timestamp,
 )
+from .files import discover, markdown_document
 
 _VARIANTS = ("cli", "ide", "app")
 
@@ -96,7 +97,7 @@ class AntigravityRuntime:
     tool_key = "antigravity"
     usage_status = "local-partial"
     capabilities = frozenset(
-        {"session_inventory", "usage_events_partial", "dialogue_partial", "workspace_metadata"}
+        {"session_inventory", "usage_events_partial", "dialogue_partial", "workspace_metadata", "source_documents"}
     )
 
     def __init__(self, variant_homes: Mapping[str, Path]):
@@ -190,7 +191,7 @@ class AntigravityRuntime:
                     brain_sessions = []
                 for session_root in brain_sessions:
                     native_id = session_root.name.strip()
-                    if not native_id:
+                    if not native_id or native_id in {"tempmediaStorage", "media", "cache"}:
                         continue
                     state = states.setdefault(
                         (variant, native_id),
@@ -307,6 +308,19 @@ class AntigravityRuntime:
                     "line": entry.line_number,
                 },
             )
+
+    def documents(self):
+        """Only named work artifacts; no media uploads, arbitrary brain files or protobufs."""
+        for variant, home in self.variant_homes.items():
+            root = home / "brain"
+            for path in discover(root, "*/task.md", "*/implementation_plan.md", "*/walkthrough.md"):
+                try:
+                    record = markdown_document(path, root, namespaced_session_key(variant, path.parent.name),
+                        variant=variant, kind={"task.md": "task-checklist", "implementation_plan.md": "plan", "walkthrough.md": "walkthrough"}[path.name])
+                    if record:
+                        yield record
+                except (OSError, ValueError):
+                    continue
 
     @staticmethod
     def _conversation_paths(conversations: Path) -> list[Path]:

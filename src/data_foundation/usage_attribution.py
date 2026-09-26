@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from .external_tool_definitions import TOOL_CATALOG, CATALOG_TO_FOUNDATION
 
 from .workspace_attribution import (
     attribute_workspace_path,
@@ -28,6 +29,7 @@ TOOL_EMOJI = {
     "Antigravity": "🛡️",
     "Cursor": "🖱️",
 }
+TOOL_EMOJI.update({definition["name"]: definition["emoji"] for definition in TOOL_CATALOG.values()})
 
 CONTAINER_WORKSPACE_NAMES = {
     "default",
@@ -163,6 +165,7 @@ def _normalize_tool_key(value: str | None) -> str:
         "antigravity": "antigravity",
         "cursor": "cursor",
     }
+    aliases.update({definition["name"].lower(): CATALOG_TO_FOUNDATION[key] for key, definition in TOOL_CATALOG.items()})
     return aliases.get(normalized, normalized)
 
 

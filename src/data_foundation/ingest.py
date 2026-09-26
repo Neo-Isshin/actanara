@@ -20,6 +20,7 @@ from .adapters.base import Cursor
 from .adapters.usage import UsageAdapter, default_usage_adapters
 from .aggregate import refresh_daily_usage
 from .db import connect, migrate, seed_projects_from_registry
+from .external_tool_definitions import CATALOG_TO_FOUNDATION, TOOL_CATALOG
 from .jobs import begin_ingestion_run, finish_ingestion_run
 from .observations import observe_non_rag_assets
 from .paths import RuntimePaths
@@ -36,6 +37,7 @@ DISPLAY_NAMES = {
     "cursor": "Cursor",
     "cron": "Cron",
 }
+DISPLAY_NAMES.update({CATALOG_TO_FOUNDATION[key]: value["name"] for key, value in TOOL_CATALOG.items()})
 
 INGESTION_LOCK_NAME = "foundation-ingestion.lock"
 _INGESTION_THREAD_LOCK = threading.RLock()

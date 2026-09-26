@@ -12,7 +12,7 @@ from typing import Any, BinaryIO, Iterable, Iterator, Mapping
 
 from ..paths import RuntimePaths
 from ..session_files import is_openclaw_session_file
-from ..settings import default_external_tool_path, external_tool_path, resolve_external_tool_paths
+from ..settings import default_external_tool_path, default_external_tool_settings, external_tool_path, resolve_external_tool_paths
 from ..runtime_sources.antigravity import AntigravityRuntime
 from ..runtime_sources.base import SessionRecord, UsageRecord
 from ..runtime_sources.cursor import CursorRuntime
@@ -792,6 +792,7 @@ class LocalRuntimeAdapter(UsageAdapter):
 
     def __init__(self, runtime: Any, source_root: Path):
         self.runtime = runtime
+        self.tool_key = getattr(runtime, "tool_key", getattr(self, "tool_key", "unknown"))
         self.source_root = Path(source_root).expanduser()
         runtime_capabilities = getattr(runtime, "capabilities", ())
         self.capabilities = set(self.capabilities) | set(runtime_capabilities)
@@ -806,6 +807,17 @@ class LocalRuntimeAdapter(UsageAdapter):
         coordinator = self.source_root if self.source_root.exists() else artifacts[0]
         return (SourceArtifact(self.tool_key, coordinator, "local_runtime_inventory"),)
 
+    def fingerprint(self, artifact: SourceArtifact) -> str:
+        signatures = []
+        for path in self.runtime.artifacts():
+            for item in (path, Path(str(path) + "-wal")):
+                try:
+                    info = item.stat()
+                    signatures.append((str(item), info.st_size, info.st_mtime_ns))
+                except OSError:
+                    continue
+        return hashlib.sha256(repr(sorted(signatures)).encode()).hexdigest()
+
     def read_incremental(
         self,
         artifact: SourceArtifact,
@@ -813,6 +825,8 @@ class LocalRuntimeAdapter(UsageAdapter):
     ) -> Iterable[NormalizedEvent]:
         del cursor
         sessions = tuple(self.runtime.sessions())
+        if not sessions and getattr(self.runtime, "diagnostics", ()):
+            raise ValueError("Local runtime source is unreadable or uses an unsupported schema")
         sessions_by_key = {record.external_session_key: record for record in sessions}
         for record in sessions:
             event = self._session_event(artifact, record)
@@ -839,6 +853,7 @@ class LocalRuntimeAdapter(UsageAdapter):
             **record.metadata,
             "source_variant": record.source_variant,
             "usage_status": getattr(self.runtime, "usage_status", "available"),
+            "time_basis": "source" if record.last_active_at or record.started_at else "artifact-mtime",
         }
         return NormalizedEvent(
             tool_key=self.tool_key,
@@ -946,7 +961,10 @@ class CursorRuntimeAdapter(LocalRuntimeAdapter):
 
 
 def default_usage_adapters(paths: RuntimePaths | None = None) -> tuple[UsageAdapter, ...]:
+    from ..runtime_sources.registry import NEW_RUNTIME_IDS, build_runtime
     external_paths = _external_tool_paths(paths)
+    additional_paths = {tool: {**values, **external_paths.get(tool, {})}
+                        for tool, values in default_external_tool_settings().items() if tool in NEW_RUNTIME_IDS}
     return (
         OpenClawAdapter(_tool_path(external_paths, "openclaw", "agentsRoot")),
         ClaudeCodeAdapter(_tool_path(external_paths, "claudeCode", "projectsRoot")),
@@ -968,6 +986,8 @@ def default_usage_adapters(paths: RuntimePaths | None = None) -> tuple[UsageAdap
             ide_state_dbs=_tool_path_list(external_paths, "cursor", "ideStateDbCandidates"),
             workspace_storage_roots=_tool_path_list(external_paths, "cursor", "workspaceStorageRoots"),
         ),
+        *(LocalRuntimeAdapter(build_runtime(tool, additional_paths[tool]), Path(additional_paths[tool]["home"]))
+          for tool in NEW_RUNTIME_IDS),
         CronAdapter(_tool_path(external_paths, "openclaw", "cronRunsRoot")),
     )
 

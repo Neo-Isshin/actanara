@@ -158,7 +158,7 @@ TOOL_CATALOG: dict[str, dict[str, Any]] = {
             "appBrainRoot",
         ],
         "binaryNames": ["agy", "antigravity"],
-        "capabilities": ["session", "dialogue-partial", "usage-partial", "workspace"],
+        "capabilities": ["session", "dialogue-partial", "usage-partial", "workspace", "source-documents"],
         "fields": {
             "home": "{home}",
             "cliHome": "{home}/antigravity-cli",
@@ -205,6 +205,7 @@ TOOL_CATALOG: dict[str, dict[str, Any]] = {
         "fields": {
             "home": "{home}",
             "chatsRoot": "{home}/chats",
+            "skillsRoot": "{home}/skills",
             "projectsRoot": "{home}/projects",
             "acpSessionsRoot": "{home}/acp-sessions",
             "configPath": "{home}/cli-config.json",
@@ -223,11 +224,89 @@ TOOL_CATALOG: dict[str, dict[str, Any]] = {
             ],
         },
         "globalSkillRegistration": {
-            "method": "not managed; runtime recognition is read-only",
-            "targets": [],
+            "method": "install managed skills under skillsRoot; preserve customized files",
+            "targets": ["skillsRoot"],
         },
     },
 }
+
+# New integrations share the same catalog, path settings, discovery and UI.
+# Coverage describes the parser boundary, not the presence of an installation.
+TOOL_CATALOG.update({
+    "zcode": {
+        "name": "ZCode", "emoji": "ⓩ", "color": "#587BBD",
+        "homeCandidates": ["~/.zcode"], "homeMarkers": ["cli/db/db.sqlite"],
+        "detectionFields": ["databasePath"], "binaryNames": ["zcode"],
+        "capabilities": ["session", "dialogue", "usage-partial", "workspace", "source-documents", "skill-registration"],
+        "coverage": "local-records", "validation": "local-sample",
+        "fields": {"home": "{home}", "databasePath": "{home}/cli/db/db.sqlite", "skillsRoot": "{home}/skills"},
+        "globalSkillRegistration": {"method": "install managed SKILL.md under skillsRoot", "targets": ["skillsRoot"]},
+    },
+    "qwenCode": {
+        "name": "Qwen Code", "emoji": "🌿", "color": "#6B9F72",
+        "homeCandidates": ["~/.qwen"], "homeMarkers": ["projects", "exports"],
+        "detectionFields": ["projectsRoot", "exportsRoot"], "binaryNames": ["qwen"],
+        "capabilities": ["session", "dialogue-partial", "workspace", "skill-registration", "usage-partial"],
+        "coverage": "local-records", "validation": "schema-fixtures",
+        "fields": {"home": "{home}", "projectsRoot": "{home}/projects", "exportsRoot": "{home}/exports", "skillsRoot": "{home}/skills"},
+        "globalSkillRegistration": {"method": "install managed SKILL.md under skillsRoot", "targets": ["skillsRoot"]},
+    },
+    "copilotCli": {
+        "name": "Copilot CLI", "emoji": "🤝", "color": "#9973BB",
+        "homeEnvironment": "COPILOT_HOME", "homeCandidates": ["~/.copilot"],
+        "homeMarkers": ["session-state"], "detectionFields": ["sessionsRoot"], "binaryNames": ["copilot"],
+        "capabilities": ["session", "dialogue-partial", "workspace", "source-documents", "skill-registration", "usage-unavailable"],
+        "coverage": "cli-only", "validation": "schema-fixtures",
+        "fields": {"home": "{home}", "sessionsRoot": "{home}/session-state", "skillsRoot": "{home}/skills"},
+        "globalSkillRegistration": {"method": "install managed SKILL.md under skillsRoot", "targets": ["skillsRoot"]},
+    },
+    "cline": {
+        "name": "Cline", "emoji": "🧰", "color": "#BA8270",
+        "homeCandidates": ["~/.cline"], "homeMarkers": ["data/tasks", "tasks"],
+        "detectionFields": ["tasksRoot", "taskRootCandidates"], "binaryNames": ["cline"],
+        "capabilities": ["session", "dialogue-partial", "usage-partial", "workspace"],
+        "coverage": "extension-history", "validation": "schema-fixtures",
+        "fields": {"home": "{home}", "tasksRoot": "{home}/data/tasks", "taskRootCandidates": [
+            "{home}/tasks",
+            "{userHome}/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/tasks",
+            "{userHome}/Library/Application Support/Cursor/User/globalStorage/saoudrizwan.claude-dev/tasks",
+            "{xdgConfigHome}/Code/User/globalStorage/saoudrizwan.claude-dev/tasks",
+            "{xdgConfigHome}/Cursor/User/globalStorage/saoudrizwan.claude-dev/tasks"]},
+        "globalSkillRegistration": {"method": "read-only; no automatic registration", "targets": []},
+    },
+    "continue": {
+        "name": "Continue", "emoji": "▶", "color": "#6B98AC",
+        "homeCandidates": ["~/.continue"], "homeMarkers": ["sessions"],
+        "detectionFields": ["sessionsRoot"], "binaryNames": ["cn"],
+        "capabilities": ["session", "dialogue-partial", "workspace", "usage-unavailable"],
+        "coverage": "ide-history", "validation": "schema-fixtures",
+        "fields": {"home": "{home}", "sessionsRoot": "{home}/sessions"},
+        "globalSkillRegistration": {"method": "read-only; no automatic registration", "targets": []},
+    },
+    "aider": {
+        "name": "Aider", "emoji": "🤲", "color": "#B6A062",
+        "homeCandidates": ["~/.aider"], "homeMarkers": ["imports"],
+        "detectionFields": ["importsRoot", "historyFiles"], "binaryNames": ["aider"],
+        "capabilities": ["session", "source-documents", "workspace", "usage-unavailable"],
+        "coverage": "explicit-history-files", "validation": "schema-fixtures",
+        "fields": {"home": "{home}", "importsRoot": "{home}/imports", "historyFiles": []},
+        "globalSkillRegistration": {"method": "read-only; no automatic registration", "targets": []},
+    },
+    "grokBot": {
+        "name": "Grok Bot", "emoji": "✦", "color": "#707B8C",
+        "homeCandidates": ["~/.grokbot"], "homeMarkers": [".grokbot-data-root-v1"],
+        "detectionFields": ["cacheRoots"], "binaryNames": [],
+        "capabilities": ["session", "dialogue-partial", "usage-unavailable"],
+        "coverage": "cache-only", "validation": "local-sample", "experimental": True,
+        "fields": {"home": "{home}", "cacheRoots": [
+            "{userHome}/Library/Application Support/Grok Bot/sand-client-persistence",
+            "{xdgConfigHome}/Grok Bot/sand-client-persistence"]},
+        "globalSkillRegistration": {"method": "read-only cache; no cloud access or registration", "targets": []},
+    },
+})
+
+CATALOG_TO_FOUNDATION = {key: {"claudeCode": "claude-code", "geminiCli": "gemini-cli", "qwenCode": "qwen-code", "copilotCli": "copilot-cli", "grokBot": "grok-bot"}.get(key, key) for key in TOOL_CATALOG}
+FOUNDATION_TO_CATALOG = {value: key for key, value in CATALOG_TO_FOUNDATION.items()}
 
 
 def fields_for_tool_home(

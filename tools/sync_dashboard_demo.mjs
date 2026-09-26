@@ -17,7 +17,7 @@ const mappings = [
     .replaceAll('href="/tasks"', 'href="tasks.html"')
     .replace('class="asset-dashboard"', 'class="asset-dashboard public-demo"')
     .replace('</head>', '  <link rel="stylesheet" href="css/demo.css">\n</head>')
-    .replace('<main class="main">', '<main class="main">\n  <aside class="demo-notice" aria-label="Demo information"><b>v1.8.0 · Interactive demo / 在线演示</b><span>示例数据 · 不连接本机 · 生成、注册与服务操作需安装后使用 / Sample data; no local runtime access.</span><a href="https://github.com/Neo-Isshin/actanara/releases/latest" target="_blank" rel="noopener noreferrer">安装 / Install ↗</a></aside>')],
+    .replace('<main class="main">', '<main class="main">\n  <aside class="demo-notice" aria-label="Demo information"><b>v1.9.0 · Interactive demo / 在线演示</b><span>示例数据 · 不连接本机 · 生成、注册与服务操作需安装后使用 / Sample data; no local runtime access.</span><a href="https://github.com/Neo-Isshin/actanara/releases/latest" target="_blank" rel="noopener noreferrer">安装 / Install ↗</a></aside>')],
   ['css/style.css', text => text],
   ['css/dashboard.css', text => text],
   ['js/dashboard.js', text => text.replaceAll("'/tasks'", "'tasks.html'").replaceAll('href="/tasks"', 'href="tasks.html"')],

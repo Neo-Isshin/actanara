@@ -7,7 +7,9 @@ from datetime import date
 from pathlib import Path
 
 from .db import connect
+from .external_tool_definitions import CATALOG_TO_FOUNDATION
 from .paths import RuntimePaths
+from .runtime_sources.registry import NEW_RUNTIME_IDS, usage_status
 
 
 def refresh_daily_usage(paths: RuntimePaths, business_date: date, run_id: int) -> None:
@@ -43,9 +45,9 @@ def refresh_daily_usage(paths: RuntimePaths, business_date: date, run_id: int) -
                 row["tool_key"]
                 for row in connection.execute(
                     "SELECT tool_key FROM tool_sources WHERE tool_key IN ({}) ORDER BY tool_key".format(
-                        ",".join("?" for _ in DIARY_TOOL_KEYS)
+                        ",".join("?" for _ in LEGACY_DIARY_TOOL_KEYS)
                     ),
-                    DIARY_TOOL_KEYS,
+                    LEGACY_DIARY_TOOL_KEYS,
                 )
             ]
             connection.executemany(
@@ -162,7 +164,7 @@ def daily_project_totals(paths: RuntimePaths, business_date: date) -> list[dict[
     return [dict(row) for row in rows]
 
 
-DIARY_TOOL_KEYS = (
+LEGACY_DIARY_TOOL_KEYS = (
     "openclaw",
     "gemini-cli",
     "claude-code",
@@ -172,6 +174,7 @@ DIARY_TOOL_KEYS = (
     "antigravity",
     "cron",
 )
+DIARY_TOOL_KEYS = (*LEGACY_DIARY_TOOL_KEYS, *(CATALOG_TO_FOUNDATION[key] for key in NEW_RUNTIME_IDS if usage_status(key) != "unavailable"))
 
 
 def daily_diary_usage_metrics(paths: RuntimePaths, business_date: date) -> dict | None:
@@ -226,7 +229,7 @@ def daily_diary_usage_metrics(paths: RuntimePaths, business_date: date) -> dict 
     }
     for tool_key in DIARY_TOOL_KEYS:
         row = by_tool.get(tool_key)
-        if row is None and tool_key in {"opencode", "antigravity"}:
+        if row is None and tool_key in {"opencode", "antigravity", *(CATALOG_TO_FOUNDATION[key] for key in NEW_RUNTIME_IDS)}:
             continue
         values = {
             "input_tokens": int(row["input_tokens"] or 0) if row else 0,

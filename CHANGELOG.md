@@ -4,6 +4,49 @@ All notable public changes to Actanara are documented here.
 
 ## Unreleased
 
+## [1.9.0] - 2026-09-25
+
+### Added
+
+- Add read-only ZCode session, dialogue, task-checklist and per-request usage
+  ingestion, with source provenance and no access to credential stores.
+- Add format-specific adapters for Qwen Code, Copilot CLI, Cline and Continue,
+  explicit Aider history imports, and experimental Grok Bot desktop cache
+  reading. Coverage is local and format-specific, not complete cloud history.
+- Add a collapsed Runtime sources panel with coverage, validation level,
+  read-only message browsing and source-artifact viewing, plus configurable
+  paths. Wire dated records and labelled artifacts into the existing diary
+  collector and Foundation statistics.
+- Read Antigravity task checklists, implementation plans and walkthroughs.
+  Add installed Skill discovery and managed procedural-Skill registration
+  targets for Cursor, ZCode, Qwen Code and Copilot CLI.
+
+### Fixed
+
+- Avoid double-counting ZCode cached input and overlapping request/turn/message
+  usage, and deduplicate Qwen message IDs and inherited fork records.
+- Preserve unavailable usage instead of materializing a false zero for new
+  sources; retain undated messages without assigning them to arbitrary days.
+- Preserve Cline message roles from API history, exclude thinking/tool payloads
+  from narrative text, and keep source-authored checklists separate from verified
+  Nova-Task outcomes and canonical Skills.
+- Bound file reads, reject source symlinks and unsupported cache formats, track
+  SQLite WAL changes, and prevent stale dialog results or loading frames from
+  disrupting navigation.
+
+### Coverage and compatibility
+
+- ZCode, Cursor, Antigravity and Grok Bot were checked against local samples.
+  Qwen Code, Copilot CLI, Cline, Continue and Aider have synthetic schema-contract
+  coverage and still require acceptance against each user's installed version.
+- Copilot support is CLI-only; the desktop/IDE database layout is not included.
+  Grok Bot covers cached text only, with no cloud access or billing inference.
+- External source databases remain read-only. Skill writes still require the
+  existing explicit registration action and preserve customized files. No Hooks,
+  MCP servers or provider credentials are configured automatically.
+- The Nova-Task page and existing macOS/Linux installer contracts are unchanged.
+  See [runtime coverage and configuration](docs/runtime-integrations.md).
+
 ## [1.8.0] - 2026-09-12
 
 ### Added
@@ -375,6 +418,8 @@ managed background services executing an older concrete source directory.
 - Runtime secrets remain in the Runtime-local private secret store and are
   excluded from source and release artifacts.
 
+[1.9.0]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.9.0
+[1.8.0]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.8.0
 [1.7.0]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.7.0
 [1.6.0]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.6.0
 [1.5.0]: https://github.com/Neo-Isshin/actanara/releases/tag/v1.5.0

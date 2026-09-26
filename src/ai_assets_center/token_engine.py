@@ -19,6 +19,8 @@ from data_foundation.settings import default_external_tool_path, external_tool_p
 from data_foundation.time import business_window
 from data_foundation.token_semantics import normalize_cached_input_detail
 from data_foundation.runtime_sources import AntigravityRuntime, OpenCodeRuntime
+from data_foundation.runtime_sources.registry import NEW_RUNTIME_IDS, configured_runtime
+from data_foundation.external_tool_definitions import CATALOG_TO_FOUNDATION
 
 # ── 基础路径定义 ──
 HOME = Path.home()
@@ -303,6 +305,7 @@ def scan_tokens(target_date_str=None):
             ),
         ),
     )
+    normalized_runtimes = (*normalized_runtimes, *((CATALOG_TO_FOUNDATION[key], configured_runtime(key)) for key in NEW_RUNTIME_IDS))
     for tool_key, runtime in normalized_runtimes:
         try:
             for record in runtime.usage():

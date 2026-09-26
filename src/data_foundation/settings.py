@@ -1950,9 +1950,9 @@ def _validate_external_tools_update(update: Any) -> None:
             raise ValueError(f"externalTools.{tool} must be an object")
         for key, value in values.items():
             field = f"externalTools.{tool}.{key}"
-            if key in {"binaryCandidates", "ideStateDbCandidates", "workspaceStorageRoots"}:
-                if not isinstance(value, list) or not value:
-                    raise ValueError(f"{field} must be a non-empty list")
+            if key in {"binaryCandidates", "ideStateDbCandidates", "workspaceStorageRoots", "taskRootCandidates", "cacheRoots", "historyFiles"}:
+                if not isinstance(value, list) or (not value and key not in {"historyFiles", "taskRootCandidates", "cacheRoots"}):
+                    raise ValueError(f"{field} must be a list of paths")
                 for item in value:
                     _validate_path_string(field, item)
             elif key.lower().endswith(("root", "path", "home")) or key in {"stateDbPath", "projectsPath", "configPath", "credentialsPath"}:
@@ -2893,6 +2893,12 @@ def external_tool_access_summary(paths: RuntimePaths | None = None) -> dict:
             _get_nested(resolved, "cursor.ideStateDbCandidates"),
         ),
     }
+    from .external_tool_definitions import TOOL_CATALOG
+    from .runtime_sources.registry import NEW_RUNTIME_IDS
+    for tool in NEW_RUNTIME_IDS:
+        for field in TOOL_CATALOG[tool].get("detectionFields", ()):
+            value = resolved.get(tool, {}).get(field)
+            checks[f"{tool}.{field}"] = _path_list_check(value) if isinstance(value, list) else _path_check(value)
     return {"tools": resolved, "checks": checks}
 
 

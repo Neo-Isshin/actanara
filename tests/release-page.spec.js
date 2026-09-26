@@ -205,7 +205,7 @@ test("release page has no horizontal overflow", async ({ page }) => {
   expect(overflow).toBeLessThanOrEqual(1);
 });
 
-test("static dashboard demo exposes the v1.8 asset-first Dashboard pages", async ({ page }, testInfo) => {
+test("static dashboard demo exposes the v1.9 asset-first Dashboard pages", async ({ page }, testInfo) => {
   test.slow();
   await page.goto(dashboardDemoUrl);
 
@@ -218,7 +218,7 @@ test("static dashboard demo exposes the v1.8 asset-first Dashboard pages", async
   await expect(page.locator("#dashboardMetrics")).toContainText("任务成果");
   await expect(page.locator("#dashboardRecent .dash-asset-row")).toHaveCount(12);
   await expect(page.locator("#page-home")).not.toContainText("9.52B");
-  await expect(page.locator(".demo-notice")).toContainText("v1.8.0");
+  await expect(page.locator(".demo-notice")).toContainText("v1.9.0");
   await page.evaluate(() => window.showPage("overview"));
   await expect(page.locator("#page-overview .page-title")).toHaveText("用量与活动");
   await expect(page.locator("#agentTableContainer")).toContainText("活跃");
@@ -237,6 +237,23 @@ test("static dashboard demo exposes the v1.8 asset-first Dashboard pages", async
   await page.locator('#dashboardCanonicalSkillList [data-dash-skill]').first().click();
   await expect(page.locator('#modal-body')).toContainText('Verify restored files');
   await page.keyboard.press('Escape');
+  await page.locator('#dashboardRuntimeSources > summary').click();
+  await expect(page.locator('#runtimeSourcesList .dash-runtime-card')).toHaveCount(8);
+  await expect(page.locator('#runtimeSourcesList .dash-runtime-card').filter({hasText:'Cursor'})).toContainText('未提供');
+  await expect(page.locator('#runtimeSourcesList .dash-runtime-card').filter({hasText:'Grok Bot'})).toContainText('实验性');
+  await expect(page.locator('[data-runtime-source="qwenCode"]')).toBeDisabled();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  await page.locator('[data-runtime-source="zcode"]').click();
+  await expect(page.locator('#modal-body')).toContainText('来源内容未经独立验证');
+  await page.locator('[data-runtime-document="demo-checklist"]').click();
+  await expect(page.locator('#modal-body')).toContainText('不是 Actanara 已独立验证的完成结论');
+  await page.locator('#modal-body [data-runtime-back]').click();
+  await expect(page.locator('#modal-body')).toContainText('为备份恢复制定检查清单');
+  await page.locator('#modal [onclick="modalBack()"]').click();
+  await expect(page.locator('#modal')).not.toBeVisible();
+  await page.locator('#runtimeSourcesRefresh').click();
+  await expect(page.locator('#runtimeSourcesList .dash-runtime-card')).toHaveCount(8);
+  await page.locator('#dashboardRuntimeSources > summary').click();
   await expect(page.locator("#aaDevices .aa-device-name").filter({hasText: 'Mac mini (Isshin)'})).toHaveCount(1);
   await expect(page.locator("#aaDevices .aa-device-name").filter({hasText: '华硕路由器'})).toHaveCount(1);
   await expect(page.locator("#aaDevices")).toContainText("Mac mini (Isshin)");

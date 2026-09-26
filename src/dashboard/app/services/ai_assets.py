@@ -37,6 +37,8 @@ from data_foundation.runtime_sources import (
     CursorRuntime,
     OpenCodeRuntime,
 )
+from data_foundation.runtime_sources.registry import NEW_RUNTIME_IDS, build_runtime, usage_status
+from data_foundation.external_tool_definitions import TOOL_CATALOG
 from data_foundation.usage_attribution import (
     CONTAINER_WORKSPACE_NAMES,
     TOOL_EMOJI,
@@ -77,6 +79,7 @@ TOOL_DEFS = [
     {"name": "Antigravity", "emoji": TOOL_EMOJI["Antigravity"], "usageStatus": "local-partial"},
     {"name": "Cursor", "emoji": TOOL_EMOJI["Cursor"], "usageStatus": "unavailable"},
 ]
+TOOL_DEFS.extend({"name": TOOL_CATALOG[key]["name"], "emoji": TOOL_CATALOG[key]["emoji"], "usageStatus": usage_status(key)} for key in NEW_RUNTIME_IDS)
 
 # ── 基础路径 ──
 HOME = Path.home()
@@ -187,6 +190,7 @@ def _current_external_tool_detection() -> dict[str, Any]:
 
 def _tool_homes_by_name() -> dict[str, Path]:
     return {
+        **{TOOL_CATALOG[key]["name"]: _external_tool_path(key, "home") for key in NEW_RUNTIME_IDS},
         "Claude Code": _external_tool_path("claudeCode", "home"),
         "Gemini CLI": _external_tool_path("geminiCli", "home"),
         "Codex": _external_tool_path("codex", "home"),
@@ -547,6 +551,13 @@ def _scan_all_cursor():
     )
 
 
+def _scan_added_runtime(tool_id):
+    fields = default_external_tool_settings(HOME)[tool_id]
+    resolved = {key: _external_tool_list(tool_id, key) if isinstance(value, list) else _external_tool_path(tool_id, key)
+                for key, value in fields.items()}
+    return _scan_all_normalized_runtime(TOOL_CATALOG[tool_id]["name"], build_runtime(tool_id, resolved))
+
+
 def _scan_all_normalized_runtime(name: str, runtime) -> tuple[list[dict], int]:
     sessions = tuple(runtime.sessions())
     _RUNTIME_SESSION_RECORDS[name] = sessions
@@ -596,6 +607,8 @@ _ALL_SCANNERS = [
     ("Antigravity", _scan_all_antigravity),
     ("Cursor", _scan_all_cursor),
 ]
+_ADDED_RUNTIME_SCANNERS = [(TOOL_CATALOG[key]["name"], lambda key=key: _scan_added_runtime(key)) for key in NEW_RUNTIME_IDS]
+_ALL_SCANNERS.extend(_ADDED_RUNTIME_SCANNERS)
 
 AI_ASSET_USAGE_PARSER_VERSION = "ai-assets-usage-cache-v9"
 
@@ -1100,6 +1113,9 @@ def _workspace_label(encoded_name: str) -> str:
 
 def _aggregate_tool(name: str, entries: list[dict], session_count: int) -> dict:
     td = next((t for t in TOOL_DEFS if t["name"] == name), {})
+    effective_usage_status = td.get("usageStatus", "available")
+    if effective_usage_status == "local-partial" and not entries:
+        effective_usage_status = "unavailable"
     total_tokens = 0; messages = 0; active_dates = set(); timestamps = []
     today_str = _now_local().strftime("%Y-%m-%d"); today_tokens = 0; today_messages = 0
 
@@ -1124,7 +1140,7 @@ def _aggregate_tool(name: str, entries: list[dict], session_count: int) -> dict:
             active_dates.add(dt.strftime("%Y-%m-%d"))
             timestamps.append(dt)
 
-    if td.get("usageStatus") == "unavailable":
+    if effective_usage_status == "unavailable":
         dialogue_activity = _RUNTIME_DIALOGUE_ACTIVITY.get(name, ())
         messages = len(dialogue_activity)
         today_messages = 0
@@ -1144,7 +1160,7 @@ def _aggregate_tool(name: str, entries: list[dict], session_count: int) -> dict:
         "firstActivity": timestamps[0].strftime("%Y-%m-%d") if timestamps else "",
         "lastActivity": timestamps[-1].strftime("%Y-%m-%d") if timestamps else "",
         "activeDays": len(active_dates),
-        "usageStatus": td.get("usageStatus", "available"),
+        "usageStatus": effective_usage_status,
     }
 
 def _model_name(value: object) -> str:
@@ -1309,6 +1325,8 @@ def _allowed_document_roots() -> list[Path]:
         codex_home / "memories",
         hermes_home / "memories",
     ]
+    roots.extend(_external_tool_path(tool_id, "skillsRoot") for tool_id in ("cursor", *NEW_RUNTIME_IDS)
+                 if "skillsRoot" in TOOL_CATALOG[tool_id]["fields"])
     try:
         roots.extend(path for path in openclaw_home.glob("workspace-*") if path.is_dir())
     except OSError:
@@ -1909,6 +1927,15 @@ def _get_skills_stats() -> dict:
             source_kind="project",
         ))
         result["byTool"]["Gemini CLI"] = gemini_skills
+
+        for tool_id in ("cursor", *NEW_RUNTIME_IDS):
+            definition = TOOL_CATALOG[tool_id]
+            if "skillsRoot" not in definition["fields"]:
+                continue
+            result["byTool"][definition["name"]] = _collect_skill_md_records(
+                _external_tool_path(tool_id, "skillsRoot"), definition["name"], "global",
+                description_default=definition["name"] + " skill",
+            )
 
         result["total"] = sum(len(v) for v in result["byTool"].values())
     except Exception:
@@ -2734,6 +2761,7 @@ def _get_agent_tree(tools_stats: list[dict], all_entries: dict[str, list[dict]] 
         "Antigravity": lambda ts: _normalized_runtime_items("Antigravity", ts),
         "Cursor": lambda ts: _normalized_runtime_items("Cursor", ts),
     }
+    tool_builders.update({TOOL_CATALOG[key]["name"]: (lambda stats, key=key: _normalized_runtime_items(TOOL_CATALOG[key]["name"], stats)) for key in NEW_RUNTIME_IDS})
     for tname, builder in tool_builders.items():
         ts = next((t for t in tools_stats if t["name"] == tname), {})
         emoji = next((t["emoji"] for t in TOOL_DEFS if t["name"] == tname), "")
@@ -2991,6 +3019,7 @@ def get_ai_assets_incremental(*, include_rag: bool = True) -> dict:
         ("OpenCode", _scan_all_opencode),
         ("Antigravity", _scan_all_antigravity),
         ("Cursor", _scan_all_cursor),
+        *_ADDED_RUNTIME_SCANNERS,
     ):
         try:
             entries, session_count = scanner_fn()

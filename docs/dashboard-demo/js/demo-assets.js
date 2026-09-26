@@ -1,4 +1,4 @@
-/* Authored example records for the v1.8.0 public UI. No runtime export, secret,
+/* Authored example records for the v1.9.0 public UI. No runtime export, secret,
  * local file contents or external service credentials are included. */
 (function () {
   'use strict';
@@ -44,6 +44,18 @@
     review: { skillDrafts: metric(1, sources[2], 'proposals'), taskCandidates: metric(0, sources[0], 'proposals') }, recent,
     sources: sources.map(id => ({ id, status: 'ready', scope: { kind: 'demo-snapshot', complete: true }, readOnly: true })), sourceErrors: [], dashboardState: state };
   const fixtures = {
+    '/api/dashboard/runtime-sources': { schemaVersion: 1, readOnly: true, items: [
+      { id: 'zcode', name: 'ZCode', status: 'ready', validation: 'schema-fixtures', coverage: 'local-records', sessionCount: 1, messageCount: 2, documentCount: 1, usageEventCount: 1, usageStatus: 'local-partial', skillRegistration: true },
+      { id: 'cursor', name: 'Cursor', status: 'ready', coverage: 'local-partial', sessionCount: 1, messageCount: 2, documentCount: 0, usageEventCount: 0, usageStatus: 'unavailable', skillRegistration: true },
+      { id: 'grokBot', name: 'Grok Bot', status: 'partial', coverage: 'cache-only', experimental: true, sessionCount: 1, messageCount: 1, documentCount: 0, usageEventCount: 0, usageStatus: 'unavailable' },
+      ...[['qwenCode','Qwen Code'],['copilotCli','Copilot CLI'],['cline','Cline'],['continue','Continue'],['aider','Aider']].map(([id,name])=>({id,name,status:'not-found',validation:'schema-fixtures',coverage:'public-demo',sessionCount:0,messageCount:0,documentCount:0,usageEventCount:0,usageStatus:'unavailable'})),
+    ] },
+    '/api/dashboard/runtime-sources/zcode': { id: 'zcode', name: 'ZCode · 示例', readOnly: true, totalMessages: 2,
+      documents: [{id:'demo-checklist',title:'示例：验证备份恢复',kind:'task-checklist',occurredAt:timestamp}],
+      messages: [{role:'assistant',content:'示例：已整理验证清单，结果需要人工复核。',occurredAt:timestamp},{role:'user',content:'示例：为备份恢复制定检查清单。',occurredAt:timestamp}] },
+    '/api/dashboard/runtime-sources/zcode/documents/demo-checklist': { id:'demo-checklist',title:'示例：验证备份恢复',kind:'task-checklist',readOnly:true,verification:'source-authored',content:'# 来源任务清单（示例）\n\n- [x] 比较文件数量\n- [ ] 核对 SHA-256\n\n这是来源报告的状态，不是 Actanara 已独立验证的完成结论。' },
+    '/api/dashboard/runtime-sources/cursor': {id:'cursor',name:'Cursor · 示例',readOnly:true,documents:[],messages:[{role:'user',content:'示例：记录复用步骤。',occurredAt:timestamp},{role:'assistant',content:'示例：已将步骤整理为待复核的说明。',occurredAt:timestamp}]},
+    '/api/dashboard/runtime-sources/grokBot': {id:'grokBot',name:'Grok Bot · 示例',readOnly:true,documents:[],messages:[{role:'assistant',content:'仅本地缓存的示例，不代表完整云端历史。',occurredAt:timestamp}]},
     '/api/dashboard/summary': summary,
     '/api/dashboard/skills': { status: 'ready', items: skills.map(({ content, ...item }) => item), count: skills.length, scope: { complete: true }, source: 'public-demo', dashboardState: state },
     '/api/ai-assets/skill-assets': { status: 'ready', businessDate: day, promptVersion: 'minimal-v22', counts: { skill: 1, lesson: 2, reference: 0, discard: 0 }, items: reviewItems },
@@ -58,5 +70,5 @@
     '/api/llm-provider-chain': { schemaVersion: 1, enabled: false, providers: [], readiness: { ready: false, status: 'not-configured' } },
   };
   for (const skill of skills) fixtures['/api/dashboard/skills/' + skill.id] = { ...skill, title: skill.name, status: 'ready', truncated: false, source: 'public-demo', dashboardState: state };
-  window.ACTANARA_ASSET_DEMO_DATA = { version: '1.8.0', businessDate: day, fixtures, documents, lessons };
+  window.ACTANARA_ASSET_DEMO_DATA = { version: '1.9.0', businessDate: day, fixtures, documents, lessons };
 })();

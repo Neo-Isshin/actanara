@@ -44,6 +44,7 @@
     if (STATIC_DATA[path] !== undefined) return clone(STATIC_DATA[path]);
     const url = new URL(path, window.location.href);
     const p = url.pathname;
+    if (p === '/api/dashboard/runtime-sources') return clone(STATIC_DATA[p]);
     if (p === '/api/diary-list') return url.searchParams.has('envelope') ? {items: clone(STATIC_DATA[p]), dashboardState: {status: 'ready', sourceErrors: []}} : clone(STATIC_DATA[p]);
     if (p === '/api/dashboard/document' && assetDemo) return clone(assetDemo.documents[url.searchParams.get('businessDate') + '/' + url.searchParams.get('type')] || null);
     if (p === '/api/ai-assets/skill-assets' && assetDemo) {

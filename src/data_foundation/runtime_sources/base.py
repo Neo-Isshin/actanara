@@ -65,6 +65,20 @@ class DialogueRecord:
     raw_locator: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class DocumentRecord:
+    """A source-authored artifact, not a verified Actanara task or canonical Skill."""
+
+    external_document_key: str
+    external_session_key: str
+    title: str
+    content: str
+    kind: str = "artifact"
+    occurred_at: datetime | None = None
+    source_variant: str = "default"
+    raw_locator: dict[str, Any] = field(default_factory=dict)
+
+
 @contextmanager
 def connect_sqlite_read_only(path: Path, *, timeout_seconds: float = 2.0) -> Iterator[sqlite3.Connection]:
     """Open SQLite without creating or modifying the source database.

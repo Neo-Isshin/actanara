@@ -7,11 +7,39 @@ from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from app.services import dashboard_summary
+from app.services import runtime_sources
 from app.services.dashboard_state import dashboard_failure
 
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/dashboard")
+
+
+@router.get("/runtime-sources")
+async def api_runtime_sources(refresh: bool = False):
+    return JSONResponse(await run_in_threadpool(runtime_sources.inventory, force=refresh), headers={"Cache-Control": "no-store"})
+
+
+@router.get("/runtime-sources/{tool_id}")
+async def api_runtime_source_details(tool_id: str):
+    try:
+        return JSONResponse(await run_in_threadpool(runtime_sources.details, tool_id), headers={"Cache-Control": "no-store"})
+    except ValueError:
+        return JSONResponse({"error": "Unsupported runtime source"}, status_code=400)
+    except Exception:
+        return JSONResponse({"error": "Runtime source unavailable"}, status_code=503)
+
+
+@router.get("/runtime-sources/{tool_id}/documents/{document_id}")
+async def api_runtime_source_document(tool_id: str, document_id: str):
+    try:
+        return JSONResponse(await run_in_threadpool(runtime_sources.document, tool_id, document_id), headers={"Cache-Control": "no-store"})
+    except ValueError:
+        return JSONResponse({"error": "Unsupported runtime source"}, status_code=400)
+    except LookupError:
+        return JSONResponse({"error": "Source document not found"}, status_code=404)
+    except Exception:
+        return JSONResponse({"error": "Runtime source unavailable"}, status_code=503)
 
 
 @router.get("/summary")
