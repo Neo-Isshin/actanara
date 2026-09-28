@@ -1,379 +1,221 @@
+<p align="center">
+  <strong>简体中文</strong> · <a href="README.md">English</a>
+</p>
+
 <h1 align="center">
-  <img src="docs/assets/banner.png" alt="Actanara" width="650">
+  <img src="docs/assets/banner.png" alt="Actanara" width="680">
 </h1>
 
 <p align="center">
-  <strong>Agent 完成了有价值的工作——Actanara 让这些成果不再随 Session 消失。</strong>
+  <strong>Agent 完成了有价值的工作——Actanara 让这些成果沉淀为持久的本地资产。</strong>
   <br>
-  从 Codex、Claude Code、Gemini CLI、OpenClaw、Hermes、OpenCode、Antigravity 和 Cursor 的工作记录中，保存任务成果、学习经验、可复用技能与报告。
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Language-简体中文%20·%20当前-C026D3?style=for-the-badge" alt="当前语言：简体中文">
-  <a href="README.md"><img src="https://img.shields.io/badge/Language-English-2563EB?style=for-the-badge" alt="Switch to English README"></a>
+  打通 <strong>Claude Code、Cursor、Codex、Gemini CLI、Antigravity、ZCode、Qwen Code、OpenClaw、OpenCode、Hermes、Copilot CLI、Cline、Continue、Aider</strong> 的会话、任务与调试证据，构建跨 Agent 共享记忆与全景工作图谱。
 </p>
 
 <p align="center">
   <a href="https://neo-isshin.github.io/actanara/"><img src="https://img.shields.io/badge/Website-GitHub%20Pages-2563EB" alt="Website"></a>
   <a href="https://github.com/Neo-Isshin/actanara/releases/latest"><img src="https://img.shields.io/github/v/release/Neo-Isshin/actanara?display_name=tag&amp;sort=semver" alt="最新稳定 Release"></a>
   <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-home"><img src="https://img.shields.io/badge/Demo-在线交互-7C3AED" alt="在线交互 Dashboard Demo"></a>
+  <img src="https://img.shields.io/badge/macOS-Supported-000000?logo=apple&amp;logoColor=white" alt="macOS 支持">
   <a href="#linux-support"><img src="https://img.shields.io/badge/Linux-Debian%20x64%20verified-FCC624?logo=linux&amp;logoColor=111827" alt="Linux 支持：已在 Debian x86_64 验证"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-16A34A" alt="License"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-16A34A" alt="License: MIT"></a>
   <a href="https://discord.gg/JvJHngZWz"><img src="https://img.shields.io/badge/Discord-加入-5865F2" alt="Discord"></a>
 </p>
 
 <p align="center">
-  <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-home"><strong>体验在线 Dashboard</strong></a> ·
-  <a href="#install-actanara"><strong>安装 Actanara</strong></a> ·
-  <a href="#linux-support"><strong>Linux 支持</strong></a> ·
-  <a href="docs/local-operations-runbook.zh-CN.md">中文操作 Runbook</a>
+  <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-home"><strong>▶️ 体验在线 Dashboard Demo</strong></a> ·
+  <a href="#install-actanara"><strong>⚡ 极速安装</strong></a> ·
+  <a href="#linux-support"><strong>🐧 Linux 原生支持</strong></a> ·
+  <a href="docs/local-operations-runbook.zh-CN.md"><strong>⚙️ 中文运维 Runbook</strong></a>
 </p>
 
 <p align="center">
   <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-home">
-    <img src="docs/assets/dashboard/dashboard-home.png" alt="Actanara v1.8.0 资产总览：任务成果、学习经验、已保存技能和报告；画面使用演示数据" width="920">
+    <img src="docs/assets/dashboard/dashboard-home.png" alt="Actanara 资产优先 Alpine Observatory Dashboard" width="920">
   </a>
 </p>
 
-<p align="center"><sub><b>v1.8.0 资产优先 Dashboard · 演示数据</b> · 点击图片进入在线交互 Demo</sub></p>
+<p align="center"><sub><b>v1.9.0 资产优先 Alpine Observatory Dashboard · 演示数据</b> · 点击图片进入在线交互 Demo</sub></p>
 
-v1.9.0 扩展 Runtime 接入，新增只读的来源覆盖状态、对话与产物浏览。任务成果、经验与技能仍是核心，Token 保留在「用量与活动」中；来源清单不冒充已验证任务，工具中的技能副本不重复计入主库资产。[查看版本说明](https://github.com/Neo-Isshin/actanara/releases/tag/v1.9.0)。
+> **v1.9.0 更新速览**：全面扩充 Agent Runtime 接入矩阵（新增 ZCode、Qwen Code、Copilot CLI、Cline、Continue、Aider 等），新增只读来源覆盖、会话与产物浏览器。坚持**资产优先**核心：已完成任务、学习经验（Lessons）与技能（Skills）处于中央，Token 统计收归独立「用量与活动」；来源清单绝不冒充已验证任务，保证本地事实库严谨真实。[查看完整版本说明](https://github.com/Neo-Isshin/actanara/releases/tag/v1.9.0)。
 
-## Actanara 能为你留下什么
+---
 
-同一个项目里，你可能在一天之内轮换使用 Codex、Claude Code、Gemini CLI 等多个 Agent 工具。每个工具都真实记录了你的工作，却彼此隔离——会话一结束，排查、决策和成果就很难再找回来。
+## 💡 为什么需要 Actanara？
 
-Actanara 打通这些壁垒：让 Claude Code 完成的工作能被 Codex 找到并复用，让零散 Session 变成可长期回顾的进展，让任务成果和调试证据不再随会话消失。
+在日常开发中，你可能会在一天之内轮换使用 **Claude Code、Cursor、Codex、Gemini CLI、Antigravity** 等多个 AI 工具。每个 Agent 都在为你排查 Bug、重构模块或验证架构，但 **Session 一旦结束，这些宝贵的思考过程与工程证据就随风散去**：
 
-| | 结果 |
-| :--- | :--- |
-| **跨 Agent 共享记忆** | 受限的只读检索边界，让一个 Runtime 能找到并复用另一个 Runtime 已完成的工作。检索会优先使用已就绪的 `nova-RAG`，不可用时仍保留本地词法 fallback。 |
-| **真实发生过的工作图谱** | `Nova-Task` 从对话、文件变更和工具结果中提取任务、状态与证据，而不是只依赖手写工单。 |
-| **自动生成的工作叙事** | 日报、周报和月报，把零散 Session 变成可回顾的进展、决策与经验。 |
-| **本地事实来源** | Session、用量、生成资产和任务证据保存在你掌控的本地存储中，集成边界清晰可见。 |
+- **🧠 记忆割裂**：Claude Code 刚排查出的底层网络重试缺陷，切换到 Codex 时必须重新组织语言再解释一遍。
+- **⏳ 上下文与证据蒸发**：昨晚调试到深夜的关键错误日志、调用栈与验证 Diff，今天在终端滚动条关闭后踪迹难寻。
+- **📋 工单与总结焦虑**：AI 帮你默默完成了数十次精细的代码修复，但你在下班前依然需要翻阅终端历史手动整理日报、周报和 Jira 任务。
 
-**设计取舍**
+**Actanara 为此而生**：它静默解析并标准化各个 Agent Runtime 的活动，将其沉淀为你**掌控的本地事实数据库**，提供跨工具共享记忆、工作图谱提取与自动化工作叙事。
 
-- **解析器优先**：先把不同 Runtime 的会话、任务、用量和工作区信号标准化，再交给 LLM 总结或检索，而不是把原始日志直接喂给模型。
-- **本地优先、边界清晰**：Actanara 只读取已配置的工具位置，把数据写入自己的 Runtime Home，不改写外部 Runtime 的历史，也不接管其执行。
-- **模型成本友好**：结构化提示词、明确 Schema 和可控编排，让轻量模型也能产出可用结果，同时不锁定单一 Provider。
-- **集成由用户控制**：工具 Skill、外部 Runtime 定义和关键设置都可查看、可编辑、可审计。
-- **受保护的检索**：`nova-RAG` 通过查询评估、候选提升、召回校准和安全回滚管理语义检索质量；未部署 RAG 时，Memory Search 仍可通过质量较低的本地词法索引工作。两种后端都只向外部 Runtime 暴露受限的只读检索。
+| 场景维度 | 传统模式 (Session 结束即清空) | 使用 Actanara 之后 |
+| :--- | :--- | :--- |
+| **跨工具协作** | 各 Agent 孤岛运行，上下文无法互通 | 🧠 **共享记忆 (`nova-RAG` / Memory Search)**：让 Codex / Cursor 直接检索 Claude Code 过往的决策与代码证据 |
+| **任务与证据** | 依赖开发者人工编写 Task 和 Jira 工单 | 🕸️ **真实工作图谱 (`Nova-Task`)**：从对话、文件变更和工具调用中自动归纳层级任务树 |
+| **经验与技能** | 排查过程随会话消失，重复踩坑 | 📚 **本地 AI 资产中心**：沉淀任务成果、排错经验 (Lessons)、可复用技能 (Skills) 与结构化报告 |
+| **工作进展总结** | 下班手动回溯命令行与 Git 提交 | 📝 **自动工作叙事**：自动汇总日报、周报与月报，客观反映开发进展与决策轨迹 |
+| **数据与隐私** | 担心敏感代码与会话泄露到云端 | 🔒 **100% 本地优先**：所有 SQLite 数据、Markdown 报告与索引均存放于本地，权限受限 |
 
-> 本文中的 **Agent Runtime** 指拥有独立会话、日志、记忆和执行上下文的 AI 工具环境，例如 Codex、Claude Code、Gemini CLI、OpenClaw、Hermes、OpenCode、Antigravity 和 Cursor。
+---
+
+## 🧭 系统架构与数据流
+
+```text
+ ┌─────────────────────────────────────────────────────────────────┐
+ │          支持的 15+ Agent Runtimes (本地会话、日志与产物)         │
+ └────────────────────────────────┬────────────────────────────────┘
+                                  │ 归因解析器 (Parsers)
+                                  ▼
+ ┌─────────────────────────────────────────────────────────────────┐
+ │               Foundation 本地事实层 (SQLite / 密钥 / 存根)        │
+ └──────────────┬─────────────────┬─────────────────┬──────────────┘
+                │                 │                 │
+                ▼                 ▼                 ▼
+ ┌───────────────────────┐ ┌─────────────┐ ┌───────────────────────┐
+ │ Base Pipeline (日记生成)│ │ Nova-Task   │ │ Memory Search / RAG │
+ └──────────────┬────────┘ └──────┬──────┘ └────────┬──────────────┘
+                │                 │                 │
+                └─────────────────┼─────────────────┘
+                                  ▼
+ ┌─────────────────────────────────────────────────────────────────┐
+ │            Actanara Alpine Observatory Web Dashboard            │
+ └─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🌟 四大核心支柱
+
+### 1. 📋 Nova-Task：真实发生过的工作图谱
+
+`Nova-Task` 不是又一份普通的待办清单。很多有价值的工作并不从明确的 ticket 开始，而是在排查、修复、试验、回滚和验证中自然生长——它把这些轨迹转换为可审阅、可持续维护的任务结构。
+
+- **自动维护与对账**：自动识别层级、更新状态、挂载子任务并优化任务树；高影响一级节点保留人工审阅，常规更新按规则自动处理，人类随时可以接管。
+- **PRD/RFC 智能拆解**：导入 RFC、PRD 或 Roadmap 后，Actanara 能调用 LLM 将其拆解为可迭代、可对账的工程任务树。详见 [Nova-Task 工作图谱对账](docs/nova-task-work-graph-reconciliation.md)。
+
+### 2. 🔎 Memory Search：未部署 RAG 也能检索
+
+`actanara search` 默认使用 `--mode auto`。开箱即用，无需配置复杂的模型环境：
+
+- **词法检索保底 (Lexical Fallback)**：未启用或未就绪 RAG 时，自动切换至增量维护的本地 SQLite 全文索引（FTS5），毫秒级响应，零 API 成本。
+- **动态只读 Skill**：安装器仅管理一份动态、只读的 Memory Search Skill，外部 Agent 可通过 Skill 读取元数据并自适应选择词法或语义通道。
+- **原生记忆兼容**：默认收录 Codex 与 Claude Code 自身管理的记忆与白名单指令文件，支持独立开关。详见 [Memory Search 与本地 Recall 说明](docs/memory-search.md)。
+
+### 3. 🤖 nova-RAG：受控只读的跨 Agent 语义共享
+
+`nova-RAG` 是 Actanara 的可选语义检索子系统，支持本地 CPU-only 轻量模型或云端 Embedding：
+
+- **确定性与安全边界**：向外部 Agent Runtime 提供**严格只读**的查询能力——外部工具可检索工作记忆，但**绝不能写入记忆、修改索引、更改设置或控制服务生命周期**。
+- **两层自适应检索**：服务端先执行确定性的自适应检索，仅在证据弱或歧义时提示外部 Runtime 进一步反思，有效遏制模型幻觉。详见 [nova-RAG 外部 Agent Runtime 合约](docs/rag-external-agent-contract.md)。
+
+### 4. 📦 资产优先的 Alpine Observatory 仪表盘
+
+在 v1.8.0+ / v1.9.0 中，Actanara 带来了全新的 **Alpine Observatory** 设计：
+
+- **资产归集**：集中审阅已完成任务、排错经验（Lessons）、可复用技能（Skills）与正式报告。
+- **独立用量与活动**：Token 消耗、消息频次、模型排行与 30 天活跃度独立归集于「用量与活动」板块，科学剔除 Prompt Cache 重复统计，呈现真实账单等价评估。
+- **交互演练**：可直接在本地或通过 [在线交互 Demo](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-home) 体验完整界面。
+
+---
 
 <a id="install-actanara"></a>
-## 安装 Actanara
+## ⚡ 安装与快速开始
+
+### 1. 一键安全安装
+
+在 macOS 或 Linux 终端中运行公开入口脚本（无需 `sudo`）：
 
 ```bash
 curl -fsSL https://github.com/Neo-Isshin/actanara/releases/latest/download/install.sh | sh
 ```
 
-这是 macOS 与 Linux 共用的公开入口，无需 `sudo`。GitHub 从最新稳定且
-不可变的 Release 提供该入口；产物已固定到该 Release 的精确源码 commit，
-再分派到对应平台适配器。macOS 保持原有的引导式
-全新安装与更新行为；Linux 支持受保护的全新安装、仅源码刷新、按锁升级，
-以及经明确确认的已有 Runtime 修复。Linux 更新事务会保持原有 systemd
-user unit 状态，遇到定义漂移或非 Actanara unit 时保守失败。第一次了解 Actanara？可以先体验
-[在线 Dashboard Demo](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-home)，再决定是否安装。
+这是 macOS 与 Linux 共用的官方公开入口。GitHub 从最新稳定且不可变的 Release 提供该入口；构件已固定到该 Release 的精确源码 commit，再分派到对应平台适配器。macOS 保持原有的引导式全新安装与更新行为；Linux 支持受保护的全新安装、仅源码刷新、按锁升级，以及经明确确认的已有 Runtime 修复。Linux 更新事务会保持原有 systemd user unit 状态，遇到定义漂移或非 Actanara unit 时保守失败。第一次了解 Actanara？可以先体验 [在线 Dashboard Demo](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-home)，再决定是否安装。
 
-Linux 公开入口发现已有 managed Runtime 时：存在控制终端会先展示固定到
-精确 commit 的升级计划，再询问是否执行；没有控制终端则以状态码 2
-退出、不改动 Runtime，并输出可直接复制的 `actanara update --dry-run` 与
-`actanara update --apply` 精确命令，其中包含已解析的源码 URL、commit、
-Runtime 与 installer cache。
+Linux 公开入口发现已有 managed Runtime 时：存在控制终端会先展示固定到精确 commit 的升级计划，再询问是否执行；没有控制终端则以状态码 2 退出、不改动 Runtime，并输出可直接复制的 `actanara update --dry-run` 与 `actanara update --apply` 精确命令，其中包含已解析的源码 URL、commit、Runtime 与 installer cache。
 
-稳定 CLI shim 为 `~/.actanara/bin/actanara`，默认还会建立
-`~/.local/bin/actanara` 链接。macOS 可用 `--no-shell-path` 或
-`--shell-path-file /path/to/profile` 控制受管理的 profile 区块；Linux 的
-`--no-shell-path` 只禁止 user-bin 链接，安装器不会编辑 Shell profile。
-高级源码选择使用 `--source-root PATH` 或精确 `--ref <full-commit-sha>`；
-离线操作必须明确选择其中一种来源。
+稳定 CLI shim 为 `~/.actanara/bin/actanara`，默认还会建立 `~/.local/bin/actanara` 链接。macOS 可用 `--no-shell-path` 或 `--shell-path-file /path/to/profile` 控制受管理的 profile 区块；Linux 的 `--no-shell-path` 只禁止 user-bin 链接，安装器不会编辑 Shell profile。高级源码选择使用 `--source-root PATH` 或精确 `--ref <full-commit-sha>`；离线操作必须明确选择其中一种来源。
 
-安装器写入路径以及 launchd/systemd 注册边界见
-<a href="docs/local-operations-runbook.zh-CN.md">中文本地操作 Runbook</a>。
+安装器写入路径以及 launchd/systemd 注册边界见 [中文本地操作 Runbook](docs/local-operations-runbook.zh-CN.md)。
 
-<a id="linux-support"></a>
-## 🐧 Linux 支持
+### 2. 基础验证与启动
 
-Actanara 为使用 `systemd --user` 的 Debian 类主机提供原生、非 root 的
-Linux 路径，并不是 macOS 兼容层。当前发布门禁在 Debian 13 x86_64、
-CPython 3.13 与 systemd 257 上执行；依赖锁也提供 arm64 目标，而真实主机
-功能门禁覆盖的是 x86_64。
-
-| 能力 | Linux 行为 |
-| :--- | :--- |
-| **安装与更新** | 公开的 Release `install.sh` 入口支持受保护的全新安装、精确 ref/仅源码更新、按锁依赖升级和显式修复。新 generation 先在 staging 中构建再原子提升；失败后旧 Runtime 仍可恢复。 |
-| **用户边界与服务** | 请以普通登录用户运行 `setup.sh`，不要通过 `sudo` 启动。Actanara 自身不会调用 `sudo`；Dashboard、可选 `nova-RAG` 与调度任务使用由 `systemctl --user` 控制的用户级 systemd unit。 |
-| **RAG readiness** | 全新安装可启用经审计的 CPU-only 本地 profile，使用 384 维的 `intfloat/multilingual-e5-small`。credential-backed Provider 尚未配置时，fresh managed cloud RAG 会保守拒绝。安装器只有在受管 listener、source commit、provider profile、模型与健康响应全部一致后才报告成功。 |
-| **端口与无桌面主机** | Dashboard 与 RAG 默认只监听 loopback 的 3036 与 3037。无桌面主机应通过 SSH 转发已配置的 Dashboard 端口，并让本地端口保持一致，以满足浏览器 Origin 检查。 |
-| **会话生命周期** | 非交互安装不会修改 systemd linger；只有显式选项或交互确认后才会请求 linger。 |
-
-无桌面主机使用默认 Dashboard 端口时：
-
-```bash
-ssh -N -L 3036:127.0.0.1:3036 user@linux-host
-# 然后在本机打开 http://127.0.0.1:3036/dashboard。
-```
-
-如果修改过 Dashboard 端口，tunnel 两端都应使用实际配置值。Linux 快速
-健康检查：
-
-```bash
-actanara doctor --installer
-actanara doctor --scheduler
-actanara doctor --rag  # 启用 nova-RAG 时运行。
-```
-
-离线全新安装会在写入 release generation 前预检 Python/pip bootstrap 与
-可信依赖缓存；缺少必要 bootstrap 材料时会无残留停止。Linux 使用所选的
-系统 Python，不安装托管 Python Runtime。
-
-## 🎥 快速开始
-
-> [!TIP]
-> 一行部署，然后静等繁荣。
-
-### 1. 基础验证
-
-安装完成后，先运行以下只读命令。它们不会初始化新 Runtime，也不会修改现有设置：
+安装完成后，执行以下只读验证命令（不修改任何系统设置）：
 
 ```bash
 actanara doctor
-actanara model show
 actanara onboard status
-actanara config show
 ```
 
-`actanara doctor` 还支持定向诊断（`--installer` / `--pipeline` / `--scheduler` / `--rag`），细节见 Runbook。安装摘要会显示实际 Dashboard URL，默认 `http://127.0.0.1:3036/dashboard`。
-
-### 2. 完成首次运行
-
-1. **打开 Dashboard**：使用安装摘要中的 URL，检查右上角的后台任务与消息状态。
-2. **配置 LLM Provider**：确认 Provider、Endpoint、Model 和 API Key，先做可用性测试，再保存设置。
-3. **预览历史数据计划**：选择日期范围，检查待生成日记、周报、月报和预计 LLM 调用。
-4. **排队执行**：取消不需要的任务，再将其余项目加入后台队列。
-5. **查看结果**：在“后台任务”和“消息”中查看进度，完成后刷新日记、AI 资产、Nova-Task 和可选 `nova-RAG`。
+然后在浏览器中打开 Dashboard（默认地址 `http://127.0.0.1:3036/dashboard`）：
+1. **配置 Provider**：在设置中配置你的 LLM Provider 与 API Key（支持 OpenAI、Anthropic、Gemini 或兼容中转服务），完成连通性测试。
+2. **扫描与沉淀**：Actanara 会自动发现本地已有会话，生成首批工程日记、Nova-Task 工作图谱与知识资产。
 
 <details>
-<summary><strong>首次运行检查清单</strong></summary>
-
-- [ ] Dashboard 可以正常打开。
-- [ ] LLM Provider 检测通过并已保存。
-- [ ] `actanara doctor` 没有阻断性错误。
-- [ ] 历史数据计划与勾选任务符合预期。
-- [ ] 首批任务已完成或可以在后台观察。
-- [ ] 日记、AI 资产与 Nova-Task 已有内容。
-- [ ] 启用 `nova-RAG` 时，Server 和活动索引已就绪。
-
-</details>
-
-完整的安装前检查、首次配置、历史回填、日常运维与故障排查，请参阅<a href="docs/local-operations-runbook.zh-CN.md">中文本地操作 Runbook</a>。
-
-## 🧭 工作原理
-
-```text
-受支持的 Agent Runtime
-        ↓
-解析、归因与标准化
-        ↓
-Foundation 本地事实层
-        ↓
-Base Pipeline · Nova-Task · Dashboard
-        ↓
-Memory Search → 本地词法索引
-        └────→ nova-RAG（可选语义后端）
-        ↓
-外部 Runtime 只读检索
-```
-
-| 系统 | 核心职责 |
-| :--- | :--- |
-| **`Foundation`** | 将 AI 活动、工作区归因、快照、报告和任务证据规范化到本地事实层。 |
-| **`Base Pipeline`** | 从 Runtime 活动中生成日记、技术进展、学习记录和任务总结。 |
-| **`Dashboard`** | 统一呈现日记、AI 资产、Token 用量、设置、后台任务和任务看板。 |
-| **`Nova-Task`** | 根据真实工作证据维护可审阅的任务图谱。 |
-| **`Memory Search`** | 将只读记忆检索路由到已就绪的 `nova-RAG`；语义检索不可用时，切换到本地 SQLite FTS/受限扫描 fallback。 |
-| **`nova-RAG`** | 可选的本地或云端 Embedding 检索子系统，提供受保护的索引生命周期与外部只读检索。 |
-| **归因解析器** | 识别 Runtime、会话、工作区、定时任务和执行证据，包括从项目目录外启动的工作。 |
-
-## 💻 支持范围
-
-- 🍎 **macOS 保持一等支持**：引导式安装、更新、本地 nova-RAG、Dashboard 服务和托管调度继续使用原有用户级 `LaunchAgent` 行为。
-- 🐧 **Linux Core 边界明确**：Debian 类 `systemd --user` 主机提供 x86_64 与 arm64 锁目标，并支持经审计的 CPU-only 本地 Embedding RAG profile；credential-backed Provider 尚未配置时，fresh managed cloud RAG 会保守拒绝。受保护升级/修复已在 Debian x86_64、CPython 3.13 上通过发布门禁，引导式向导与托管 Python bootstrap 仍仅属于 macOS。
-- 🛠️ **基础工具**：需要 `git`、`curl`，macOS 另需 `zsh`，Linux 使用 POSIX `sh`；无需 `sudo`。
-- 🐍 **Python**：macOS 支持 Python ≥ 3.11，并可安装校验后的托管 Python；当前经审计的 Linux lock 面向 CPython 3.13。
-- 🌐 **网络与磁盘**：安装期间需访问 GitHub、Python 包索引及你的模型服务；启用本地 `nova-RAG` 时首次可能下载模型权重。
-- ⏱️ **Linux 服务**：Dashboard、调度与可选 RAG 使用用户级 systemd unit；存在控制终端时，安装器会先询问是否需要退出登录后继续运行，得到明确同意后才发起不含 `sudo` 的 linger 请求。非交互安装默认保持现状，除非明确使用 `--enable-linger` 或 `--require-linger`。
-- 🪟 **Windows**：不是受支持的一行安装目标，高级用户仍可从源码运行部分组件。
-
-**当前支持的 Agent Runtime**：🦞 OpenClaw · ✳️ Claude Code · 🤖 Codex · ✨ Gemini CLI · ⚕️ Hermes · 🐙 OpenCode · 🛡️ Antigravity · 🖱️ Cursor。实际可采集内容取决于本机是否存在兼容记录与对应路径是否启用。Cursor 当前接入本地会话、工作区记录和明确的对话正文；Actanara 不请求 Cursor 云端 API，也不会把缺失的 Token 用量推断成 0。
-
-**v1.9.0 新增接入**：ZCode、Qwen Code、Copilot CLI、Cline、Continue、Aider 历史导出，以及实验性的 Grok Bot 缓存读取。AI 资产页分别展示来源记录、产物、用量可用性与验证范围；不把来源清单当作已验证成果，也不宣称覆盖完整云端历史。[接入范围与配置说明](docs/runtime-integrations.md)列明了本机实测与结构样本验证的区别。
-
-## 📊 Dashboard、截图与交互 Demo
-
-Dashboard 以已保存的工作成果为入口，并保留用量分析、检索、备份与维护能力。
-
-| 入口 | 可以做什么 |
-| :--- | :--- |
-| **资产总览** | 搜索近期任务成果、学习记录、技能提案和报告，查看每类资产的数据来源。 |
-| **AI 资产** | 阅读主技能库原文、复核指定日期的经验与技能提案、浏览已安装技能和工具配置。 |
-| **用量与活动** | 查看当日及累计 Token、消息、缓存、模型和工作区排行；从报告跳转查看对应使用记录。 |
-| **日记与报告** | 按日、周、月回顾成果；准确日期链接可刷新、分享和前进后退。 |
-| **记忆检索 · nova-RAG** | 检索过去的经验；本地词法检索可用，语义检索需要配置 nova-RAG。 |
-| **数据维护 · Foundation** | 检查数据完整性、生成状态与恢复记录；后台任务、消息和备份有独立入口。 |
-
-Nova-Task 保持独立的任务操作页面。界面语言可切换中英文，不会改变报告生成语言。
-
-### 🖼️ Dashboard 截图
-
-新版 Dashboard 截图由真实前端代码配合公开演示数据生成，不代表本机实时运行指标。Nova-Task 保留原有截图与界面。
-
-<details>
-<summary><strong>展开 Dashboard 首页</strong></summary>
-
-<p align="center">
-  <a href="docs/assets/dashboard/dashboard-home.png">
-    <img src="docs/assets/dashboard/dashboard-home.png" alt="Actanara Dashboard 首页" width="100%">
-  </a>
-</p>
-
-</details>
-
-<details>
-<summary><strong>展开 W27 周报</strong></summary>
-
-<p align="center">
-  <a href="docs/assets/dashboard/dashboard-weekly-full.png">
-    <img src="docs/assets/dashboard/dashboard-weekly-overview.png" alt="Actanara Dashboard W27 周报概览" width="100%">
-  </a>
-</p>
-
-</details>
-
-<details>
-<summary><strong>展开 AI 资产概览</strong></summary>
-
-<p align="center">
-  <a href="docs/assets/dashboard/dashboard-ai-assets-long.png">
-    <img src="docs/assets/dashboard/dashboard-ai-assets-overview.png" alt="Actanara Dashboard AI 资产概览" width="100%">
-  </a>
-</p>
-
-</details>
-
-<details>
-<summary><strong>展开 Nova-Task 任务图谱</strong></summary>
-
-<p align="center">
-  <a href="docs/assets/dashboard/dashboard-nova-task.png">
-    <img src="docs/assets/dashboard/dashboard-nova-task.png" alt="Actanara Nova-Task 真实任务图谱" width="100%">
-  </a>
-</p>
-
-</details>
-
-<details>
-<summary><strong>展开独立的用量与活动页面</strong></summary>
-
-<p align="center">
-  <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-overview">
-    <img src="docs/assets/dashboard/dashboard-usage.png" alt="独立用量页面保留 Token、消息、缓存与模型排行，使用演示数据" width="100%">
-  </a>
-</p>
-
-</details>
-
-<details>
-<summary><strong>展开 nova-RAG 状态与检索</strong></summary>
-
-<p align="center">
-  <a href="docs/assets/dashboard/dashboard-nova-rag.png">
-    <img src="docs/assets/dashboard/dashboard-nova-rag.png" alt="Actanara nova-RAG 状态与检索界面" width="100%">
-  </a>
-</p>
-
-</details>
-
-### ▶️ 在线交互 Demo
-
-<a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-home"><strong>v1.9.0 在线 Demo</strong></a>直接复用新版 Dashboard 的 HTML、CSS 与交互代码，后端由公开示例数据替代。可以筛选资产、阅读技能和报告、查看用量、体验文本检索与语言切换。任务状态和消息已读只改变当前页面内存；生成、注册、备份、设置和服务管理需要安装后使用。Demo 不访问本机 Runtime、凭证或私有文件。
-
-[资产总览](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-home) · [主技能库与提案](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-static) · [用量与活动](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-overview) · [W27 周报](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-report-2026-W27) · [任务看板](https://neo-isshin.github.io/actanara/dashboard-demo/tasks.html)
-
-本地也可打开 [`docs/dashboard-demo/index.html`](docs/dashboard-demo/index.html)。[演示范围与同步方式](docs/dashboard-demo/README.md)。
-
-<p align="center">
-  ▶ <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=zh#page-home"><strong>打开 v1.9.0 在线 Demo</strong></a>
-</p>
-
-### 常用命令
+<summary><strong>🛠️ 高频 CLI 指令速查</strong></summary>
 
 ```bash
-# 自动搜索记忆：优先使用已就绪的 nova-RAG，否则使用本地词法 fallback
-actanara search "deployment issue" --top-k 5
+# 自动搜索记忆（优先使用已就绪的 nova-RAG，否则自动使用本地词法索引）
+actanara search "redis connection timeout fix" --top-k 5
 
-# 强制使用指定后端
-actanara search "deployment issue" --mode rag --json
-actanara search "deployment issue" --mode local --json
+# 显式指定检索模式
+actanara search "deployment failure" --mode rag --json
+actanara search "deployment failure" --mode local --json
 
-# 查看或刷新可丢弃、可重建的本地搜索索引
+# 检查或重建本地 SQLite 全文索引
 actanara memory status
 actanara memory sync
 actanara memory rebuild
 
-# 手动运行每日 Pipeline（默认处理前一个日历日；已生成需 --force 才会重建）
+# 手动触发指定日期的工作日记与资产生成
 actanara pipeline
 actanara pipeline 2026-07-12
 
-# 检查或执行更新（默认只显示计划，--apply 才执行受保护事务）
-actanara update
+# 检查系统更新或应用升级
 actanara update --dry-run
 actanara update --apply
 ```
 
 更新器在依赖一致时复用 venv、否则从带 hash 的 lock 重建；venv 复用、`--source-only/--force-rebuild/--offline`、源码获取与 commit 固定等细节，见 Runbook 的「更新」一节。Actanara 暂未提供一键卸载器，请勿直接删除 `~/.actanara`，正确卸载步骤见 Runbook「卸载边界」一节。
 
-Linux 上显式使用 `--source-url` 或 `--ref` 时，邻接 bootstrap 文件只作为
-执行入口，不会被当成所选源码。installer cache 中规范化后的 Git `origin`
-以及精确 fetched/cached commit 会在在线、离线模式下都先完成校验，之后才
-运行安装器。
+Linux 上显式使用 `--source-url` 或 `--ref` 时，邻接 bootstrap 文件只作为执行入口，不会被当成所选源码。installer cache 中规范化后的 Git `origin` 以及精确 fetched/cached commit 会在在线、离线模式下都先完成校验，之后才运行安装器。
 
-Linux 常规更新要求 Actanara 管理的 systemd 定义已对齐，并逐个保持 unit
-原有 enabled/active 状态。若可信 Runtime 配置或受管理定义发生漂移，请按
-Runbook 使用需明确确认的 repair；repair 不会接管或删除用户自有 unit。
+Linux 常规更新要求 Actanara 管理的 systemd 定义已对齐，并逐个保持 unit 原有 enabled/active 状态。若可信 Runtime 配置或受管理定义发生漂移，请按 Runbook 使用需明确确认的 repair；repair 不会接管或删除用户自有 unit。
 
-## 📋 Nova-Task：真实工作图谱
+</details>
 
-`Nova-Task` 不是又一份待办清单。很多有价值的工作并不从明确的 ticket 开始，而是在对话、排查、修复、试验、回滚和验证中自然生长——它把这些轨迹转换为可审阅、可持续维护的任务结构。
+---
 
-在自动维护模式下，`Nova-Task` 可以识别层级、更新状态、挂载子任务并优化任务树：影响较大的一级节点保留人工审阅，常规更新按规则自动处理，人类随时可以接管。导入 RFC、PRD 或 Roadmap 后，Actanara 还能调用 LLM 将其拆解为可迭代的任务树。详见<a href="docs/nova-task-work-graph-reconciliation.md">Nova-Task 工作图谱对账</a>。
+<a id="linux-support"></a>
+## 🐧 Linux 支持
 
-## 🔎 Memory Search：未部署 RAG 也能检索
+Actanara 为使用 `systemd --user` 的 Debian 类主机提供原生、非 root 的 Linux 路径，并不是 macOS 兼容层。当前发布门禁在 Debian 13 x86_64、CPython 3.13 与 systemd 257 上执行；依赖锁也提供 arm64 目标，而真实主机功能门禁覆盖的是 x86_64。
 
-`actanara search` 默认使用 `--mode auto`。语义服务已启用且可用时，它使用 `nova-RAG`；否则切换到增量更新的本地 SQLite 全文索引，必要时再使用受限扫描作为最后的本地路径。Fallback 是词法检索，不是语义检索：名称、ID、日期、报错原文和文件名等精确词效果更好，改写或近义表达可能漏检。使用 `--mode rag` 可强制 Agentic RAG，使用 `--mode local` 可强制本地检索；旧的 `actanara rag search-memory` 仍作为严格 RAG 兼容命令保留。
+| 能力领域 | Linux 生产级行为 |
+| :--- | :--- |
+| **安装与升级** | 公开 Release `install.sh` 入口支持受保护全新安装、精确 ref / 源码刷新、按锁依赖升级和原子修复。新 generation 先在 staging 中构建再原子切换；失败后旧 Runtime 毫秒级恢复。 |
+| **服务管控** | 请以普通登录用户执行安装，**严禁通过 `sudo` 运行**。Dashboard、可选 `nova-RAG` 与定时调度服务均由 `systemctl --user` 托管。 |
+| **RAG 离线 Profile** | 全新安装可启用经审计的 CPU-only 本地 profile（基于 `intfloat/multilingual-e5-small`）。未配置 Provider 凭证时，托管云端 RAG 保守拒绝。 |
+| **远程与无桌面主机** | Dashboard 与 RAG 默认绑定 `127.0.0.1`（端口 3036 / 3037）。远程服务器建议通过 SSH 端口转发无缝访问： |
 
-安装器只管理一份动态、只读的 Memory Search Skill，而不是分别生成 RAG 与非 RAG Skill。安装时对 RAG 选择 **Not Now** 也不妨碍注册：只有同时满足“本机已检测、用户明确选择、当前支持 Skill 目标”的工具才会写入 Skill。同一份 Skill 会读取响应中的 `backend` 元数据，再选择语义或词法检索流程。
+```bash
+# 无桌面服务器端口转发示例
+ssh -N -L 3036:127.0.0.1:3036 user@linux-host
+# 随后在本地浏览器访问 http://127.0.0.1:3036/dashboard
+```
 
-新 Runtime 默认收录 Codex 与 Claude Code 自身管理的记忆，并默认包含 allowlist 内的指令文件；启用 RAG 时也默认允许它们进入 `nova-RAG`。每个范围仍可独立关闭，升级时会保留旧 Runtime 中显式写入的 `false`。适配器只读取 allowlist 中的 Markdown 记忆入口，不会检查 Cursor 的私有 SQLite 数据库。
+---
 
-通用外部合约 `/api/memory/external/*` 只读且仅允许 loopback。命令、配置示例、响应语义、原生记忆边界与故障排查见<a href="docs/memory-search.md">Memory Search 与本地 Recall（English）</a>。
+## 🔐 隐私与安全承诺
 
-## 🤖 nova-RAG：共享记忆与只读边界
+- **100% 本地优先**：所有 Runtime 状态、SQLite 数据库、Markdown 日记与 Vector 索引均保存在你掌控的本地磁盘路径。
+- **密钥物理加固**：Provider API Key 存放在 `$ACTANARA_HOME/state/secrets`，严格施加目录 `0700`、文件 `0600` 的 POSIX 权限隔离。
+- **非侵入式架构**：Actanara 仅只读解析受支持工具已落盘的日志，**绝不改写外部 Runtime 的历史数据，也绝不接管其运行时进程**。
+- **只读回环外部接口**：通用外部记忆查询接口 `/api/memory/external/*` 仅允许本机回环（Loopback）访问；外部原生记忆收集严格遵循白名单清单。
 
-`nova-RAG` 是 Actanara 的可选语义检索子系统，支持本地或云端 Embedding。被 Memory Search 选中后，它向外部 Agent Runtime 提供**只读**的查询能力——可以检索你的工作记忆，但不能写入记忆、修改索引、更改设置或控制服务生命周期。
-
-检索质量在两层管理：服务端做确定性、baseline-first 的自适应检索；只有当返回的证据 weak/ambiguous 时，才让外部 Runtime 用自己的 LLM 进一步反思。`nova-RAG` 同时通过查询评估、候选提升、受保护的索引生命周期和安全回滚管理召回质量。完整的外部只读 API、请求结构与错误语义见<a href="docs/rag-external-agent-contract.md">nova-RAG 外部 Agent Runtime 合约</a>。
-
-## 🔐 隐私与安全
-
-- **本地优先**：Runtime 状态、数据库、生成资产和索引保存在你拥有的本地路径中。
-- **密钥权限**：Provider Key 保存在 `$ACTANARA_HOME/state/secrets`，目录 `0700`、文件 `0600`。
-- **外部 Provider 边界**：配置外部 LLM 或 Embedding 时，相关内容会按所选 Endpoint 与 Provider 政策发送。
-- **输入即输出**：若原始日志或材料中已含密钥或敏感信息，生成的日记、报告与索引可能忠实保留它们。
-- **非侵入边界**：Actanara 不改写受支持 Runtime 的历史数据、也不接管其执行；它只创建自己的 Runtime、CLI shim、可选 Skill 和托管服务。
-- **外部记忆边界**：匿名通用接口 `/api/memory/external/*` 要求请求端与 Host 都是 loopback；Agent Runtime 原生记忆只读取文档列出的 allowlist 文件，并可按 Runtime、工具、指令文件或 RAG 收录范围分别关闭。
+---
 
 ## 📐 开发、测试与可复现发布
 
@@ -421,37 +263,35 @@ python -B -m tools.release.build_release \
 
 </details>
 
-## 📄 文档导航
+---
+
+<a id="documentation"></a>
+## 📚 完整文档导航
 
 ### 用户与日常操作
+- ⚙️ [中文本地操作与运维 Runbook](docs/local-operations-runbook.zh-CN.md) —— 详细参数、LaunchAgent/Systemd 运维与故障排查
+- 📖 [新用户安装手册](docs/new-user-onboarding-runbook.zh-CN.md) —— 从零开始配置 LLM 与数据回填指南
+- 🧭 [CLI 产品边界说明](docs/cli-boundary.md) —— CLI 指令集与系统边界定义
+- 🔎 [Memory Search 与本地 Recall 说明](docs/memory-search.md) —— 本地与语义检索混合策略
 
-- ⚙️ <a href="docs/local-operations-runbook.zh-CN.md"><strong>中文本地操作 Runbook</strong></a>
-- 📖 <a href="docs/new-user-onboarding-runbook.zh-CN.md"><strong>新用户安装手册</strong></a>
-- 🧭 <a href="docs/cli-boundary.md">CLI 产品边界（English）</a>
-- 🔎 <a href="docs/memory-search.md">Memory Search 与本地 Recall（English）</a>
+### 集成与架构设计
+- 🤖 [nova-RAG 外部 Agent 接入合约](docs/rag-external-agent-contract.md) —— API 规范与只读调用模式
+- 🧩 [Nova-Task 工作图谱对账机制](docs/nova-task-work-graph-reconciliation.md) —— 任务自动归纳与对账设计原理
 
-### 集成与产品设计
+### 质量保证与项目演进
+- ✅ [发布保证归档](docs/v1-release-assurance.md) · 🧹 [发布清理清单](docs/production-clean-inventory.md)
+- 🧾 [更新日志 (Changelog)](CHANGELOG.md) · 🔐 [安全策略](SECURITY.md) · 🕰️ [公开项目历史](HISTORY.md)
 
-- 🤖 <a href="docs/rag-external-agent-contract.md">nova-RAG 外部 Agent Runtime 合约（English）</a>
-- 🧩 <a href="docs/nova-task-work-graph-reconciliation.md">Nova-Task 工作图谱对账</a>
+---
 
-### 发布、安全与项目历史
-
-- ✅ <a href="docs/v1-release-assurance.md">发布保证归档</a>
-- 🧹 <a href="docs/production-clean-inventory.md">发布清理清单</a>
-- 🧾 <a href="CHANGELOG.md">更新日志</a>
-- 🔐 <a href="SECURITY.md">安全策略</a>
-- 🕰️ <a href="HISTORY.md">公开项目历史</a>
-
-## ⚖️ 许可证
+## ⚖️ 许可证与致谢
 
 Copyright © 2026 Neo-Isshin.
 
-Actanara 采用 [MIT 许可证](LICENSE)，SPDX 标识为 `MIT`。
+本项目采用 [MIT 许可证](LICENSE)，SPDX 标识为 `MIT`。
 
-## 🙏 致谢
-
-Actanara 的诞生得益于众多优秀的 AI 编程工具及其开源社区。感谢这些工具将 Token 用量和活动保存在本地日志中，使统一可视化、资产归集与跨 Runtime 记忆共享成为可能。也感谢 <a href="https://getdesign.md">getdesign.md</a> 社区对 Dashboard 布局与视觉方向的启发。
+- 感谢各大 AI 编程工具（Claude Code, Cursor, Codex, Gemini CLI, Antigravity, OpenClaw 等）将活动日志规范保存在本地，使得统一可视化与资产沉淀成为可能。
+- 感谢 [getdesign.md](https://getdesign.md) 社区为 Dashboard 视觉风格提供的灵感。
 
 <hr>
 
@@ -462,7 +302,7 @@ Actanara 的诞生得益于众多优秀的 AI 编程工具及其开源社区。�
 
 <p>
 如果 Actanara 帮助你把分散的 AI 工作沉淀为可检索、可复用的本地资产，<br>
-欢迎点亮一颗 Star，让更多人发现这个项目。
+欢迎在 GitHub 点亮一颗 Star，支持项目的持续演进！
 </p>
 
 <a href="https://github.com/Neo-Isshin/actanara">

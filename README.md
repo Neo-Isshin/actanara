@@ -1,388 +1,221 @@
+<p align="center">
+  <a href="README.zh-CN.md">简体中文</a> · <strong>English</strong>
+</p>
+
 <h1 align="center">
-  <img src="docs/assets/banner.png" alt="Actanara" width="650">
+  <img src="docs/assets/banner.png" alt="Actanara" width="680">
 </h1>
 
 <p align="center">
   <strong>Your agents do valuable work. Actanara makes sure it does not disappear with the session.</strong>
   <br>
-  Save task outcomes, lessons, reusable Skills, and reports from work across Codex, Claude Code, Gemini CLI, OpenClaw, Hermes, OpenCode, Antigravity, and Cursor.
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Language-English%20·%20Current-2563EB?style=for-the-badge" alt="Current language: English">
-  <a href="README.zh-CN.md"><img src="https://img.shields.io/badge/Language-简体中文-C026D3?style=for-the-badge" alt="切换到简体中文 README"></a>
+  Consolidate sessions, tasks, and debugging evidence across <strong>Claude Code, Cursor, Codex, Gemini CLI, Antigravity, ZCode, Qwen Code, OpenClaw, OpenCode, Hermes, Copilot CLI, Cline, Continue, and Aider</strong> into persistent local knowledge and a living work graph.
 </p>
 
 <p align="center">
   <a href="https://neo-isshin.github.io/actanara/"><img src="https://img.shields.io/badge/Website-GitHub%20Pages-2563EB" alt="Website"></a>
   <a href="https://github.com/Neo-Isshin/actanara/releases/latest"><img src="https://img.shields.io/github/v/release/Neo-Isshin/actanara?display_name=tag&amp;sort=semver" alt="Latest stable Release"></a>
-  <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-home"><img src="https://img.shields.io/badge/Demo-interactive-7C3AED" alt="Interactive Dashboard Demo"></a>
-  <a href="#linux-support"><img src="https://img.shields.io/badge/Linux-Debian%20x64%20verified-FCC624?logo=linux&amp;logoColor=111827" alt="Linux support: verified on Debian x86_64"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-16A34A" alt="License"></a>
+  <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-home"><img src="https://img.shields.io/badge/Demo-Interactive-7C3AED" alt="Interactive Dashboard Demo"></a>
+  <img src="https://img.shields.io/badge/macOS-Supported-000000?logo=apple&amp;logoColor=white" alt="macOS Supported">
+  <a href="#linux-support"><img src="https://img.shields.io/badge/Linux-Debian%20x64%20verified-FCC624?logo=linux&amp;logoColor=111827" alt="Linux Support: verified on Debian x86_64"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-16A34A" alt="License: MIT"></a>
   <a href="https://discord.gg/JvJHngZWz"><img src="https://img.shields.io/badge/Discord-Join-5865F2" alt="Discord"></a>
 </p>
 
 <p align="center">
-  <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-home"><strong>Try the Interactive Dashboard</strong></a> ·
-  <a href="#install-actanara"><strong>Install Actanara</strong></a> ·
-  <a href="#linux-support"><strong>Linux Support</strong></a> ·
-  <a href="docs/local-operations-runbook.md">Operations Runbook</a>
+  <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-home"><strong>▶️ Explore the Interactive Dashboard Demo</strong></a> ·
+  <a href="#install-actanara"><strong>⚡ Quick Install</strong></a> ·
+  <a href="#linux-support"><strong>🐧 Linux Support</strong></a> ·
+  <a href="docs/local-operations-runbook.md"><strong>⚙️ Operations Runbook</strong></a>
 </p>
 
 <p align="center">
   <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-home">
-    <img src="docs/assets/dashboard/dashboard-home.png" alt="Actanara v1.8.0 asset overview with task outcomes, lessons, saved Skills and reports; sample data" width="920">
+    <img src="docs/assets/dashboard/dashboard-home.png" alt="Actanara Asset-First Alpine Observatory Dashboard" width="920">
   </a>
 </p>
 
-<p align="center"><sub><b>v1.8.0 asset-first Dashboard · sample data</b> · select the image to explore the interactive demo</sub></p>
+<p align="center"><sub><b>v1.9.0 Asset-First Alpine Observatory Dashboard · Sample data</b> · Click the image to enter the interactive demo</sub></p>
 
-v1.9.0 expands Runtime support and adds read-only source coverage, conversation and artifact browsing. Saved outcomes, lessons and Skills remain central; Token use stays under **Usage & activity**. Source records are not counted as independently verified tasks or duplicated canonical assets. [Release notes](https://github.com/Neo-Isshin/actanara/releases/tag/v1.9.0).
+> **v1.9.0 Highlights**: Expands the Agent Runtime matrix (adding ZCode, Qwen Code, Copilot CLI, Cline, Continue, and Aider), introducing read-only source coverage, dialogue history, and an artifact browser. Actanara remains steadfastly **asset-first**: completed task outcomes, lessons learned, and reusable canonical skills sit prominently at the center. Token metrics stay organized under a dedicated **Usage & activity** view. Raw source logs never masquerade as independently verified tasks, ensuring your knowledge archive remains authentic. [Read full release notes](https://github.com/Neo-Isshin/actanara/releases/tag/v1.9.0).
 
-## What Actanara gives you
+---
 
-In a single project you might rotate through Codex, Claude Code, Gemini CLI, and other agents within a day. Each tool faithfully records your work—yet the records stay isolated from one another, and once a session ends the investigation, decisions, and results become hard to recover.
+## 💡 Why Actanara?
 
-Actanara breaks down those barriers: work completed in Claude Code can be found and reused by Codex, scattered sessions become long-term reviewable progress, and deliverables and debugging evidence no longer vanish with a session.
+In modern software development, you likely rotate between multiple AI tools throughout a single day: **Claude Code, Cursor, Codex, Gemini CLI, Antigravity**, and others. While each agent performs substantive engineering, **the instant you close the terminal, that hard-won context vanishes**:
 
-| | Outcome |
-| :--- | :--- |
-| **Shared memory across agents** | Work completed in Claude Code can be found and reused from Codex through a restricted, read-only retrieval boundary. Search uses `nova-RAG` when it is ready and retains a local lexical fallback when it is not. |
-| **A graph of work that actually happened** | `Nova-Task` derives tasks, status, and evidence from conversations, file changes, and tool results—not just manually written tickets. |
-| **Automatic work narratives** | Daily, weekly, and monthly reports turn fragmented sessions into a durable record of progress, decisions, and lessons learned. |
-| **A local source of truth** | Sessions, usage, generated assets, and task evidence remain in user-controlled local storage with explicit integration boundaries. |
+- **🧠 Context Fragmentation**: The elusive protocol bug you just diagnosed in Claude Code has to be re-explained from scratch when you open Codex.
+- **⏳ Disappearing Evidence**: Midnight debugging traces, stack traces, and experimental patch diffs evaporate once the terminal scrollback is lost.
+- **📋 Standup & Ticket Fatigue**: Agents quietly execute dozens of surgical bugfixes, yet at day's end, you still spend 30 minutes manually reconstructing standup notes, Jira tickets, and changelogs.
 
-**Design tradeoffs**
+**Actanara solves this**: It quietly ingests and normalizes telemetry across all your local Agent Runtimes, distilling raw interactions into an **authentic, user-owned local fact database** for cross-agent recall, living task graphs, and automated work narratives.
 
-- **Parser-first processing:** Source-specific parsers normalize sessions, tasks, usage, and workspace signals before data enters summarization, task-evidence, or RAG workflows. Raw logs are not handed directly to an LLM.
-- **Local-first with explicit boundaries:** Actanara reads configured tool locations and writes to its own runtime home. It does not rewrite external-runtime history or take over runtime execution.
-- **Model-cost efficient:** Structured prompts, explicit schemas, and controlled orchestration let lightweight models produce useful output without locking the system to one provider.
-- **User-controlled integrations:** Tool skills, external-runtime definitions, and critical settings remain visible, editable, and auditable.
-- **Protected retrieval:** `nova-RAG` manages semantic retrieval quality through evaluation, candidate promotion, recall calibration, and safe rollback. Without RAG, Memory Search remains available through a lower-quality local lexical index; both backends expose restricted read-only retrieval to external runtimes.
+| Dimension | Conventional (Session ends → Context lost) | With Actanara |
+| :--- | :--- | :--- |
+| **Multi-Agent Flow** | Agents operate in silos with zero mutual context | 🧠 **Shared Memory (`nova-RAG` / Memory Search)**: Allows Codex / Cursor to query past decisions and evidence from Claude Code |
+| **Tasks & Evidence** | Relies on manually entered Jira tickets and todo lists | 🕸️ **Living Work Graph (`Nova-Task`)**: Auto-extracts hierarchical task trees from chats, diffs, and tool calls |
+| **Lessons & Skills** | Bug resolutions vanish with terminal sessions | 📚 **Local AI Asset Repository**: Saves verified task outcomes, troubleshooting lessons, and reusable canonical skills |
+| **Progress Reporting** | Painstaking manual review of terminal scrollbacks | 📝 **Automated Work Narratives**: Generates daily, weekly, and monthly diaries summarizing milestones and architectural shifts |
+| **Privacy & Security** | Risk of leaking proprietary code to third-party clouds | 🔒 **100% Local-First**: All SQLite databases, Markdown reports, and vector indexes remain strictly on your local disk |
 
-> In this README, an **agent runtime** means an AI tool environment with its own sessions, logs, memory, and execution context, such as Codex, Claude Code, Gemini CLI, OpenClaw, Hermes, OpenCode, Antigravity, or Cursor.
+---
+
+## 🧭 System Architecture & Data Flow
+
+```text
+ ┌─────────────────────────────────────────────────────────────────┐
+ │       Supported 15+ Agent Runtimes (Local Sessions & Logs)      │
+ └────────────────────────────────┬────────────────────────────────┘
+                                  │ Attribution Parsers
+                                  ▼
+ ┌─────────────────────────────────────────────────────────────────┐
+ │               Foundation Local Fact Layer (SQLite)              │
+ └──────────────┬─────────────────┬─────────────────┬──────────────┘
+                │                 │                 │
+                ▼                 ▼                 ▼
+ ┌───────────────────────┐ ┌─────────────┐ ┌───────────────────────┐
+ │ Base Pipeline (Diary) │ │ Nova-Task   │ │ Memory Search / RAG │
+ └──────────────┬────────┘ └──────┬──────┘ └────────┬──────────────┘
+                │                 │                 │
+                └─────────────────┼─────────────────┘
+                                  ▼
+ ┌─────────────────────────────────────────────────────────────────┐
+ │            Actanara Alpine Observatory Web Dashboard            │
+ └─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🌟 Four Core Pillars
+
+### 1. 📋 Nova-Task: A Living Graph of Real Work
+
+`Nova-Task` is much more than another to-do list. Valuable engineering rarely starts with a pristine ticket; it emerges organically through investigation, trial, rollback, and verification. Nova-Task translates those real-world traces into an auditable, maintainable task structure.
+
+- **Automated Maintenance & Reconciliation**: Detects hierarchy, updates task status, attaches subtasks, and prunes the task tree. High-impact primary nodes retain human review, while routine updates happen under deterministic rules.
+- **Decompose PRDs and RFCs**: Import an RFC, PRD, or roadmap, and Actanara can guide an LLM to decompose it into an actionable, verifiable engineering breakdown. See [Nova-Task Work-Graph Reconciliation](docs/nova-task-work-graph-reconciliation.md).
+
+### 2. 🔎 Memory Search: Instant Recall Even Without RAG
+
+`actanara search` defaults to `--mode auto`. It runs instantly out-of-the-box with zero complex model setup:
+
+- **Lexical Fallback (SQLite FTS5)**: When RAG is disabled or unavailable, Actanara automatically queries an incrementally maintained SQLite full-text index with sub-millisecond response times and zero API costs.
+- **Dynamic Read-Only Skill**: The installer provisions a single dynamic, read-only Memory Search Skill. External agents read the response metadata to automatically adopt the appropriate lexical or semantic protocol.
+- **Native Memory Coexistence**: Automatically indexes memory directories managed by Codex and Claude Code, along with allowlisted instruction files. See [Memory Search and Local Recall](docs/memory-search.md).
+
+### 3. 🤖 nova-RAG: Guarded Cross-Agent Semantic Recall
+
+`nova-RAG` is Actanara's optional semantic retrieval subsystem supporting local CPU-only embedding models or cloud embeddings:
+
+- **Strict Read-Only Boundary**: Grants external agent runtimes **read-only** query access. They can retrieve past engineering context, but **cannot write memory, mutate indexes, alter settings, or manipulate service lifecycles**.
+- **Two-Tier Adaptive Retrieval**: Runs a deterministic baseline pass on the server side; only when retrieved evidence is weak or ambiguous does it ask the external agent's LLM to reflect further, preventing hallucinations. See the [nova-RAG External Agent Runtime Contract](docs/rag-external-agent-contract.md).
+
+### 4. 📦 Asset-First Alpine Observatory Dashboard
+
+In v1.8.0+ and v1.9.0, Actanara delivers a focused **Alpine Observatory** interface:
+
+- **Curated Knowledge Assets**: Review completed task outcomes, distilled lessons, reusable skills, and period reports in one cohesive view.
+- **Dedicated Usage & Activity**: Cumulative token volumes, message frequencies, model distribution charts, and 30-day activity trends live in a dedicated **Usage & activity** tab, scientific excluding prompt cache duplicates.
+- **Interactive Experience**: Explore locally or preview the live interface anytime via the [Interactive Dashboard Demo](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-home).
+
+---
 
 <a id="install-actanara"></a>
-## Install Actanara
+## ⚡ Quick Install
+
+### 1. One-Line Install
+
+Run the official public installer in your macOS or Linux terminal (no `sudo` required):
 
 ```bash
 curl -fsSL https://github.com/Neo-Isshin/actanara/releases/latest/download/install.sh | sh
 ```
 
-This is the shared macOS/Linux entrypoint and requires no `sudo`. GitHub serves
-it from the latest stable immutable Release; the asset is pinned to that
-Release's exact source commit before dispatching to the platform adapter.
-macOS keeps its guided fresh-install and update behavior;
-Linux supports guarded fresh install, source-only refresh, locked dependency
-upgrade, and confirmed repair of an existing Runtime. Linux update
-transactions preserve the prior systemd user-unit state and fail closed on
-definition drift or non-Actanara units. New here? You can explore the
-[interactive Dashboard demo](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-home)
-before installing.
+This is the unified entrypoint for both macOS and Linux. GitHub provides this installer from the latest immutable release, pinning builds to that release's exact source commit before delegating to the appropriate platform adapter. macOS maintains its guided setup and upgrade flow; Linux supports guarded fresh installs, source-only refreshes, lockfile-pinned upgrades, and explicit repairs. Linux update transactions preserve systemd user unit states, failing safely when definitions drift or encounter external units. Not ready to install? Try the [Interactive Dashboard Demo](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-home) first.
 
-When the Linux public entrypoint finds an existing managed Runtime, a run with
-a controlling terminal prints the pinned upgrade plan and asks before applying
-it. Without a controlling terminal it exits with status 2, makes no Runtime
-changes, and prints exact copy-paste `actanara update --dry-run` and
-`actanara update --apply` commands that include the resolved source URL,
-commit, Runtime, and installer cache.
+When the Linux public installer encounters an existing managed Runtime: an interactive terminal will display the commit-pinned upgrade plan before prompting to proceed; a non-interactive shell exits with status 2 without mutating the runtime, outputting exact `actanara update --dry-run` and `actanara update --apply` commands containing resolved source URLs, commits, runtime paths, and installer cache.
 
-The stable Runtime shim is `~/.actanara/bin/actanara`; installation also links
-`~/.local/bin/actanara` by default. On macOS, `--no-shell-path` and
-`--shell-path-file /path/to/profile` control the managed profile block. On
-Linux, `--no-shell-path` suppresses the user-bin link and no shell profile is
-edited. Advanced source selection uses `--source-root PATH` or an exact `--ref
-<full-commit-sha>`; offline operation must explicitly select one of those
-sources.
+The stable CLI shim is located at `~/.actanara/bin/actanara`, with an optional symlink at `~/.local/bin/actanara`. On macOS, use `--no-shell-path` or `--shell-path-file /path/to/profile` to manage shell profile integration; on Linux, `--no-shell-path` suppresses the user-bin link without editing shell profiles. For advanced source builds, supply `--source-root PATH` or an explicit `--ref <full-commit-sha>`. Offline workflows must explicitly specify one of these sources.
 
-For the exact write locations and launchd/systemd registration boundaries, see
-the [Local Operations Runbook](docs/local-operations-runbook.md).
+For installer paths and launchd/systemd registration boundaries, see the [Local Operations Runbook](docs/local-operations-runbook.md).
 
-<a id="linux-support"></a>
-## 🐧 Linux Support
+### 2. Verify and Launch
 
-Actanara has a native, non-root Linux path for Debian-class hosts using
-`systemd --user`; it is not a macOS compatibility shim. The current release
-gate is exercised on Debian 13 x86_64 with CPython 3.13 and systemd 257. The
-dependency lock also has an arm64 target, while x86_64 is the architecture
-covered by the real-host functional gate.
-
-| Capability | Linux behavior |
-| :--- | :--- |
-| **Install and update** | The public Release `install.sh` entrypoint supports guarded fresh install, exact-ref/source-only update, locked dependency upgrade, and explicit repair. Fresh generations are staged and promoted atomically; failures leave the previous Runtime recoverable. |
-| **User boundary and services** | Run `setup.sh` as a regular login user, not through `sudo`. Actanara does not invoke `sudo`; Dashboard, optional `nova-RAG`, and scheduled jobs run as user-level systemd units controlled through `systemctl --user`. |
-| **RAG readiness** | Fresh install can enable the audited CPU-only local profile using `intfloat/multilingual-e5-small` at 384 dimensions. Fresh managed cloud RAG fails closed until a credential-backed provider profile exists. Installation reports success only after the managed listener, source commit, provider profile, model, and health response agree. |
-| **Ports and headless hosts** | Dashboard and RAG bind loopback by default on ports 3036 and 3037. On a headless host, forward the configured Dashboard port over SSH and use the same local port so browser Origin checks remain valid. |
-| **Session lifetime** | Non-interactive installation does not change systemd linger. Linger is requested only through an explicit option or an interactive confirmation. |
-
-For a headless host using the default Dashboard port:
-
-```bash
-ssh -N -L 3036:127.0.0.1:3036 user@linux-host
-# Then open http://127.0.0.1:3036/dashboard locally.
-```
-
-Use the actual configured Dashboard port on both sides of the tunnel. For a
-quick Linux health check:
-
-```bash
-actanara doctor --installer
-actanara doctor --scheduler
-actanara doctor --rag  # When nova-RAG is enabled.
-```
-
-An offline fresh install preflights Python/pip bootstrap and the trusted
-dependency cache; if the required bootstrap material is unavailable, it stops
-before creating a release generation. Linux uses the selected system Python
-and does not install a managed Python runtime.
-
-## 🎥 Quick Start
-
-> [!TIP]
-> **Deploy with one command, then let prosperity follow.**
-
-### 1. Basic Verification
-
-After installation, run these read-only commands first. They do not initialize a new runtime or change existing settings:
+After installation completes, verify your environment with read-only inspection commands:
 
 ```bash
 actanara doctor
-actanara model show
 actanara onboard status
-actanara config show
 ```
 
-`actanara doctor` also supports targeted diagnostics (`--installer` / `--pipeline` / `--scheduler` / `--rag`); see the Runbook for details. The installation summary displays the actual Dashboard URL; the default is `http://127.0.0.1:3036/dashboard`.
-
-### 2. Complete the First Run
-
-1. **Open the Dashboard:** Use the URL in the installation summary and check the background-task and message indicators in the upper-right corner.
-2. **Configure the LLM Provider:** Verify the Provider, Endpoint, Model, and API Key. Run the availability test before saving.
-3. **Preview the historical-data plan:** Select a date range and review pending diaries, weekly and monthly reports, and estimated LLM calls.
-4. **Queue generation:** Clear any tasks you do not need, then add the remaining work to the background queue.
-5. **Review results:** Monitor progress in Background Tasks and Messages. When complete, refresh Diary, AI Assets, Nova-Task, and optional `nova-RAG` views.
+Open the Dashboard in your browser (default: `http://127.0.0.1:3036/dashboard`):
+1. **Configure Provider**: Under Settings, configure your preferred LLM Provider and API Key (OpenAI, Anthropic, Gemini, or compatible proxy endpoints) and run the connection test.
+2. **Review Ingested Assets**: Actanara scans local sessions and automatically populates your daily diaries, Nova-Task work graph, and knowledge assets.
 
 <details>
-<summary><strong>First-run checklist</strong></summary>
-
-- [ ] The Dashboard opens successfully.
-- [ ] The LLM Provider test passes and the settings are saved.
-- [ ] `actanara doctor` reports no blocking errors.
-- [ ] The history plan and selected tasks match expectations.
-- [ ] The first tasks have completed or are observable in the background.
-- [ ] Diary, AI Assets, and Nova-Task contain data.
-- [ ] When `nova-RAG` is enabled, the Server and active index are ready.
-
-</details>
-
-For complete pre-install checks, first-run setup, historical backfill, daily operations, updates, and troubleshooting, see the [Local Operations Runbook](docs/local-operations-runbook.md).
-
-## 🧭 How It Works
-
-```text
-Supported Agent Runtimes
-        ↓
-Parsing, Attribution, and Normalization
-        ↓
-Foundation Local Fact Layer
-        ↓
-Base Pipeline · Nova-Task · Dashboard
-        ↓
-Memory Search → Local Lexical Index
-        └────→ nova-RAG (optional semantic backend)
-        ↓
-Read-only Retrieval for External Runtimes
-```
-
-| System | Core responsibility |
-| :--- | :--- |
-| **`Foundation`** | Normalizes AI activity, workspace attribution, snapshots, reports, and task evidence into a local fact layer. |
-| **`Base Pipeline`** | Generates diaries, technical progress, learning records, and task summaries from runtime activity. |
-| **`Dashboard`** | Presents diaries, AI assets, token usage, settings, background tasks, and task boards in one place. |
-| **`Nova-Task`** | Maintains a reviewable task graph based on evidence from real work. |
-| **`Memory Search`** | Routes read-only recall to ready `nova-RAG`, or to a local SQLite FTS/bounded-scan fallback when semantic retrieval is unavailable. |
-| **`nova-RAG`** | Optional local- or cloud-embedding retrieval subsystem with a protected index lifecycle and external read-only retrieval. |
-| **Attribution Parsers** | Identify runtimes, sessions, workspaces, scheduled jobs, and execution evidence, including work launched outside project directories. |
-
-## 💻 Support and Prerequisites
-
-- 🍎 **macOS remains first-class:** Guided installation, updates, local nova-RAG, Dashboard services, and managed scheduling retain their existing user-level `LaunchAgent` behavior.
-- 🐧 **Linux has an explicit Core boundary:** Fresh installs are available for Debian-class `systemd --user` hosts with x86_64 and arm64 lock targets, including the audited CPU-only local-embedding RAG profile. Fresh managed cloud RAG fails closed until a credential-backed provider profile exists. Guarded upgrade/repair is release-gated on Debian x86_64 with CPython 3.13; the guided wizard and managed-Python bootstrap remain macOS-only.
-- 🛠️ **Base tools:** Requires `git` and `curl`, plus `zsh` on macOS or POSIX `sh` on Linux; no `sudo`.
-- 🐍 **Python:** macOS supports Python ≥ 3.11 and can install a verified managed Python; the audited Linux lock currently targets CPython 3.13.
-- 🌐 **Network and storage:** Installation needs access to GitHub, the Python package index, and your model services; the first local `nova-RAG` run may download model weights.
-- ⏱️ **Linux services:** Dashboard, scheduling, and optional RAG use user-level systemd units. When a controlling terminal is available, the installer asks whether they should continue after logout before making a no-`sudo` linger request. Non-interactive installs preserve linger unless `--enable-linger` or `--require-linger` is explicit.
-- 🪟 **Windows:** Not a supported one-line target; some components can still be run from source by advanced users.
-
-**Currently supported agent runtimes:** 🦞 OpenClaw · ✳️ Claude Code · 🤖 Codex · ✨ Gemini CLI · ⚕️ Hermes · 🐙 OpenCode · 🛡️ Antigravity · 🖱️ Cursor. Collection depends on compatible local records and enabled paths. Cursor currently contributes local session/workspace records and explicit dialogue content; Actanara does not call Cursor cloud APIs or infer missing token usage.
-
-**v1.9.0 additions:** ZCode, Qwen Code, Copilot CLI, Cline, Continue, Aider history exports, and experimental Grok Bot cache reading. The AI Assets page distinguishes readable source records, artifacts, usage availability and validation coverage. These are source adapters—not a claim of complete cloud history or independently verified outcomes. See [runtime coverage and setup](docs/runtime-integrations.md) for paths, limitations and local-sample versus schema-fixture validation.
-
-## 📊 Dashboard, Screenshots, and Interactive Demo
-
-The Dashboard starts with saved work and retains usage analysis, retrieval, backups and maintenance.
-
-| Entry | What you can do |
-| :--- | :--- |
-| **Asset overview** | Search recent outcomes, learning records, Skill proposals and reports, with source-specific counts. |
-| **AI Assets** | Read canonical Skill Markdown, review proposals by date, and browse installed Skills and tool configuration. |
-| **Usage & activity** | Inspect daily/lifetime tokens, messages, cache, models and workspaces; open usage associated with a report. |
-| **Diaries & reports** | Review daily, weekly and monthly work with exact-date links that survive reload and browser history. |
-| **Memory search · nova-RAG** | Find past experience using local lexical retrieval, or semantic search with configured nova-RAG. |
-| **Data maintenance · Foundation** | Check data completeness, generation and recovery; use separate background-task, message and backup controls. |
-
-Nova-Task retains its independent task-management page. Switching the interface language does not change the report-generation language.
-
-### 🖼️ Dashboard Screenshots
-
-The updated Dashboard screenshots render the production frontend with public sample data; they are not current local usage measurements. Nova-Task retains its existing screenshot and interface.
-
-<details>
-<summary><strong>Expand the Dashboard home</strong></summary>
-
-<p align="center">
-  <a href="docs/assets/dashboard/dashboard-home.png">
-    <img src="docs/assets/dashboard/dashboard-home.png" alt="Actanara Dashboard home" width="100%">
-  </a>
-</p>
-
-</details>
-
-<details>
-<summary><strong>Expand the W27 weekly report</strong></summary>
-
-<p align="center">
-  <a href="docs/assets/dashboard/dashboard-weekly-full.png">
-    <img src="docs/assets/dashboard/dashboard-weekly-overview.png" alt="Actanara Dashboard W27 weekly report overview" width="100%">
-  </a>
-</p>
-
-</details>
-
-<details>
-<summary><strong>Expand the AI Assets overview</strong></summary>
-
-<p align="center">
-  <a href="docs/assets/dashboard/dashboard-ai-assets-long.png">
-    <img src="docs/assets/dashboard/dashboard-ai-assets-overview.png" alt="Actanara Dashboard AI Assets overview" width="100%">
-  </a>
-</p>
-
-</details>
-
-<details>
-<summary><strong>Expand the Nova-Task work graph</strong></summary>
-
-<p align="center">
-  <a href="docs/assets/dashboard/dashboard-nova-task.png">
-    <img src="docs/assets/dashboard/dashboard-nova-task.png" alt="Real Actanara Nova-Task work graph" width="100%">
-  </a>
-</p>
-
-</details>
-
-<details>
-<summary><strong>Expand the separate Usage &amp; activity page</strong></summary>
-
-<p align="center">
-  <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-overview">
-    <img src="docs/assets/dashboard/dashboard-usage.png" alt="Independent usage view retains Tokens, messages, cache and model rankings; sample data" width="100%">
-  </a>
-</p>
-
-</details>
-
-<details>
-<summary><strong>Expand the nova-RAG status and retrieval interface</strong></summary>
-
-<p align="center">
-  <a href="docs/assets/dashboard/dashboard-nova-rag.png">
-    <img src="docs/assets/dashboard/dashboard-nova-rag.png" alt="Actanara nova-RAG status and retrieval interface" width="100%">
-  </a>
-</p>
-
-</details>
-
-### ▶️ Interactive Demo
-
-The [v1.9.0 interactive demo](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-home) reuses the production HTML, CSS and interaction code with public sample data. Filter outcomes, read Skills and reports, inspect usage, try text search and switch languages. Task-state edits and message acknowledgements affect page memory only. Generation, registration, backups, configuration and service operations require an installed runtime. The demo never accesses local runtime data, credentials or private files.
-
-[Asset overview](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-home) · [Skills & proposals](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-static) · [Usage & activity](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-overview) · [W27 report](https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-report-2026-W27) · [Task board](https://neo-isshin.github.io/actanara/dashboard-demo/tasks.html)
-
-Open [`docs/dashboard-demo/index.html`](docs/dashboard-demo/index.html) from a checkout, or read the [demo scope and synchronization guide](docs/dashboard-demo/README.md).
-
-<p align="center">
-  ▶ <a href="https://neo-isshin.github.io/actanara/dashboard-demo/?lang=en#page-home"><strong>Open the v1.9.0 Interactive Demo</strong></a>
-</p>
-
-### Common Commands
+<summary><strong>🛠️ Essential CLI Cheat Sheet</strong></summary>
 
 ```bash
-# Search memory automatically: ready nova-RAG first, then the local lexical fallback
-actanara search "deployment issue" --top-k 5
+# Search memory across agents (prefers nova-RAG if ready, otherwise uses local lexical index)
+actanara search "redis connection timeout fix" --top-k 5
 
-# Require one backend
-actanara search "deployment issue" --mode rag --json
-actanara search "deployment issue" --mode local --json
+# Force a specific retrieval mode
+actanara search "deployment failure" --mode rag --json
+actanara search "deployment failure" --mode local --json
 
-# Inspect or refresh the disposable local search index
+# Inspect or rebuild the local SQLite full-text index
 actanara memory status
 actanara memory sync
 actanara memory rebuild
 
-# Run the daily Pipeline manually (defaults to the previous calendar day; --force regenerates)
+# Manually trigger daily pipeline generation
 actanara pipeline
 actanara pipeline 2026-07-12
 
-# Review or apply an update (default only shows the plan; --apply executes the protected transaction)
-actanara update
+# Inspect updates or apply upgrades
 actanara update --dry-run
 actanara update --apply
 ```
 
-When dependencies are unchanged the updater reuses the venv; otherwise it rebuilds from the hashed lock. Details on venv reuse, `--source-only/--force-rebuild/--offline`, source acquisition, and commit pinning are in the Runbook's *Update* section. Actanara does not yet ship a one-command uninstaller—do not remove only `~/.actanara`; see the Runbook's *Uninstall boundary* section.
+The updater reuses virtual environments when dependencies match or rebuilds from hash-pinned locks; see the Runbook for details on `--source-only/--force-rebuild/--offline`, source fetching, and commit pinning. Actanara does not provide an unvetted one-click uninstaller; do not delete `~/.actanara` directly without following the documented uninstallation boundaries in the Runbook.
 
-On Linux, an explicit `--source-url` or `--ref` makes the nearby bootstrap file
-an execution entry only. The selected source is prepared in the installer
-cache; its normalized Git `origin` and exact fetched/cached commit are verified
-online and offline before the installer runs.
+When explicitly providing `--source-url` or `--ref` on Linux, the adjacent bootstrap file serves purely as an execution entrypoint and is never mistaken for chosen source. The installer cache validates normalized Git `origin` remotes and fetched/cached commit hashes in both online and offline modes prior to execution.
 
-On Linux, ordinary updates require aligned Actanara-managed systemd definitions
-and preserve each unit's prior enabled/active state. If trusted Runtime
-configuration or managed definitions have drifted, use the explicitly confirmed
-repair path described in the Runbook; repair never adopts or removes an
-operator-owned unit.
+Standard Linux updates require managed systemd unit definitions to match upstream configurations, preserving each unit's active/enabled state. If trusted runtime configuration drifts, execute the explicitly confirmed repair workflow described in the Runbook; repairs never claim or delete user-owned units.
 
-## 📋 Nova-Task: A Graph of Real Work
+</details>
 
-`Nova-Task` is more than another to-do list. Much valuable work does not begin with a formal ticket but grows naturally through discussion, investigation, repair, experimentation, rollback, and verification—it converts those traces into a reviewable, maintainable task structure.
+---
 
-In automatic-maintenance mode, `Nova-Task` can detect hierarchy, update status, attach subtasks, and refine the task tree: high-impact top-level nodes retain human review, while routine updates proceed under configured rules, and a person can take over at any time. After an RFC, PRD, or Roadmap is imported, Actanara can also ask an LLM to decompose it into an iterative task tree. See [Nova-Task Work-Graph Reconciliation](docs/nova-task-work-graph-reconciliation.md).
+<a id="linux-support"></a>
+## 🐧 Linux Support
 
-## 🔎 Memory Search: Useful Even Without RAG
+Actanara provides a first-class, non-root Linux implementation built natively for `systemd --user` Debian distributions—not an emulation layer. Our release verification runs against Debian 13 x86_64, CPython 3.13, and systemd 257. Lockfiles support both x86_64 and arm64 targets, with functional release verification executed on x86_64.
 
-`actanara search` defaults to `--mode auto`. It uses `nova-RAG` when the semantic service is enabled and available; otherwise it falls back to an incremental local SQLite full-text index, with a bounded scan as a last-resort local path. The fallback is lexical, not semantic: exact names, IDs, dates, error text, and file names work best, while paraphrases can be missed. Use `--mode rag` to require Agentic RAG, `--mode local` to require local retrieval, or the legacy `actanara rag search-memory` command for strict RAG compatibility.
+| Capability | Linux Production Behavior |
+| :--- | :--- |
+| **Install & Upgrades** | The public Release `install.sh` supports verified fresh installations, commit/source refreshes, lock-pinned dependency updates, and atomic repairs. New generations are staged before atomic promotion; failed updates roll back instantly. |
+| **Service Boundaries** | Run setup as a standard login user; **never execute with `sudo`**. Dashboard, optional `nova-RAG`, and scheduled background jobs run under `systemctl --user`. |
+| **RAG Profile** | Fresh installations support an audited CPU-only local embedding profile (powered by `intfloat/multilingual-e5-small`). Cloud RAG conservatively declines when credentials are missing. |
+| **Headless Servers** | Dashboard and RAG bind strictly to loopback (`127.0.0.1:3036` and `3037`). Headless servers can be accessed securely via SSH local port forwarding: |
 
-The installer manages one dynamic, read-only Memory Search Skill rather than separate RAG and non-RAG skills. Choosing **Not Now** for RAG does not prevent registration: a Skill is written only for tools in the intersection of detected, explicitly selected, and currently supported Skill targets. The same Skill inspects each response's `backend` metadata and follows either the semantic or lexical protocol.
+```bash
+# Port forward to a remote headless server
+ssh -N -L 3036:127.0.0.1:3036 user@linux-host
+# Open http://127.0.0.1:3036/dashboard in your local browser
+```
 
-Importing Codex and Claude Code's own managed memory is enabled by default for new runtimes, including allowlisted instruction files and `nova-RAG` ingestion when RAG is enabled. Each scope remains independently configurable, and an explicit `false` in an existing Runtime is preserved during upgrades. The adapter reads only allowlisted Markdown memory surfaces and does not inspect Cursor's private SQLite databases.
+---
 
-The generic external contract at `/api/memory/external/*` is read-only and loopback-only. For commands, configuration examples, response semantics, native-memory boundaries, and troubleshooting, see [Memory Search and Local Recall](docs/memory-search.md).
+## 🔐 Privacy & Security Commitments
 
-## 🤖 nova-RAG: Shared Memory with a Read-Only Boundary
+- **100% Local-First**: Runtime state, SQLite databases, generated Markdown diaries, and vector embeddings reside exclusively on your local filesystem.
+- **Hardened Secret Permissions**: Provider API keys reside in `$ACTANARA_HOME/state/secrets`, guarded by POSIX mode `0700` for directories and `0600` for secret files.
+- **Non-Invasive Architecture**: Actanara reads telemetry already written to disk. **It never modifies external runtime history, nor does it hijack third-party agent processes.**
+- **Loopback-Only External Boundary**: The generic external recall facade at `/api/memory/external/*` is restricted strictly to loopback connections, adhering to strict allowlisted file access.
 
-`nova-RAG` is Actanara's optional semantic retrieval subsystem with local or cloud embeddings. When selected by Memory Search, it gives external agent runtimes **read-only** access to your work memory—they can retrieve it, but cannot write memory, change the index, alter settings, or control the service lifecycle.
-
-Retrieval quality is managed at two levels: the server runs a deterministic, baseline-first adaptive pass, and only when it returns weak or ambiguous evidence does the external runtime's own LLM reflect further. `nova-RAG` also manages recall quality through query evaluation, candidate promotion, a protected index lifecycle, and safe rollback. For the complete read-only API, request schema, and error semantics, see the [nova-RAG External Agent Runtime Contract](docs/rag-external-agent-contract.md).
-
-## 🔐 Privacy and Security
-
-- **Local-first:** Runtime state, the database, generated assets, and indexes remain in user-owned local paths.
-- **Secret permissions:** Provider keys live in `$ACTANARA_HOME/state/secrets`; the directory uses mode `0700`, and secret files use mode `0600`.
-- **External-provider boundary:** When an external LLM or embedding provider is configured, relevant content is sent according to the selected endpoint and provider data policy.
-- **Input becomes output:** If source logs or materials already contain secrets or sensitive information, generated diaries, reports, and indexes may faithfully preserve them.
-- **Non-invasive boundary:** Actanara does not rewrite supported runtimes' historical data or take over their execution. It creates only its own runtime, CLI shim, optional skills, and managed services.
-- **External memory boundary:** The anonymous generic `/api/memory/external/*` facade requires both a loopback peer and loopback Host; native Agent Runtime collection is limited to documented allowlisted files and can be disabled per Runtime, tool, instruction scope, or RAG ingestion scope.
+---
 
 ## 📐 Development, Testing, and Reproducible Releases
 
@@ -430,37 +263,35 @@ The release builder accepts only a clean, committed Git worktree and writes outp
 
 </details>
 
-## 📄 Documentation
+---
 
-### User and Daily Operations
+<a id="documentation"></a>
+## 📚 Documentation
 
-- ⚙️ [Local Operations Runbook](docs/local-operations-runbook.md)
-- 📖 [New User Onboarding Runbook](docs/new-user-onboarding-runbook.md)
-- 🧭 [CLI Product Boundary](docs/cli-boundary.md)
-- 🔎 [Memory Search and Local Recall](docs/memory-search.md)
+### User & Daily Operations
+- ⚙️ [Local Operations Runbook](docs/local-operations-runbook.md) — Operational parameters, systemd/LaunchAgent administration, and troubleshooting
+- 📖 [New User Onboarding Runbook](docs/new-user-onboarding-runbook.md) — Step-by-step LLM configuration and historical backfill guide
+- 🧭 [CLI Product Boundary](docs/cli-boundary.md) — Command interfaces and system boundary definitions
+- 🔎 [Memory Search and Local Recall](docs/memory-search.md) — Hybrid lexical and semantic retrieval design
 
-### Integration and Product Design
+### Integration & Product Architecture
+- 🤖 [nova-RAG External Agent Runtime Contract](docs/rag-external-agent-contract.md) — API schema and read-only protocol specification
+- 🧩 [Nova-Task Work-Graph Reconciliation](docs/nova-task-work-graph-reconciliation.md) — Automated task synthesis and reconciliation principles
 
-- 🤖 [nova-RAG External Agent Runtime Contract](docs/rag-external-agent-contract.md)
-- 🧩 [Nova-Task Work-Graph Reconciliation](docs/nova-task-work-graph-reconciliation.md)
+### Quality Assurance & Project History
+- ✅ [Release Assurance Archive](docs/v1-release-assurance.md) · 🧹 [Production Cleanup Inventory](docs/production-clean-inventory.md)
+- 🧾 [Changelog](CHANGELOG.md) · 🔐 [Security Policy](SECURITY.md) · 🕰️ [Public Project History](HISTORY.md)
 
-### Release, Security, and Project History
+---
 
-- ✅ [Release Assurance Archive](docs/v1-release-assurance.md)
-- 🧹 [Production Cleanup Inventory](docs/production-clean-inventory.md)
-- 🧾 [Changelog](CHANGELOG.md)
-- 🔐 [Security Policy](SECURITY.md)
-- 🕰️ [Public Project History](HISTORY.md)
-
-## ⚖️ License
+## ⚖️ License & Acknowledgements
 
 Copyright © 2026 Neo-Isshin.
 
 Actanara is licensed under the [MIT License](LICENSE), with SPDX identifier `MIT`.
 
-## 🙏 Acknowledgements
-
-Actanara exists thanks to outstanding AI coding tools and their open-source communities. Their local activity and token-usage logs make unified visualization, asset consolidation, and cross-runtime memory sharing possible. Thanks also to the [getdesign.md](https://getdesign.md) community for inspiration on the Dashboard's layout and visual direction.
+- Deep gratitude to all leading AI coding tools (Claude Code, Cursor, Codex, Gemini CLI, Antigravity, OpenClaw, etc.) whose local telemetry standards make unified asset consolidation possible.
+- Thanks to the [getdesign.md](https://getdesign.md) community for visual inspiration across the Dashboard experience.
 
 <hr>
 
@@ -470,8 +301,8 @@ Actanara exists thanks to outstanding AI coding tools and their open-source comm
 <h2>⭐ Give me a Star</h2>
 
 <p>
-If Actanara helps you turn fragmented AI work into searchable, reusable local assets,<br>
-please give it a Star so more people can discover the project.
+If Actanara helps you turn fragmented AI interactions into permanent, searchable engineering assets,<br>
+please consider starring our repository on GitHub!
 </p>
 
 <a href="https://github.com/Neo-Isshin/actanara">
